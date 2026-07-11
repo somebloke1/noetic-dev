@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/models/v0/endpoint-registry.schema.json",
+  "title": "noetic-dev model endpoint registry v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "registry_id", "registry_version", "policy_version", "generated_at", "endpoints", "models"],
+  "properties": {
+    "schema_version": {"const": "noetic.model-endpoint-registry/v0"},
+    "registry_id": {"type": "string", "minLength": 1},
+    "registry_version": {"type": "string", "minLength": 1},
+    "policy_version": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "endpoints": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["endpoint_id", "access_kind", "interface_type", "base_url_ref", "credential_ref", "locality", "capabilities", "privacy_classes", "cost_class", "health_policy", "enabled"],
+        "properties": {
+          "endpoint_id": {"type": "string", "minLength": 1},
+          "access_kind": {"enum": ["litellm_normalized", "direct_local", "direct_provider"]},
+          "interface_type": {"enum": ["chat_completions", "responses", "embeddings", "asr"]},
+          "base_url_ref": {"type": "string", "pattern": "^config:[a-z][a-z0-9_.-]+$"},
+          "credential_ref": {"type": ["string", "null"], "pattern": "^env:[A-Z][A-Z0-9_]+$"},
+          "locality": {"enum": ["local", "lan", "remote"]},
+          "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "privacy_classes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["public", "internal", "restricted"]}},
+          "cost_class": {"enum": ["zero", "low", "medium", "high"]},
+          "health_policy": {
+            "type": "object", "additionalProperties": false,
+            "required": ["probe_ref", "ttl_seconds", "timeout_ms", "failure_mode"],
+            "properties": {
+              "probe_ref": {"type": "string", "minLength": 1},
+              "ttl_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+              "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 60000},
+              "failure_mode": {"enum": ["fail_closed", "allow_unverified"]}
+            }
+          },
+          "enabled": {"type": "boolean"}
+        }
+      }
+    },
+    "models": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["model_ref", "endpoint_id", "upstream_model_ref", "modalities", "capabilities", "promotion_status", "policy_tags"],
+        "properties": {
+          "model_ref": {"type": "string", "minLength": 1},
+          "endpoint_id": {"type": "string", "minLength": 1},
+          "upstream_model_ref": {"type": "string", "minLength": 1},
+          "modalities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["text", "image", "embedding", "audio"]}},
+          "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+          "promotion_status": {"enum": ["approved", "experimental", "blocked"]},
+          "policy_tags": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    }
+  }
+}

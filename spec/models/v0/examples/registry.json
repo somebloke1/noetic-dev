@@ -1,0 +1,53 @@
+{
+  "schema_version": "noetic.model-endpoint-registry/v0",
+  "registry_id": "noetic-dev-default",
+  "registry_version": "0.1.0",
+  "policy_version": "routing-policy/0.1.0",
+  "generated_at": "2026-07-11T15:10:00Z",
+  "endpoints": [
+    {
+      "endpoint_id": "litellm-primary",
+      "access_kind": "litellm_normalized",
+      "interface_type": "chat_completions",
+      "base_url_ref": "config:litellm.primary",
+      "credential_ref": "env:LITELLM_API_KEY",
+      "locality": "lan",
+      "capabilities": ["text", "tools", "structured_output", "streaming"],
+      "privacy_classes": ["public", "internal"],
+      "cost_class": "medium",
+      "health_policy": {"probe_ref": "probe:openai-model-list/v0", "ttl_seconds": 60, "timeout_ms": 5000, "failure_mode": "allow_unverified"},
+      "enabled": true
+    },
+    {
+      "endpoint_id": "local-embeddings",
+      "access_kind": "direct_local",
+      "interface_type": "embeddings",
+      "base_url_ref": "config:local.embeddings",
+      "credential_ref": null,
+      "locality": "local",
+      "capabilities": ["embedding"],
+      "privacy_classes": ["public", "internal", "restricted"],
+      "cost_class": "zero",
+      "health_policy": {"probe_ref": "probe:embedding-model-info/v0", "ttl_seconds": 30, "timeout_ms": 2000, "failure_mode": "fail_closed"},
+      "enabled": true
+    },
+    {
+      "endpoint_id": "local-asr",
+      "access_kind": "direct_local",
+      "interface_type": "asr",
+      "base_url_ref": "config:local.asr",
+      "credential_ref": null,
+      "locality": "local",
+      "capabilities": ["audio", "transcription"],
+      "privacy_classes": ["public", "internal", "restricted"],
+      "cost_class": "zero",
+      "health_policy": {"probe_ref": "probe:asr-health/v0", "ttl_seconds": 30, "timeout_ms": 5000, "failure_mode": "fail_closed"},
+      "enabled": true
+    }
+  ],
+  "models": [
+    {"model_ref": "chat-primary", "endpoint_id": "litellm-primary", "upstream_model_ref": "provider/chat-primary", "modalities": ["text"], "capabilities": ["text", "tools", "structured_output"], "promotion_status": "experimental", "policy_tags": ["not_user_global_safe"]},
+    {"model_ref": "embed-local", "endpoint_id": "local-embeddings", "upstream_model_ref": "local/embed-model", "modalities": ["embedding"], "capabilities": ["embedding"], "promotion_status": "approved", "policy_tags": ["direct_specialized"]},
+    {"model_ref": "asr-local", "endpoint_id": "local-asr", "upstream_model_ref": "local/asr-model", "modalities": ["audio", "text"], "capabilities": ["audio", "transcription"], "promotion_status": "approved", "policy_tags": ["direct_specialized"]}
+  ]
+}

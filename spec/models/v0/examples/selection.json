@@ -1,0 +1,48 @@
+{
+  "schema_version": "noetic.model-selection/v0",
+  "decision_id": "model-decision-0001",
+  "request": {
+    "task_kind": "implement",
+    "complexity": "complex",
+    "blast_radius": "interface",
+    "prior_failure": false,
+    "awaited": false,
+    "required_capabilities": ["text", "tools"],
+    "privacy_class": "internal",
+    "excluded_models": []
+  },
+  "registry": {
+    "registry_id": "noetic-dev-default",
+    "registry_version": "0.1.0",
+    "registry_digest": "sha256:2bb7c595a7d9cefb16ffeb536ad9a630dc8365f40e2cfe1b106c4492d1101fc4",
+    "policy_version": "routing-policy/0.1.0",
+    "policy_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  "availability_snapshot": {
+    "snapshot_id": "availability-0001",
+    "registry_digest": "sha256:2bb7c595a7d9cefb16ffeb536ad9a630dc8365f40e2cfe1b106c4492d1101fc4",
+    "observed_at": "2026-07-11T15:10:00Z",
+    "expires_at": "2026-07-11T15:11:00Z",
+    "observations": [
+      {"endpoint_id": "litellm-primary", "status": "available", "available_model_refs": ["chat-primary"], "evidence_ref": "trace:litellm-model-list-0001"},
+      {"endpoint_id": "local-embeddings", "status": "available", "available_model_refs": ["embed-local"], "evidence_ref": "trace:embedding-health-0001"},
+      {"endpoint_id": "local-asr", "status": "available", "available_model_refs": ["asr-local"], "evidence_ref": "trace:asr-health-0001"}
+    ]
+  },
+  "selected": {
+    "model_ref": "chat-primary", "endpoint_id": "litellm-primary", "access_kind": "litellm_normalized",
+    "interface_type": "chat_completions", "base_url_ref": "config:litellm.primary", "credential_ref": "env:LITELLM_API_KEY",
+    "upstream_model_ref": "provider/chat-primary", "availability_status": "available"
+  },
+  "fallbacks": [],
+  "excluded": [],
+  "invocation_policy": {
+    "selection_only": true,
+    "max_attempts": 2,
+    "timeout_ms": 120000,
+    "max_cost_class": "medium",
+    "secret_handling": "resolve_credential_ref_at_adapter_only",
+    "fallback_rule": "ordered_pinned_candidates_only"
+  },
+  "decided_at": "2026-07-11T15:10:01Z"
+}

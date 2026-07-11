@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/models/v0/selection-record.schema.json",
+  "title": "noetic-dev reproducible model selection record v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "request", "registry", "availability_snapshot", "selected", "fallbacks", "excluded", "invocation_policy", "decided_at"],
+  "properties": {
+    "schema_version": {"const": "noetic.model-selection/v0"},
+    "decision_id": {"type": "string", "minLength": 1},
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_kind", "complexity", "blast_radius", "prior_failure", "awaited", "required_capabilities", "privacy_class", "excluded_models"],
+      "properties": {
+        "task_kind": {"enum": ["plan", "design", "orchestrate", "triage", "implement", "test", "review", "debug", "refactor", "research", "document", "summarize", "embed", "transcribe"]},
+        "complexity": {"enum": ["trivial", "routine", "complex"]},
+        "blast_radius": {"enum": ["isolated", "interface", "systemic"]},
+        "prior_failure": {"type": "boolean"},
+        "awaited": {"type": "boolean"},
+        "required_capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+        "privacy_class": {"enum": ["public", "internal", "restricted"]},
+        "excluded_models": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "registry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["registry_id", "registry_version", "registry_digest", "policy_version", "policy_digest"],
+      "properties": {
+        "registry_id": {"type": "string"}, "registry_version": {"type": "string"},
+        "registry_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "policy_version": {"type": "string"},
+        "policy_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "availability_snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["snapshot_id", "registry_digest", "observed_at", "expires_at", "observations"],
+      "properties": {
+        "snapshot_id": {"type": "string"},
+        "registry_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "observations": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["endpoint_id", "status", "available_model_refs", "evidence_ref"],
+            "properties": {
+              "endpoint_id": {"type": "string"},
+              "status": {"enum": ["available", "unavailable", "unverified", "stale"]},
+              "available_model_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+              "evidence_ref": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "selected": {"$ref": "#/$defs/candidate"},
+    "fallbacks": {"type": "array", "items": {"$ref": "#/$defs/candidate"}},
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["model_ref", "reason"],
+        "properties": {"model_ref": {"type": "string"}, "reason": {"enum": ["unavailable", "stale", "blocked", "capability_mismatch", "privacy_mismatch", "excluded_by_request", "failed_previously"]}}
+      }
+    },
+    "invocation_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["selection_only", "max_attempts", "timeout_ms", "max_cost_class", "secret_handling", "fallback_rule"],
+      "properties": {
+        "selection_only": {"const": true},
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+        "timeout_ms": {"type": "integer", "minimum": 1},
+        "max_cost_class": {"enum": ["zero", "low", "medium", "high"]},
+        "secret_handling": {"const": "resolve_credential_ref_at_adapter_only"},
+        "fallback_rule": {"const": "ordered_pinned_candidates_only"}
+      }
+    },
+    "decided_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model_ref", "endpoint_id", "access_kind", "interface_type", "base_url_ref", "credential_ref", "upstream_model_ref", "availability_status"],
+      "properties": {
+        "model_ref": {"type": "string"}, "endpoint_id": {"type": "string"},
+        "access_kind": {"enum": ["litellm_normalized", "direct_local", "direct_provider"]},
+        "interface_type": {"enum": ["chat_completions", "responses", "embeddings", "asr"]},
+        "base_url_ref": {"type": "string", "pattern": "^config:[a-z][a-z0-9_.-]+$"},
+        "credential_ref": {"type": ["string", "null"]},
+        "upstream_model_ref": {"type": "string"},
+        "availability_status": {"enum": ["available", "unverified"]}
+      }
+    }
+  }
+}

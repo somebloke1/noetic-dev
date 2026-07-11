@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {"name": "stale-snapshot", "mutations": {"decided_at": "2026-07-11T15:12:00Z"}, "expected_error": "availability snapshot expired before decision"},
+    {"name": "registry-snapshot-drift", "mutations": {"availability_snapshot.registry_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expected_error": "availability snapshot registry digest mismatch"},
+    {"name": "selected-model-not-observed", "mutations": {"availability_snapshot.observations": []}, "expected_error": "selected model is absent from availability snapshot"},
+    {"name": "provider-url-leak", "mutations": {"selected.base_url_ref": "https://provider.invalid/v1"}, "expected_error": "candidate base_url_ref must be opaque config reference"},
+    {"name": "secret-leak", "mutations": {"selected.credential_ref": "secret-value"}, "expected_error": "candidate credential_ref must be env reference"},
+    {"name": "selection-executes", "mutations": {"invocation_policy.selection_only": false}, "expected_error": "selection record cannot execute a model"},
+    {"name": "fallback-drift", "mutations": {"fallbacks": [{"model_ref": "unregistered", "endpoint_id": "unknown", "access_kind": "direct_provider", "interface_type": "chat_completions", "base_url_ref": "config:unknown", "credential_ref": null, "upstream_model_ref": "unknown", "availability_status": "unverified"}]}, "expected_error": "fallback is not registered"}
+  ]
+}

@@ -45,6 +45,11 @@ REQUIRED = [
     "docs/contextforge-continuity-review.md",
     "scripts/validate_contextforge_inventory.py",
     "spec/infrastructure/contextforge-continuity.json",
+    "docs/model-selection-access-contract.md",
+    "docs/model-selection-access-review.md",
+    "scripts/validate_model_specs.py",
+    "spec/models/v0/endpoint-registry.schema.json",
+    "spec/models/v0/selection-record.schema.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
