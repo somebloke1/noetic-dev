@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/events/v0/sink-receipt.schema.json",
+  "title": "noetic-dev cognitional event sink receipt v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "sink_type", "status", "canonical_digest", "sink_receipt_ref", "accepted_at"],
+  "properties": {
+    "schema_version": {"const": "noetic.event-sink-receipt/v0"},
+    "event_id": {"type": "string", "pattern": "^evt_[a-z0-9][a-z0-9_-]{7,127}$"},
+    "sink_type": {"enum": ["direct", "contextforge"]},
+    "status": {"enum": ["accepted", "duplicate", "rejected"]},
+    "canonical_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "sink_receipt_ref": {"type": ["string", "null"]},
+    "accepted_at": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["accepted", "duplicate"]}}},
+      "then": {
+        "properties": {
+          "sink_receipt_ref": {"type": "string", "minLength": 1},
+          "accepted_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "rejected"}}},
+      "then": {
+        "properties": {
+          "sink_receipt_ref": {"type": "null"},
+          "accepted_at": {"type": "null"}
+        }
+      }
+    }
+  ]
+}

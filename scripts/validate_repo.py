@@ -28,6 +28,12 @@ REQUIRED = [
     "spec/controller/v0/program-graph.schema.json",
     "spec/controller/v0/authority-matrix.json",
     "spec/controller/v0/transition-tables.json",
+    "docs/cognitional-event-contract.md",
+    "docs/cognitional-event-review.md",
+    "scripts/validate_event_specs.py",
+    "spec/events/v0/cognitional-event.schema.json",
+    "spec/events/v0/sink-receipt.schema.json",
+    "spec/events/v0/event-class-matrix.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

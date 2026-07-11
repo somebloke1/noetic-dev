@@ -1,0 +1,36 @@
+{
+  "schema_version": "noetic.event-sink-parity/v0",
+  "source_event": "valid-p4-event.json",
+  "canonical_digest": "sha256:463194f5b643dbf86e851767828e2ccf71a22111b61233ad8f6c75774d1fe136",
+  "required_semantic_fields": [
+    "schema_version", "event_id", "event_type", "event_class", "stream_id", "stream_position",
+    "subject", "actor", "authority", "causation_id", "correlation_id", "cognition", "privacy",
+    "evidence_refs", "payload", "producer", "occurred_at", "recorded_at"
+  ],
+  "receipts": [
+    {
+      "schema_version": "noetic.event-sink-receipt/v0",
+      "event_id": "evt_p4_decision_0001",
+      "sink_type": "direct",
+      "status": "accepted",
+      "canonical_digest": "sha256:463194f5b643dbf86e851767828e2ccf71a22111b61233ad8f6c75774d1fe136",
+      "sink_receipt_ref": "memory:receipt-0001",
+      "accepted_at": "2026-07-11T14:35:02Z"
+    },
+    {
+      "schema_version": "noetic.event-sink-receipt/v0",
+      "event_id": "evt_p4_decision_0001",
+      "sink_type": "contextforge",
+      "status": "accepted",
+      "canonical_digest": "sha256:463194f5b643dbf86e851767828e2ccf71a22111b61233ad8f6c75774d1fe136",
+      "sink_receipt_ref": "contextforge:receipt-0001",
+      "accepted_at": "2026-07-11T14:35:02Z"
+    }
+  ],
+  "invariants": [
+    "Both sinks receive the same canonical event bytes and digest.",
+    "Sink-local metadata lives only in the receipt and cannot alter event authority or cognition.",
+    "Duplicate event_id plus canonical_digest returns duplicate rather than creating a second semantic event.",
+    "ContextForge unavailability cannot change direct-sink domain semantics; it yields a transport failure or queued retry."
+  ]
+}

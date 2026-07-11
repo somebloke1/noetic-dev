@@ -1,0 +1,37 @@
+{
+  "schema_version": "noetic.event/v0",
+  "event_id": "evt_p1_attention_0001",
+  "event_type": "cognition.p1_attending",
+  "event_class": "cognition_report",
+  "stream_id": "cognitive-cycle:cycle-0001",
+  "stream_position": 1,
+  "subject": {"subject_type": "cognitive_cycle", "subject_id": "cycle-0001", "subject_version": 1},
+  "actor": {"actor_type": "cognitive_agent", "actor_id": "agent-p1-0001"},
+  "authority": {"authority_ref": "delegation-0001", "assertion_scope": "reported"},
+  "causation_id": "evt_cycle_started_0001",
+  "correlation_id": "run-example-0001",
+  "cognition": {
+    "phase": "p1",
+    "operation": "attending",
+    "modality": "enacted",
+    "cycle_id": "cycle-0001",
+    "iteration": 1,
+    "recursion_depth": 0,
+    "governing_purpose_ref": "goal:chain-1",
+    "parent_operation_event_id": null
+  },
+  "privacy": {"classification": "internal", "redaction_status": "passed", "policy_version": "redaction/v0"},
+  "evidence_refs": [
+    {
+      "ref_id": "artifact:p1-observations-0001",
+      "kind": "artifact",
+      "relation": "produced_by",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "access_classification": "internal"
+    }
+  ],
+  "payload": {"summary": "Observed source boundaries and recorded unresolved data gaps."},
+  "producer": {"component": "program", "instance_id": "phronesis-reference", "contract_version": "program/0.1.0"},
+  "occurred_at": "2026-07-11T14:30:00Z",
+  "recorded_at": "2026-07-11T14:30:01Z"
+}

@@ -1,0 +1,44 @@
+{
+  "schema_version": "noetic.event/v0",
+  "event_id": "evt_p4_decision_0001",
+  "event_type": "cognition.p4_deciding",
+  "event_class": "cognition_report",
+  "stream_id": "cognitive-cycle:cycle-0001",
+  "stream_position": 8,
+  "subject": {"subject_type": "cognitive_cycle", "subject_id": "cycle-0001", "subject_version": 8},
+  "actor": {"actor_type": "telos", "actor_id": "telos-primary"},
+  "authority": {"authority_ref": "delegation-0001", "assertion_scope": "reported"},
+  "causation_id": "evt_p3_judgment_0001",
+  "correlation_id": "run-example-0001",
+  "cognition": {
+    "phase": "p4",
+    "operation": "deciding",
+    "modality": "enacted",
+    "cycle_id": "cycle-0001",
+    "iteration": 2,
+    "recursion_depth": 1,
+    "governing_purpose_ref": "goal:chain-1",
+    "parent_operation_event_id": "evt_p3_judgment_0001"
+  },
+  "privacy": {"classification": "sensitive_reference", "redaction_status": "passed", "policy_version": "redaction/v0"},
+  "evidence_refs": [
+    {
+      "ref_id": "decision:decision-0001",
+      "kind": "decision",
+      "relation": "answers",
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "access_classification": "restricted"
+    },
+    {
+      "ref_id": "goal:chain-1",
+      "kind": "goal",
+      "relation": "governs",
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "access_classification": "internal"
+    }
+  ],
+  "payload": {"summary": "An attributed P4 decision was reported; enactment requires a separate authorized controller command."},
+  "producer": {"component": "telos", "instance_id": "telos-primary", "contract_version": "telos/0.1.0"},
+  "occurred_at": "2026-07-11T14:35:00Z",
+  "recorded_at": "2026-07-11T14:35:01Z"
+}

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/events/v0/cognitional-event.schema.json",
+  "title": "noetic-dev canonical cognitional event v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "event_type", "event_class", "stream_id", "stream_position",
+    "subject", "actor", "authority", "causation_id", "correlation_id", "cognition", "privacy",
+    "evidence_refs", "payload", "producer", "occurred_at", "recorded_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "noetic.event/v0"},
+    "event_id": {"type": "string", "pattern": "^evt_[a-z0-9][a-z0-9_-]{7,127}$"},
+    "event_type": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"},
+    "event_class": {
+      "enum": ["domain_transition", "cognition_report", "evidence_observation", "decision_request", "effect_status", "diagnostic"]
+    },
+    "stream_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "stream_position": {"type": "integer", "minimum": 1},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_type", "subject_id", "subject_version"],
+      "properties": {
+        "subject_type": {
+          "enum": ["run", "node", "attempt", "gate", "interaction", "publication", "effect", "goal_chain", "sub_goal", "program", "cognitive_cycle", "artifact", "adapter"]
+        },
+        "subject_id": {"type": "string", "minLength": 1},
+        "subject_version": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"enum": ["telos", "operator", "controller", "cognitive_agent", "qa_agent", "adapter", "system"]},
+        "actor_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_ref", "assertion_scope"],
+      "properties": {
+        "authority_ref": {"type": ["string", "null"]},
+        "assertion_scope": {"enum": ["observed", "reported", "adjudicated", "authorized", "enacted", "diagnostic"]}
+      }
+    },
+    "causation_id": {"type": ["string", "null"]},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "cognition": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["phase", "operation", "modality", "cycle_id", "iteration", "recursion_depth", "governing_purpose_ref", "parent_operation_event_id"],
+          "properties": {
+            "phase": {"enum": ["p1", "p2", "p3", "p4"]},
+            "operation": {"enum": ["attending", "understanding", "judging", "deciding"]},
+            "modality": {"enum": ["sought", "enacted"]},
+            "cycle_id": {"type": "string", "minLength": 1},
+            "iteration": {"type": "integer", "minimum": 1},
+            "recursion_depth": {"type": "integer", "minimum": 0},
+            "governing_purpose_ref": {"type": "string", "minLength": 1},
+            "parent_operation_event_id": {"type": ["string", "null"]}
+          },
+          "allOf": [
+            {"if": {"properties": {"phase": {"const": "p1"}}}, "then": {"properties": {"operation": {"const": "attending"}}}},
+            {"if": {"properties": {"phase": {"const": "p2"}}}, "then": {"properties": {"operation": {"const": "understanding"}}}},
+            {"if": {"properties": {"phase": {"const": "p3"}}}, "then": {"properties": {"operation": {"const": "judging"}}}},
+            {"if": {"properties": {"phase": {"const": "p4"}}}, "then": {"properties": {"operation": {"const": "deciding"}}}}
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "redaction_status", "policy_version"],
+      "properties": {
+        "classification": {"enum": ["public", "internal", "sensitive_reference"]},
+        "redaction_status": {"enum": ["not_required", "passed", "failed"]},
+        "policy_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref_id", "kind", "relation", "digest", "access_classification"],
+        "properties": {
+          "ref_id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["artifact", "claim", "decision", "goal", "trace", "program"]},
+          "relation": {"enum": ["supports", "challenges", "produced_by", "governs", "answers", "supersedes"]},
+          "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "access_classification": {"enum": ["public", "internal", "restricted"]}
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": true,
+      "maxProperties": 32,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "not": {"pattern": "(^|_)(password|secret|token|credential|full_prompt|private_artifact|critical_contact|phone_number)($|_)"}
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "instance_id", "contract_version"],
+      "properties": {
+        "component": {"enum": ["controller", "telos", "program", "observability", "adapter"]},
+        "instance_id": {"type": "string", "minLength": 1},
+        "contract_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "recorded_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"event_class": {"const": "domain_transition"}}},
+      "then": {
+        "properties": {
+          "actor": {"properties": {"actor_type": {"const": "controller"}}},
+          "authority": {"properties": {"authority_ref": {"type": "string", "minLength": 1}, "assertion_scope": {"const": "enacted"}}},
+          "cognition": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_class": {"const": "cognition_report"}}},
+      "then": {
+        "properties": {
+          "authority": {"properties": {"assertion_scope": {"const": "reported"}}},
+          "cognition": {"type": "object"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"event_class": {"const": "diagnostic"}}},
+      "then": {
+        "properties": {
+          "authority": {"properties": {"authority_ref": {"type": "null"}, "assertion_scope": {"const": "diagnostic"}}},
+          "cognition": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"privacy": {"properties": {"classification": {"const": "sensitive_reference"}}}}},
+      "then": {
+        "properties": {
+          "privacy": {"properties": {"redaction_status": {"const": "passed"}}},
+          "evidence_refs": {"minItems": 1}
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schema_version": "noetic.event-class-matrix/v0",
+  "classes": {
+    "domain_transition": {
+      "event_type_prefixes": ["run.", "node.", "attempt.", "gate.", "interaction.", "publication.", "effect."],
+      "actor_types": ["controller"],
+      "assertion_scopes": ["enacted"],
+      "cognition": "forbidden",
+      "meaning": "Authoritative structural transition accepted by the deterministic controller."
+    },
+    "cognition_report": {
+      "event_type_prefixes": ["cognition."],
+      "actor_types": ["telos", "operator", "cognitive_agent", "qa_agent"],
+      "assertion_scopes": ["reported"],
+      "cognition": "required",
+      "meaning": "Attributed report that a cognitive operation occurred; never controller truth by itself."
+    },
+    "evidence_observation": {
+      "event_type_prefixes": ["evidence."],
+      "actor_types": ["operator", "controller", "cognitive_agent", "qa_agent", "adapter", "system"],
+      "assertion_scopes": ["observed", "reported"],
+      "cognition": "optional",
+      "meaning": "Observed or reported evidence whose semantic force remains attributable and reference-backed."
+    },
+    "decision_request": {
+      "event_type_prefixes": ["decision."],
+      "actor_types": ["telos", "operator", "controller", "cognitive_agent", "qa_agent", "system"],
+      "assertion_scopes": ["reported", "authorized"],
+      "cognition": "optional",
+      "meaning": "Durable request for P3/P4 judgment; it is not itself an answer or transition."
+    },
+    "effect_status": {
+      "event_type_prefixes": ["effect_status."],
+      "actor_types": ["controller", "adapter", "system"],
+      "assertion_scopes": ["observed", "reported"],
+      "cognition": "forbidden",
+      "meaning": "Transport or external-effect observation; domain state changes only through a later controller transition."
+    },
+    "diagnostic": {
+      "event_type_prefixes": ["diagnostic."],
+      "actor_types": ["controller", "adapter", "system"],
+      "assertion_scopes": ["diagnostic"],
+      "cognition": "forbidden",
+      "meaning": "Non-authoritative operational diagnostic, disposable as a projection."
+    }
+  },
+  "invariants": [
+    "A cognition_report records that an attributed actor reported an operation; it does not certify the report as true.",
+    "Only controller-authored domain_transition events enact structural aggregate truth.",
+    "Effect and diagnostic events cannot broaden authority or mutate domain state.",
+    "P1-P4 phases are recurrent related operations, not a mandatory one-way transport lifecycle.",
+    "P4 governing purpose is referenced from every cognition object, including recursive P1-P3 returns."
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "name": "cognition-cannot-enact-domain-truth",
+      "base": "valid-p4-event.json",
+      "mutations": {"authority.assertion_scope": "enacted"},
+      "expected_error": "cognition_report requires reported assertion scope"
+    },
+    {
+      "name": "phase-operation-must-agree",
+      "base": "valid-p1-event.json",
+      "mutations": {"cognition.operation": "judging"},
+      "expected_error": "cognitive phase/operation mismatch"
+    },
+    {
+      "name": "diagnostic-cannot-pose-as-transition",
+      "base": "valid-domain-event.json",
+      "mutations": {"event_class": "diagnostic"},
+      "expected_error": "event type prefix is not allowed for event class"
+    },
+    {
+      "name": "secret-field-is-forbidden",
+      "base": "valid-p1-event.json",
+      "mutations": {"payload.Access_Token": "must-never-enter-event"},
+      "expected_error": "payload key must be lower_snake_case"
+    },
+    {
+      "name": "sensitive-reference-must-pass-redaction",
+      "base": "valid-p4-event.json",
+      "mutations": {"privacy.redaction_status": "failed"},
+      "expected_error": "sensitive_reference requires passed redaction"
+    },
+    {
+      "name": "sensitive-reference-requires-opaque-reference",
+      "base": "valid-p4-event.json",
+      "mutations": {"evidence_refs": []},
+      "expected_error": "sensitive_reference requires an opaque evidence_ref"
+    },
+    {
+      "name": "effect-observation-cannot-use-controller-transition-class",
+      "base": "valid-domain-event.json",
+      "mutations": {"event_type": "effect_status.delivery_observed", "event_class": "effect_status", "actor.actor_type": "adapter", "authority.assertion_scope": "enacted"},
+      "expected_error": "assertion scope is not allowed for event class"
+    }
+  ]
+}

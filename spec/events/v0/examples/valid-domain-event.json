@@ -1,0 +1,28 @@
+{
+  "schema_version": "noetic.event/v0",
+  "event_id": "evt_run_started_0001",
+  "event_type": "run.started",
+  "event_class": "domain_transition",
+  "stream_id": "run:run-example-0001",
+  "stream_position": 3,
+  "subject": {"subject_type": "run", "subject_id": "run-example-0001", "subject_version": 3},
+  "actor": {"actor_type": "controller", "actor_id": "controller-reference"},
+  "authority": {"authority_ref": "delegation-0001", "assertion_scope": "enacted"},
+  "causation_id": "command-run-start-0001",
+  "correlation_id": "run-example-0001",
+  "cognition": null,
+  "privacy": {"classification": "internal", "redaction_status": "passed", "policy_version": "redaction/v0"},
+  "evidence_refs": [
+    {
+      "ref_id": "program:example-change@0.1.0",
+      "kind": "program",
+      "relation": "governs",
+      "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "access_classification": "internal"
+    }
+  ],
+  "payload": {"from_state": "ready", "to_state": "running"},
+  "producer": {"component": "controller", "instance_id": "controller-reference", "contract_version": "controller.event/v0"},
+  "occurred_at": "2026-07-11T14:36:00Z",
+  "recorded_at": "2026-07-11T14:36:00Z"
+}
