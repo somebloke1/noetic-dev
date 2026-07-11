@@ -1,0 +1,22 @@
+{
+  "expected_error": "$.payload: privacy-forbidden property name 'access_token'",
+  "event": {
+    "schema_version": "controller.event/v0",
+    "event_id": "event-invalid-privacy",
+    "event_type": "run.validated",
+    "aggregate_type": "run",
+    "aggregate_id": "run-example-0001",
+    "aggregate_version": 1,
+    "actor": {
+      "actor_type": "controller",
+      "actor_id": "controller-reference"
+    },
+    "causation_id": "command-0001",
+    "correlation_id": "goalchain-chain-1",
+    "privacy": "internal",
+    "payload": {
+      "access_token": "must-never-enter-an-event"
+    },
+    "occurred_at": "2026-07-11T14:10:01Z"
+  }
+}

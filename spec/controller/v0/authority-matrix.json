@@ -1,0 +1,43 @@
+{
+  "schema_version": "controller.authority/v0",
+  "commands": [
+    "run.create", "run.start", "run.abort", "run.reconcile",
+    "scheduler.tick", "lease.expire",
+    "attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail",
+    "verification.adjudicate", "interaction.resolve", "contract.amend",
+    "publication.request", "effect.receipt"
+  ],
+  "actors": {
+    "telos": {
+      "allow": ["run.create", "run.start", "run.abort", "interaction.resolve", "contract.amend", "publication.request"],
+      "deny": ["run.reconcile", "scheduler.tick", "lease.expire", "attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail", "verification.adjudicate", "effect.receipt"]
+    },
+    "operator": {
+      "allow": ["run.create", "run.start", "run.abort", "run.reconcile", "verification.adjudicate", "interaction.resolve", "contract.amend", "publication.request"],
+      "deny": ["scheduler.tick", "lease.expire", "attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail", "effect.receipt"]
+    },
+    "controller": {
+      "allow": ["run.reconcile", "scheduler.tick", "lease.expire"],
+      "deny": ["run.create", "run.start", "run.abort", "attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail", "verification.adjudicate", "interaction.resolve", "contract.amend", "publication.request", "effect.receipt"]
+    },
+    "implementation_agent": {
+      "allow": ["attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail"],
+      "deny": ["run.create", "run.start", "run.abort", "run.reconcile", "scheduler.tick", "lease.expire", "verification.adjudicate", "interaction.resolve", "contract.amend", "publication.request", "effect.receipt"]
+    },
+    "qa_agent": {
+      "allow": ["attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail", "verification.adjudicate"],
+      "deny": ["run.create", "run.start", "run.abort", "run.reconcile", "scheduler.tick", "lease.expire", "interaction.resolve", "contract.amend", "publication.request", "effect.receipt"]
+    },
+    "adapter": {
+      "allow": ["effect.receipt"],
+      "deny": ["run.create", "run.start", "run.abort", "run.reconcile", "scheduler.tick", "lease.expire", "attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail", "verification.adjudicate", "interaction.resolve", "contract.amend", "publication.request"]
+    }
+  },
+  "rules": [
+    "Authority can narrow but never broaden permissions inherited from its issuer.",
+    "Adapters transport effect receipts but cannot manufacture domain authority.",
+    "QA agents may adjudicate only the verification obligation assigned to their fenced attempt.",
+    "Operators and Telos may request publication only within an unexpired publication scope.",
+    "Every denial is fail-closed and emits no domain transition."
+  ]
+}

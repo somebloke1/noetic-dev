@@ -19,6 +19,15 @@ REQUIRED = [
     "SECURITY.md",
     "docs/cognitive-backbone.md",
     "docs/development-practices.md",
+    "docs/controller-stage-a-test-plan.md",
+    "docs/controller-contracts-review.md",
+    "scripts/validate_controller_specs.py",
+    "spec/controller/v0/README.md",
+    "spec/controller/v0/command-envelope.schema.json",
+    "spec/controller/v0/event-envelope.schema.json",
+    "spec/controller/v0/program-graph.schema.json",
+    "spec/controller/v0/authority-matrix.json",
+    "spec/controller/v0/transition-tables.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

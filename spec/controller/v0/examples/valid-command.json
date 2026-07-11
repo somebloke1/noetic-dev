@@ -1,0 +1,28 @@
+{
+  "schema_version": "controller.command/v0",
+  "command_id": "command-0001",
+  "idempotency_key": "create-example-change-0001",
+  "command_type": "run.create",
+  "aggregate_type": "run",
+  "aggregate_id": "run-example-0001",
+  "expected_version": 0,
+  "actor": {
+    "actor_type": "telos",
+    "actor_id": "telos-primary"
+  },
+  "authority": {
+    "authority_id": "delegation-0001",
+    "issuer": "operator:somebloke1",
+    "scope": "run",
+    "scope_id": "run-example-0001",
+    "permissions": ["run.create", "run.start"],
+    "expires_at": "2026-07-11T16:15:42Z"
+  },
+  "causation_id": null,
+  "correlation_id": "goalchain-chain-1",
+  "payload": {
+    "program_id": "example-change",
+    "program_version": "0.1.0"
+  },
+  "submitted_at": "2026-07-11T14:10:00Z"
+}

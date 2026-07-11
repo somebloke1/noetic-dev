@@ -1,0 +1,18 @@
+{
+  "expected_errors": ["dependency graph contains a cycle"],
+  "program": {
+    "schema_version": "controller.program/v0",
+    "program_id": "invalid-cycle",
+    "program_version": "0.1.0",
+    "nodes": [
+      {"node_id": "a", "kind": "implementation", "priority": 0, "barrier_order": 0, "requires_verification": true},
+      {"node_id": "b", "kind": "implementation", "priority": 0, "barrier_order": 0, "requires_verification": true}
+    ],
+    "dependencies": [
+      {"dependency_id": "a-b", "kind": "control", "source": "a", "target": "b", "required_state": "succeeded"},
+      {"dependency_id": "b-a", "kind": "control", "source": "b", "target": "a", "required_state": "succeeded"}
+    ],
+    "barriers": [{"barrier_id": "all", "order": 0, "members": ["a", "b"], "settlement": "all"}],
+    "verification_policy": {"mode": "exactly_one_per_implementation_generation", "qa_actor_type": "qa_agent"}
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/controller/v0/program-graph.schema.json",
+  "title": "noetic-dev controller program graph v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "program_id", "program_version", "nodes", "dependencies", "barriers", "verification_policy"],
+  "properties": {
+    "schema_version": {"const": "controller.program/v0"},
+    "program_id": {"type": "string", "minLength": 1},
+    "program_version": {"type": "string", "minLength": 1},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_id", "kind", "priority", "barrier_order", "requires_verification"],
+        "properties": {
+          "node_id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["implementation", "remediation", "cognitive", "publication"]},
+          "priority": {"type": "integer"},
+          "barrier_order": {"type": "integer", "minimum": 0},
+          "requires_verification": {"type": "boolean"}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"kind": {"enum": ["implementation", "remediation"]}}},
+            "then": {"properties": {"requires_verification": {"const": true}}}
+          }
+        ]
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dependency_id", "kind", "source", "target", "required_state"],
+        "properties": {
+          "dependency_id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["control", "artifact", "launch_material", "governing_context", "context", "external_resource"]},
+          "source": {"type": "string", "minLength": 1},
+          "target": {"type": "string", "minLength": 1},
+          "required_state": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "barriers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["barrier_id", "order", "members", "settlement"],
+        "properties": {
+          "barrier_id": {"type": "string", "minLength": 1},
+          "order": {"type": "integer", "minimum": 0},
+          "members": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+          "settlement": {"enum": ["all", "quorum", "policy_selected", "fail_fast"]}
+        }
+      }
+    },
+    "verification_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "qa_actor_type"],
+      "properties": {
+        "mode": {"const": "exactly_one_per_implementation_generation"},
+        "qa_actor_type": {"const": "qa_agent"}
+      }
+    }
+  }
+}

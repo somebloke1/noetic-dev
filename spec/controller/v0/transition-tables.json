@@ -1,0 +1,127 @@
+{
+  "schema_version": "controller.transitions/v0",
+  "aggregates": {
+    "run": {
+      "initial": "draft",
+      "terminal": ["succeeded", "failed", "aborted"],
+      "states": ["draft", "validated", "ready", "running", "awaiting_decision", "succeeded", "failed", "aborted"],
+      "transitions": [
+        {"from": "draft", "event": "run.validated", "to": "validated"},
+        {"from": "validated", "event": "run.ready", "to": "ready"},
+        {"from": "ready", "event": "run.started", "to": "running"},
+        {"from": "running", "event": "run.awaiting_decision", "to": "awaiting_decision"},
+        {"from": "awaiting_decision", "event": "run.resumed", "to": "running"},
+        {"from": "running", "event": "run.succeeded", "to": "succeeded"},
+        {"from": "running", "event": "run.failed", "to": "failed"},
+        {"from": "awaiting_decision", "event": "run.failed", "to": "failed"},
+        {"from": "draft", "event": "run.aborted", "to": "aborted"},
+        {"from": "validated", "event": "run.aborted", "to": "aborted"},
+        {"from": "ready", "event": "run.aborted", "to": "aborted"},
+        {"from": "running", "event": "run.aborted", "to": "aborted"},
+        {"from": "awaiting_decision", "event": "run.aborted", "to": "aborted"}
+      ]
+    },
+    "node": {
+      "initial": "pending",
+      "terminal": ["succeeded", "failed", "aborted"],
+      "states": ["pending", "ready", "leased", "running", "submitted", "verifying", "remediation_ready", "blocked", "succeeded", "failed", "aborted"],
+      "transitions": [
+        {"from": "pending", "event": "node.ready", "to": "ready"},
+        {"from": "ready", "event": "node.leased", "to": "leased"},
+        {"from": "leased", "event": "node.started", "to": "running"},
+        {"from": "running", "event": "node.submitted", "to": "submitted"},
+        {"from": "submitted", "event": "node.verification_started", "to": "verifying"},
+        {"from": "verifying", "event": "node.succeeded", "to": "succeeded"},
+        {"from": "verifying", "event": "node.remediation_required", "to": "remediation_ready"},
+        {"from": "pending", "event": "node.blocked", "to": "blocked"},
+        {"from": "ready", "event": "node.blocked", "to": "blocked"},
+        {"from": "running", "event": "node.blocked", "to": "blocked"},
+        {"from": "blocked", "event": "node.unblocked", "to": "pending"},
+        {"from": "remediation_ready", "event": "node.remediation_scheduled", "to": "ready"},
+        {"from": "running", "event": "node.failed", "to": "failed"},
+        {"from": "verifying", "event": "node.failed", "to": "failed"},
+        {"from": "pending", "event": "node.aborted", "to": "aborted"},
+        {"from": "ready", "event": "node.aborted", "to": "aborted"},
+        {"from": "leased", "event": "node.aborted", "to": "aborted"},
+        {"from": "running", "event": "node.aborted", "to": "aborted"},
+        {"from": "submitted", "event": "node.aborted", "to": "aborted"},
+        {"from": "verifying", "event": "node.aborted", "to": "aborted"},
+        {"from": "remediation_ready", "event": "node.aborted", "to": "aborted"},
+        {"from": "blocked", "event": "node.aborted", "to": "aborted"}
+      ]
+    },
+    "attempt": {
+      "initial": "assigned",
+      "terminal": ["accepted", "rejected", "lost", "aborted"],
+      "states": ["assigned", "acknowledged", "running", "submitted", "accepted", "rejected", "lost", "aborted"],
+      "transitions": [
+        {"from": "assigned", "event": "attempt.acknowledged", "to": "acknowledged"},
+        {"from": "acknowledged", "event": "attempt.started", "to": "running"},
+        {"from": "running", "event": "attempt.submitted", "to": "submitted"},
+        {"from": "submitted", "event": "attempt.accepted", "to": "accepted"},
+        {"from": "submitted", "event": "attempt.rejected", "to": "rejected"},
+        {"from": "assigned", "event": "attempt.lost", "to": "lost"},
+        {"from": "acknowledged", "event": "attempt.lost", "to": "lost"},
+        {"from": "running", "event": "attempt.lost", "to": "lost"},
+        {"from": "assigned", "event": "attempt.aborted", "to": "aborted"},
+        {"from": "acknowledged", "event": "attempt.aborted", "to": "aborted"},
+        {"from": "running", "event": "attempt.aborted", "to": "aborted"},
+        {"from": "submitted", "event": "attempt.aborted", "to": "aborted"}
+      ]
+    },
+    "gate": {
+      "initial": "pending",
+      "terminal": ["passed", "failed", "exhausted", "waived"],
+      "states": ["pending", "evaluating", "passed", "failed", "exhausted", "waived"],
+      "transitions": [
+        {"from": "pending", "event": "gate.evaluation_started", "to": "evaluating"},
+        {"from": "evaluating", "event": "gate.passed", "to": "passed"},
+        {"from": "evaluating", "event": "gate.failed", "to": "failed"},
+        {"from": "evaluating", "event": "gate.exhausted", "to": "exhausted"},
+        {"from": "pending", "event": "gate.waived", "to": "waived"},
+        {"from": "evaluating", "event": "gate.waived", "to": "waived"}
+      ]
+    },
+    "interaction": {
+      "initial": "pending",
+      "terminal": ["resolved", "cancelled", "expired"],
+      "states": ["pending", "resolved", "cancelled", "expired"],
+      "transitions": [
+        {"from": "pending", "event": "interaction.resolved", "to": "resolved"},
+        {"from": "pending", "event": "interaction.cancelled", "to": "cancelled"},
+        {"from": "pending", "event": "interaction.expired", "to": "expired"}
+      ]
+    },
+    "publication": {
+      "initial": "requested",
+      "terminal": ["succeeded", "failed", "cancelled"],
+      "states": ["requested", "authorized", "dispatching", "blocked", "succeeded", "failed", "cancelled"],
+      "transitions": [
+        {"from": "requested", "event": "publication.authorized", "to": "authorized"},
+        {"from": "authorized", "event": "publication.dispatched", "to": "dispatching"},
+        {"from": "dispatching", "event": "publication.succeeded", "to": "succeeded"},
+        {"from": "dispatching", "event": "publication.failed", "to": "failed"},
+        {"from": "dispatching", "event": "publication.blocked", "to": "blocked"},
+        {"from": "blocked", "event": "publication.reauthorized", "to": "authorized"},
+        {"from": "requested", "event": "publication.cancelled", "to": "cancelled"},
+        {"from": "authorized", "event": "publication.cancelled", "to": "cancelled"},
+        {"from": "dispatching", "event": "publication.cancelled", "to": "cancelled"},
+        {"from": "blocked", "event": "publication.cancelled", "to": "cancelled"}
+      ]
+    },
+    "effect": {
+      "initial": "pending",
+      "terminal": ["delivered", "exhausted", "cancelled"],
+      "states": ["pending", "dispatching", "retry_scheduled", "delivered", "exhausted", "cancelled"],
+      "transitions": [
+        {"from": "pending", "event": "effect.dispatched", "to": "dispatching"},
+        {"from": "dispatching", "event": "effect.delivered", "to": "delivered"},
+        {"from": "dispatching", "event": "effect.retry_scheduled", "to": "retry_scheduled"},
+        {"from": "retry_scheduled", "event": "effect.redispatched", "to": "dispatching"},
+        {"from": "dispatching", "event": "effect.exhausted", "to": "exhausted"},
+        {"from": "pending", "event": "effect.cancelled", "to": "cancelled"},
+        {"from": "retry_scheduled", "event": "effect.cancelled", "to": "cancelled"}
+      ]
+    }
+  }
+}

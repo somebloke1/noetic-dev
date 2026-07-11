@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/controller/v0/event-envelope.schema.json",
+  "title": "noetic-dev controller event envelope v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "event_type", "aggregate_type", "aggregate_id", "aggregate_version", "actor", "causation_id", "correlation_id", "privacy", "payload", "occurred_at"],
+  "properties": {
+    "schema_version": {"const": "controller.event/v0"},
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {"type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"},
+    "aggregate_type": {"enum": ["run", "node", "attempt", "gate", "interaction", "publication", "effect"]},
+    "aggregate_id": {"type": "string", "minLength": 1},
+    "aggregate_version": {"type": "integer", "minimum": 1},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"enum": ["telos", "operator", "controller", "implementation_agent", "qa_agent", "adapter"]},
+        "actor_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "causation_id": {"type": ["string", "null"]},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "privacy": {"enum": ["public", "internal", "sensitive_reference"]},
+    "payload": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$",
+        "not": {
+          "pattern": "(^|_)(password|secret|token|credential|full_prompt|private_artifact|critical_contact|phone_number)($|_)"
+        }
+      }
+    },
+    "occurred_at": {"type": "string", "format": "date-time"}
+  }
+}

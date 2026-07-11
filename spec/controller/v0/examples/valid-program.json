@@ -1,0 +1,19 @@
+{
+  "schema_version": "controller.program/v0",
+  "program_id": "example-change",
+  "program_version": "0.1.0",
+  "nodes": [
+    {"node_id": "implement-a", "kind": "implementation", "priority": 10, "barrier_order": 0, "requires_verification": true},
+    {"node_id": "implement-b", "kind": "implementation", "priority": 20, "barrier_order": 0, "requires_verification": true},
+    {"node_id": "publish", "kind": "publication", "priority": 10, "barrier_order": 1, "requires_verification": false}
+  ],
+  "dependencies": [
+    {"dependency_id": "a-to-publish", "kind": "control", "source": "implement-a", "target": "publish", "required_state": "succeeded"},
+    {"dependency_id": "b-to-publish", "kind": "control", "source": "implement-b", "target": "publish", "required_state": "succeeded"}
+  ],
+  "barriers": [
+    {"barrier_id": "implementation", "order": 0, "members": ["implement-a", "implement-b"], "settlement": "all"},
+    {"barrier_id": "publication", "order": 1, "members": ["publish"], "settlement": "all"}
+  ],
+  "verification_policy": {"mode": "exactly_one_per_implementation_generation", "qa_actor_type": "qa_agent"}
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/controller/v0/command-envelope.schema.json",
+  "title": "noetic-dev controller command envelope v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "idempotency_key", "command_type", "aggregate_type", "aggregate_id", "expected_version", "actor", "authority", "causation_id", "correlation_id", "payload", "submitted_at"],
+  "properties": {
+    "schema_version": {"const": "controller.command/v0"},
+    "command_id": {"type": "string", "minLength": 1},
+    "idempotency_key": {"type": "string", "minLength": 1},
+    "command_type": {
+      "enum": [
+        "run.create", "run.start", "run.abort", "run.reconcile",
+        "scheduler.tick", "lease.expire",
+        "attempt.acknowledge", "attempt.heartbeat", "attempt.submit", "attempt.fail",
+        "verification.adjudicate", "interaction.resolve", "contract.amend",
+        "publication.request", "effect.receipt"
+      ]
+    },
+    "aggregate_type": {"enum": ["run", "node", "attempt", "gate", "interaction", "publication", "effect"]},
+    "aggregate_id": {"type": "string", "minLength": 1},
+    "expected_version": {"type": "integer", "minimum": 0},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {"enum": ["telos", "operator", "controller", "implementation_agent", "qa_agent", "adapter"]},
+        "actor_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_id", "issuer", "scope", "scope_id", "permissions", "expires_at"],
+      "properties": {
+        "authority_id": {"type": "string", "minLength": 1},
+        "issuer": {"type": "string", "minLength": 1},
+        "scope": {"enum": ["run", "node", "attempt", "gate", "publication"]},
+        "scope_id": {"type": "string", "minLength": 1},
+        "permissions": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "expires_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    },
+    "causation_id": {"type": ["string", "null"]},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "payload": {"type": "object"},
+    "submitted_at": {"type": "string", "format": "date-time"}
+  }
+}
