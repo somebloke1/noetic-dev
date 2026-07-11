@@ -20,6 +20,7 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 - [`docs/cognitive-backbone.md`](docs/cognitive-backbone.md) — canonical P1–P4 form
 - [`AGENTS.md`](AGENTS.md) — project governance and invariants
 - [`docs/development-practices.md`](docs/development-practices.md) — git, worktree, issue, PR, CI, and merge discipline
+- [`docs/roadmap.md`](docs/roadmap.md) — issue-linked construction order and promotion gates
 - [`KNOWNS.md`](KNOWNS.md), [`DECISIONS.md`](DECISIONS.md), [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — durable evidence and judgment
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md) — contribution and security rules
 
