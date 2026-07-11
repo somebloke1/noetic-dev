@@ -15,9 +15,9 @@
     },
     "workflow.pinning": {
       "category": "validation",
-      "argv": ["python3", "scripts/governance/check_delivery_gate.py", "--check-pinning-only", ".github/workflows/governance.yml"],
+      "argv": ["python3", "scripts/governance/check_delivery_gate.py", "--check-pinning-only", ".github/workflows"],
       "cwd": "{{repo_root}}",
-      "description": "Check that all GitHub Actions workflow files use pinned full-SHA action refs.",
+      "description": "Check that all GitHub Actions workflow files use pinned full-SHA action refs and immutable docker digests.",
       "counts_as_test": false,
       "counts_as_validation": true,
       "required_for_merge": true,

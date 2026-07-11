@@ -51,6 +51,12 @@ class TestWorkflowPinning(unittest.TestCase):
             if re.match(r"^v?\d+(\.\d+)*$", ref):
                 self.fail(f"Mutable tag found: {action}@{ref}")
 
+    def test_candidate_workflow_does_not_call_base_policy_gate(self):
+        content = (WORKFLOWS_DIR / "governance.yml").read_text()
+        self.assertNotIn("policy/scripts/governance", content)
+        self.assertIn("--check-bootstrap-blocked", content)
+        self.assertIn("advisory", content.lower())
+
 
 class TestPinningChecker(unittest.TestCase):
     """Test the pinning checker itself using synthetic workflows."""

@@ -40,10 +40,15 @@ class TestEvidenceManifestValidation(unittest.TestCase):
         errors = check_manifest(manifest)
         self.assertEqual(errors, [], f"expected advisory manifest to validate structurally: {errors}")
 
-    def test_valid_authoritative_manifest_is_structurally_valid(self):
-        manifest = load_fixture("valid_authoritative_manifest.json")
+    def test_manifest_only_authoritative_claim_is_invalid(self):
+        manifest = load_fixture("negative_manifest_only_authoritative_manifest.json")
         errors = check_manifest(manifest)
-        self.assertEqual(errors, [], f"expected authoritative manifest to validate: {errors}")
+        self.assertTrue(any("manifest-only authority claim" in error for error in errors), errors)
+
+    def test_valid_multigeneration_manifest_is_structurally_valid(self):
+        manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
+        errors = check_manifest(manifest)
+        self.assertEqual(errors, [], f"expected multigeneration advisory manifest to validate: {errors}")
 
     def test_schema_version_required(self):
         manifest = load_fixture("valid_advisory_manifest.json")

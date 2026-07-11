@@ -1,0 +1,90 @@
+{
+  "approvals": [
+    {
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "reviewer": "human-reviewer",
+      "state": "APPROVED",
+      "submitted_at": "2026-07-11T12:40:00+00:00"
+    }
+  ],
+  "artifact": {
+    "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "artifact_id": 333,
+    "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+    "manifest_sha256": "ffceed8981e5a56638269900076c88e291c457fc040a51b91499964596e96ea8",
+    "name": "governance-evidence"
+  },
+  "branch_protection": {
+    "required_checks": [
+      "protected-governance"
+    ],
+    "requires_governance": true
+  },
+  "checkouts": {
+    "candidate_path": "/runner/work/candidate",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "policy_path": "/runner/work/policy",
+    "policy_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "separate": true
+  },
+  "evidence_class": "protected-external",
+  "freeze": {
+    "$schema": "../schemas/existing-work-freeze.schema.json",
+    "audit_completed": false,
+    "audit_required": true,
+    "blocks_new_pr_opening_claims": true,
+    "blocks_publication": true,
+    "known_open_pr_count": 10,
+    "publication_gate": "blocked",
+    "reason": "Bootstrap governance correction: ten pre-existing PRs/branches must be audited before publication or new PR opening is claimed.",
+    "schema_version": "1",
+    "status": "active"
+  },
+  "generator": {
+    "from_policy_checkout": true,
+    "path": "scripts/governance/collect_evidence.py"
+  },
+  "job": {
+    "conclusion": "success",
+    "id": 222,
+    "name": "protected-governance"
+  },
+  "mode": "github_api",
+  "policy_file_hashes": {
+    "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "policy_file_hashes_source": "protected_checkout",
+  "protected_ref": {
+    "protected": true,
+    "ref": "refs/heads/main",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "pull_request": {
+    "base_ref": "main",
+    "head_ref": "issue-23-governance-correction",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "number": 23
+  },
+  "repository": {
+    "full_name": "somebloke1/noetic-dev",
+    "id": 123456,
+    "name": "noetic-dev",
+    "owner": "somebloke1"
+  },
+  "run": {
+    "attempt": 1,
+    "base_branch": "main",
+    "conclusion": "success",
+    "event": "pull_request",
+    "head_branch": "issue-23-governance-correction",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "id": 111
+  },
+  "schema_version": "1",
+  "verification_status": "verified",
+  "workflow": {
+    "path": ".github/workflows/governance.yml",
+    "ref": "refs/heads/main",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

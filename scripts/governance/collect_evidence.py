@@ -106,24 +106,44 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
         except Exception:
             branch = ""
 
-    pass_records = []
-    for pass_id in (args.impl_pass_ids or []) + (args.remediation_pass_ids or []):
-        role = "remediator" if pass_id in (args.remediation_pass_ids or []) else "implementer"
-        pass_records.append({
-            "pass_id": pass_id,
-            "role": role,
-            "role_run_id": f"{pass_id}-run",
-            "agent_id": args.implementation_agent_id or "unknown-implementation-agent",
-            "model_profile": args.implementation_model_profile or "implementer_candidate",
-            "candidate_sha": candidate_sha,
-            "base_sha": base_sha,
-            "candidate_tree_oid": candidate_tree,
-            "started_at": args.candidate_pinned_at or _now(),
-            "finished_at": args.candidate_pinned_at or _now(),
-        })
+    supplied_pass_records: List[Dict[str, Any]] = []
+    if args.pass_records_json:
+        supplied_pass_records = json.loads(Path(args.pass_records_json).read_text(encoding="utf-8"))
+        if not isinstance(supplied_pass_records, list):
+            raise RuntimeError("--pass-records-json must contain a JSON array")
+
+    total_pass_ids = (args.impl_pass_ids or []) + (args.remediation_pass_ids or [])
+    if supplied_pass_records:
+        pass_records = supplied_pass_records
+        if not total_pass_ids:
+            args.impl_pass_ids = [p.get("pass_id") for p in pass_records if p.get("role") == "implementer"]
+            args.remediation_pass_ids = [p.get("pass_id") for p in pass_records if p.get("role") == "remediator"]
+            total_pass_ids = (args.impl_pass_ids or []) + (args.remediation_pass_ids or [])
+    else:
+        if len(total_pass_ids) > 1:
+            raise RuntimeError("multi-generation history requires explicit --pass-records-json with per-generation SHA/base/tree")
+        pass_records = []
+        for pass_id in total_pass_ids:
+            role = "remediator" if pass_id in (args.remediation_pass_ids or []) else "implementer"
+            pass_records.append({
+                "pass_id": pass_id,
+                "role": role,
+                "role_run_id": f"{pass_id}-run",
+                "agent_id": args.implementation_agent_id or "unknown-implementation-agent",
+                "model_profile": args.implementation_model_profile or "implementer_candidate",
+                "candidate_sha": candidate_sha,
+                "base_sha": base_sha,
+                "candidate_tree_oid": candidate_tree,
+                "started_at": args.candidate_pinned_at or _now(),
+                "finished_at": args.candidate_pinned_at or _now(),
+            })
 
     qa_records: List[Dict[str, Any]] = []
-    if args.qa_for_pass_id:
+    if args.qa_records_json:
+        qa_records = json.loads(Path(args.qa_records_json).read_text(encoding="utf-8"))
+        if not isinstance(qa_records, list):
+            raise RuntimeError("--qa-records-json must contain a JSON array")
+    elif args.qa_for_pass_id:
         qa_records.append({
             "qa_run_id": args.qa_run_id or f"qa-{uuid.uuid4().hex[:12]}",
             "role_run_id": args.qa_role_run_id or f"qa-role-{uuid.uuid4().hex[:12]}",
@@ -285,6 +305,7 @@ def main() -> int:
     parser.add_argument("--impl-pass-ids", nargs="*", default=[])
     parser.add_argument("--remediation-pass-ids", nargs="*", default=[])
     parser.add_argument("--parent-pass-id", default="")
+    parser.add_argument("--pass-records-json", default="", help="JSON array of per-generation pass records")
     parser.add_argument("--implementation-agent-id", default="")
     parser.add_argument("--implementation-model-profile", default="implementer_candidate")
     parser.add_argument("--candidate-pinned-at", default="")
@@ -301,6 +322,7 @@ def main() -> int:
     parser.add_argument("--qa-probe-record-sha256", default="")
     parser.add_argument("--qa-execution-record-path", default="")
     parser.add_argument("--qa-probe-record-path", default="")
+    parser.add_argument("--qa-records-json", default="", help="JSON array of protected QA records")
 
     parser.add_argument("--iso-source-ro", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--iso-scratch-separate", action=argparse.BooleanOptionalAction, default=True)

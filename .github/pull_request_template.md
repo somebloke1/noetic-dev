@@ -16,7 +16,7 @@ Relevant knowns/decisions:
 ## Validation (not tests)
 
 - [ ] `python3 scripts/validate_repo.py` — repository invariant validation only
-- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows/governance.yml` — workflow action pinning validation only
+- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows` — all-workflow action/docker pinning validation only
 - [ ] `python3 scripts/governance/check_evidence_manifest.py <manifest>` — manifest validation only
 
 ## Genuine tests
@@ -44,15 +44,15 @@ Relevant knowns/decisions:
 - [ ] Required validations passed separately from tests
 - [ ] Required tests passed separately from validations
 - [ ] Protected policy checkout was separate from candidate checkout
-- [ ] Trusted runner provenance verified through GitHub API or artifact attestation
-- [ ] Delivery gate passed from protected policy code
+- [ ] Trusted runner provenance verified from external protected evidence through GitHub API or artifact attestation
+- [ ] Delivery gate passed from separately protected policy code/integration (candidate workflow is advisory only)
 
 ## Publication (post-merge only)
 
 - [ ] Merge result SHA recorded (full 40-char main SHA)
 - [ ] Post-merge validation and tests passed against main SHA
 - [ ] Publication SHA recorded (full 40-char SHA; branch names forbidden)
-- [ ] Existing-work freeze/audit is complete, or publication remains blocked
+- [ ] Existing-work freeze/audit is complete in the protected freeze artifact, or publication remains blocked
 - [ ] Independent human approval and trusted-runner provenance remain valid
 
 ## P4 — Responsible enactment

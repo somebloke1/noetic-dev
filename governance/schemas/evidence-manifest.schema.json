@@ -207,7 +207,9 @@
           "stdout_sha256": {"$ref": "#/definitions/sha256"},
           "stderr_sha256": {"$ref": "#/definitions/sha256"},
           "started_at": {"$ref": "#/definitions/date_time"},
-          "finished_at": {"$ref": "#/definitions/date_time"}
+          "finished_at": {"$ref": "#/definitions/date_time"},
+          "commit_sha": {"$ref": "#/definitions/sha1_or_empty"},
+          "tree_oid": {"$ref": "#/definitions/sha1_or_empty"}
         }
       }
     },

@@ -39,7 +39,7 @@
         "python3",
         "scripts/governance/check_delivery_gate.py",
         "--check-pinning-only",
-        ".github/workflows/governance.yml"
+        ".github/workflows"
       ],
       "category": "validation",
       "command_id": "workflow.pinning",

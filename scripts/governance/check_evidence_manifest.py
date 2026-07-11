@@ -62,10 +62,14 @@ def _parse_time(value: str, label: str, errors: List[str]) -> datetime | None:
         errors.append(f"{label} missing timestamp")
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         errors.append(f"{label} is not an ISO-8601 timestamp: {value!r}")
         return None
+    if parsed.tzinfo is None:
+        errors.append(f"{label} must include an explicit timezone offset: {value!r}")
+        return None
+    return parsed
 
 
 def _validate_sha(value: str, length: int, label: str, errors: List[str]) -> None:
@@ -134,6 +138,11 @@ def _check_policy(manifest: Dict[str, Any], errors: List[str]) -> None:
 
     if not isinstance(policy.get("trusted_runner"), bool):
         errors.append("policy.trusted_runner must be a boolean")
+    elif policy.get("trusted_runner") is True:
+        errors.append(
+            "policy.trusted_runner=true is a manifest-only authority claim; "
+            "delivery authority requires separately supplied external protected evidence"
+        )
 
     attestation = policy.get("runner_attestation", {})
     recorded_digest = attestation.get("artifact", {}).get("manifest_sha256") if isinstance(attestation, dict) else None
@@ -145,17 +154,6 @@ def _check_policy(manifest: Dict[str, Any], errors: List[str]) -> None:
                 "manifest digest mismatch (excluding own field): "
                 f"computed={computed_digest}, recorded={recorded_digest}"
             )
-
-    if policy.get("trusted_runner"):
-        if not isinstance(attestation, dict) or not attestation:
-            errors.append("trusted_runner=true requires external runner_attestation evidence")
-        mode = attestation.get("mode") if isinstance(attestation, dict) else None
-        if mode not in {"github_api", "github_artifact_attestation"}:
-            errors.append("trusted_runner=true requires github_api or github_artifact_attestation verification mode")
-        if attestation.get("verification_status") != "verified":
-            errors.append("trusted_runner=true requires runner_attestation.verification_status='verified'")
-        if not recorded_digest:
-            errors.append("trusted_runner=true requires policy.runner_attestation.artifact.manifest_sha256")
 
 
 def _check_repo_and_pr(manifest: Dict[str, Any], errors: List[str]) -> None:
@@ -212,28 +210,40 @@ def _check_passes(manifest: Dict[str, Any], errors: List[str]) -> None:
     if len(ids) != len(set(ids)):
         errors.append("implementation/remediation pass IDs must be unique")
     if passes.get("candidate_sha") != repo.get("candidate_sha"):
-        errors.append("passes.candidate_sha must equal repo.candidate_sha")
+        errors.append("passes.candidate_sha must equal final repo.candidate_sha")
     if passes.get("ordering") != ids:
         errors.append("passes.ordering must exactly match implementation_pass_ids + remediation_pass_ids")
 
     records = pass_records_by_id(manifest)
-    for pass_id in ids:
+    previous_candidate_sha = repo.get("base_sha")
+    for index, pass_id in enumerate(ids):
         record = records.get(pass_id)
         if not record:
             errors.append(f"missing pass_records entry for {pass_id}")
             continue
-        if record.get("candidate_sha") != repo.get("candidate_sha"):
-            errors.append(f"pass {pass_id} candidate_sha does not match repo.candidate_sha")
-        if record.get("base_sha") != repo.get("base_sha"):
-            errors.append(f"pass {pass_id} base_sha does not match repo.base_sha")
-        if record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
-            errors.append(f"pass {pass_id} candidate_tree_oid does not match repo.candidate_tree_oid")
+        _validate_sha(record.get("candidate_sha", ""), 40, f"pass {pass_id}.candidate_sha", errors)
+        _validate_sha(record.get("base_sha", ""), 40, f"pass {pass_id}.base_sha", errors)
+        _validate_sha(record.get("candidate_tree_oid", ""), 40, f"pass {pass_id}.candidate_tree_oid", errors)
+        if index == 0 and record.get("base_sha") != repo.get("base_sha"):
+            errors.append(f"pass {pass_id} base_sha must equal repo.base_sha for the first generation")
+        elif index > 0 and record.get("base_sha") != previous_candidate_sha:
+            errors.append(f"pass {pass_id} base_sha must equal previous generation candidate_sha")
+        previous_candidate_sha = record.get("candidate_sha")
         if not record.get("agent_id"):
             errors.append(f"pass {pass_id} missing agent_id for role-independence checks")
         if not record.get("role_run_id"):
             errors.append(f"pass {pass_id} missing role_run_id")
         if record.get("finished_at"):
             _parse_time(record["finished_at"], f"pass {pass_id}.finished_at", errors)
+        if record.get("started_at"):
+            _parse_time(record["started_at"], f"pass {pass_id}.started_at", errors)
+
+    if ids:
+        final_record = records.get(ids[-1], {})
+        if final_record.get("candidate_sha") != repo.get("candidate_sha"):
+            errors.append(f"final pass {ids[-1]} candidate_sha must equal repo.candidate_sha")
+        if final_record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
+            errors.append(f"final pass {ids[-1]} candidate_tree_oid must equal repo.candidate_tree_oid")
 
 
 def _check_model_profile(profile_id: str, label: str, errors: List[str]) -> None:
@@ -251,8 +261,8 @@ def _check_model_profile(profile_id: str, label: str, errors: List[str]) -> None
 
 
 def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
-    repo = manifest.get("repo", {})
     ids = all_pass_ids(manifest)
+    pass_records = pass_records_by_id(manifest)
     qa_records = normalize_qa_records(manifest)
 
     if not isinstance(manifest.get("qa", {}).get("records"), list):
@@ -262,32 +272,33 @@ def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
 
     seen: dict[str, int] = {}
     for record in qa_records:
+        qa_label = record.get("qa_run_id", "<unknown>")
         pass_id = record.get("qa_for_pass_id", "")
+        pass_record = pass_records.get(pass_id, {})
         seen[pass_id] = seen.get(pass_id, 0) + 1
         if pass_id not in ids:
-            errors.append(f"qa record {record.get('qa_run_id', '<unknown>')} references unknown pass {pass_id}")
+            errors.append(f"qa record {qa_label} references unknown pass {pass_id}")
         _check_model_profile(record.get("model_profile", ""), "qa", errors)
         if record.get("verdict") not in {"pass", "fail"}:
-            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} verdict must be pass or fail")
+            errors.append(f"qa {qa_label} verdict must be pass or fail")
         for field in ["report_hash", "event_log_hash", "protected_execution_record_sha256", "protected_probe_record_sha256"]:
             value = record.get(field, "")
             if value:
                 _validate_sha256(value, f"qa.{field}", errors)
-        if record.get("candidate_sha") != repo.get("candidate_sha"):
-            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} candidate_sha does not match repo.candidate_sha")
-        if record.get("base_sha") != repo.get("base_sha"):
-            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} base_sha does not match repo.base_sha")
-        if record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
-            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} candidate_tree_oid does not match repo.candidate_tree_oid")
+        for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
+            _validate_sha(record.get(field, ""), 40, f"qa {qa_label}.{field}", errors)
+            if pass_record and record.get(field) != pass_record.get(field):
+                errors.append(f"qa {qa_label} {field} does not match pass {pass_id}")
         if not record.get("agent_id"):
-            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} missing agent_id")
+            errors.append(f"qa {qa_label} missing agent_id")
 
         iso = record.get("isolation_proof", {})
         if iso:
-            if iso.get("candidate_tree_before") != repo.get("candidate_tree_oid"):
-                errors.append("qa isolation candidate_tree_before must equal repo.candidate_tree_oid")
-            if iso.get("candidate_tree_after") != repo.get("candidate_tree_oid"):
-                errors.append("qa isolation candidate_tree_after must equal repo.candidate_tree_oid")
+            expected_tree = pass_record.get("candidate_tree_oid") if pass_record else record.get("candidate_tree_oid")
+            if iso.get("candidate_tree_before") != expected_tree:
+                errors.append("qa isolation candidate_tree_before must equal the QA generation candidate_tree_oid")
+            if iso.get("candidate_tree_after") != expected_tree:
+                errors.append("qa isolation candidate_tree_after must equal the QA generation candidate_tree_oid")
             if iso.get("candidate_tree_before") != iso.get("candidate_tree_after"):
                 errors.append("candidate tree changed during QA")
             for flag, required in [
@@ -354,6 +365,10 @@ def _check_commands(manifest: Dict[str, Any], errors: List[str]) -> None:
             errors.append(f"command {command.get('command_id')}: validate_repo.py cannot be categorized as test")
         for field in ["stdout_sha256", "stderr_sha256"]:
             _validate_sha256(command.get(field, ""), f"command {command.get('command_id')}.{field}", errors)
+        for field in ["commit_sha", "tree_oid"]:
+            value = command.get(field, "")
+            if value:
+                _validate_sha(value, 40, f"command {command.get('command_id')}.{field}", errors)
         if command.get("started_at"):
             _parse_time(command["started_at"], f"command {command.get('command_id')}.started_at", errors)
         if command.get("finished_at"):
@@ -401,6 +416,7 @@ def _check_schema_references(errors: List[str]) -> None:
         REPO_ROOT / "governance/command-registry.json",
         REPO_ROOT / "governance/issue-status.json",
         REPO_ROOT / "governance/audits/existing-work-freeze.json",
+        REPO_ROOT / "governance/bootstrap-status.json",
     ]:
         data = load_json_strict(path)
         schema_ref = data.get("$schema")

@@ -36,12 +36,19 @@ ROLE_TOOL_ALLOWLISTS = {
     "validator": {"read", "grep", "find", "ls", "bash"},
     "publisher": {"read", "grep", "find", "ls", "bash"},
     "orchestrator": {"read", "grep", "find", "ls"},
-    "implementer": {"read", "grep", "find", "ls", "bash", "edit", "write"},
-    "remediator": {"read", "grep", "find", "ls", "bash", "edit", "write"},
 }
+ROLE_PROFILE_IDS = {
+    "qa": {"qa_primary"},
+    "planner": {"planner"},
+    "validator": {"orchestrator"},
+    "publisher": {"publisher_dry_run", "publisher_alternate_dry_run"},
+    "orchestrator": {"orchestrator"},
+}
+WRITE_CAPABLE_TOOLS = {"bash", "edit", "write"}
+PROVIDER_CREDENTIAL_ENV_NAMES = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "LITELLM_API_KEY"}
 CREDENTIAL_ENV_NAMES = {
     "GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "GIT_ASKPASS", "SSH_ASKPASS",
-    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "LITELLM_API_KEY",
+    *PROVIDER_CREDENTIAL_ENV_NAMES,
 }
 ENV_ALLOWLIST = ["HOME", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK"]
 
@@ -61,7 +68,7 @@ def find_profile(profiles: Dict[str, Any], model_id: str) -> Optional[Tuple[str,
     return None
 
 
-def validate_model(model_id: str) -> Tuple[bool, str]:
+def validate_model(model_id: str, role: str | None = None) -> Tuple[bool, str]:
     profiles = load_profiles()
     for disallowed in profiles.get("disallowed_until_reprobed", []):
         if disallowed.get("model_id") == model_id:
@@ -73,6 +80,8 @@ def validate_model(model_id: str) -> Tuple[bool, str]:
     key, profile = found
     if not profile.get("verified", False):
         return False, f"model {model_id} (profile: {key}) is not verified"
+    if role is not None and key not in ROLE_PROFILE_IDS.get(role, set()):
+        return False, f"model {model_id} (profile: {key}) is not authorized for role {role}"
     return True, key
 
 
@@ -103,6 +112,21 @@ def get_candidate_tree_oid(candidate_dir: Path) -> str:
     if result.returncode == 0:
         return result.stdout.strip()
     return _compute_dir_tree_hash(candidate_dir)
+
+
+def get_candidate_head_sha(candidate_dir: Path) -> str:
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=candidate_dir, capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def validate_candidate_checkout(candidate_dir: Path, candidate_sha: str) -> Tuple[bool, str, str]:
+    head_sha = get_candidate_head_sha(candidate_dir)
+    if head_sha != candidate_sha:
+        return False, f"candidate-dir HEAD {head_sha or '<unknown>'} does not match --candidate-sha {candidate_sha}", ""
+    tree_oid = get_candidate_tree_oid(candidate_dir)
+    if not re_full_sha(tree_oid):
+        return False, f"candidate tree OID is not a full SHA: {tree_oid}", tree_oid
+    return True, "", tree_oid
 
 
 def _compute_dir_tree_hash(directory: Path) -> str:
@@ -204,21 +228,36 @@ def build_bwrap_command(inner_argv: List[str], *, candidate_dir: Optional[Path],
     return cmd
 
 
-def _clean_env() -> Dict[str, str]:
-    # bwrap does the real containment. Keep only path-like runtime values outside.
+def _clean_env(scoped_credentials: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    # bwrap does the real containment. Keep only path-like runtime values plus
+    # explicitly scoped provider credentials required by the Pi process.
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "PI_TELEMETRY": "0",
         "PI_SKIP_VERSION_CHECK": "1",
     }
-    for name in CREDENTIAL_ENV_NAMES:
-        env.pop(name, None)
+    for name, value in (scoped_credentials or {}).items():
+        env[name] = value
     return env
 
 
-def _run_isolated(inner_argv: List[str], *, candidate_dir: Optional[Path], prompt_file: Path, cwd: Optional[Path], timeout: int) -> subprocess.CompletedProcess[str]:
+def _run_isolated(
+    inner_argv: List[str],
+    *,
+    candidate_dir: Optional[Path],
+    prompt_file: Path,
+    cwd: Optional[Path],
+    timeout: int,
+    scoped_credentials: Optional[Dict[str, str]] = None,
+) -> subprocess.CompletedProcess[str]:
     bwrap_argv = build_bwrap_command(inner_argv, candidate_dir=candidate_dir, prompt_file=prompt_file, cwd=cwd)
-    return subprocess.run(bwrap_argv, capture_output=True, text=True, env=_clean_env(), timeout=timeout)
+    return subprocess.run(
+        bwrap_argv,
+        capture_output=True,
+        text=True,
+        env=_clean_env(scoped_credentials),
+        timeout=timeout,
+    )
 
 
 def _base_invocation_fields(
@@ -257,6 +296,7 @@ def run_ready_probe(
     base_sha: str,
     candidate_tree_oid: str,
     timeout: int,
+    scoped_credentials: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, Dict[str, Any], str]:
     nonce = uuid.uuid4().hex[:16]
     prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
@@ -289,6 +329,7 @@ def run_ready_probe(
             prompt_file=prompt_path,
             cwd=candidate_dir,
             timeout=timeout,
+            scoped_credentials=scoped_credentials,
         )
     finally:
         prompt_path.unlink(missing_ok=True)
@@ -331,6 +372,28 @@ def run_ready_probe(
     return probe_passed, record, nonce
 
 
+def _observed_tool_names(stdout: str) -> List[str]:
+    import json
+
+    observed: List[str] = []
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        for key in ["tool", "tool_name", "name", "recipient_name"]:
+            value = event.get(key)
+            if isinstance(value, str) and value:
+                observed.append(value.split(".")[-1])
+    return observed
+
+
+def _write_tools_observed(stdout: str) -> bool:
+    return any(name in WRITE_CAPABLE_TOOLS for name in _observed_tool_names(stdout))
+
+
 def dispatch_pi(
     *,
     role: str,
@@ -345,6 +408,7 @@ def dispatch_pi(
     candidate_sha: str,
     base_sha: str,
     timeout: int,
+    scoped_credentials: Optional[Dict[str, str]] = None,
 ) -> Tuple[int, Dict[str, Any], str, str]:
     candidate_tree_before = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
     inner_argv = [
@@ -366,7 +430,14 @@ def dispatch_pi(
     inner_argv.extend(["@", "/tmp/prompt.md"])
 
     start = _now()
-    result = _run_isolated(inner_argv, candidate_dir=candidate_dir, prompt_file=prompt_file, cwd=candidate_dir, timeout=timeout)
+    result = _run_isolated(
+        inner_argv,
+        candidate_dir=candidate_dir,
+        prompt_file=prompt_file,
+        cwd=candidate_dir,
+        timeout=timeout,
+        scoped_credentials=scoped_credentials,
+    )
     finish = _now()
     candidate_tree_after = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
 
@@ -391,7 +462,7 @@ def dispatch_pi(
         "themes_disabled": True,
         "candidate_tree_before": candidate_tree_before,
         "candidate_tree_after": candidate_tree_after,
-        "write_tools_observed": False,
+        "write_tools_observed": _write_tools_observed(result.stdout),
     }
     record = {
         "schema_version": "1",
@@ -412,6 +483,12 @@ def dispatch_pi(
             "argv": inner_argv,
             "argv_sha256": sha256_text(canonical_json(inner_argv)),
             "environment_values_recorded": False,
+            "credential_interface": {
+                "type": "scoped_env",
+                "names": sorted((scoped_credentials or {}).keys()),
+                "values_recorded": False,
+                "available_to_tools": False,
+            },
             "started_at": start,
             "finished_at": finish,
             "exit_code": result.returncode,
@@ -443,6 +520,18 @@ def _inside(path: Path, maybe_parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def resolve_scoped_credentials(names: Iterable[str]) -> Tuple[bool, str, Dict[str, str]]:
+    credentials: Dict[str, str] = {}
+    for name in names:
+        if name not in PROVIDER_CREDENTIAL_ENV_NAMES:
+            return False, f"credential env {name} is not an allowed provider credential name", {}
+        value = os.environ.get(name)
+        if not value:
+            return False, f"credential env {name} is unavailable; invocation blocked", {}
+        credentials[name] = value
+    return True, "", credentials
 
 
 def _non_evidence_record(args: argparse.Namespace, profile_key: str, tools: List[str]) -> Dict[str, Any]:
@@ -511,11 +600,12 @@ def main() -> int:
     parser.add_argument("--base-sha", default="")
     parser.add_argument("--record-only", action="store_true")
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--credential-env", action="append", default=[], help="Scoped provider credential env name for Pi process")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--output-dir", type=Path, default=Path(".governance/runs"))
     args = parser.parse_args()
 
-    valid, profile_key_or_error = validate_model(args.model)
+    valid, profile_key_or_error = validate_model(args.model, args.role)
     if not valid:
         print(f"Model validation failed: {profile_key_or_error}", file=sys.stderr)
         return 1
@@ -542,9 +632,18 @@ def main() -> int:
         if _inside(args.output_dir, args.candidate_dir):
             print("protected output-dir must not be inside candidate-dir", file=sys.stderr)
             return 1
+        checkout_ok, checkout_error, _tree = validate_candidate_checkout(args.candidate_dir, args.candidate_sha)
+        if not checkout_ok:
+            print(checkout_error, file=sys.stderr)
+            return 1
 
     if not args.prompt.exists():
         print(f"Prompt file not found: {args.prompt}", file=sys.stderr)
+        return 1
+
+    creds_ok, creds_error, scoped_credentials = resolve_scoped_credentials(args.credential_env)
+    if not creds_ok:
+        print(creds_error, file=sys.stderr)
         return 1
 
     run_dir = args.output_dir / args.run_id
@@ -571,6 +670,7 @@ def main() -> int:
             base_sha=args.base_sha,
             candidate_tree_oid=candidate_tree,
             timeout=min(args.timeout, 120),
+            scoped_credentials=scoped_credentials,
         )
         probe_path = run_dir / "protected" / "qa-probe-record.json" if args.role == "qa" else run_dir / "execution" / f"{args.role}-probe-record.json"
         write_json(probe_path, probe_record)
@@ -592,6 +692,7 @@ def main() -> int:
         candidate_sha=args.candidate_sha,
         base_sha=args.base_sha,
         timeout=args.timeout,
+        scoped_credentials=scoped_credentials,
     )
 
     if args.role == "qa":

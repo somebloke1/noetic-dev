@@ -2,9 +2,10 @@
 """Fail-closed delivery gate for noetic-dev governance.
 
 The gate distinguishes repository validation from genuine tests and refuses to
-promote advisory/local evidence to merge or publication readiness. It can verify
-captured GitHub API/artifact-attestation payloads supplied in the manifest; it
-never treats a manifest-controlled boolean as authoritative provenance.
+promote advisory/local evidence to merge or publication readiness. It requires
+captured GitHub API/artifact-attestation payloads supplied as external protected
+evidence; it never treats a manifest-controlled boolean as authoritative
+provenance.
 """
 
 from __future__ import annotations
@@ -28,13 +29,15 @@ from check_evidence_manifest import (  # noqa: E402
     normalize_qa_records,
     pass_records_by_id,
 )
-from hash_tree import canonical_json_sha256, sha256_file, validate_sha_hex  # noqa: E402
-from json_schema import DuplicateKeyError, load_json_strict  # noqa: E402
+from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
+from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
 PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
 WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
 REPO_FULL_NAME = "somebloke1/noetic-dev"
+QA_TOOL_ALLOWLIST = {"read", "grep", "find", "ls"}
+ALLOWED_MERGE_METHODS = {"squash", "rebase"}
 
 
 def load_json(path: str) -> Dict[str, Any]:
@@ -61,9 +64,12 @@ def _parse_time(value: str) -> Optional[datetime]:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed
 
 
 def _is_sha(value: Any) -> bool:
@@ -74,30 +80,49 @@ def _truth(value: Any) -> bool:
     return value is True
 
 
+def _workflow_paths(path: str) -> List[Path]:
+    target = Path(path)
+    if target.is_dir():
+        return sorted([*target.glob("*.yml"), *target.glob("*.yaml")])
+    return [target]
+
+
 def check_pinning(workflow_path: str) -> List[str]:
-    """Check that all remote GitHub Action refs are pinned to full SHAs."""
+    """Check that all workflow remote actions and docker images are immutable."""
     errors: List[str] = []
-    content = Path(workflow_path).read_text(encoding="utf-8")
     action_pattern = re.compile(
         r"^\s+(?:-\s+)?uses:\s+([^\s#]+)",
         re.MULTILINE,
     )
 
-    for match in action_pattern.finditer(content):
-        uses = match.group(1).strip().strip('"\'')
-        if uses.startswith("./") or uses.startswith("docker://"):
+    for path in _workflow_paths(workflow_path):
+        if not path.exists():
+            errors.append(f"workflow path not found: {path}")
             continue
-        if "@" not in uses:
-            errors.append(f"unpinned action ref: {uses} (missing @<sha>) in {workflow_path}")
-            continue
-        action, ref = uses.rsplit("@", 1)
-        if action.startswith("./") or action.startswith("docker://"):
-            continue
-        if not PINNED_ACTION_RE.fullmatch(ref):
-            errors.append(
-                f"unpinned action ref: {action}@{ref} "
-                f"(must use full 40-char SHA) in {workflow_path}"
-            )
+        content = path.read_text(encoding="utf-8")
+        for match in action_pattern.finditer(content):
+            uses = match.group(1).strip().strip('"\'')
+            if uses.startswith("./"):
+                continue
+            if uses.startswith("docker://"):
+                image_ref = uses.removeprefix("docker://")
+                if not re.search(r"@sha256:[a-f0-9]{64}$", image_ref):
+                    errors.append(
+                        f"unpinned docker image ref: {uses} "
+                        f"(must use @sha256:<64-hex-digest>) in {path}"
+                    )
+                continue
+            if "@" not in uses:
+                errors.append(f"unpinned action ref: {uses} (missing @<sha>) in {path}")
+                continue
+            action, ref = uses.rsplit("@", 1)
+            if action.startswith("./"):
+                continue
+            if not PINNED_ACTION_RE.fullmatch(ref):
+                errors.append(
+                    f"unpinned action ref: {action}@{ref} "
+                    f"(must use full 40-char SHA) in {path}"
+                )
 
     return errors
 
@@ -129,7 +154,7 @@ def _registry_matches(command: Dict[str, Any], registry_id: str, registry: Dict[
     return actual == expected
 
 
-def _successful_registered_command_ids(manifest: Dict[str, Any], phase: str) -> set[str]:
+def _successful_registered_command_ids(manifest: Dict[str, Any], phase: str, *, commit_sha: str | None = None) -> set[str]:
     registry = _command_registry()
     result: set[str] = set()
     for command in manifest.get("commands", []):
@@ -138,6 +163,10 @@ def _successful_registered_command_ids(manifest: Dict[str, Any], phase: str) -> 
             continue
         spec = registry["commands"][registry_id]
         if spec.get("phase", "pre_merge") != phase:
+            continue
+        if command.get("phase", spec.get("phase", "pre_merge")) != phase:
+            continue
+        if commit_sha is not None and command.get("commit_sha") != commit_sha:
             continue
         if command.get("exit_code") != 0:
             continue
@@ -241,6 +270,21 @@ def _profile_for(profile_id: str) -> Optional[Dict[str, Any]]:
     return _model_profiles().get("profiles", {}).get(profile_id)
 
 
+def _profile_hash(profile_id: str) -> Optional[str]:
+    profile = _profile_for(profile_id)
+    return canonical_json_sha256(profile) if profile else None
+
+
+def _load_schema(relative: str) -> Dict[str, Any]:
+    return _load_repo_json(relative)
+
+
+def _validate_record_schema(record: Dict[str, Any], schema_relative: str, label: str, errors: List[str]) -> None:
+    schema = _load_schema(schema_relative)
+    for error in validate_schema(record, schema):
+        errors.append(f"{label} schema: {error}")
+
+
 def _record_hash(record: Dict[str, Any]) -> str:
     return canonical_json_sha256(record)
 
@@ -276,14 +320,17 @@ def _check_probe_execution_binding(
     qa_record: Dict[str, Any],
     exec_record: Dict[str, Any],
     probe_record: Dict[str, Any],
+    pass_record: Dict[str, Any],
     manifest: Dict[str, Any],
     errors: List[str],
 ) -> None:
-    repo = manifest.get("repo", {})
     policy = manifest.get("policy", {})
     actual = _actual(exec_record)
     iso = actual.get("isolation", {})
     qa_run_id = qa_record.get("qa_run_id", "<unknown>")
+
+    _validate_record_schema(exec_record, "governance/schemas/qa-execution-record.schema.json", f"qa {qa_run_id} execution", errors)
+    _validate_record_schema(probe_record, "governance/schemas/qa-probe-record.schema.json", f"qa {qa_run_id} probe", errors)
 
     if exec_record.get("schema_version") != "1" or exec_record.get("role") != "qa":
         errors.append(f"qa {qa_run_id} protected execution record is not a QA schema_version=1 record")
@@ -310,6 +357,18 @@ def _check_probe_execution_binding(
     if probe_record.get("policy_commit_sha") != policy.get("sha"):
         errors.append(f"qa {qa_run_id} probe policy SHA mismatch")
 
+    expected_profile_id = qa_record.get("model_profile")
+    expected_profile = _profile_for(expected_profile_id)
+    expected_profile_hash = _profile_hash(expected_profile_id) if expected_profile else None
+    if expected_profile:
+        for label, record in [("execution", actual), ("probe", probe_record)]:
+            if record.get("profile_id") != expected_profile_id:
+                errors.append(f"qa {qa_run_id} {label} profile_id does not match qa.model_profile")
+            if record.get("resolved_model") != expected_profile.get("model_id"):
+                errors.append(f"qa {qa_run_id} {label} resolved_model does not match protected model profile")
+            if record.get("profile_hash") != expected_profile_hash:
+                errors.append(f"qa {qa_run_id} {label} profile_hash does not match protected model profile")
+
     comparable = [
         ("resolved_model", actual.get("resolved_model"), probe_record.get("resolved_model")),
         ("profile_id", actual.get("profile_id"), probe_record.get("profile_id")),
@@ -323,15 +382,19 @@ def _check_probe_execution_binding(
         if left != right:
             errors.append(f"qa {qa_run_id} probe/execution mismatch for {label}")
 
-    if actual.get("candidate_sha") != repo.get("candidate_sha"):
-        errors.append(f"qa {qa_run_id} execution candidate_sha mismatch")
-    if actual.get("base_sha") != repo.get("base_sha"):
-        errors.append(f"qa {qa_run_id} execution base_sha mismatch")
-    if actual.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
-        errors.append(f"qa {qa_run_id} execution candidate_tree_oid mismatch")
+    for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
+        if qa_record.get(field) != pass_record.get(field):
+            errors.append(f"QA {qa_run_id} stale/mismatched {field}")
+        if actual.get(field) != pass_record.get(field):
+            errors.append(f"qa {qa_run_id} execution {field} mismatch")
+        if probe_record.get(field) != pass_record.get(field):
+            errors.append(f"qa {qa_run_id} probe {field} mismatch")
 
-    if not _same_list(actual.get("tools"), probe_record.get("tools")):
+    tools = actual.get("tools", [])
+    if not _same_list(tools, probe_record.get("tools")):
         errors.append(f"qa {qa_run_id} probe/execution tools mismatch")
+    if not isinstance(tools, list) or any(tool not in QA_TOOL_ALLOWLIST for tool in tools):
+        errors.append(f"qa {qa_run_id} tools are not within QA read-only allowlist")
     if not _same_list(actual.get("environment_name_allowlist"), probe_record.get("environment_name_allowlist")):
         errors.append(f"qa {qa_run_id} probe/execution environment allowlist mismatch")
 
@@ -394,17 +457,27 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
         elif len(records) > 1:
             errors.append(f"pass {pass_id} has multiple QA records")
 
-    for pass_id in pass_ids:
+    previous_candidate_sha = repo.get("base_sha")
+    for index, pass_id in enumerate(pass_ids):
         pass_record = records_by_pass.get(pass_id)
         if not pass_record:
             errors.append(f"missing pass record for {pass_id}")
             continue
-        if pass_record.get("candidate_sha") != repo.get("candidate_sha"):
-            errors.append(f"pass {pass_id} stale candidate SHA")
-        if pass_record.get("base_sha") != repo.get("base_sha"):
+        for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
+            if not _is_sha(pass_record.get(field)):
+                errors.append(f"pass {pass_id} {field} is not a full 40-character SHA")
+        if index == 0 and pass_record.get("base_sha") != repo.get("base_sha"):
             errors.append(f"pass {pass_id} stale base SHA")
-        if pass_record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
-            errors.append(f"pass {pass_id} stale candidate tree")
+        elif index > 0 and pass_record.get("base_sha") != previous_candidate_sha:
+            errors.append(f"pass {pass_id} stale base SHA")
+        previous_candidate_sha = pass_record.get("candidate_sha")
+
+    if pass_ids:
+        final_record = records_by_pass.get(pass_ids[-1], {})
+        if final_record.get("candidate_sha") != repo.get("candidate_sha"):
+            errors.append(f"final pass {pass_ids[-1]} candidate SHA does not match repo.candidate_sha")
+        if final_record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
+            errors.append(f"final pass {pass_ids[-1]} candidate tree does not match repo.candidate_tree_oid")
 
     for qa_record in qa_records:
         qa_run_id = qa_record.get("qa_run_id", "<unknown>")
@@ -431,7 +504,7 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
             errors.append(f"pass {pass_id} missing implementation agent_id")
 
         for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
-            expected = repo.get(field)
+            expected = pass_record.get(field)
             if qa_record.get(field) != expected:
                 errors.append(f"QA {qa_run_id} stale/mismatched {field}")
 
@@ -452,8 +525,8 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
         for flag, expected in expected_iso.items():
             if iso.get(flag) is not expected:
                 errors.append(f"QA isolation {flag} must be {expected}")
-        if iso.get("candidate_tree_before") != repo.get("candidate_tree_oid") or iso.get("candidate_tree_after") != repo.get("candidate_tree_oid"):
-            errors.append(f"QA {qa_run_id} candidate tree before/after must equal repo.candidate_tree_oid")
+        if iso.get("candidate_tree_before") != pass_record.get("candidate_tree_oid") or iso.get("candidate_tree_after") != pass_record.get("candidate_tree_oid"):
+            errors.append(f"QA {qa_run_id} candidate tree before/after must equal generation candidate_tree_oid")
 
         exec_record, exec_hash = _resolve_embedded_or_path(
             qa_record, "protected_execution_record", "protected_execution_record_path", manifest_path
@@ -472,89 +545,49 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
         if qa_record.get("protected_probe_record_sha256") != probe_hash:
             errors.append(f"QA {qa_run_id} protected probe record hash mismatch")
 
-        _check_probe_execution_binding(qa_record, exec_record, probe_record, manifest, errors)
+        _check_probe_execution_binding(qa_record, exec_record, probe_record, pass_record, manifest, errors)
 
 
-def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
-    """Verify captured external provenance bindings for authoritative mode."""
+def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Verify protected-runner provenance supplied outside the manifest."""
     errors: List[str] = []
     policy = manifest.get("policy", {})
     repo = manifest.get("repo", {})
     pr = manifest.get("pull_request", {})
-    attestation = policy.get("runner_attestation", {})
 
-    if policy.get("trusted_runner") is not True:
-        return ["merge readiness blocked: no authoritative trusted runner provenance"]
-    if not isinstance(attestation, dict) or not attestation:
-        return ["trusted runner provenance missing; local trusted_runner boolean is insufficient"]
-    mode = attestation.get("mode")
+    if not external_evidence:
+        return [
+            "merge readiness blocked: no authoritative trusted runner provenance; "
+            "manifest runner_attestation/trusted_runner fields are advisory only"
+        ]
+
+    for error in validate_schema(external_evidence, _load_schema("governance/schemas/external-evidence.schema.json")):
+        errors.append(f"external evidence schema: {error}")
+    if external_evidence.get("schema_version") != "1" or external_evidence.get("evidence_class") != "protected-external":
+        errors.append("external provenance evidence must be schema_version=1 protected-external")
+
+    mode = external_evidence.get("mode")
     if mode not in {"github_api", "github_artifact_attestation"}:
         errors.append("trusted runner provenance must be verified by GitHub API or artifact attestation")
-    if attestation.get("verification_status") != "verified":
+    if external_evidence.get("verification_status") != "verified":
         errors.append("trusted runner provenance verification_status is not verified")
 
-    artifact = attestation.get("artifact", {})
+    artifact = external_evidence.get("artifact", {})
     artifact_digest = artifact.get("artifact_digest") or artifact.get("digest")
-    if not artifact.get("artifact_id"):
+    if artifact.get("artifact_digest") and artifact.get("digest") and artifact.get("artifact_digest") != artifact.get("digest"):
+        errors.append("artifact digest mismatch")
+    if not artifact.get("artifact_id") and not artifact.get("id"):
         errors.append("trusted runner artifact_id missing")
     if not artifact_digest or not re.fullmatch(r"sha256:[a-f0-9]{64}", artifact_digest):
         errors.append("trusted runner artifact digest missing or invalid")
-    if not artifact.get("manifest_sha256"):
-        errors.append("trusted runner canonical manifest digest missing")
-    else:
-        from hash_tree import manifest_digest_excluding_own  # local import avoids CLI cycle surprises
+    computed_manifest_digest = manifest_digest_excluding_own(manifest)
+    if artifact.get("manifest_sha256") != computed_manifest_digest:
+        errors.append(
+            "trusted runner canonical manifest digest mismatch: "
+            f"computed={computed_manifest_digest}, recorded={artifact.get('manifest_sha256')}"
+        )
 
-        computed_manifest_digest = manifest_digest_excluding_own(manifest)
-        if artifact.get("manifest_sha256") != computed_manifest_digest:
-            errors.append(
-                "trusted runner canonical manifest digest mismatch: "
-                f"computed={computed_manifest_digest}, recorded={artifact.get('manifest_sha256')}"
-            )
-
-    github = attestation.get("github", {})
-    if not github:
-        if mode == "github_artifact_attestation":
-            signed = attestation.get("signed_attestation", {})
-            subject = signed.get("subject", {})
-            claims = signed.get("claims", {})
-            if signed.get("verified") is not True:
-                errors.append("GitHub artifact attestation is not verified")
-            if subject.get("digest") != artifact_digest:
-                errors.append("artifact attestation subject digest mismatch")
-            for label, expected in [
-                ("repository", REPO_FULL_NAME),
-                ("workflow_sha", policy.get("sha")),
-                ("head_sha", repo.get("candidate_sha")),
-                ("event", "pull_request"),
-            ]:
-                if claims.get(label) != expected:
-                    errors.append(f"artifact attestation claim mismatch: {label}")
-            if not claims.get("run_id") or not claims.get("job_id"):
-                errors.append("artifact attestation run_id/job_id claims missing")
-            if claims.get("base_ref") != "main":
-                errors.append("artifact attestation base_ref must be main")
-            if claims.get("policy_ref") != policy.get("ref"):
-                errors.append("artifact attestation policy_ref mismatch")
-            if claims.get("policy_sha") != policy.get("sha"):
-                errors.append("artifact attestation policy_sha mismatch")
-            if claims.get("policy_protected") is not True:
-                errors.append("artifact attestation policy ref is not protected")
-            if claims.get("candidate_sha") != repo.get("candidate_sha"):
-                errors.append("artifact attestation candidate_sha mismatch")
-            if claims.get("policy_checkout_path") == claims.get("candidate_checkout_path"):
-                errors.append("candidate checkout reused as policy checkout")
-            if claims.get("generator_from_policy_checkout") is not True:
-                errors.append("manifest was generated by candidate-modifiable code")
-            external_file_hashes = attestation.get("policy_file_hashes", {})
-            if not external_file_hashes:
-                errors.append("protected policy file hashes missing from artifact attestation")
-            if external_file_hashes.get(policy.get("generator_path")) != policy.get("generator_sha256"):
-                errors.append("policy generator_sha256 does not match artifact-attested policy hash")
-            return errors
-        errors.append("trusted runner GitHub provenance payload missing")
-        return errors
-
-    repository = github.get("repository", {})
+    repository = external_evidence.get("repository", {})
     if repository.get("full_name") != REPO_FULL_NAME:
         errors.append(f"GitHub provenance repository mismatch: {repository.get('full_name')}")
     if repo.get("repository") and repository.get("full_name") != repo.get("repository"):
@@ -562,7 +595,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     if repo.get("repository_id") and repository.get("id") != repo.get("repository_id"):
         errors.append("GitHub provenance repository_id mismatch")
 
-    workflow = github.get("workflow", {})
+    workflow = external_evidence.get("workflow", {})
     if workflow.get("path") not in {".github/workflows/governance.yml", "governance.yml"}:
         errors.append("GitHub provenance workflow path mismatch")
     if workflow.get("sha") != policy.get("sha"):
@@ -570,7 +603,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     if workflow.get("ref") != policy.get("ref"):
         errors.append("GitHub provenance workflow ref must equal policy.ref")
 
-    run = github.get("run", {})
+    run = external_evidence.get("run", {})
     if run.get("event") != "pull_request":
         errors.append("GitHub provenance event must be pull_request")
     if run.get("head_sha") != repo.get("candidate_sha"):
@@ -582,13 +615,13 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     if not run.get("id") or not run.get("attempt"):
         errors.append("GitHub provenance run id/attempt missing")
 
-    job = github.get("job", {})
+    job = external_evidence.get("job", {})
     if job.get("conclusion") != "success":
         errors.append("GitHub provenance job conclusion must be success")
     if not job.get("id") or not job.get("name"):
         errors.append("GitHub provenance job id/name missing")
 
-    gh_pr = github.get("pull_request", {})
+    gh_pr = external_evidence.get("pull_request", {})
     if gh_pr.get("number") != pr.get("number"):
         errors.append("GitHub provenance PR number mismatch")
     if gh_pr.get("base_ref") != "main":
@@ -598,15 +631,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     if gh_pr.get("head_sha") != repo.get("candidate_sha"):
         errors.append("GitHub provenance PR head SHA mismatch")
 
-    gh_artifact = github.get("artifact", {})
-    if gh_artifact.get("id") != artifact.get("artifact_id"):
-        errors.append("GitHub provenance artifact id mismatch")
-    if gh_artifact.get("digest") != artifact_digest:
-        errors.append("GitHub provenance artifact digest mismatch")
-    if gh_artifact.get("name") and artifact.get("name") and gh_artifact.get("name") != artifact.get("name"):
-        errors.append("GitHub provenance artifact name mismatch")
-
-    protected_ref = github.get("protected_ref", {})
+    protected_ref = external_evidence.get("protected_ref", {})
     if protected_ref.get("ref") != policy.get("ref"):
         errors.append("protected policy ref mismatch")
     if protected_ref.get("sha") != policy.get("sha"):
@@ -618,7 +643,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     if policy.get("sha") == repo.get("candidate_sha"):
         errors.append("candidate checkout reused as protected policy checkout")
 
-    checkouts = github.get("checkouts", {})
+    checkouts = external_evidence.get("checkouts", {})
     if checkouts.get("policy_sha") != policy.get("sha"):
         errors.append("protected policy checkout SHA mismatch")
     if checkouts.get("candidate_sha") != repo.get("candidate_sha"):
@@ -628,29 +653,30 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     if checkouts.get("separate") is not True:
         errors.append("policy and candidate checkouts are not separate")
 
-    generator = github.get("generator", {})
+    generator = external_evidence.get("generator", {})
     if generator.get("path") != policy.get("generator_path"):
         errors.append("manifest generator path provenance mismatch")
     if generator.get("from_policy_checkout") is not True:
         errors.append("manifest was generated by candidate-modifiable code")
 
-    policy_file_hashes = policy.get("file_hashes", {})
-    external_file_hashes = github.get("policy_file_hashes", {}) or github.get("policy_files", {})
+    external_file_hashes = external_evidence.get("policy_file_hashes", {})
     if not external_file_hashes:
         errors.append("protected policy file hashes missing from external provenance")
-    if external_file_hashes and github.get("policy_file_hashes_source") != "protected_checkout":
+    if external_file_hashes and external_evidence.get("policy_file_hashes_source") != "protected_checkout":
         errors.append("policy file hashes were not computed from protected checkout")
-    if policy_file_hashes:
-        for path, recorded_hash in policy_file_hashes.items():
-            if external_file_hashes.get(path) != recorded_hash:
-                errors.append(f"policy file hash mismatch: {path}")
+    for path, recorded_hash in policy.get("file_hashes", {}).items():
+        if external_file_hashes.get(path) != recorded_hash:
+            errors.append(f"policy file hash mismatch: {path}")
     generator_path = policy.get("generator_path")
-    if generator_path and external_file_hashes:
-        if external_file_hashes.get(generator_path) != policy.get("generator_sha256"):
-            errors.append("policy generator_sha256 does not match protected checkout hash")
+    if generator_path and external_file_hashes.get(generator_path) != policy.get("generator_sha256"):
+        errors.append("policy generator_sha256 does not match protected checkout hash")
+
+    branch_protection = external_evidence.get("branch_protection", {})
+    if branch_protection.get("requires_governance") is not True:
+        errors.append("branch protection does not require governance checks")
 
     if mode == "github_artifact_attestation":
-        signed = attestation.get("signed_attestation", {})
+        signed = external_evidence.get("signed_attestation", {})
         subject = signed.get("subject", {})
         claims = signed.get("claims", {})
         if signed.get("verified") is not True:
@@ -663,6 +689,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
             ("head_sha", repo.get("candidate_sha")),
             ("run_id", run.get("id")),
             ("job_id", job.get("id")),
+            ("event", "pull_request"),
         ]:
             if claims.get(label) != expected:
                 errors.append(f"artifact attestation claim mismatch: {label}")
@@ -670,7 +697,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any]) -> List[str]:
     return errors
 
 
-def _check_approvals(manifest: Dict[str, Any], errors: List[str]) -> None:
+def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evidence: Optional[Dict[str, Any]]) -> None:
     pr = manifest.get("pull_request", {})
     repo = manifest.get("repo", {})
     records = pass_records_by_id(manifest)
@@ -681,10 +708,14 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str]) -> None:
     if not candidate_pinned_at:
         errors.append("candidate_pinned_at missing or invalid; approval recency cannot be verified")
 
+    approvals = (external_evidence or {}).get("approvals", [])
+    if not approvals:
+        errors.append("no external protected approval evidence supplied")
+
     valid = False
-    for approval in manifest.get("approvals", []):
-        reviewer = approval.get("reviewer", "")
-        approval_time = _parse_time(approval.get("timestamp", ""))
+    for approval in approvals:
+        reviewer = approval.get("reviewer", "") or approval.get("user", "")
+        approval_time = _parse_time(approval.get("submitted_at", "") or approval.get("timestamp", ""))
         if not reviewer:
             errors.append("approval missing reviewer")
             continue
@@ -697,10 +728,7 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str]) -> None:
         if candidate_pinned_at and approval_time <= candidate_pinned_at:
             errors.append(f"approval by {reviewer} predates candidate SHA pinning")
             continue
-        if approval.get("independent") is not True:
-            errors.append(f"approval by {reviewer} is not marked independent")
-            continue
-        if approval.get("state") and approval.get("state") != "APPROVED":
+        if approval.get("state") != "APPROVED":
             errors.append(f"approval by {reviewer} state is not APPROVED")
             continue
         if reviewer == pr.get("author"):
@@ -718,10 +746,13 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str]) -> None:
         errors.append("no independent current-SHA human approval recorded")
 
 
-def _check_publication(manifest: Dict[str, Any], errors: List[str]) -> None:
+def _protected_freeze() -> Dict[str, Any]:
+    return _load_repo_json("governance/audits/existing-work-freeze.json")
+
+
+def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evidence: Optional[Dict[str, Any]]) -> None:
     publication = manifest.get("publication", {})
     registry = _command_registry()
-    successful_post = _successful_registered_command_ids(manifest, "post_merge")
 
     merge_sha = publication.get("merge_result_sha", "")
     publication_sha = publication.get("publication_sha", "")
@@ -735,6 +766,20 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str]) -> None:
     if merge_sha and publication_sha and merge_sha != publication_sha:
         errors.append("publication_sha must equal merge_result_sha for this composition-root publication")
 
+    post_merge = (external_evidence or {}).get("post_merge", {})
+    if not post_merge:
+        errors.append("publication blocked: protected post-merge main-run evidence missing")
+    else:
+        if post_merge.get("event") != "push" or post_merge.get("ref") != "refs/heads/main":
+            errors.append("publication blocked: post-merge evidence must be a push to refs/heads/main")
+        if post_merge.get("sha") != publication_sha or post_merge.get("merge_result_sha") != merge_sha:
+            errors.append("publication blocked: post-merge evidence SHA mismatch")
+        if post_merge.get("main_contains_sha") is not True:
+            errors.append("publication blocked: publication SHA is not verified on main")
+        if post_merge.get("merge_method") not in ALLOWED_MERGE_METHODS:
+            errors.append("publication blocked: merge method must be squash or rebase")
+
+    successful_post = _successful_registered_command_ids(manifest, "post_merge", commit_sha=publication_sha if _is_sha(publication_sha) else None)
     for required in registry.get("rules", {}).get("required_post_merge_validations", []):
         if required not in successful_post:
             errors.append(f"publication blocked: required post-merge validation missing or failed: {required}")
@@ -742,16 +787,25 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str]) -> None:
         if required not in successful_post:
             errors.append(f"publication blocked: required post-merge test missing or failed: {required}")
 
-    audit = manifest.get("audit", {}).get("existing_work_freeze", {})
-    if audit.get("status") == "active" or audit.get("blocks_publication") is True:
+    freeze = _protected_freeze()
+    external_freeze = (external_evidence or {}).get("freeze")
+    if external_freeze and external_freeze != freeze:
+        errors.append("publication blocked: external freeze evidence does not match protected freeze artifact")
+    if freeze.get("status") == "active" or freeze.get("blocks_publication") is True:
         errors.append("publication blocked: existing-work freeze/audit is still active")
 
 
-def check_delivery(manifest: Dict[str, Any], manifest_path: Optional[str] = None) -> Tuple[bool, List[str], str]:
+def check_delivery(
+    manifest: Dict[str, Any],
+    manifest_path: Optional[str] = None,
+    *,
+    phase: str = "pre-merge",
+    external_evidence: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, List[str], str]:
     """Run fail-closed delivery checks.
 
-    Returns ``(passed, errors, gate_type)``. ``gate_type`` is the first blocked
-    gate: ``merge`` or ``publication``.
+    ``phase='pre-merge'`` checks merge readiness only. ``phase='publication'``
+    additionally requires protected post-merge evidence bound to the main SHA.
     """
     merge_errors: List[str] = []
 
@@ -763,32 +817,70 @@ def check_delivery(manifest: Dict[str, Any], manifest_path: Optional[str] = None
     _check_pr_and_issue(manifest, merge_errors)
     _check_required_commands(manifest, merge_errors)
     _check_qa_pairing(manifest, merge_errors, manifest_path)
-    merge_errors.extend(verify_authoritative_provenance(manifest))
-    _check_approvals(manifest, merge_errors)
+    merge_errors.extend(verify_authoritative_provenance(manifest, external_evidence))
+    _check_approvals(manifest, merge_errors, external_evidence)
 
     if merge_errors:
         return False, merge_errors, "merge"
+    if phase == "pre-merge":
+        return True, [], "merge"
 
     publication_errors: List[str] = []
-    _check_publication(manifest, publication_errors)
-    # Human approval and provenance are rechecked by merge gate; if code changes later,
-    # this remains explicit for publication safety.
-    publication_errors.extend(verify_authoritative_provenance(manifest))
+    _check_publication(manifest, publication_errors, external_evidence)
+    publication_errors.extend(verify_authoritative_provenance(manifest, external_evidence))
     if publication_errors:
         return False, publication_errors, "publication"
 
     return True, [], "publication"
 
 
+def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
+    """Return success only while bootstrap advisory mode remains honestly blocked."""
+    errors: List[str] = []
+    freeze = _protected_freeze()
+    if freeze.get("status") != "active" or freeze.get("blocks_publication") is not True:
+        errors.append("bootstrap publication freeze is not active")
+    bootstrap_path = REPO_ROOT / "governance" / "bootstrap-status.json"
+    if not bootstrap_path.exists():
+        errors.append("governance/bootstrap-status.json missing")
+    else:
+        bootstrap = load_json_strict(bootstrap_path)
+        gate = bootstrap.get("authoritative_delivery_gate", {})
+        if gate.get("status") != "external_dependency_missing":
+            errors.append("authoritative delivery gate dependency is not marked unresolved")
+        for field in [
+            "protected_policy_ref_established",
+            "trusted_runner_provenance_established",
+            "branch_protection_requires_governance",
+            "independent_human_review_process_established",
+        ]:
+            if gate.get(field) is not False:
+                errors.append(f"bootstrap dependency must remain false until verified: {field}")
+    return not errors, errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Noetic-dev delivery gate")
-    parser.add_argument("path", nargs="?", help="Path to manifest.json or workflow.yml")
+    parser.add_argument("path", nargs="?", help="Path to manifest.json, workflow.yml, or workflow directory")
     parser.add_argument("--check-pinning-only", action="store_true", help="Only check workflow action pinning")
+    parser.add_argument("--check-bootstrap-blocked", action="store_true", help="Assert bootstrap advisory mode remains honestly blocked")
+    parser.add_argument("--external-evidence", help="Protected external GitHub/approval/freeze evidence JSON")
+    parser.add_argument("--phase", choices=["pre-merge", "publication"], default="pre-merge")
     args = parser.parse_args()
+
+    if args.check_bootstrap_blocked:
+        passed, errors = check_bootstrap_blocked()
+        if not passed:
+            print("Bootstrap blocked check FAILED:", file=sys.stderr)
+            for error in errors:
+                print(f"  - {error}", file=sys.stderr)
+            return 1
+        print("Bootstrap advisory mode confirmed: merge/publication authority remains BLOCKED", file=sys.stderr)
+        return 0
 
     if args.check_pinning_only:
         if not args.path:
-            print("Usage: check_delivery_gate.py --check-pinning-only <workflow.yml>", file=sys.stderr)
+            print("Usage: check_delivery_gate.py --check-pinning-only <workflow.yml|workflow-dir>", file=sys.stderr)
             return 2
         errors = check_pinning(args.path)
         if errors:
@@ -817,14 +909,27 @@ def main() -> int:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
-    passed, errors, gate_type = check_delivery(manifest, args.path)
+    external_evidence = None
+    if args.external_evidence:
+        try:
+            external_evidence = load_json(args.external_evidence)
+        except (FileNotFoundError, json.JSONDecodeError, DuplicateKeyError, ValueError) as exc:
+            print(f"Error reading external evidence: {exc}", file=sys.stderr)
+            return 1
+
+    passed, errors, gate_type = check_delivery(
+        manifest,
+        args.path,
+        phase=args.phase,
+        external_evidence=external_evidence,
+    )
     if not passed:
         print(f"Delivery gate FAILED ({gate_type}):", file=sys.stderr)
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         return 1
 
-    print(f"Delivery gate PASSED ({gate_type})", file=sys.stderr)
+    print(f"Delivery gate PASSED ({gate_type}, phase={args.phase})", file=sys.stderr)
     return 0
 
 

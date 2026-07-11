@@ -19,7 +19,8 @@ All changes merged to `main` and published must pass through the governance pipe
 | Candidate SHA | The full 40-character SHA of the commit to be reviewed and merged. |
 | Evidence manifest | A machine-readable record of all evidence for a delivery decision. |
 | Publication SHA | The full 40-character main SHA after merging a candidate. |
-| Trusted runner | A CI runner whose provenance is verifiable through GitHub APIs and/or signed attestations. |
+| Trusted runner | A runner whose provenance is verified from evidence outside the candidate manifest through authenticated GitHub APIs and/or signed attestations. |
+| External protected evidence | Runner-captured GitHub, approval, freeze, and post-merge evidence supplied to the gate separately from the candidate-controlled manifest. |
 
 ## State machine
 
@@ -68,8 +69,9 @@ A PR candidate is ready to merge only when ALL of the following hold:
 10. Implementation:QA pass cardinality is exactly 1:1.
 11. QA used read-only source mount, no context files, no write tools observed, candidate tree unchanged.
 12. QA verdict is `pass`.
-13. Human approval exists, is not by PR author, not by implementation identity, and is after the candidate SHA.
-14. All workflow action refs are pinned to full SHAs.
+13. External protected human approval evidence exists, is not by PR author, not by implementation/QA identity, and is after the candidate SHA.
+14. External protected runner provenance binds repository, workflow, run/job, artifact digest, manifest digest, policy SHA, candidate SHA, and separate checkouts.
+15. All workflow action refs are pinned to full SHAs and docker refs are immutable digests.
 
 ### Publication gate
 
@@ -79,9 +81,11 @@ Publication requires ALL of the following:
 2. `merge_result_sha` recorded.
 3. Post-merge validation and tests pass against main.
 4. `publication_sha` is the full 40-char main SHA.
-5. Trusted runner provenance verified (GitHub artifact attestation or authenticated API).
-6. Independent human approval exists.
-7. No branch-name publication: only full SHAs.
+5. Trusted runner provenance verified from external protected evidence (GitHub artifact attestation or authenticated API), not from manifest assertions.
+6. Independent human approval exists in external protected evidence.
+7. Protected post-merge push-to-main evidence binds the command outputs to the main SHA and merge method.
+8. The protected existing-work freeze artifact is complete; the manifest cannot override it.
+9. No branch-name publication: only full SHAs.
 
 ### Branch-name publication
 
@@ -91,7 +95,7 @@ Publication using a branch name (e.g., `main`, `latest`) is always forbidden. On
 
 Every governed delivery produces an evidence manifest at `.governance/runs/<run_id>/manifest.json`. The schema is defined in `governance/schemas/evidence-manifest.schema.json`.
 
-QA evidence is represented as `qa.records[]`, not as a single prose report. Each implementation/remediation pass ID must have exactly one QA record with distinct implementation and QA identities, matching candidate/base/tree bindings, a protected READY probe record hash, and a protected QA execution record hash. The canonical manifest digest is `sha256(canonical_json(manifest_without_/policy/runner_attestation/artifact/manifest_sha256))`; no other fields are removed during hashing.
+QA evidence is represented as `qa.records[]`, not as a single prose report. Each implementation/remediation pass ID must have exactly one QA record with distinct implementation and QA identities, matching that generation's candidate/base/tree bindings, a protected READY probe record hash, and a protected QA execution record hash. Earlier generations may bind to earlier candidate SHAs; the final pass must bind to `repo.candidate_sha`. The canonical manifest digest is `sha256(canonical_json(manifest_without_/policy/runner_attestation/artifact/manifest_sha256))`; no other fields are removed during hashing.
 
 ### Authoritative provenance
 
@@ -112,7 +116,7 @@ Authoritative mode requires:
 Before authoritative conditions exist:
 
 - Manifests are advisory only.
-- `policy.trusted_runner` must be `false` unless a captured GitHub API or signed artifact-attestation payload verifies the run, job, artifact digest, candidate SHA, protected policy SHA, and separate checkouts.
+- `policy.trusted_runner` in a manifest is advisory only and must not be used to establish authority; the delivery gate requires separately supplied external protected evidence.
 - Local validation/tests may produce diagnostics.
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
@@ -134,10 +138,11 @@ Issue status is managed through canonical machine-readable labels following the 
 
 GitHub Actions workflows must:
 
-- Use pinned full-SHA action refs (never mutable tags like `@v4`, `@v5`).
-- Run delivery gate from protected policy code.
-- Run validation and genuine tests separately.
-- Run post-merge validation on `push` to `main`.
+- Use pinned full-SHA action refs (never mutable tags like `@v4`, `@v5`) and immutable docker image digests.
+- Run repository validation and genuine tests separately.
+- Treat the candidate PR workflow as advisory only; it must not claim protected delivery-gate authority or call base-policy scripts that may not exist during bootstrap.
+- Establish a separate protected required workflow/repository integration before authoritative merge readiness can be claimed.
+- Run post-merge validation on `push` to `main`; publication additionally requires protected post-merge evidence.
 - Use minimal read permissions.
 
 ## Rollback
