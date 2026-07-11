@@ -41,6 +41,10 @@ REQUIRED = [
     "spec/telos/v0/delegation-result.schema.json",
     "spec/telos/v0/delegation-transitions.json",
     "spec/telos/v0/controller-binding.json",
+    "docs/contextforge-continuity-inventory.md",
+    "docs/contextforge-continuity-review.md",
+    "scripts/validate_contextforge_inventory.py",
+    "spec/infrastructure/contextforge-continuity.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

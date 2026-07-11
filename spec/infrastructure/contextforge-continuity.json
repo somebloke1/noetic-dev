@@ -1,0 +1,139 @@
+{
+  "schema_version": "noetic.contextforge-continuity/v0",
+  "observed_at": "2026-07-11T15:00:00Z",
+  "conclusion": "retain_operationally_not_architectural_backbone",
+  "mutation_performed": false,
+  "live_surfaces": [
+    {
+      "surface": "host_live",
+      "gateway": "http://127.0.0.1:4444",
+      "health_status": 200,
+      "ready_status": 200,
+      "manager": "systemd_user",
+      "target_enabled": true,
+      "target_active": true
+    },
+    {
+      "surface": "development_docker",
+      "gateway": "http://127.0.0.1:4445",
+      "health_status": 200,
+      "manager": "docker_compose",
+      "isolation": "successor_test_surface_not_live_fallback"
+    }
+  ],
+  "consumers": [
+    {
+      "consumer": "pi_runtime",
+      "evidence": "/home/dgk/.pi/agent/mcp.json",
+      "attachment": "local_stdio_contextforge_wrapper",
+      "gateway": "host_live",
+      "services": ["chrome-devtools", "context7", "github", "mentality", "playwright", "web-search"],
+      "exceptions": ["serena is direct local project-from-cwd, not ContextForge"],
+      "live_readback": "MCP gateway reported 7/7 servers and 177 tools"
+    },
+    {
+      "consumer": "opencode_runtime",
+      "evidence": "/home/dgk/.config/opencode/opencode.json",
+      "attachment": "remote_streamable_http_with_authorization_header",
+      "gateway": "host_live",
+      "services": ["chrome-devtools", "context7", "github", "mentality", "playwright", "web-search"],
+      "exceptions": ["local Serena entry is disabled"]
+    },
+    {
+      "consumer": "noetic_pi_project_state",
+      "evidence": "/home/dgk/workspace/noetic-pi/.project/context_forge_state.json",
+      "attachment": "recorded_project_binding_not_live_client_proof",
+      "gateway": "host_live",
+      "services": ["context7", "github", "playwright", "web-search"],
+      "exceptions": ["state drift status is unknown", "target-client evidence is historical project state"]
+    },
+    {
+      "consumer": "noetic_dev_current_session",
+      "evidence": "runtime MCP status plus tool calls in this issue",
+      "attachment": "inherits_pi_runtime_tools",
+      "gateway": "host_live",
+      "services": ["github", "context7", "mentality", "playwright", "web-search", "chrome-devtools"],
+      "exceptions": ["composition root has no .project/context_forge_state.json", "Serena remains direct"]
+    },
+    {
+      "consumer": "contextforge_operator_and_test_harness",
+      "evidence": "/home/dgk/workspace/cf-controlplane/docker/contextforge-harness/compose.yml",
+      "attachment": "isolated_gateway_and_transceivers",
+      "gateway": "development_docker",
+      "services": ["mentality", "ssh-tmux", "context7", "playwright", "exa-search", "github", "web-search", "time", "serena-cf-controlplane"],
+      "exceptions": ["must not fall back to host-live services for successor parity"]
+    }
+  ],
+  "host_services": [
+    {"service": "gateway", "unit": "contextforge-gateway.service", "port": 4444, "state": "active", "credential_boundary": "config/contextforge.env mode 0600"},
+    {"service": "mentality", "unit": "contextforge-mentality.service", "port": 9100, "state": "active", "scope": "caller_supplied_repo"},
+    {"service": "chrome-devtools", "unit": "contextforge-chrome-devtools.service", "port": 9101, "state": "active", "scope": "isolated_browser"},
+    {"service": "ssh-tmux", "unit": "contextforge-ssh-tmux.service", "port": 9102, "state": "active", "scope": "remote_target_and_session"},
+    {"service": "context7", "unit": "contextforge-context7.service", "port": 9103, "state": "active", "scope": "global_documentation"},
+    {"service": "playwright", "unit": "contextforge-playwright.service", "port": 9104, "state": "active", "scope": "isolated_browser"},
+    {"service": "exa-search", "unit": "contextforge-exa-search.service", "port": 9105, "state": "active", "scope": "provider_credential"},
+    {"service": "github", "unit": "contextforge-github.service", "port": 9106, "state": "active", "scope": "github_account_and_request_repo", "observation": "130 historical restarts; stable active since 2026-07-08 with repeated HTTP 200 activity"},
+    {"service": "web-search", "unit": "contextforge-web-search.service", "port": 9107, "state": "active", "scope": "provider_credential_and_request"},
+    {"service": "serena-cf-controlplane", "unit": "contextforge-serena-cf-controlplane-d46fe58a2a20.service", "port": 9108, "state": "active", "scope": "single_workspace"}
+  ],
+  "project_serena_units": {
+    "unit_files": 7,
+    "active": 6,
+    "inactive": ["contextforge-serena-cognitive-disciplines-b27e6d9fde4b.service"],
+    "rule": "project-scoped instances are distinct service identities and must not be consolidated as shared globals"
+  },
+  "authentication": {
+    "pi_wrapper": "reads ignored 0600 gateway env/token cache, resolves one virtual server, creates/revokes ephemeral server-scoped token unless a configured bearer is used",
+    "wrapper_permissions": ["servers.use", "tools.read", "tools.execute", "resources.read", "prompts.read"],
+    "opencode": "Authorization header configured per remote virtual-server entry; values not inspected or recorded",
+    "backend_credentials": "remain in ignored service-local env boundaries; values not inspected or recorded"
+  },
+  "findings": [
+    {
+      "id": "CF-001",
+      "severity": "high",
+      "finding": "server-instances/web-search/.env is ignored but mode 0664 and contains nonempty secret-named variables",
+      "required_follow_up": "somebloke1/contextforge-control-plane#394 must tighten permissions and verify service ownership without exposing or rotating values implicitly"
+    },
+    {
+      "id": "CF-002",
+      "severity": "medium",
+      "finding": "cf-controlplane operational checkout is dirty, has untracked runtime/source artifacts, and is one commit ahead of its tracked branch",
+      "required_follow_up": "capture/reconcile provenance before claiming reproducible service rebuild or migration"
+    },
+    {
+      "id": "CF-003",
+      "severity": "medium",
+      "finding": "Pi cache contains aliases beyond current mcp.json and noetic-pi recorded drift status is unknown",
+      "required_follow_up": "treat current client config and live readback as authority; audit stale cache/project bindings before cleanup"
+    },
+    {
+      "id": "CF-004",
+      "severity": "medium",
+      "finding": "GitHub bridge reports 130 historical restarts although currently stable and serving HTTP 200 requests",
+      "required_follow_up": "investigate bounded historical cause before relying on restart count as readiness or changing its lifecycle"
+    },
+    {
+      "id": "CF-005",
+      "severity": "high",
+      "finding": "shared gateway failure removes six configured Pi and six configured OpenCode service attachments at once",
+      "required_follow_up": "preserve rollback/direct emergency path and test per-service plus gateway-wide failure behavior before migration"
+    }
+  ],
+  "continuity_invariants": [
+    "Do not stop, restart, disable, decommission, re-register, rotate credentials, rewrite client config, or clean caches as part of inventory work.",
+    "Host-live port 4444 and development Docker port 4445 are distinct authority and evidence surfaces; never use one as silent fallback for the other.",
+    "ContextForge remains the operational transport for configured clients until each consumer/service contract has verified parity and rollback evidence.",
+    "Direct Serena in current Pi is an explicit exception and must not be reported as ContextForge-backed.",
+    "Service locality follows filesystem, credential, session, and project boundaries; gateway-container hosting is not the default.",
+    "No canonical-event ContextForge sink is assumed to exist merely because MCP virtual servers exist."
+  ],
+  "migration_gates": [
+    "Inventory every live, recorded, and hidden consumer, including caches, project state, user units, and development harnesses.",
+    "Capture tool/prompt/resource names, schemas, error semantics, auth scopes, session behavior, redaction, rate limits, and service locality per attachment.",
+    "Pass identical client-visible fixtures through old and proposed paths without widening authority or exposing credentials.",
+    "Prove gateway-wide and per-service failure behavior, idempotent retry, state/session continuity, and no hidden fallback.",
+    "Provide tested rollback that restores prior config, virtual-server identity, token boundary, and service health without data loss.",
+    "Change one independently reviewable service/consumer edge at a time under a separate issue and implementation:QA pair."
+  ]
+}
