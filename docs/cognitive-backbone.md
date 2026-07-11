@@ -1,6 +1,6 @@
 # The Cognitive Backbone — Canonical Notation Reference
 
-**Status:** Draft for user ratification (resolves migration step 1 of `SYNTHESIS.md`; answers part of `OPEN_QUESTIONS.md` oq notation choice).
+**Status:** Ratified by the user on 2026-07-11. This is noetic-dev's canonical cognitive-form reference.
 **Scope:** This is the **form** layer of the synthesis. It is invariant across every client-scope and architecture decision, so it is safe to fix now, independently of the open questions.
 **Primary sources:** Lonergan, *Insight* (`saeproj/docs/foundational/the-notion-of-judgment.txt`, `transcendental-method-structured.txt`); `on_emergent_fidelity.txt`; `theoretical_foundations.md`; `cognitional_notation/FOUNDATION.md`.
 
@@ -71,10 +71,6 @@ The form recurs at every scale (this is the embodiment principle from the reprod
 
 ---
 
-## 5. The irreducible decision left to you
+## 5. Ratification and authority
 
-Everything above is P1–P3 groundwork. The remaining act is P4 — yours to make:
-
-- **Ratify or amend** the recommended default (`P1–P4` canonical + imperative gloss + optional ECN `^!`/`^?` modal markers). If you prefer the ECN letters or the verbs as the primary surface, say so and this reference flips; the crosswalk stays the same.
-
-Once ratified, this file becomes the single source every other project references instead of re-deriving its own notation.
+The user ratified the recommended default on 2026-07-11: `P1–P4` is canonical, paired with the imperative gloss, with ECN `^!`/`^?` retained only as optional modality markers. This file is therefore the single cognitive-form source noetic-dev components reference instead of re-deriving their own notation. Changes require an explicit governed decision and migration analysis.

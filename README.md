@@ -1,6 +1,6 @@
 # noetic-dev
 
-**noetic-dev** is a portable development and cognitive framework whose form is the P1–P4 cognitional cycle and whose composition root is this repository.
+**noetic-dev** is a portable development and cognitive framework whose form is the P1–P4 cognitional cycle and whose composition root is this repository (`somebloke1/noetic-dev`; local directory `synthesis`).
 
 This repository is deliberately thin. It owns the canonical contracts, governance, composition, and integration tests; independently testable components remain in their own homes.
 
@@ -8,10 +8,11 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 
 1. **Cognitive form:** P1 attentiveness → P2 intelligence → P3 reasonableness → P4 responsibility, with P4 governing recursively.
 2. **Teleological governance:** Telos carries goals, principles, reproductive clauses, and continuation.
-3. **Executive governance:** a superior portable re-instantiation of the noetic-pi/pi2 APM lessons orders deterministic multi-agent work.
+3. **Executive governance:** a superior portable re-instantiation of the noetic-pi/pi2 APM invariants, conformance evidence, and failure lessons orders deterministic multi-agent work; this is not a lift-and-shift.
 4. **Cognitive programs:** disciplines and development pipelines run on the executive controller while semantic judgment remains with agents.
 5. **Observability/control:** structured cognitional events feed web and TUI renderers; tmux and browser PTYs are optional attach mechanisms.
 6. **Model substrate:** genus-router selects models; LiteLLM normalizes primary access; direct local endpoints remain possible.
+7. **Operational transport:** plain MCP/HTTP/stdio and ContextForge coexist; ContextForge remains maintained wherever current tools depend on it, without becoming the architectural backbone.
 
 ## Start here
 

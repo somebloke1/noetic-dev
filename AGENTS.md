@@ -64,7 +64,7 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 - Goal chain tools (`get_goal_chain`, `add_sub_goals`, `update_sub_goal_status`, `mutate_reproductive_clause`, …) — carry purpose and learnings across sessions (P4 durability).
 - `mentality-governance-*` — durable ledgers (P1–P4 memory).
 - `websearch_*`, `context7_*` — external evidence when current external behavior matters.
-- Do **not** use ContextForge as an integration backbone; it is demoted to optional transport.
+- Do **not** use ContextForge as noetic-dev's organizing backbone. **Retain and maintain it** wherever current tools depend on it; never decommission or migrate it without a verified dependency inventory, parity proof, staged cutover, and rollback.
 
 ## 6. Criteria & gates for the recommendation
 

@@ -27,57 +27,31 @@ DISCIPLINE (mirrors the user's P1-P4 cognitional model + AGENTS.md separation of
 <!-- governance-crud:end id=dec-20260711-0001 -->
 
 <!-- governance-crud:start id=dec-20260711-0002 -->
-## dec-20260711-0002: Synthesis backbone: telos spine + SMC cognitive form + harvested noetic-pi organs
+## dec-20260711-0002: noetic-dev backbone: P1-P4 form, Telos teleology, superior executive controller, observable cognitive programs
 
 - Ledger: decisions
 - Status: accepted
-- Repository: /home/dgk/workspace/synthesis
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-1-architecture
 - Created: 2026-07-11
 - Updated: 2026-07-11
-- Tags: backbone,synthesis,recommendation,telos,smc
-- Confidence: 0.85
+- Tags: noetic-dev,backbone,p1-p4,telos,controller,observability,substrate,current
+- Confidence: 0.95
 
-ADJUDICATED RECOMMENDATION (confidence 0.85; refined by k-20260711-0004 spine-capacity probe; still conditioned on client-scope oq-20260711-0001).
-
-The correct + practically-correct backbone is HYLOMORPHIC, two coupled backbones re-joined:
-- FORM (cognitive backbone): SMC / P1-P4 invariant (Attentiveness->Intelligence->Reasonableness->Responsibility, P4 governs recursively) in ONE canonical notation - the 'periodic table' and the design+evaluation grammar for every layer.
-- SPINE (development backbone): telos as the portable teleological governor - runtime-pure core, MCP tools, Pi+OpenCode adapters, evolutionary goalchains (goalchain = durable P4 purpose) - on genus-router for model selection over the 2x3090 local-inference substrate.
-
-WHY NOT noetic-pi as spine: most mature (2,069 tests) but coupled to pi-mono at the web-terminal/app layer and its control-plane extraction/public-export is deferred and stuck. It is the richest DONOR, not a movable spine.
-
-HARVEST IS VERIFIED FEASIBLE (k-20260711-0003): the APM disciplines + pipeline depend only on shared-types + sqlite + node-pty (no pi-mono), communicate over a TCP/IPC seam, and are already decoupled from the pi runtime. Re-exposing them as an MCP service is integration work, not a rewrite.
-
-HOW THE SPINE DRIVES - REFINED (k-20260711-0004): Telos STEERS, it does not SPAWN. It governs the host agent via continuation re-injection; it has a delegations schema + 'delegated-pending' status + delegate_context guard, but NO delegation dispatcher yet and no general outbound MCP-client capability. Correct architecture: Telos=P4 governor; the host agent OR a small to-be-built delegation dispatcher = the P1-P3 enactor that calls MCP organs. This is MORE faithful to 'P4 governs recursively', and it names the ONE genuinely-new component the synthesis must build (the delegation/dispatch enactment seam = the user's own 'make Telos multi-agent' intent). Everything else is harvest/integration.
-
-ORGANS to harvest: cognitive-discipline cycles (phronesis, EP audit, differentiated-cognition); design_intentions->design->implementation_procedure->implementation pipeline with QA/remediation; ordinal delegation-tree identity; session embedding+summarization.
-
-DEMOTE: contextforge -> optional transport only; cognitional_notation + cognitive-disciplines -> fold into one shared canonical-notation + discipline spec.
-
-MIGRATION (scheme of recurrence): keep the stable base (telos + SMC + local inference) durable; build the delegation dispatcher as the single critical new seam; treat noetic-pi as recyclable donor across its clean IPC boundary; never block the spine on unlocking noetic-pi's export.
+Current adjudicated architecture, refined through dec-20260711-0008/0010/0011. FORM: canonical P1-P4 cognitive grammar, user-ratified. TELEOLOGICAL GOVERNANCE: Telos carries durable purpose, goalchains, principles, and evolution. EXECUTIVE GOVERNANCE: noetic-dev abstracts the deterministic invariants, state transitions, typed dependency semantics, QA/remediation loops, commit/verification boundaries, event vocabulary, conformance evidence, and failure lessons from the noetic-pi/pi2 APM lineage, then re-instantiates a cleaner portable controller superior to the donor implementation. PROGRAMS: cognitive disciplines and development pipelines run on the controller while semantic judgment remains with agents. OBSERVABILITY/CONTROL: structured cognitional events feed web/TUI renderers with tmux/browser attach adapters swappable. MODEL SUBSTRATE: genus-router selection over LiteLLM-normalized access and measured direct local endpoints. TRANSPORT: ContextForge is retained and maintained where current tools depend on it but is not the architecture's organizing backbone. TARGET: this private noetic-dev repository is the thin composition root; independently testable components remain separately versioned. The earlier lift-as-is and ContextForge-decommission implications are explicitly superseded.
 <!-- governance-crud:end id=dec-20260711-0002 -->
 
 <!-- governance-crud:start id=dec-20260711-0003 -->
-## dec-20260711-0003: Canonical notation recommendation: P1-P4 + imperative gloss + optional ECN modal markers
+## dec-20260711-0003: Canonical notation ratified: P1-P4 + imperative gloss + optional ECN modal markers
 
 - Ledger: decisions
 - Status: accepted
-- Repository: /home/dgk/workspace/synthesis
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-1-architecture
 - Created: 2026-07-11
 - Updated: 2026-07-11
-- Tags: notation,canonical,form,p1-p4,ecn,recommendation,awaiting-ratification
-- Confidence: 0.8
+- Tags: notation,canonical,form,p1-p4,ecn,ratified
+- Confidence: 1.0
 
-Recommendation (confidence 0.8; awaits user P4 ratification). Drafted as docs/cognitive-backbone.md.
-
-RECOMMEND P1-P4 as the canonical, machine/structure-facing notation for the cognitional form, because: (1) noetic-pi already uses p1-p4 functional roles and cognitive-disciplines is built as a 'P1-P4 cycle' - zero migration for the largest surfaces; (2) language-neutral + identifier-safe (ECN letters A/I/R/D are English-specific and 'R' collides with the recursion operator R(...)); (3) numeric order encodes the presuppositional structure and composes (P2->P3); (4) names the operation not an English word, fitting a universal 'periodic table'.
-
-PAIR with a fixed human gloss: P1 be attentive / P2 be intelligent / P3 be reasonable / P4 be responsible (use gloss in prose+prompts, code in identifiers).
-
-FOLD ECN in as OPTIONAL modality annotation only: keep its genuinely-additive operator markers ^! (assertoric/enacted) vs ^? (interrogative/sought), e.g. P3^? = judgment under reflection, P4^! = decision enacted. Retires cognitional_notation as a standalone project while preserving its expressive contribution. Lonergan verbs + AGENTS.md activity phrases become crosswalk rows (valid descriptions, not rival notations).
-
-The mapping is grounded in Lonergan Insight (the-notion-of-judgment: P2 = questions for intelligence What/Why/How-often; P3 = question for reflection 'Is it so?' answered yes/no, a personal commitment) and on_emergent_fidelity (imperatives + R(P1->P2->P3->P4->R), P4 governs recursively - which is why Telos/P4 is the governing spine).
-
-STATUS NOTE: this is a PROPOSED recommendation awaiting the user's irreducible P4 ratification - ratify P1-P4-canonical, or flip the primary surface to ECN letters / verbs; the crosswalk is unchanged either way.
+RATIFIED by the user on 2026-07-11. P1-P4 is the canonical machine/structure-facing notation for noetic-dev. Reasons: noetic-pi already uses p1-p4 functional roles and cognitive-disciplines is built as a P1-P4 cycle; it is language-neutral, identifier-safe, ordered, and composable. Pair it with the fixed human gloss P1 be attentive / P2 be intelligent / P3 be reasonable / P4 be responsible. Retain ECN's additive ^! (assertoric/enacted) and ^? (interrogative/sought) markers only as optional modality annotation, not as a rival primary notation. `docs/cognitive-backbone.md` is the canonical reference.
 <!-- governance-crud:end id=dec-20260711-0003 -->
 
 <!-- governance-crud:start id=dec-20260711-0004 -->
@@ -203,13 +177,13 @@ WHY THIN not a swallowing monorepo: preserves portability of each component (tel
 
 - Ledger: decisions
 - Status: accepted
-- Repository: /home/dgk/workspace/synthesis
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-1-architecture
 - Created: 2026-07-11
 - Updated: 2026-07-11
-- Tags: orchestration,apm,executive-plane,deterministic,telos,layering,harvest,correction
-- Confidence: 0.8
+- Tags: orchestration,apm,executive-plane,deterministic,telos,layering,harvest,refined
+- Confidence: 1.0
 
-Prompted by user correction (2026-07-11): 'the APM was not just an optional sidekick to the cog discipline and pipeline tools, it was approximating a deterministic state machine for pipelines'; and user question on 'the means of ordering multi-agent orchestration'. Grounded in k-20260711-0007. Confidence 0.8.\n\nCORRECTION TO EARLIER FRAMING: dec-0002 listed noetic-pi's mechanisms as 'organs' harvested by telos, which under-weighted the APM orchestration state machine. Refined model: the framework has TWO different kinds of governance, both necessary and distinct:\n1. TELEOLOGICAL governance = telos (P4): WHY - purpose, goalchains, evolution, reproductive clause. Steers.\n2. EXECUTIVE / ORCHESTRATION governance = the harvested APM state machine: HOW/WHEN - deterministic sequencing of multi-agent work. Controls.\n\nARCHITECTURE LAYERING (ordering lives in the executive plane):\n  telos (teleology, P4)\n  -> delegation dispatcher (the new seam; turns a delegated sub-goal into dispatched work)\n  -> DETERMINISTIC ORCHESTRATION CONTROLLER (harvested APM): decomposes into WUs/waves, enforces typed dependency-role ordering legality, sequences waves, runs QA-gate + remediation cycles, spawns/retires agents by ordinal, commits per wave, selects models via genus-router\n  -> AGENTS doing non-deterministic P1-P4 cognitive work per WU\n  -> observability plane observes the whole via the cognitional-event stream\n\nKEY POINTS:\n- The 'disciplines' organ and the 'design_intentions->design->implementation_procedure->implementation pipeline' are NOT separate from this - they RUN ON the orchestration controller. Pipeline = a specific WU/wave program; disciplines = P1-P4 loops dispatched by the same controller. So the earlier 'two organs' (disciplines, pipeline) are better seen as PROGRAMS running on ONE executive organ.\n- The orchestration controller MUST stay deterministic (structural/harness mechanics); semantic judgment stays with agents. Never collapse the two (matches cognitive-disciplines' governing principle and noetic-pi's hard-won separation).\n- Ordering means: sequenced waves + typed dependency-role legality (launch_required vs governing vs future-produced), QA-gate cycling, commit boundaries. Harvest this whole state machine; do not reinvent it (it carries ~1,100 APM tests and multiple compliance campaigns of hardening).\n\nIMPLICATION for target project (dec-0007): the orchestration controller is a major harvested COMPONENT (from noetic-pi packages/apm), referenced by the composition root, and is where the pipeline + disciplines execute. It is arguably the single most valuable harvest.\n\nOPEN QUESTION raised to user: should the orchestration controller be harvested as-is (deterministic APM state machine as a standalone MCP service) or partially re-expressed? Recommendation: harvest as-is behind an MCP facade first (it is proven); refine later.
+Prompted by the user's verified correction that APM was not an optional sidekick but a deterministic pipeline state machine (k-20260711-0007). noetic-dev has two distinct governance planes: (1) Telos provides teleological governance—why, purpose, goalchains, evolution; (2) the executive controller provides deterministic orchestration governance—how and when, including work decomposition, dependency legality, wave/graph scheduling, QA/remediation gates, spawn/retire, verification, and commit boundaries. Cognitive disciplines and development pipelines are programs running on this executive plane, not peer utilities beside it. The controller must keep deterministic harness mechanics separate from non-deterministic agent semantic judgment. The APM is the most valuable donor, but the provisional lift-as-is approach is superseded by dec-20260711-0011: abstract its invariants, contracts, conformance evidence, and failure lessons, then re-instantiate a cleaner portable controller superior to the donor implementation.
 <!-- governance-crud:end id=dec-20260711-0008 -->
 
 <!-- governance-crud:start id=dec-20260711-0009 -->
@@ -225,3 +199,31 @@ Prompted by user correction (2026-07-11): 'the APM was not just an optional side
 
 Final user decision, 2026-07-11, superseding the brief provisional `abide` name before any remote was created. The composed system/product is named `noetic-dev`. The GitHub remote repository must be `somebloke1/noetic-dev`. The existing local composition-root directory remains `/home/dgk/workspace/synthesis` to preserve session and filesystem continuity; directory name and product/repository name need not match. GitHub Project should also be titled `noetic-dev`.
 <!-- governance-crud:end id=dec-20260711-0009 -->
+
+<!-- governance-crud:start id=dec-20260711-0010 -->
+## dec-20260711-0010: ContextForge is demoted architecturally but retained operationally; do not decommission it
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-11
+- Updated: 2026-07-11
+- Tags: contextforge,transport,dependency,retain,correction
+- Confidence: 1.0
+
+User correction, 2026-07-11. ContextForge is not the noetic-dev integration backbone, but several tools currently used by this environment depend on ContextForge. Therefore: (1) retain and maintain the existing ContextForge service and tool paths; (2) treat it as an operational transport/aggregation dependency where actually used; (3) do not remove, stop, or migrate it merely because it is demoted in the target architecture; (4) any future decommission proposal requires a verified dependency inventory, replacement paths, parity tests, staged migration, and rollback. Architectural demotion means 'not the organizing principle', not 'unnecessary'.
+<!-- governance-crud:end id=dec-20260711-0010 -->
+
+<!-- governance-crud:start id=dec-20260711-0011 -->
+## dec-20260711-0011: Re-instantiate the APM lessons as a superior portable controller; do not lift the donor as-is
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-1-architecture
+- Created: 2026-07-11
+- Updated: 2026-07-11
+- Tags: controller,apm,abstraction,reinstantiation,superior-design,supersedes-part
+- Confidence: 1.0
+
+Final user decision, 2026-07-11, refining dec-20260711-0008. The noetic-pi/pi2 APM is the most valuable donor, but the target is not its current implementation behind an MCP facade. noetic-dev must first abstract the donor's deterministic invariants, state transitions, typed dependency semantics, QA/remediation loops, commit/verification boundaries, observability vocabulary, and accumulated failure lessons; then re-instantiate them in a cleaner, portable controller superior to the donor form. Preserve behavior through extracted conformance fixtures and adversarial tests, not through structural copying. Maintain the deterministic-controller / non-deterministic-agent separation. This supersedes only dec-0008's provisional 'harvest as-is first' recommendation; its elevation of executive governance remains accepted.
+<!-- governance-crud:end id=dec-20260711-0011 -->

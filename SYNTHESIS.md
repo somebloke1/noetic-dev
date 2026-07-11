@@ -1,8 +1,8 @@
-# Synthesis: The Backbone for a Unified Development + Cognitive Framework
+# noetic-dev: Architecture of the Development + Cognitive Framework
 
 **Author:** synthesis agent (goal chain `chain-1`)
 **Date:** 2026-07-11
-**Status:** Recommendation, confidence 0.85 (raised from 0.78 after verifying organ extractability — `KNOWNS.md` k-20260711-0003; still conditioned on the client-scope open question, `OPEN_QUESTIONS.md` oq-20260711-0001)
+**Status:** Accepted architecture under governed construction. P1–P4 and the noetic-dev name are user-ratified; the controller design remains subject to specification and adversarial proof.
 **Evidence base:** `KNOWNS.md` (verified findings), `DECISIONS.md` (adjudications). Source-cited throughout.
 
 ---
@@ -14,7 +14,7 @@ You have run ~8 overlapping experiments for a year and want the *correct and pra
 - **The cognitive backbone is the FORM** — the invariant you already discovered: the Standard Model of Cognition (P1 Attentiveness → P2 Intelligence → P3 Reasonableness → P4 Responsibility, with P4 governing the whole recursively). This is your "periodic table for the alchemy."
 - **The development backbone is the MATTER/SPINE** — the runnable thing that carries purpose across sessions and clients: **Telos** (portable goalchains) on the local-inference substrate.
 
-Everything else is either an *organ* attached to that spine, a *substrate* beneath it, or *deprecated scaffolding*.
+The remaining architecture differentiates an executive orchestration plane, cognitive programs, an observability/control plane, model substrate, and retained operational transport. Donor projects supply evidence and recyclable mechanisms; noetic-dev re-instantiates them through explicit portable contracts.
 
 ---
 
@@ -27,57 +27,40 @@ Grounded from source on 2026-07-11 (full detail in `KNOWNS.md` k-20260711-0001/0
 | **saeproj** | The cognitive theory (SMC) + model training to make the operational geometry explicit (GEH) | Theory ALIGNED; training intermittent; active 2026-06-28 | **FORM source** + long-horizon substrate R&D |
 | **telos** | Runtime-pure goalchains; reproductive clause; MCP tools; **Pi + OpenCode** | 47 test files; active 2026-07-08; runs this chain | **SPINE** |
 | **genus-router** | Deterministic MCP model-selection router; "designed for telos first" | **Most recent, 2026-07-10** | **Substrate: model selection** |
-| **noetic-pi** | Self-developing agent OS: APM, mesh, disciplines, pipelines, orchestration, session search | **Most mature: 2,069 tests**; but coupled to `pi-mono`; export **stuck/deferred** | **Organ DONOR (harvest, don't host)** |
+| **noetic-pi** | Self-developing agent OS: APM, mesh, disciplines, pipelines, orchestration, session search | **Most mature: 2,069 tests**; but coupled to `pi-mono`; export **stuck/deferred** | **Primary executive-plane donor: abstract lessons and re-instantiate** |
 | noetic-pi-docker | Forward product instance of noetic-pi | active 2026-07-02 | Product deployment, not the reusable core |
 | cognitive-disciplines | Codex plugin extraction of the P1–P4 cycle | active 2026-06-22 | Fold into shared discipline spec |
-| cf-controlplane / ContextForge | MCP gateway aggregation | active 2026-06-25; "messy… not fruitful" (your words) | **Demote to optional transport** |
+| cf-controlplane / ContextForge | MCP gateway aggregation and current tool transport | active 2026-06-25; cf-controlplane effort was unfruitful, while ContextForge remains operationally used | **Retain operationally; not the architectural backbone** |
 | cognitional_notation (ECN) | Formal A/I/R/D operator grammar | stale 2026-02 | Fold into one canonical notation |
 
 **The load-bearing asymmetry:** noetic-pi is the most *capable* system but the least *movable* — its own manifest records that "control-plane extraction remain deferred," the public-export effort has been stuck since April with no merged/publishable basis, and `pnpm -r build` is blocked by its coupling to `pi-mono` (which must not be modified). Meanwhile telos is *built to be portable* and genus-router is *explicitly built to serve telos*. Your revealed center of gravity has already shifted to the portable axis.
 
 ---
 
-## 2. The synthesis backbone
+## 2. The noetic-dev backbone
 
 ```
-                    ┌─────────────────────────────────────────────┐
-   FORM (grammar)   │  COGNITIVE BACKBONE — SMC / P1–P4 invariant  │
-   the "periodic    │  one canonical notation; the design +        │
-   table"           │  evaluation grammar for every layer          │
-                    └───────────────────────┬─────────────────────┘
-                                             │ conforms
-   SPINE (purpose)  ┌───────────────────────▼─────────────────────┐
-   teleological     │  TELOS — portable goalchains (P4 made        │
-   governor         │  durable). runtime-pure core + MCP + Pi/OC   │
-                    │  adapters. reproductive clause = evolution.  │
-                    │  steers a host agent (or dispatcher) that…  │
-                    └───────────────────────┬─────────────────────┘
-                                   steers ▼  │  which enacts (MCP)
-   ORGANS           ┌───────────────────────▼─────────────────────┐
-   harvested from   │  DISCIPLINE + PIPELINE CAPABILITIES          │
-   noetic-pi,       │  • cognitive cycles: phronesis / EP audit /  │
-   re-exposed as    │    differentiated-cognition  (P1–P4 loops)   │
-   MCP capabilities │  • design_intentions→design→impl_procedure→  │
-                    │    implementation, w/ QA↔remediation cycles  │
-                    │  • ordinal delegation-tree identity          │
-                    │  • session embedding + summarization         │
-                    └───────────────────────┬─────────────────────┘
-                                             │ selects/serves
-   SUBSTRATE        ┌───────────────────────▼─────────────────────┐
-   models + compute │  genus-router (model selection)  +           │
-                    │  saeproj-trained models  +                   │
-                    │  local inference: 2×3090 (llama.cpp Qwen3.6- │
-                    │  A3B+vision, ollama embed, Qwen3-ASR)        │
-                    └───────────────────────┬─────────────────────┘
-                                             │ transported by
-   TRANSPORT        ┌───────────────────────▼─────────────────────┐
-   (optional)       │  plain MCP stdio/HTTP by default;            │
-                    │  ContextForge ONLY if a real multi-host      │
-                    │  distribution need appears                   │
-                    └─────────────────────────────────────────────┘
+  FORM: canonical P1–P4 cognitional grammar (governs every plane)
+                               │
+  TELOS: teleological governance — why / purpose / evolution (P4)
+                               │ typed delegation
+                               ▼
+  EXECUTIVE CONTROLLER: deterministic how/when
+  (superior re-instantiation of APM invariants and lessons)
+                               │ ordered units, gates, authority
+                               ▼
+  COGNITIVE PROGRAMS + AGENTS: disciplines and development pipelines
+  (non-deterministic semantic work; deterministic harness boundary preserved)
+                    │ events                     ▲ models
+                    ▼                            │
+  OBSERVABILITY + CONTROL             genus-router selection
+  web/TUI renderers; tmux/browser     → LiteLLM-normalized access
+  attach adapters remain swappable    → direct local embed/ASR where measured
+                    │                            │
+                    └──── MCP/HTTP/stdio; ContextForge retained where used ────┘
 ```
 
-The five layers each map to a moment of the cognitional structure, which is why the architecture feels inevitable once named: **substrate** is the material of P1 (data/attention), **organs** are P2 (insight) and P3 (reflective QA/judgment), **spine/telos** is P4 (responsible purpose that governs the rest), and the **form** is the recursive whole `R(P1→P2→P3→P4→R)` that every layer must instantiate.
+The architecture is recursively governed by the same form: **Telos/P4** carries purpose; the **executive plane** orders and verifies the conditions of enactment; **agents and programs** perform P1–P4 cognitive work; the **model substrate** supplies material capability; and the **event/control plane** makes operations and transitions attentive, intelligible, judgeable, and steerable. Transport remains plural and operationally grounded rather than becoming the organizing principle.
 
 ### Why telos is the spine (not noetic-pi)
 - **Portable by construction** — runtime-pure `core`, thin Pi/OpenCode adapters, MCP tool surface. noetic-pi is welded to `pi-mono` and cannot currently be extracted.
@@ -87,16 +70,16 @@ The five layers each map to a moment of the cognitional structure, which is why 
 ### How the spine actually "drives" (verified — k-20260711-0004)
 A precise correction to avoid a false expectation: **Telos steers; it does not spawn.** Its drive mechanism is *continuation steering* — the pi-runtime `GoalContinuation` re-injects the host agent's loop when idle (Codex-style), and `core/continuation.ts` decides the next sub-goal and emits the continuation message. It governs *the agent it is embedded in* (this is literally what is steering this analysis). It has a first-class `delegations` schema and a `delegated-pending` status, but **no delegation dispatcher yet** — `delegate_context` is only a guard flag. So Telos-as-it-exists has no general outbound MCP-client/agent-dispatch capability.
 
-This makes the picture *more* faithful to `P4 governs recursively`, not less: **Telos is P4 (the governor); the host agent — or a small delegation dispatcher you build — is the P1–P3 enactor that calls the MCP organs.** It also names the **one genuinely-new component the synthesis needs**: the delegation/dispatch enactment seam — which is exactly your already-stated intent to "make Telos multi-agent." Everything else in this plan is harvest and integration; this is the single real build.
+This makes the picture *more* faithful to `P4 governs recursively`, not less: **Telos is P4 (the governor); the delegation seam hands accepted work to the deterministic executive plane; agents perform the P1–P3/P1–P4 cognitive work.** The dispatcher is one required new seam, alongside the cognitional-event contract and the superior controller re-instantiation. noetic-dev is therefore not merely an assembly exercise: it is a disciplined abstraction and improvement of proven donor mechanisms.
 
 ### The executive plane: a deterministic orchestration controller (k-20260711-0007, dec-20260711-0008)
 
 A correction worth making explicit, because it changes the shape: the APM is **not an optional sidekick** to the disciplines and pipeline tools. It is a near-deterministic **state machine** for multi-agent pipelines, and the disciplines and the design→implementation pipeline *run on it*. So the framework has **two distinct kinds of governance**, both necessary:
 
 - **Teleological governance — Telos (P4):** *why*. Purpose, goalchains, evolution. It steers.
-- **Executive / orchestration governance — the harvested APM state machine:** *how and when*. It deterministically sequences the multi-agent work. It controls.
+- **Executive / orchestration governance — a superior re-instantiation of APM invariants:** *how and when*. It deterministically orders multi-agent work while shedding donor coupling and incorporating failure lessons.
 
-The means of ordering multi-agent orchestration, verified from the APM source, is concretely: work decomposed into **work units grouped into numbered waves**; waves run **sequentially** (wave *N* runs → QA gate → commit boundary → advance to *N+1*); **typed `dependency_roles`** (`launch_required` vs `governing` vs `future_produced` vs `contextual`) enforce ordering *legality* so a unit can't launch against inputs that don't exist yet; **per-wave QA with remediation cycling** (0–3 passes, then escalation); and **ordinal delegation-tree identity** placing agents structurally. It's a sequenced-waves-plus-dependency-legality machine, not an arbitrary DAG scheduler — and it carries ~1,100 tests plus several hard-won "dependency-ontology" and "total-compliance" campaigns of hardening. **Harvest it; don't reinvent it.**
+The donor ordering model, verified from APM source, decomposes work into **work units grouped into numbered waves**; waves run **sequentially** (wave *N* runs → QA gate → commit boundary → advance to *N+1*); **typed `dependency_roles`** (`launch_required` vs `governing` vs `future_produced` vs `contextual`) enforce launch legality; **per-wave QA with remediation cycling** (0–3 passes, then escalation); and **ordinal delegation-tree identity** places agents structurally. It carries ~1,100 tests plus hard-won dependency-ontology and total-compliance campaigns. noetic-dev must extract these invariants and conformance cases, critically evaluate where waves are too restrictive, then express a cleaner portable scheduler/controller—not copy the donor implementation.
 
 The load-bearing discipline it embodies (and that the framework must preserve): the **controller stays deterministic** (structural/harness mechanics — sequencing, gating, commits, spawn/retire), while **semantic judgment stays with the agents** (the P1–P4 cognitive work inside each unit). Never collapse the two.
 
@@ -106,14 +89,14 @@ That gives the real execution layering:
   Telos (teleology, P4)                     — why: goals, evolution
     ↓ delegation dispatcher (the new seam)
   Deterministic orchestration controller     — how/when: waves, dependency
-    (harvested APM)                              legality, QA gates, commits,
+    (superior APM re-instantiation)              legality, QA gates, commits,
     ↓ spawn/retire by ordinal                    model selection (via genus-router)
   Agents doing P1–P4 cognitive work         — the non-deterministic work
     ↓ emit cognitional events
   Observability + control plane              — watch it all happen
 ```
 
-So what I earlier called "two organs" (disciplines, pipeline) are better understood as **programs that run on one executive organ**: the pipeline is a particular wave program; a discipline (phronesis / EP-audit / differentiated-cognition) is a P1–P4 loop the same controller dispatches. The orchestration controller is therefore the **single most valuable harvest** in the whole plan.
+So what I earlier called "two organs" (disciplines, pipeline) are better understood as **programs that run on one executive organ**: the pipeline is a particular wave program; a discipline (phronesis / EP-audit / differentiated-cognition) is a P1–P4 loop the same controller dispatches. The orchestration controller is therefore the **single most valuable donor lineage** in the plan and the greatest opportunity for principled improvement (dec-20260711-0011).
 
 ### The interface: an observability + control plane, not a terminal multiplexer (k-20260711-0005, dec-20260711-0004)
 
@@ -141,10 +124,10 @@ This adds a second small new component alongside the delegation dispatcher: a **
 
 **Client, once decoupled** — criteria become: MCP-native, extensible (can host Telos and emit the event stream), minimalistic, and headless-capable (so the plane observes it rather than *being* it). Default lean: **OpenCode** as the portable reference runtime (open, extensible, Telos already runs in it, not `pi-mono`-locked); keep **Pi** as the rich instance you harvest from; watch **Goose** as an MCP-native minimalist alternative. This is now a low-stakes, hands-on decision you can defer without blocking the architecture.
 
-### Why noetic-pi is an organ donor (not the spine)
-It is the richest proven mechanism library you have, and it should not be rewritten from scratch. But its value must be *harvested* — re-expressed as portable capabilities the telos spine can call over MCP — rather than kept trapped inside the locked, `pi-mono`-coupled instance. Do **not** stake the synthesis on finally unlocking its export; that is a blind alley by its own record.
+### Why noetic-pi is the primary donor lineage (not the spine or target)
+It is the richest proven mechanism library you have, but neither wholesale reuse nor clean-room disregard is responsible. Its invariants, contracts, tests, and failure history must be *abstracted*, then re-instantiated as portable noetic-dev capabilities rather than kept trapped inside the locked, `pi-mono`-coupled instance. Do **not** stake noetic-dev on unlocking the whole export or blindly wrapping the donor.
 
-**Harvest is verified feasible** (k-20260711-0003), not aspirational: the APM daemon that carries the disciplines and the pipeline depends only on shared types + `better-sqlite3` + `node-pty` — **no `pi-mono`, no pi SDK** — and already talks over a TCP/IPC seam. The `pi-mono` coupling that blocks noetic-pi's build lives at the web-terminal/app layer (hosting pi agents in PTYs), not in the logic worth harvesting. Re-exposing that logic (with its ~1,100 APM tests) as an MCP service is integration work behind an existing clean boundary, not a rewrite.
+**Abstraction is verified feasible** (k-20260711-0003): the APM daemon that carries the disciplines and pipeline depends only on shared types + `better-sqlite3` + `node-pty`—**no `pi-mono`, no pi SDK**—and already talks over a TCP/IPC seam. The `pi-mono` coupling lives mainly at the web-terminal/app layer. That clean boundary permits extracting contracts and conformance fixtures without inheriting the donor's deployment shape.
 
 ---
 
@@ -152,29 +135,31 @@ It is the richest proven mechanism library you have, and it should not be rewrit
 
 The ordering follows the scheme of recurrence: **keep a stable base durable, treat blocked mass as recyclable, never block the spine on an unlockable dependency.**
 
-1. **Canonicalize the notation (form first).** *Drafted* — see `docs/cognitive-backbone.md`, which reconciles the four scattered notations into one crosswalk and recommends `P1–P4` as canonical (it is already what noetic-pi's roles and the cognitive-disciplines plugin use), with the imperative gloss for prose and ECN's `^!`/`^?` markers kept only as optional modality annotation. Only your P4 ratification remains; every other project then references that one file instead of re-deriving. Low cost, high entropy reduction.
-2. **Confirm the spine, and build its one missing seam.** Adopt telos as the governance/orchestration entrypoint (its goalchain tools already work in Pi and OpenCode — that is your cross-client backbone). Then build the **delegation dispatcher**: the enactment seam that turns a `delegated-pending` sub-goal into an actual dispatched unit of work against an MCP organ. Telos already has the `delegations`/`delegation_events` schema and the guard semantics; what is missing is the dispatcher that enacts them. This is the *only* genuinely-new component in the whole synthesis (and it is your stated "make Telos multi-agent" intent), so treat it as the critical build (k-20260711-0004).
+1. **Canonicalize the notation (form first).** **Complete and user-ratified** — `docs/cognitive-backbone.md` defines `P1–P4` as canonical, the imperative gloss for prose, and ECN's `^!`/`^?` only as optional modality annotation. Components reference that single authority instead of re-deriving their own notation.
+2. **Specify the executive plane before implementing it.** Extract APM state-transition invariants, dependency semantics, QA/remediation and commit rules, observability events, failure lessons, and conformance fixtures. Design a cleaner portable controller that preserves deterministic harness mechanics while improving scheduling, recovery, contracts, and client independence (dec-20260711-0011).
 3. **Wire the substrate — access and selection at their own layers.** Make genus-router the single model-*selection* MCP for telos-driven work, and ratify **LiteLLM as the single model-*access*/normalization body** beneath it (you've already de facto done this — genus-router routes all 13 models through one `local-litellm` endpoint). Keep them distinct: LiteLLM normalizes provider access (one maintenance surface), genus-router chooses *which* model per task genus. Preserve genus-router's "LiteLLM is one endpoint, not the boundary" principle so a direct llama.cpp/ollama endpoint stays registerable — and consider keeping latency-sensitive **embeddings/ASR direct** rather than proxied, as a measured config choice (dec-20260711-0005). Register the 2×3090 endpoints and finish this.
-4. **Harvest organ #1 — the disciplines.** Extract the phronesis / EP-audit / differentiated-cognition *contracts* (their packet templates, gates, recursion rules) from noetic-pi and cognitive-disciplines into one MCP-exposed "cognitive disciplines" service the spine can invoke. This retires the standalone cognitive-disciplines plugin's need to exist separately.
-5. **Harvest organ #2 — the pipeline.** Re-express the `design_intentions→design→implementation_procedure→implementation` pipeline with QA↔remediation as a portable capability (its logic is already proven and heavily tested in noetic-pi's APM).
-6. **Substrate R&D on its own clock.** saeproj (SMC training) stays a research track that *improves the models under the substrate*; it does not gate the framework. Its payoff is models that natively perform the operations the framework already scaffolds.
-7. **Demote transport.** Default to plain MCP; keep ContextForge only if/when a real multi-host distribution need is demonstrated.
+4. **Build the Telos delegation seam.** Turn an accepted `delegated-pending` sub-goal into a typed controller invocation with authority, scope, lifecycle, and result propagation explicit. Telos steers; the executive controller enacts.
+5. **Re-instantiate cognitive programs.** Extract the contracts, curricula, packet shapes, and semantic gates for phronesis / EP-audit / differentiated-cognition and the `design_intentions→design→implementation_procedure→implementation` pipeline. Express them as versioned programs that run on the controller rather than separate ad hoc runtimes.
+6. **Define the event contract and observability/control plane.** Make every deterministic transition and cognitive phase observable through a portable P1–P4 event vocabulary before binding web/TUI renderers.
+7. **Substrate R&D on its own clock.** saeproj (SMC training) stays a research track that *improves the models under the substrate*; it does not gate the framework. Its payoff is models that natively perform the operations the framework already scaffolds.
+8. **Retain transport deliberately.** ContextForge remains an operational dependency for current tools and must not be decommissioned. It is not noetic-dev's organizing backbone; any future migration requires a verified dependency inventory, parity proof, staged cutover, and rollback (dec-20260711-0010).
 
 Each step leaves a runnable, more-integrated system; none requires the noetic-pi export to close.
 
 ---
 
-## 4. What to deprecate or fold in
+## 4. What to fold, demote, and retain
 
 - **cognitional_notation (ECN):** stale; promote its *grammar idea* into the single canonical notation, retire it as a live project.
 - **cognitive-disciplines (Codex plugin):** its content becomes the harvested MCP disciplines service; keep a Codex adapter only if Codex remains a first-class client (see open question).
-- **cf-controlplane / ContextForge:** demote to optional transport; stop treating it as an integration backbone.
-- **noetic-pi export saga:** stop trying to make the whole instance portable; harvest mechanisms instead.
+- **cf-controlplane:** stop treating this unsuccessful control-plane effort as the integration backbone.
+- **ContextForge itself:** **retain and maintain it** where current tools depend on it. Architectural demotion is not decommissioning; migration requires dependency inventory, parity tests, staged cutover, and rollback.
+- **noetic-pi export saga:** stop trying to make the whole instance portable; extract contracts, conformance evidence, and lessons for superior re-instantiation instead.
 - **noetic-pi web app:** split it — *keep and elevate* the observability + control plane (event-driven, portable); *demote* the PTY-terminal multiplexer (`terminal.ts`) to an optional attach-view. Don't preserve or discard the web app as a whole; preserve the observability, drop the terminal-as-core-abstraction (dec-20260711-0004).
 
 ---
 
-## 4b. The target project: `synthesis` as a thin composition root (dec-20260711-0007)
+## 4b. The target project: noetic-dev's thin composition root (dec-20260711-0007)
 
 A question worth making crystal clear: **where does the harvested material actually become the synthetic form?** The answer is *this* workspace — but with a promotion and a discipline.
 
@@ -191,16 +176,16 @@ A question worth making crystal clear: **where does the harvested material actua
 | Piece | Home | Origin |
 |---|---|---|
 | Delegation dispatcher | **Telos repo** | new (the spine's own capability) |
-| Cognitional-event schema (P1–P4 vocabulary) | **synthesis root** `spec/` | new connective tissue |
-| Observability + control plane | **synthesis root** (or a package it owns) | new; donor = noetic-pi endpoints/event vocab |
+| Cognitional-event schema (P1–P4 vocabulary) | **noetic-dev root** `spec/` | new connective tissue |
+| Observability + control plane | **noetic-dev root** (or a package it owns) | new; donor = noetic-pi endpoints/event vocab |
 | Disciplines MCP service | new component/package | harvested from noetic-pi `packages/apm` |
 | Pipeline MCP service | new component/package | harvested from noetic-pi `packages/apm` |
 | tmux multi-paning attach | component/adapter | harvested from `pi2` |
-| Model selection + access + local inference | **synthesis root** `config/` | genus-router + LiteLLM + 2×3090 |
+| Model selection + access + local inference | **noetic-dev root** `config/` | genus-router + LiteLLM + 2×3090 |
 
 **Proposed shape of the composition root:** `docs/` (form spec + this architecture), the governance ledgers, `spec/` (the cognitional-event schema), `config/` (endpoint registry, genus-router binding, LiteLLM, local endpoints), `compose/` (how spine + organs + planes run together), and component references.
 
-**Two practical consequences:** (a) `git init` this workspace — it isn't versioned yet, and a composition root must be; (b) the framework may want its own **name** — "synthesis" names the *act*, not the *thing* — your call. And as you did with noetic-pi vs noetic-pi-docker, keep the *basis* (this integration root) distinct from the *composed running framework* (the product).
+**Current status:** this workspace is now a git repository and the private GitHub remote is `somebloke1/noetic-dev`; the local directory remains `synthesis` only for continuity. **noetic-dev** names the system and repository (dec-20260711-0009). Keep the composition basis distinct from deployed product instances, as with noetic-pi versus noetic-pi-docker.
 
 **Why thin rather than a swallowing monorepo:** it preserves each component's portability (Telos stays Pi+OpenCode-portable; the organs stay independently testable with their donor test suites) and avoids re-creating noetic-pi's `pi-mono` entanglement in a new location. The composition root is durable; the components hanging off it stay recyclable.
 
@@ -212,9 +197,10 @@ Your own `on_emergent_fidelity` thesis says alignment begins with **self-appropr
 
 ## 6. Open questions blocking full confidence
 
-1. **Client scope** (oq-20260711-0001): which coding assistants are first-class? "Any MCP client" firmly confirms the telos spine + harvest-not-host path; "Pi only" would license using noetic-pi's mechanisms in place. **Default assumed: any MCP client.**
-2. **Notation choice:** A/I/R/D vs P1–P4 — a decision you should make, not one to leave plural.
-3. **saeproj coupling:** is trained-model substrate a near-term dependency or a long-horizon research bet? (Recommend: long-horizon; do not gate the framework on it.)
+1. **Reference client** (oq-20260711-0001): now a reversible runtime choice rather than an architecture blocker. Default evaluation candidates remain OpenCode, Pi, and Goose.
+2. **Controller scheduling generality:** where should noetic-dev retain simple waves, and where should it permit a validated DAG/condition scheduler without sacrificing legibility or deterministic recovery?
+3. **saeproj coupling:** retain as long-horizon model-substrate research; do not gate controller or composition-root progress on it.
+4. **License** (oq-20260711-0002): resolve before public release.
 
 ---
 
