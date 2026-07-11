@@ -45,12 +45,12 @@
       "category": "validation",
       "command_id": "workflow.pinning",
       "cwd": "/repo",
-      "exit_code": 1,
+      "exit_code": 0,
       "finished_at": "2026-07-11T12:22:00+00:00",
       "phase": "pre_merge",
       "registry_id": "workflow.pinning",
       "started_at": "2026-07-11T12:21:00+00:00",
-      "stderr_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     },
     {
@@ -153,12 +153,6 @@
       "policy_path": "/runner/work/policy",
       "separate": true
     },
-    "file_hashes": {
-      "scripts/governance/check_delivery_gate.py": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-      "scripts/governance/check_evidence_manifest.py": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-      "scripts/governance/run_isolated_pi.py": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-    },
     "generator_path": "scripts/governance/collect_evidence.py",
     "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "ref": "refs/heads/main",
@@ -166,71 +160,9 @@
       "artifact": {
         "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
         "artifact_id": 333,
-        "manifest_sha256": "88889ab268df2c25b9f8f1ba6d0bd16111adeca99e93ad17b044beac601eb41e",
-        "name": "governance-evidence"
+        "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
       },
-      "github": {
-        "artifact": {
-          "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
-          "id": 333,
-          "name": "governance-evidence"
-        },
-        "checkouts": {
-          "candidate_path": "/runner/work/candidate",
-          "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
-          "policy_path": "/runner/work/policy",
-          "policy_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "separate": true
-        },
-        "generator": {
-          "from_policy_checkout": true,
-          "path": "scripts/governance/collect_evidence.py"
-        },
-        "job": {
-          "conclusion": "success",
-          "id": 222,
-          "name": "delivery-gate"
-        },
-        "policy_file_hashes": {
-          "scripts/governance/check_delivery_gate.py": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-          "scripts/governance/check_evidence_manifest.py": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-          "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "scripts/governance/run_isolated_pi.py": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-        },
-        "policy_file_hashes_source": "protected_checkout",
-        "protected_ref": {
-          "protected": true,
-          "ref": "refs/heads/main",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        },
-        "pull_request": {
-          "base_ref": "main",
-          "head_ref": "issue-23-governance-correction",
-          "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
-          "number": 23
-        },
-        "repository": {
-          "full_name": "somebloke1/noetic-dev",
-          "id": 123456,
-          "name": "noetic-dev",
-          "owner": "somebloke1"
-        },
-        "run": {
-          "attempt": 1,
-          "base_branch": "main",
-          "conclusion": "success",
-          "event": "pull_request",
-          "head_branch": "issue-23-governance-correction",
-          "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
-          "id": 111
-        },
-        "workflow": {
-          "path": ".github/workflows/governance.yml",
-          "ref": "refs/heads/main",
-          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        }
-      },
-      "mode": "github_api",
+      "mode": "local",
       "verification_status": "verified"
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

@@ -1,90 +1,527 @@
 {
-  "schema_version": "1",
-  "manifest_id": "00000000-0000-0000-0000-000000000120",
-  "run_id": "00000000-0000-0000-0000-000000000002",
-  "generated_at": "2026-07-11T12:00:00+00:00",
-  "policy": {
-    "ref": "refs/heads/main",
-    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    "generator_path": "scripts/governance/collect_evidence.py",
-    "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "trusted_runner": false
-  },
-  "repo": {
-    "remote": "https://github.com/somebloke1/noetic-dev.git",
-    "base_branch": "main",
-    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
-    "candidate_branch": "issue-pre-candidate-approval",
-    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
-    "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-  },
-  "issue": {
-    "numbers": [88],
-    "labels": ["type:implementation", "status:in_progress"],
-    "canonical_status": "status:in_progress"
-  },
-  "pull_request": {
-    "number": 88,
-    "title": "fix: pre-candidate approval test",
-    "author": "somebloke1",
-    "draft_state": false,
-    "base": "main",
-    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
-    "linked_issues": [88]
-  },
-  "passes": {
-    "implementation_pass_ids": ["impl-precand-001"],
-    "remediation_pass_ids": [],
-    "parent_pass_id": "",
-    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
-    "ordering": ["impl-precand-001"]
-  },
-  "qa": {
-    "qa_for_pass_id": "impl-precand-001",
-    "model_profile": "qa_primary",
-    "verdict": "pass",
-    "report_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "event_log_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    "isolation_proof": {
-      "source_mount_read_only": true,
-      "scratch_separate_from_source": true,
-      "host_home_mounted": false,
-      "ssh_config_mounted": false,
-      "gh_config_mounted": false,
-      "ambient_credentials_available": false,
-      "context_files_disabled": true,
-      "extensions_disabled": true,
-      "skills_disabled": true,
-      "themes_disabled": true,
-      "candidate_tree_before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-      "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-      "write_tools_observed": false
+  "approvals": [
+    {
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "independent": true,
+      "reviewer": "human-reviewer",
+      "state": "APPROVED",
+      "timestamp": "2026-07-11T11:00:00+00:00"
+    }
+  ],
+  "audit": {
+    "existing_work_freeze": {
+      "audit_artifact": "governance/audits/20260711-existing-work-freeze/summary.md",
+      "audit_completed": true,
+      "audit_required": true,
+      "blocks_publication": false,
+      "known_open_pr_count": 10,
+      "status": "complete"
     }
   },
   "commands": [
     {
-      "command_id": "cmd-validate-001",
+      "argv": [
+        "python3",
+        "scripts/validate_repo.py"
+      ],
       "category": "validation",
-      "argv": ["python3", "scripts/validate_repo.py"],
+      "command_id": "repo.validate",
       "cwd": "/repo",
       "exit_code": 0,
-      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
-    }
-  ],
-  "validations": ["cmd-validate-001"],
-  "tests": [],
-  "state_transitions": [],
-  "approvals": [
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "pre_merge",
+      "registry_id": "repo.validate",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
     {
-      "reviewer": "independent-reviewer",
-      "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "timestamp": "2026-07-11T10:00:00+00:00",
-      "independent": true
+      "argv": [
+        "python3",
+        "scripts/governance/check_delivery_gate.py",
+        "--check-pinning-only",
+        ".github/workflows/governance.yml"
+      ],
+      "category": "validation",
+      "command_id": "workflow.pinning",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "pre_merge",
+      "registry_id": "workflow.pinning",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "category": "test",
+      "command_id": "tests.all",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "pre_merge",
+      "registry_id": "tests.all",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/validate_repo.py"
+      ],
+      "category": "validation",
+      "command_id": "postmerge.validate",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "post_merge",
+      "registry_id": "postmerge.validate",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "category": "test",
+      "command_id": "postmerge.tests",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "post_merge",
+      "registry_id": "postmerge.tests",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     }
   ],
+  "generated_at": "2026-07-11T12:30:00+00:00",
+  "issue": {
+    "canonical_status": "status:in_progress",
+    "labels": [
+      "type:implementation",
+      "status:in_progress"
+    ],
+    "numbers": [
+      23
+    ]
+  },
+  "manifest_id": "00000000-0000-0000-0000-000000000001",
+  "passes": {
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "implementation_pass_ids": [
+      "impl-g1-0001"
+    ],
+    "ordering": [
+      "impl-g1-0001"
+    ],
+    "parent_pass_id": "",
+    "pass_records": [
+      {
+        "agent_id": "agent-implementer-g1",
+        "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+        "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "finished_at": "2026-07-11T12:00:00+00:00",
+        "model_profile": "implementer_candidate",
+        "pass_id": "impl-g1-0001",
+        "role": "implementer",
+        "role_run_id": "impl-role-g1-0001",
+        "started_at": "2026-07-11T11:45:00+00:00"
+      }
+    ],
+    "remediation_pass_ids": []
+  },
+  "policy": {
+    "checkout": {
+      "candidate_path": "/runner/work/candidate",
+      "policy_path": "/runner/work/policy",
+      "separate": true
+    },
+    "file_hashes": {
+      "scripts/governance/check_delivery_gate.py": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "scripts/governance/check_evidence_manifest.py": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "scripts/governance/run_isolated_pi.py": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "generator_path": "scripts/governance/collect_evidence.py",
+    "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "ref": "refs/heads/main",
+    "runner_attestation": {
+      "artifact": {
+        "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "artifact_id": 333,
+        "manifest_sha256": "10b722967589b5ab6654a2cc386a81f797d67b8770602cddd9b6d1057cc98b0e",
+        "name": "governance-evidence"
+      },
+      "github": {
+        "artifact": {
+          "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "id": 333,
+          "name": "governance-evidence"
+        },
+        "checkouts": {
+          "candidate_path": "/runner/work/candidate",
+          "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "policy_path": "/runner/work/policy",
+          "policy_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "separate": true
+        },
+        "generator": {
+          "from_policy_checkout": true,
+          "path": "scripts/governance/collect_evidence.py"
+        },
+        "job": {
+          "conclusion": "success",
+          "id": 222,
+          "name": "delivery-gate"
+        },
+        "policy_file_hashes": {
+          "scripts/governance/check_delivery_gate.py": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "scripts/governance/check_evidence_manifest.py": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "scripts/governance/run_isolated_pi.py": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "policy_file_hashes_source": "protected_checkout",
+        "protected_ref": {
+          "protected": true,
+          "ref": "refs/heads/main",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pull_request": {
+          "base_ref": "main",
+          "head_ref": "issue-23-governance-correction",
+          "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "number": 23
+        },
+        "repository": {
+          "full_name": "somebloke1/noetic-dev",
+          "id": 123456,
+          "name": "noetic-dev",
+          "owner": "somebloke1"
+        },
+        "run": {
+          "attempt": 1,
+          "base_branch": "main",
+          "conclusion": "success",
+          "event": "pull_request",
+          "head_branch": "issue-23-governance-correction",
+          "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "id": 111
+        },
+        "workflow": {
+          "path": ".github/workflows/governance.yml",
+          "ref": "refs/heads/main",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "mode": "github_api",
+      "verification_status": "verified"
+    },
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "trusted_runner": true,
+    "workflow": {
+      "path": ".github/workflows/governance.yml",
+      "pinned": true,
+      "ref": "refs/heads/main",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
   "publication": {
-    "merge_result_sha": "",
-    "publication_sha": ""
-  }
+    "merge_result_sha": "ffffffffffffffffffffffffffffffffffffffff",
+    "post_merge_tests": [
+      "postmerge.tests"
+    ],
+    "post_merge_validations": [
+      "postmerge.validate"
+    ],
+    "publication_sha": "ffffffffffffffffffffffffffffffffffffffff"
+  },
+  "pull_request": {
+    "author": "somebloke1",
+    "base": "main",
+    "draft_state": false,
+    "head_ref": "issue-23-governance-correction",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "is_stacked": false,
+    "linked_issues": [
+      23
+    ],
+    "number": 23,
+    "title": "fix: implement governance correction"
+  },
+  "qa": {
+    "records": [
+      {
+        "agent_id": "agent-qa-g1",
+        "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+        "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "event_log_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+        "isolation_proof": {
+          "ambient_credentials_available": false,
+          "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "candidate_tree_before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "context_files_disabled": true,
+          "extensions_disabled": true,
+          "gh_config_mounted": false,
+          "host_home_mounted": false,
+          "scratch_separate_from_source": true,
+          "skills_disabled": true,
+          "source_mount_read_only": true,
+          "ssh_config_mounted": false,
+          "themes_disabled": true,
+          "write_tools_observed": false
+        },
+        "model_profile": "qa_primary",
+        "protected_execution_record": {
+          "actual_invocation": {
+            "argv": [
+              "pi",
+              "--mode",
+              "json",
+              "@",
+              "/tmp/prompt.md"
+            ],
+            "argv_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+            "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+            "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "environment_name_allowlist": [
+              "HOME",
+              "PI_TELEMETRY",
+              "PI_SKIP_VERSION_CHECK"
+            ],
+            "environment_values_recorded": false,
+            "exit_code": 0,
+            "finished_at": "2026-07-11T12:20:00+00:00",
+            "isolation": {
+              "ambient_credentials_available": false,
+              "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "candidate_tree_before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "context_files_disabled": true,
+              "extensions_disabled": true,
+              "gh_config_mounted": false,
+              "host_home_mounted": false,
+              "scratch_separate_from_source": true,
+              "skills_disabled": true,
+              "source_mount_read_only": true,
+              "ssh_config_mounted": false,
+              "themes_disabled": true,
+              "write_tools_observed": false
+            },
+            "pi_version": "pi 1.0.0",
+            "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
+            "profile_id": "qa_primary",
+            "qa_event_log_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "resolved_model": "openai-codex/gpt-5.6-terra",
+            "started_at": "2026-07-11T12:07:00+00:00",
+            "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "tools": [
+              "read",
+              "grep",
+              "find",
+              "ls"
+            ]
+          },
+          "evidence_class": "authoritative",
+          "generated_by": {
+            "dispatcher_path": "scripts/governance/run_isolated_pi.py",
+            "dispatcher_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+            "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "qa_for_pass_id": "impl-g1-0001",
+          "record_id": "00000000-0000-0000-0000-0000000000aa",
+          "record_only": false,
+          "role": "qa",
+          "role_run_id": "qa-role-g1-0001",
+          "run_id": "00000000-0000-0000-0000-000000000002",
+          "schema_version": "1"
+        },
+        "protected_execution_record_sha256": "e1535965b1233c96c35390fb53ff2683352246e902804a0ce151c28eadfe2cb0",
+        "protected_probe_record": {
+          "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+          "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "context_files_disabled": true,
+          "environment_name_allowlist": [
+            "HOME",
+            "PI_TELEMETRY",
+            "PI_SKIP_VERSION_CHECK"
+          ],
+          "exit_code": 0,
+          "expected_response": "READY abc123def4567890",
+          "extensions_disabled": true,
+          "finished_at": "2026-07-11T12:06:00+00:00",
+          "nonce": "abc123def4567890",
+          "observed_response": "READY abc123def4567890",
+          "pi_version": "pi 1.0.0",
+          "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "probe_argv": [
+            "pi",
+            "--mode",
+            "json",
+            "@",
+            "/tmp/prompt.md"
+          ],
+          "probe_argv_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "probe_event_log_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "probe_id": "probe-valid-0001",
+          "probe_prompt_hash": "6666666666666666666666666666666666666666666666666666666666666666",
+          "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
+          "profile_id": "qa_primary",
+          "resolved_model": "openai-codex/gpt-5.6-terra",
+          "role_run_id": "qa-role-g1-0001",
+          "run_id": "00000000-0000-0000-0000-000000000002",
+          "schema_version": "1",
+          "skills_disabled": true,
+          "started_at": "2026-07-11T12:05:00+00:00",
+          "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "stdout_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+          "themes_disabled": true,
+          "tools": [
+            "read",
+            "grep",
+            "find",
+            "ls"
+          ]
+        },
+        "protected_probe_record_sha256": "c88dec6bb429967d26c2ae5280a99e21c9ec6760d0cddb127966e8147746c0f8",
+        "qa_for_pass_id": "impl-g1-0001",
+        "qa_run_id": "qa-g1-0001",
+        "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+        "role_run_id": "qa-role-g1-0001",
+        "verdict": "pass"
+      }
+    ]
+  },
+  "repo": {
+    "base_branch": "main",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "candidate_branch": "issue-23-governance-correction",
+    "candidate_pinned_at": "2026-07-11T12:00:00+00:00",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "remote": "https://github.com/somebloke1/noetic-dev.git",
+    "repository": "somebloke1/noetic-dev",
+    "repository_id": 123456
+  },
+  "run_id": "00000000-0000-0000-0000-000000000002",
+  "schema_version": "1",
+  "state_transitions": [
+    {
+      "authority": "human",
+      "from": "AUDITED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "ISSUE_ACCEPTED"
+    },
+    {
+      "authority": "orchestrator",
+      "from": "ISSUE_ACCEPTED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "PLAN_REQUESTED"
+    },
+    {
+      "authority": "orchestrator",
+      "from": "PLAN_REQUESTED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "PLAN_READY"
+    },
+    {
+      "authority": "human",
+      "from": "PLAN_READY",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "IMPLEMENTING"
+    },
+    {
+      "authority": "implementer",
+      "from": "IMPLEMENTING",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "CANDIDATE_PINNED"
+    },
+    {
+      "authority": "validator",
+      "from": "CANDIDATE_PINNED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "VALIDATING"
+    },
+    {
+      "authority": "validator",
+      "from": "VALIDATING",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "CANDIDATE_PINNED"
+    },
+    {
+      "authority": "qa",
+      "from": "CANDIDATE_PINNED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "QA_RUNNING"
+    },
+    {
+      "authority": "qa",
+      "from": "QA_RUNNING",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "QA_PASSED"
+    },
+    {
+      "authority": "qa",
+      "from": "QA_PASSED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "HUMAN_REVIEW_PENDING"
+    },
+    {
+      "authority": "human",
+      "from": "HUMAN_REVIEW_PENDING",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "READY_TO_MERGE"
+    },
+    {
+      "authority": "publisher",
+      "from": "READY_TO_MERGE",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "MERGED_TO_MAIN"
+    },
+    {
+      "authority": "validator",
+      "from": "MERGED_TO_MAIN",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "POST_MERGE_VALIDATING"
+    },
+    {
+      "authority": "validator",
+      "from": "POST_MERGE_VALIDATING",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "PUBLICATION_READY"
+    },
+    {
+      "authority": "publisher",
+      "from": "PUBLICATION_READY",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "PUBLISHED"
+    }
+  ],
+  "tests": [
+    "tests.all"
+  ],
+  "validations": [
+    "repo.validate",
+    "workflow.pinning"
+  ]
 }

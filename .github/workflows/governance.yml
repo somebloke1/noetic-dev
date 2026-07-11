@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: governance-${{ github.ref }}
@@ -14,61 +15,107 @@ concurrency:
 
 jobs:
   validate:
+    name: Repository validation (candidate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - name: Checkout candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate repository contracts
         run: python3 scripts/validate_repo.py
-      - name: Run governance tests
-        run: python3 -m unittest discover -s tests -v
-      - name: Verify clean patch formatting
-        run: git diff --check HEAD^
-        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
 
-  delivery-gate:
+  tests:
+    name: Genuine tests (candidate)
     runs-on: ubuntu-latest
     needs: [validate]
-    if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - name: Checkout candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
-      - name: Check workflow action pinning
-        run: python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows/governance.yml
-      - name: Generate evidence manifest
+      - name: Run genuine governance tests
+        run: python3 -m unittest discover -s tests -v
+
+  delivery-gate:
+    name: Delivery gate (protected policy, fail-closed)
+    runs-on: ubuntu-latest
+    needs: [validate, tests]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout protected base policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: policy
+          persist-credentials: false
+      - name: Checkout immutable candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Check candidate workflow action pinning with protected policy code
+        run: python3 policy/scripts/governance/check_delivery_gate.py --check-pinning-only candidate/.github/workflows/governance.yml
+      - name: Generate advisory evidence manifest with protected policy code
+        env:
+          RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          python3 scripts/governance/collect_evidence.py \
-            --run-id "ci-$(date +%s)" \
+          mkdir -p "policy/.governance/runs/${RUN_ID}"
+          python3 policy/scripts/governance/collect_evidence.py \
+            --repo-root "${GITHUB_WORKSPACE}/candidate" \
+            --policy-root "${GITHUB_WORKSPACE}/policy" \
+            --run-id "${RUN_ID}" \
             --candidate-sha "${{ github.event.pull_request.head.sha }}" \
+            --base-sha "${{ github.event.pull_request.base.sha }}" \
             --candidate-branch "${{ github.event.pull_request.head.ref }}" \
             --policy-ref "refs/heads/main" \
+            --policy-sha "${{ github.event.pull_request.base.sha }}" \
+            --repository "${{ github.repository }}" \
+            --repository-id "${{ github.event.repository.id }}" \
             --issue-numbers "${{ github.event.pull_request.number }}" \
+            --issue-labels "status:triage" \
+            --issue-status "status:triage" \
             --pr-number "${{ github.event.pull_request.number }}" \
             --pr-title "${{ github.event.pull_request.title }}" \
             --pr-author "${{ github.event.pull_request.user.login }}" \
-            --output ".governance/runs/ci-$(date +%s)/manifest.json" || echo "Manifest generation advisory only"
-      - name: Run delivery gate
-        run: |
-          MANIFEST=$(ls .governance/runs/*/manifest.json 2>/dev/null | head -1)
-          if [ -n "$MANIFEST" ]; then
-            python3 scripts/governance/check_delivery_gate.py "$MANIFEST" || echo "Delivery gate blocked (advisory mode)"
-          else
-            echo "No manifest found — delivery gate blocked (advisory mode)"
-          fi
+            --output "policy/.governance/runs/${RUN_ID}/manifest.json"
+      - name: Validate manifest with protected policy code
+        env:
+          RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 policy/scripts/governance/check_evidence_manifest.py "policy/.governance/runs/${RUN_ID}/manifest.json"
+      - name: Run fail-closed delivery gate with protected policy code
+        env:
+          RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python3 policy/scripts/governance/check_delivery_gate.py "policy/.governance/runs/${RUN_ID}/manifest.json"
 
-  post-merge:
+  post-merge-validation:
+    name: Post-merge validation
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - name: Checkout main SHA
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
-      - name: Post-merge validation
+      - name: Post-merge repository validation
         run: python3 scripts/validate_repo.py
-      - name: Post-merge tests
+      - name: Post-merge genuine tests
         run: python3 -m unittest discover -s tests -v

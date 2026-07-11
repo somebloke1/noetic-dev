@@ -45,12 +45,12 @@
       "category": "validation",
       "command_id": "workflow.pinning",
       "cwd": "/repo",
-      "exit_code": 1,
+      "exit_code": 0,
       "finished_at": "2026-07-11T12:22:00+00:00",
       "phase": "pre_merge",
       "registry_id": "workflow.pinning",
       "started_at": "2026-07-11T12:21:00+00:00",
-      "stderr_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     },
     {
@@ -166,7 +166,7 @@
       "artifact": {
         "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
         "artifact_id": 333,
-        "manifest_sha256": "88889ab268df2c25b9f8f1ba6d0bd16111adeca99e93ad17b044beac601eb41e",
+        "manifest_sha256": "ef957533daa06dbb3060a64c753f7c8d4eeae4ef4ce02dd4f39ed8764c0bd3e3",
         "name": "governance-evidence"
       },
       "github": {
@@ -341,7 +341,7 @@
               "ls"
             ]
           },
-          "evidence_class": "authoritative",
+          "evidence_class": "non-evidence",
           "generated_by": {
             "dispatcher_path": "scripts/governance/run_isolated_pi.py",
             "dispatcher_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
@@ -349,13 +349,13 @@
           },
           "qa_for_pass_id": "impl-g1-0001",
           "record_id": "00000000-0000-0000-0000-0000000000aa",
-          "record_only": false,
+          "record_only": true,
           "role": "qa",
           "role_run_id": "qa-role-g1-0001",
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "1"
         },
-        "protected_execution_record_sha256": "e1535965b1233c96c35390fb53ff2683352246e902804a0ce151c28eadfe2cb0",
+        "protected_execution_record_sha256": "582897c2210136c49599c4217c7c3a0a414738552b730ef7bfbb6840325b6840",
         "protected_probe_record": {
           "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
           "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",

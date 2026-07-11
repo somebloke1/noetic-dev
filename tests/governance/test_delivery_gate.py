@@ -1,152 +1,129 @@
-"""Tests for the delivery gate."""
+"""Tests for the fail-closed delivery gate."""
+
+from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
-# Import delivery gate module
-import sys
-# Add scripts/governance/ to path for importing
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
+
 from check_delivery_gate import check_delivery, check_pinning
 
-
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_fixture(name: str):
-    path = FIXTURES_DIR / name
-    with open(path) as f:
+    with open(FIXTURES_DIR / name, encoding="utf-8") as f:
         return json.load(f)
 
 
-class TestDeliveryGatePinning(unittest.TestCase):
-    """Tests for workflow action pinning check."""
+class TestDeliveryGatePositive(unittest.TestCase):
+    def test_valid_authoritative_publication_passes(self):
+        manifest = load_fixture("valid_authoritative_manifest.json")
+        passed, errors, gate_type = check_delivery(manifest)
+        self.assertTrue(passed, f"expected authoritative fixture to pass, got {gate_type}: {errors}")
+        self.assertEqual(gate_type, "publication")
 
-    def setUp(self):
-        self.workflow_path = str(
-            Path(__file__).resolve().parents[2] / ".github" / "workflows" / "governance.yml"
-        )
+    def test_valid_advisory_is_blocked_before_merge(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        passed, errors, gate_type = check_delivery(manifest)
+        self.assertFalse(passed)
+        self.assertEqual(gate_type, "merge")
+        self.assertIn("authoritative trusted runner", " ".join(errors).lower())
 
 
 class TestDeliveryGateNegativeFixtures(unittest.TestCase):
-    """Test that negative fixtures are correctly rejected."""
+    CASES = {
+        "negative_validator_as_test_manifest.json": "validate_repo.py cannot be reported as a test",
+        "negative_self_qa_manifest.json": "self-QA rejected",
+        "negative_missing_qa_manifest.json": "cardinality mismatch",
+        "negative_stale_qa_manifest.json": "candidate_sha",
+        "negative_wrong_sha_manifest.json": "candidate SHA must equal PR head SHA",
+        "negative_wip_pr_manifest.json": "WIP prefix",
+        "negative_draft_pr_manifest.json": "PR is a draft",
+        "negative_stacked_pr_manifest.json": "stacked PR",
+        "negative_blocked_issue_manifest.json": "prevents closure",
+        "negative_author_approval_manifest.json": "PR author",
+        "negative_pre_candidate_approval_manifest.json": "predates candidate",
+        "negative_mutable_action_manifest.json": "workflow.pinning",
+        "negative_branch_publication_manifest.json": "branch-name publication forbidden",
+        "negative_unsupported_model_manifest.json": "unsupported model profile",
+        "negative_two_qas_one_pass_manifest.json": "multiple QA",
+        "negative_forged_trusted_manifest.json": "GitHub API or artifact attestation",
+        "negative_no_external_provenance_manifest.json": "GitHub provenance payload missing",
+        "negative_artifact_digest_mismatch_manifest.json": "artifact digest mismatch",
+        "negative_policy_file_hash_mismatch_manifest.json": "policy file hash mismatch",
+        "negative_missing_probe_manifest.json": "missing protected READY probe",
+        "negative_probe_model_mismatch_manifest.json": "resolved_model",
+        "negative_qa_base_mismatch_manifest.json": "base_sha",
+        "negative_execution_candidate_mismatch_manifest.json": "candidate_sha",
+        "negative_execution_record_hash_mismatch_manifest.json": "execution record hash mismatch",
+        "negative_probe_event_reused_manifest.json": "probe event stream reused",
+        "negative_qa_record_writable_manifest.json": "writable by QA/model",
+        "negative_record_only_qa_manifest.json": "record-only",
+    }
 
-    def _assert_rejected(self, fixture_name: str):
-        manifest = load_fixture(fixture_name)
-        passed, errors, gate_type = check_delivery(manifest)
-        self.assertFalse(passed, f"Expected {fixture_name} to be rejected, got errors: {errors}")
-
-    def test_self_qa_rejected(self):
-        self._assert_rejected("negative_self_qa_manifest.json")
-
-    def test_missing_qa_rejected(self):
-        self._assert_rejected("negative_missing_qa_manifest.json")
-
-    def test_stale_qa_rejected(self):
-        self._assert_rejected("negative_stale_qa_manifest.json")
-
-    def test_wrong_sha_rejected(self):
-        self._assert_rejected("negative_wrong_sha_manifest.json")
-
-    def test_validator_as_test_rejected(self):
-        """Validator-as-test should be rejected at the manifest schema level, not delivery gate."""
-        manifest = load_fixture("negative_validator_as_test_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        # The delivery gate checks exit codes and command failures
-        # The "validator as test" concern is partly a manifest validity concern
-        # and partly caught by the delivery gate
-        self.assertFalse(passed)
-
-    def test_wip_pr_rejected(self):
-        self._assert_rejected("negative_wip_pr_manifest.json")
-
-    def test_stacked_pr_rejected(self):
-        self._assert_rejected("negative_stacked_pr_manifest.json")
-
-    def test_blocked_issue_rejected(self):
-        self._assert_rejected("negative_blocked_issue_manifest.json")
-
-    def test_author_approval_rejected(self):
-        self._assert_rejected("negative_author_approval_manifest.json")
-
-    def test_pre_candidate_approval_rejected(self):
-        self._assert_rejected("negative_pre_candidate_approval_manifest.json")
-
-    def test_mutable_action_manifest(self):
-        manifest = load_fixture("negative_mutable_action_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        self.assertFalse(passed, f"Expected rejection, got: {errors}")
-
-    def test_branch_publication_rejected(self):
-        manifest = load_fixture("negative_branch_publication_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        self.assertFalse(passed, f"Expected rejection, got: {errors}")
-
-    def test_unsupported_model_rejected(self):
-        manifest = load_fixture("negative_unsupported_model_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        self.assertFalse(passed, f"Expected rejection, got: {errors}")
-
-    def test_two_qas_one_pass(self):
-        manifest = load_fixture("negative_two_qas_one_pass_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        self.assertFalse(passed, f"Expected rejection, got: {errors}")
+    def test_negative_fixtures_fail_for_named_reason(self):
+        for fixture_name, expected in self.CASES.items():
+            with self.subTest(fixture=fixture_name):
+                manifest = load_fixture(fixture_name)
+                passed, errors, gate_type = check_delivery(manifest)
+                self.assertFalse(passed, f"{fixture_name} unexpectedly passed")
+                joined = "\n".join(errors)
+                self.assertIn(expected, joined, f"{fixture_name} errors were: {errors}")
 
 
-class TestDeliveryGatePositive(unittest.TestCase):
-    """Test that valid advisory fixture passes merge-readiness but blocks publication."""
+class TestDeliveryGateCLI(unittest.TestCase):
+    def test_cli_rejects_forged_trusted_manifest_during_manifest_validation(self):
+        fixture = FIXTURES_DIR / "negative_forged_trusted_manifest.json"
+        result = subprocess.run(
+            [sys.executable, "scripts/governance/check_delivery_gate.py", str(fixture)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("digest mismatch", result.stderr)
 
-    def test_valid_advisory_passes_merge(self):
-        """In bootstrap advisory mode, merge-readiness should pass but publication blocks.
-
-        The valid advisory manifest has trusted_runner: false and no independent approval,
-        so publication will be blocked. This is expected in bootstrap mode.
-        """
-        manifest = load_fixture("valid_advisory_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        # The delivery gate should fail at publication level due to no trusted runner
-        # But merge-readiness should be fine
-        self.assertFalse(passed, "Expected publication to be blocked in advisory mode")
-        self.assertIn("trusted runner", " ".join(errors).lower(),
-                      f"Expected trusted runner error, got: {errors}")
-
-
-class TestDeliveryGateForgedTrusted(unittest.TestCase):
-    """Test that forged trusted_runner is rejected."""
-
-    def test_forged_trusted_rejected(self):
-        manifest = load_fixture("negative_forged_trusted_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        # This manifest has trusted_runner=true but with a mismatched manifest_sha256
-        # The delivery gate should reject it because there's no independent approval
-        self.assertFalse(passed, f"Expected forged trusted to be rejected, got: {errors}")
+    def test_cli_passes_authoritative_fixture(self):
+        fixture = FIXTURES_DIR / "valid_authoritative_manifest.json"
+        result = subprocess.run(
+            [sys.executable, "scripts/governance/check_delivery_gate.py", str(fixture)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Delivery gate PASSED", result.stderr)
 
 
-class TestDeliveryGateApprovalChecks(unittest.TestCase):
-    """Test specific approval scenarios."""
+class TestDeliveryGatePinning(unittest.TestCase):
+    def test_governance_workflow_is_pinned(self):
+        workflow_path = REPO_ROOT / ".github" / "workflows" / "governance.yml"
+        errors = check_pinning(str(workflow_path))
+        self.assertEqual(errors, [])
 
-    def test_author_approval_is_not_independent(self):
-        manifest = load_fixture("negative_author_approval_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        self.assertFalse(passed)
-
-    def test_pre_candidate_approval_rejected(self):
-        """Approval before the candidate SHA should still pass delivery gate which only
-        checks that a human approval exists (SHA matching is a separate CI-level check).
-
-        In advisory mode, publication will be blocked anyway due to no trusted runner.
-        """
-        manifest = load_fixture("negative_pre_candidate_approval_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest)
-        # The delivery gate checks for approval existence; the pre-candidate approval
-        # check is a separate CI-level responsibility. In advisory mode, publication
-        # is blocked by the trusted runner check, not the approval check.
-        self.assertFalse(passed, "Expected publication to be blocked in advisory mode")
-        self.assertIn("trusted runner", " ".join(errors).lower(),
-                      f"Expected trusted runner error, got: {errors}")
+    def test_mutable_tag_rejected(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as handle:
+            handle.write("""
+jobs:
+  test:
+    steps:
+      - uses: actions/checkout@v4
+""")
+            path = Path(handle.name)
+        try:
+            errors = check_pinning(str(path))
+            self.assertTrue(any("unpinned" in error for error in errors), errors)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

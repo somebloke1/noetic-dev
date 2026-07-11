@@ -13,45 +13,52 @@ Relevant knowns/decisions:
 
 ## P2 — Design/insight
 
-## Validation
+## Validation (not tests)
 
-- [ ] `python3 scripts/validate_repo.py` — repository invariant validation
-- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows/governance.yml` — workflow action pinning validation
+- [ ] `python3 scripts/validate_repo.py` — repository invariant validation only
+- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows/governance.yml` — workflow action pinning validation only
+- [ ] `python3 scripts/governance/check_evidence_manifest.py <manifest>` — manifest validation only
 
-## Tests
+## Genuine tests
 
-- [ ] `python3 -m unittest discover -s tests -v` — genuine positive and adversarial tests pass
-- [ ] Governance tests:
-  - [ ] `tests/governance/test_command_registry.py`
-  - [ ] `tests/governance/test_delivery_gate.py`
-  - [ ] `tests/governance/test_evidence_manifest.py`
-  - [ ] `tests/governance/test_state_machine.py`
-  - [ ] `tests/governance/test_workflow_pinning.py`
+- [ ] `python3 -m unittest discover -s tests -v` — positive and adversarial behavior tests pass
+- [ ] Negative fixtures reject the intended defect, not an incidental missing prerequisite
 
-## QA
+## Implementation/QA pairing
 
-- [ ] One adversarial QA pass completed against pinned candidate SHA
-- [ ] QA used read-only source mount, no context files, no write tools
-- [ ] QA verdict: pass
-- [ ] QA gated by protected execution record
-
-## Candidate SHA
-
-- Candidate commit SHA: <!-- full 40-char SHA -->
-- Candidate tree OID: <!-- full 40-char tree OID -->
+- [ ] Candidate SHA pinned: <!-- full 40-char SHA -->
+- [ ] Candidate tree OID pinned: <!-- full 40-char tree OID -->
+- [ ] Each implementation/remediation pass has exactly one distinct QA record
+- [ ] QA ran against the immutable candidate SHA/base/tree
+- [ ] QA protected READY probe record hash: <!-- sha256 -->
+- [ ] QA protected execution record hash: <!-- sha256 -->
+- [ ] QA used read-only source mount, isolated scratch/home, no host credentials, no write tools
 
 ## Human approval
 
 - [ ] Independent human reviewer approved after candidate SHA
-- [ ] Approver is not PR author and not implementation identity
+- [ ] Approver is not PR author, implementer, remediator, QA, publisher, or orchestrator identity
+
+## Merge readiness
+
+- [ ] Required validations passed separately from tests
+- [ ] Required tests passed separately from validations
+- [ ] Protected policy checkout was separate from candidate checkout
+- [ ] Trusted runner provenance verified through GitHub API or artifact attestation
+- [ ] Delivery gate passed from protected policy code
+
+## Publication (post-merge only)
+
+- [ ] Merge result SHA recorded (full 40-char main SHA)
+- [ ] Post-merge validation and tests passed against main SHA
+- [ ] Publication SHA recorded (full 40-char SHA; branch names forbidden)
+- [ ] Existing-work freeze/audit is complete, or publication remains blocked
+- [ ] Independent human approval and trusted-runner provenance remain valid
 
 ## P4 — Responsible enactment
 
-- [ ] Merge-readiness gate passed
-- [ ] Post-merge publication SHA recorded (after merge to main)
-- [ ] Branch-name publication forbidden — only full SHA publication
-- [ ] Rollback path stated
+- [ ] No PR/publish/merge claim is made from advisory local evidence alone
 - [ ] No secrets or local state included
-- [ ] Documentation/governance updated where required
+- [ ] Rollback path stated
 
 ## Risks and rollback

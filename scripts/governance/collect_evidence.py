@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-"""Collect evidence for a governance run and produce an evidence manifest.
+"""Collect local governance evidence into an advisory manifest.
 
-This script is part of the protected policy code. It generates the evidence
-manifest at .governance/runs/<run_id>/manifest.json.
-
-Usage:
-    collect_evidence.py --run-id <uuid> --candidate-sha <sha> --base-sha <sha> [options]
-
-Output:
-    Writes manifest to stdout or to --output <path>.
-    The manifest is advisory unless trusted_runner is true and provenance is
-    externally verified by the delivery gate.
+This script may be run from protected policy code against a separate candidate
+checkout. Unless externally verified GitHub provenance and protected QA records
+are supplied later, the resulting manifest remains advisory and the delivery
+gate blocks merge/publication readiness.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 import uuid
@@ -25,127 +18,179 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Add sibling directory to path for hash_tree imports
 SCRIPT_DIR = Path(__file__).resolve().parent
+POLICY_ROOT = SCRIPT_DIR.parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
-from hash_tree import (  # noqa: E402
-    canonical_json_sha256,
-    manifest_digest_excluding_own,
-    sha256_file,
-    sha256_text,
-)
+
+from hash_tree import manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
+
+ZERO_SHA256 = "0" * 64
 
 
-def get_git_sha(ref: str) -> str:
-    """Get full 40-character SHA for a git ref."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", ref],
-        capture_output=True, text=True, cwd=REPO_ROOT
-    )
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _run_git(repo_root: Path, *args: str) -> str:
+    result = subprocess.run(["git", *args], capture_output=True, text=True, cwd=repo_root)
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to resolve git ref {ref}: {result.stderr.strip()}")
+        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
     return result.stdout.strip()
 
 
-def get_git_tree_oid(sha: str) -> str:
-    """Get tree OID for a commit SHA."""
-    result = subprocess.run(
-        ["git", "rev-parse", f"{sha}^{{tree}}"],
-        capture_output=True, text=True, cwd=REPO_ROOT
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get tree OID for {sha}: {result.stderr.strip()}")
-    return result.stdout.strip()
+def get_git_sha(repo_root: Path, ref: str) -> str:
+    return _run_git(repo_root, "rev-parse", "--verify", ref)
 
 
-def run_command(argv: List[str], cwd: Optional[str] = None) -> Dict[str, Any]:
-    """Run a command and capture output with hashes."""
-    start = datetime.now(timezone.utc)
-    result = subprocess.run(
-        argv,
-        capture_output=True, text=True,
-        cwd=cwd or REPO_ROOT
-    )
-    finish = datetime.now(timezone.utc)
+def get_git_tree_oid(repo_root: Path, sha: str) -> str:
+    return _run_git(repo_root, "rev-parse", f"{sha}^{{tree}}")
+
+
+def get_remote(repo_root: Path) -> str:
+    result = subprocess.run(["git", "remote", "get-url", "origin"], capture_output=True, text=True, cwd=repo_root)
+    return result.stdout.strip() if result.returncode == 0 else "unknown"
+
+
+def run_command(registry_id: str, argv: List[str], repo_root: Path, category: str, phase: str = "pre_merge") -> Dict[str, Any]:
+    start = _now()
+    result = subprocess.run(argv, capture_output=True, text=True, cwd=repo_root)
+    finish = _now()
     return {
-        "command_id": f"cmd-{uuid.uuid4().hex[:12]}",
-        "category": "validation",
+        "command_id": registry_id,
+        "registry_id": registry_id,
+        "category": category,
+        "phase": phase,
         "argv": argv,
-        "cwd": cwd or str(REPO_ROOT),
+        "cwd": str(repo_root),
         "exit_code": result.returncode,
-        "stdout_sha256": sha256_text(result.stdout) if result.stdout else sha256_text(""),
-        "stderr_sha256": sha256_text(result.stderr) if result.stderr else sha256_text(""),
-        "started_at": start.isoformat(),
-        "finished_at": finish.isoformat(),
+        "stdout_sha256": sha256_text(result.stdout),
+        "stderr_sha256": sha256_text(result.stderr),
+        "started_at": start,
+        "finished_at": finish,
     }
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+def load_registry(policy_root: Path) -> Dict[str, Any]:
+    with open(policy_root / "governance/command-registry.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _cmd_argv(registry: Dict[str, Any], registry_id: str) -> List[str]:
+    return list(registry["commands"][registry_id]["argv"])
 
 
 def collect(args: argparse.Namespace) -> Dict[str, Any]:
-    """Collect evidence and produce a manifest dict."""
-    run_id = args.run_id
+    candidate_root = Path(args.repo_root).resolve()
+    policy_root = Path(args.policy_root).resolve()
+    registry = load_registry(policy_root)
+
     candidate_sha = args.candidate_sha
-    base_sha = args.base_sha or get_git_sha("main")
+    base_sha = args.base_sha or get_git_sha(candidate_root, "main")
+    candidate_tree = get_git_tree_oid(candidate_root, candidate_sha)
+    policy_sha = args.policy_sha or get_git_sha(policy_root, "HEAD")
+    policy_ref = args.policy_ref or "refs/heads/main"
+    generator_path = Path(__file__).resolve()
+    generator_sha256 = sha256_file(generator_path)
 
-    # Resolve repo info
-    remote_result = subprocess.run(
-        ["git", "remote", "get-url", "origin"],
-        capture_output=True, text=True, cwd=REPO_ROOT
-    )
-    remote = remote_result.stdout.strip() if remote_result.returncode == 0 else "unknown"
+    commands: List[Dict[str, Any]] = []
+    for registry_id in ["repo.validate", "workflow.pinning", "tests.all"]:
+        spec = registry["commands"][registry_id]
+        argv = _cmd_argv(registry, registry_id)
+        commands.append(run_command(registry_id, argv, candidate_root, spec["category"], spec.get("phase", "pre_merge")))
 
-    candidate_branch = args.candidate_branch or ""
-    try:
-        branch_result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=REPO_ROOT
-        )
-        if branch_result.returncode == 0:
-            candidate_branch = candidate_branch or branch_result.stdout.strip()
-    except Exception:
-        pass
+    branch = args.candidate_branch
+    if not branch:
+        try:
+            branch = _run_git(candidate_root, "rev-parse", "--abbrev-ref", "HEAD")
+        except Exception:
+            branch = ""
 
-    candidate_tree = get_git_tree_oid(candidate_sha)
+    pass_records = []
+    for pass_id in (args.impl_pass_ids or []) + (args.remediation_pass_ids or []):
+        role = "remediator" if pass_id in (args.remediation_pass_ids or []) else "implementer"
+        pass_records.append({
+            "pass_id": pass_id,
+            "role": role,
+            "role_run_id": f"{pass_id}-run",
+            "agent_id": args.implementation_agent_id or "unknown-implementation-agent",
+            "model_profile": args.implementation_model_profile or "implementer_candidate",
+            "candidate_sha": candidate_sha,
+            "base_sha": base_sha,
+            "candidate_tree_oid": candidate_tree,
+            "started_at": args.candidate_pinned_at or _now(),
+            "finished_at": args.candidate_pinned_at or _now(),
+        })
 
-    # Calculate policy script hashes
-    self_path = Path(__file__).resolve()
-    generator_sha256 = sha256_file(self_path)
+    qa_records: List[Dict[str, Any]] = []
+    if args.qa_for_pass_id:
+        qa_records.append({
+            "qa_run_id": args.qa_run_id or f"qa-{uuid.uuid4().hex[:12]}",
+            "role_run_id": args.qa_role_run_id or f"qa-role-{uuid.uuid4().hex[:12]}",
+            "agent_id": args.qa_agent_id or "unknown-qa-agent",
+            "qa_for_pass_id": args.qa_for_pass_id,
+            "model_profile": args.qa_model_profile or "qa_primary",
+            "verdict": args.qa_verdict or "fail",
+            "report_hash": args.qa_report_hash or ZERO_SHA256,
+            "event_log_hash": args.qa_event_log_hash or ZERO_SHA256,
+            "base_sha": base_sha,
+            "candidate_sha": candidate_sha,
+            "candidate_tree_oid": candidate_tree,
+            "protected_execution_record_sha256": args.qa_execution_record_sha256 or "",
+            "protected_probe_record_sha256": args.qa_probe_record_sha256 or "",
+            "protected_execution_record_path": args.qa_execution_record_path or "",
+            "protected_probe_record_path": args.qa_probe_record_path or "",
+            "isolation_proof": {
+                "source_mount_read_only": args.iso_source_ro,
+                "scratch_separate_from_source": args.iso_scratch_separate,
+                "host_home_mounted": args.iso_home_mounted,
+                "ssh_config_mounted": args.iso_ssh_mounted,
+                "gh_config_mounted": args.iso_gh_mounted,
+                "ambient_credentials_available": args.iso_creds,
+                "context_files_disabled": args.iso_no_context,
+                "extensions_disabled": args.iso_no_extensions,
+                "skills_disabled": args.iso_no_skills,
+                "themes_disabled": args.iso_no_themes,
+                "candidate_tree_before": args.iso_tree_before or candidate_tree,
+                "candidate_tree_after": args.iso_tree_after or candidate_tree,
+                "write_tools_observed": args.iso_write_tools,
+            },
+        })
 
-    # Commands
-    commands_list = []
-
-    # Run validate_repo.py
-    validate_cmd = run_command(["python3", "scripts/validate_repo.py"])
-    validate_cmd["category"] = "validation"
-    commands_list.append(validate_cmd)
-
-    # Run tests
-    test_cmd = run_command(["python3", "-m", "unittest", "discover", "-s", "tests"])
-    test_cmd["category"] = "test"
-    commands_list.append(test_cmd)
-
+    candidate_pinned_at = args.candidate_pinned_at or _now()
     manifest: Dict[str, Any] = {
         "schema_version": "1",
         "manifest_id": str(uuid.uuid4()),
-        "run_id": run_id,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": args.run_id,
+        "generated_at": _now(),
         "policy": {
-            "ref": args.policy_ref or "refs/heads/main",
-            "sha": args.policy_sha or get_git_sha("HEAD"),
-            "generator_path": str(self_path.relative_to(REPO_ROOT)),
+            "ref": policy_ref,
+            "sha": policy_sha,
+            "generator_path": str(generator_path.relative_to(policy_root)) if generator_path.is_relative_to(policy_root) else "scripts/governance/collect_evidence.py",
             "generator_sha256": generator_sha256,
-            "trusted_runner": args.trusted_runner or False,
+            "trusted_runner": False,
+            "workflow": {
+                "path": ".github/workflows/governance.yml",
+                "ref": policy_ref,
+                "sha": policy_sha,
+                "pinned": True,
+            },
+            "checkout": {
+                "policy_path": str(policy_root),
+                "candidate_path": str(candidate_root),
+                "separate": policy_root != candidate_root,
+            },
         },
         "repo": {
-            "remote": remote,
+            "remote": get_remote(candidate_root),
+            "repository": args.repository,
+            "repository_id": args.repository_id,
             "base_branch": "main",
             "base_sha": base_sha,
-            "candidate_branch": candidate_branch,
+            "candidate_branch": branch,
             "candidate_sha": candidate_sha,
             "candidate_tree_oid": candidate_tree,
+            "candidate_pinned_at": candidate_pinned_at,
         },
         "issue": {
             "numbers": args.issue_numbers or [],
@@ -156,10 +201,12 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             "number": args.pr_number or 0,
             "title": args.pr_title or "",
             "author": args.pr_author or "",
-            "draft_state": args.pr_draft or False,
+            "draft_state": args.pr_draft,
             "base": "main",
+            "head_ref": branch,
             "head_sha": candidate_sha,
             "linked_issues": args.issue_numbers or [],
+            "is_stacked": False,
         },
         "passes": {
             "implementation_pass_ids": args.impl_pass_ids or [],
@@ -167,146 +214,128 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             "parent_pass_id": args.parent_pass_id or "",
             "candidate_sha": candidate_sha,
             "ordering": (args.impl_pass_ids or []) + (args.remediation_pass_ids or []),
+            "pass_records": pass_records,
         },
-        "qa": {
-            "qa_for_pass_id": args.qa_for_pass_id or "",
-            "model_profile": args.qa_model_profile or "",
-            "verdict": args.qa_verdict or "",
-            "report_hash": args.qa_report_hash or "",
-            "event_log_hash": args.qa_event_log_hash or "",
-            "isolation_proof": {
-                "source_mount_read_only": args.iso_source_ro or True,
-                "scratch_separate_from_source": args.iso_scratch_separate or True,
-                "host_home_mounted": args.iso_home_mounted or False,
-                "ssh_config_mounted": args.iso_ssh_mounted or False,
-                "gh_config_mounted": args.iso_gh_mounted or False,
-                "ambient_credentials_available": args.iso_creds or False,
-                "context_files_disabled": args.iso_no_context or True,
-                "extensions_disabled": args.iso_no_extensions or True,
-                "skills_disabled": args.iso_no_skills or True,
-                "themes_disabled": args.iso_no_themes or True,
-                "candidate_tree_before": args.iso_tree_before or candidate_tree,
-                "candidate_tree_after": args.iso_tree_after or candidate_tree,
-                "write_tools_observed": args.iso_write_tools or False,
-            },
-        },
-        "commands": commands_list,
-        "validations": [c["command_id"] for c in commands_list if c["category"] == "validation"],
-        "tests": [c["command_id"] for c in commands_list if c["category"] == "test"],
+        "qa": {"records": qa_records},
+        "commands": commands,
+        "validations": [c["command_id"] for c in commands if c["category"] == "validation" and c.get("phase") == "pre_merge"],
+        "tests": [c["command_id"] for c in commands if c["category"] == "test" and c.get("phase") == "pre_merge"],
         "state_transitions": [
-            {
-                "from": args.state_from or "",
-                "to": args.state_to or "",
-                "authority": args.state_authority or "",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
+            {"from": "AUDITED", "to": "ISSUE_ACCEPTED", "authority": "human", "timestamp": candidate_pinned_at},
+            {"from": "ISSUE_ACCEPTED", "to": "PLAN_REQUESTED", "authority": "orchestrator", "timestamp": candidate_pinned_at},
+            {"from": "PLAN_REQUESTED", "to": "PLAN_READY", "authority": "orchestrator", "timestamp": candidate_pinned_at},
+            {"from": "PLAN_READY", "to": "IMPLEMENTING", "authority": "human", "timestamp": candidate_pinned_at},
+            {"from": "IMPLEMENTING", "to": "CANDIDATE_PINNED", "authority": "implementer", "timestamp": candidate_pinned_at},
         ],
         "approvals": [
             {
-                "reviewer": args.approver or "",
+                "reviewer": args.approver,
                 "commit_sha": candidate_sha,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "independent": args.approver_independent or False,
+                "timestamp": args.approval_timestamp or _now(),
+                "independent": args.approver_independent,
+                "state": "APPROVED",
             }
         ] if args.approver else [],
         "publication": {
             "merge_result_sha": args.merge_sha or "",
             "publication_sha": args.publication_sha or "",
+            "post_merge_validations": [],
+            "post_merge_tests": [],
+        },
+        "audit": {
+            "existing_work_freeze": {
+                "status": "active",
+                "known_open_pr_count": 10,
+                "blocks_publication": True,
+                "audit_required": True,
+                "audit_completed": False,
+            }
         },
     }
 
-    # Add the manifest digest excluding its own field
+    manifest.setdefault("policy", {}).setdefault("runner_attestation", {}).setdefault("artifact", {})
     digest = manifest_digest_excluding_own(manifest)
-    manifest.setdefault("policy", {})
-    manifest["policy"].setdefault("runner_attestation", {})
-    manifest["policy"]["runner_attestation"]["artifact"] = {
-        "manifest_sha256": digest
-    }
-
+    manifest["policy"]["runner_attestation"]["artifact"]["manifest_sha256"] = digest
     return manifest
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect governance evidence manifest")
-    parser.add_argument("--run-id", required=True, help="Governance run UUID")
+    parser.add_argument("--run-id", required=True, help="Governance run UUID/string")
     parser.add_argument("--candidate-sha", required=True, help="Full 40-char candidate SHA")
-    parser.add_argument("--base-sha", help="Full 40-char base SHA (default: main)")
-    parser.add_argument("--candidate-branch", help="Candidate branch name")
+    parser.add_argument("--base-sha", help="Full 40-char base SHA (default: candidate main)")
+    parser.add_argument("--candidate-branch", default="")
+    parser.add_argument("--repo-root", default=str(POLICY_ROOT), help="Candidate checkout root")
+    parser.add_argument("--policy-root", default=str(POLICY_ROOT), help="Protected policy checkout root")
     parser.add_argument("--output", help="Output file path (default: stdout)")
 
-    # Policy options
-    parser.add_argument("--policy-ref", help="Policy ref (default: refs/heads/main)")
-    parser.add_argument("--policy-sha", help="Policy SHA (default: HEAD)")
-    parser.add_argument("--trusted-runner", action="store_true", help="Mark as trusted runner")
+    parser.add_argument("--policy-ref", default="refs/heads/main")
+    parser.add_argument("--policy-sha", default="")
+    parser.add_argument("--repository", default="somebloke1/noetic-dev")
+    parser.add_argument("--repository-id", type=int, default=0)
 
-    # Issue options
     parser.add_argument("--issue-numbers", nargs="*", type=int, default=[])
     parser.add_argument("--issue-labels", nargs="*", default=[])
     parser.add_argument("--issue-status", default="status:triage")
-
-    # PR options
     parser.add_argument("--pr-number", type=int, default=0)
     parser.add_argument("--pr-title", default="")
     parser.add_argument("--pr-author", default="")
     parser.add_argument("--pr-draft", action="store_true")
 
-    # Pass options
     parser.add_argument("--impl-pass-ids", nargs="*", default=[])
     parser.add_argument("--remediation-pass-ids", nargs="*", default=[])
     parser.add_argument("--parent-pass-id", default="")
+    parser.add_argument("--implementation-agent-id", default="")
+    parser.add_argument("--implementation-model-profile", default="implementer_candidate")
+    parser.add_argument("--candidate-pinned-at", default="")
 
-    # QA options
     parser.add_argument("--qa-for-pass-id", default="")
-    parser.add_argument("--qa-model-profile", default="")
+    parser.add_argument("--qa-run-id", default="")
+    parser.add_argument("--qa-role-run-id", default="")
+    parser.add_argument("--qa-agent-id", default="")
+    parser.add_argument("--qa-model-profile", default="qa_primary")
     parser.add_argument("--qa-verdict", default="", choices=["", "pass", "fail"])
     parser.add_argument("--qa-report-hash", default="")
     parser.add_argument("--qa-event-log-hash", default="")
+    parser.add_argument("--qa-execution-record-sha256", default="")
+    parser.add_argument("--qa-probe-record-sha256", default="")
+    parser.add_argument("--qa-execution-record-path", default="")
+    parser.add_argument("--qa-probe-record-path", default="")
 
-    # Isolation proof options
-    parser.add_argument("--iso-source-ro", action="store_true", default=True)
-    parser.add_argument("--iso-scratch-separate", action="store_true", default=True)
+    parser.add_argument("--iso-source-ro", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--iso-scratch-separate", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--iso-home-mounted", action="store_true")
     parser.add_argument("--iso-ssh-mounted", action="store_true")
     parser.add_argument("--iso-gh-mounted", action="store_true")
     parser.add_argument("--iso-creds", action="store_true")
-    parser.add_argument("--iso-no-context", action="store_true", default=True)
-    parser.add_argument("--iso-no-extensions", action="store_true", default=True)
-    parser.add_argument("--iso-no-skills", action="store_true", default=True)
-    parser.add_argument("--iso-no-themes", action="store_true", default=True)
+    parser.add_argument("--iso-no-context", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--iso-no-extensions", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--iso-no-skills", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--iso-no-themes", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--iso-tree-before", default="")
     parser.add_argument("--iso-tree-after", default="")
     parser.add_argument("--iso-write-tools", action="store_true")
 
-    # State options
-    parser.add_argument("--state-from", default="")
-    parser.add_argument("--state-to", default="")
-    parser.add_argument("--state-authority", default="")
-
-    # Approval options
     parser.add_argument("--approver", default="")
     parser.add_argument("--approver-independent", action="store_true")
-
-    # Publication options
+    parser.add_argument("--approval-timestamp", default="")
     parser.add_argument("--merge-sha", default="")
     parser.add_argument("--publication-sha", default="")
 
     args = parser.parse_args()
-
     try:
         manifest = collect(args)
         output = json.dumps(manifest, indent=2, sort_keys=True)
-
         if args.output:
-            output_path = Path(args.output)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(output)
-            print(f"Manifest written to {output_path}", file=sys.stderr)
+            path = Path(args.output)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(output, encoding="utf-8")
+            print(f"Manifest written to {path}", file=sys.stderr)
         else:
             print(output)
-
         return 0
-    except Exception as e:
-        print(f"Error collecting evidence: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"Error collecting evidence: {exc}", file=sys.stderr)
         return 1
 
 

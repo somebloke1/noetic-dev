@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Model Profiles Schema",
+  "type": "object",
+  "required": ["schema_version", "profiles", "disallowed_until_reprobed", "requirements"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "description": {"type": "string"},
+    "profiles": {"type": "object"},
+    "disallowed_until_reprobed": {"type": "array", "items": {"type": "object"}},
+    "requirements": {"type": "object"}
+  }
+}

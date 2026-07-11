@@ -1,0 +1,12 @@
+{
+  "$schema": "../schemas/existing-work-freeze.schema.json",
+  "schema_version": "1",
+  "status": "active",
+  "reason": "Bootstrap governance correction: ten pre-existing PRs/branches must be audited before publication or new PR opening is claimed.",
+  "known_open_pr_count": 10,
+  "blocks_publication": true,
+  "blocks_new_pr_opening_claims": true,
+  "audit_required": true,
+  "audit_completed": false,
+  "publication_gate": "blocked"
+}

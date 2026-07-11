@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -26,9 +27,18 @@ REQUIRED = [
     "governance/command-registry.json",
     "governance/issue-status.json",
     "governance/schemas/evidence-manifest.schema.json",
+    "governance/schemas/command-registry.schema.json",
+    "governance/schemas/issue-status.schema.json",
+    "governance/schemas/model-profiles.schema.json",
+    "governance/schemas/state-machine.schema.json",
+    "governance/schemas/qa-execution-record.schema.json",
+    "governance/schemas/qa-probe-record.schema.json",
+    "governance/schemas/existing-work-freeze.schema.json",
     "governance/audits/README.md",
+    "governance/audits/existing-work-freeze.json",
     "scripts/governance/__init__.py",
     "scripts/governance/hash_tree.py",
+    "scripts/governance/json_schema.py",
     "scripts/governance/collect_evidence.py",
     "scripts/governance/check_evidence_manifest.py",
     "scripts/governance/check_delivery_gate.py",
@@ -40,6 +50,7 @@ REQUIRED = [
     "tests/governance/test_evidence_manifest.py",
     "tests/governance/test_state_machine.py",
     "tests/governance/test_workflow_pinning.py",
+    "tests/governance/test_run_isolated_pi.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
@@ -88,6 +99,20 @@ def main() -> int:
     for anchor, count in anchor_counts.items():
         if count != 2:
             fail(f"governance anchor {anchor!r} occurs {count} times; expected start+end", failures)
+
+    for json_path in sorted((ROOT / "governance").rglob("*.json")):
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            fail(f"{json_path.relative_to(ROOT)}: invalid JSON: {exc}", failures)
+            continue
+        schema_ref = data.get("$schema") if isinstance(data, dict) else None
+        if schema_ref and schema_ref.startswith(("./", "../")):
+            schema_path = (json_path.parent / schema_ref).resolve()
+            if ROOT not in schema_path.parents and schema_path != ROOT:
+                fail(f"{json_path.relative_to(ROOT)}: schema reference escapes repository: {schema_ref}", failures)
+            elif not schema_path.exists():
+                fail(f"{json_path.relative_to(ROOT)}: missing referenced schema: {schema_ref}", failures)
 
     if failures:
         print("Repository validation failed:", file=sys.stderr)

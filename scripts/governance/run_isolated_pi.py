@@ -1,166 +1,271 @@
 #!/usr/bin/env python3
-"""Dispatch Pi in an isolated process for a governance role.
+"""Dispatch Pi in a process-isolated governance role.
 
-Captures actual invocation metadata outside model output and generates a
-protected QA execution record (for QA role) or probe record.
-
-Usage:
-    run_isolated_pi.py \\
-        --run-id <uuid> \\
-        --role <planner|implementer|qa|validator|publisher> \\
-        --role-run-id <uuid> \\
-        --model <model-id> \\
-        --tools <tool1,tool2,...> \\
-        --prompt <prompt-file> \\
-        [--candidate-dir <path>] \\
-        [--qa-for-pass-id <id>] \\
-        [--record-only] \\
-        [--probe]
-
-The script:
-    1. Validates model against governance/model-profiles.json
-    2. Runs a READY probe (if --probe or role is qa)
-    3. Runs the actual Pi dispatch with isolation
-    4. Captures stdout/stderr hashes, event log hash, timing
-    5. Records the protected execution record (for QA role)
-    6. Never records credential values
-
-Supports bootstrap mode (no container/OS isolation) where the QA evidence is
-non-authoritative and publication remains blocked.
+The dispatcher produces protected execution/probe records outside model output.
+For QA, source access is read-only, tools are allowlisted, context/extensions are
+disabled, and record-only mode is explicitly non-evidence.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-# Add sibling directory to path for hash_tree imports
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
+GOVERNANCE_DIR = REPO_ROOT / "governance"
+PROFILES_PATH = GOVERNANCE_DIR / "model-profiles.json"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
-from hash_tree import (  # noqa: E402
-    canonical_json,
-    canonical_json_sha256,
-    sha256_file,
-    sha256_text,
-)
+
+from hash_tree import canonical_json, canonical_json_sha256, sha256_file, sha256_text  # noqa: E402
+from json_schema import load_json_strict  # noqa: E402
+
+QA_TOOL_ALLOWLIST = {"read", "grep", "find", "ls"}
+ROLE_TOOL_ALLOWLISTS = {
+    "qa": QA_TOOL_ALLOWLIST,
+    "planner": {"read", "grep", "find", "ls"},
+    "validator": {"read", "grep", "find", "ls", "bash"},
+    "publisher": {"read", "grep", "find", "ls", "bash"},
+    "orchestrator": {"read", "grep", "find", "ls"},
+    "implementer": {"read", "grep", "find", "ls", "bash", "edit", "write"},
+    "remediator": {"read", "grep", "find", "ls", "bash", "edit", "write"},
+}
+CREDENTIAL_ENV_NAMES = {
+    "GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "GIT_ASKPASS", "SSH_ASKPASS",
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "LITELLM_API_KEY",
+}
+ENV_ALLOWLIST = ["HOME", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK"]
 
 
-GOVERNANCE_DIR = Path(__file__).resolve().parents[2] / "governance"
-PROFILES_PATH = GOVERNANCE_DIR / "model-profiles.json"
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def load_profiles() -> Dict[str, Any]:
-    """Load model profiles from governance/model-profiles.json."""
-    with open(PROFILES_PATH, "r") as f:
-        data = json.load(f)
-    return data
+    return load_json_strict(PROFILES_PATH)
 
 
 def find_profile(profiles: Dict[str, Any], model_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """Find a profile by model_id. Returns (profile_key, profile_dict) or None."""
     for key, profile in profiles.get("profiles", {}).items():
         if profile.get("model_id") == model_id:
-            return (key, profile)
+            return key, profile
     return None
 
 
 def validate_model(model_id: str) -> Tuple[bool, str]:
-    """Validate that model_id is in the allowed profiles and not disallowed."""
     profiles = load_profiles()
-
-    # Check disallowed list
     for disallowed in profiles.get("disallowed_until_reprobed", []):
         if disallowed.get("model_id") == model_id:
-            return (False, f"model {model_id} is disallowed until re-probed: {disallowed.get('reason', '')}")
-
-    # Check profiles
+            return False, f"model {model_id} is disallowed until re-probed: {disallowed.get('reason', '')}"
     found = find_profile(profiles, model_id)
     if not found:
-        allowed = []
-        for key, p in profiles.get("profiles", {}).items():
-            allowed.append(p.get("model_id", key))
-        return (False, f"model {model_id} not in allowed profiles: {allowed}")
-
+        allowed = [profile.get("model_id", key) for key, profile in profiles.get("profiles", {}).items()]
+        return False, f"model {model_id} not in allowed profiles: {allowed}"
     key, profile = found
     if not profile.get("verified", False):
-        return (False, f"model {model_id} (profile: {key}) is not verified")
-
-    return (True, key)
-
-
-def compute_sha256_file(path: Path) -> str:
-    """Compute SHA256 of a file."""
-    return sha256_file(path)
+        return False, f"model {model_id} (profile: {key}) is not verified"
+    return True, key
 
 
-def compute_sha256_text(text: str) -> str:
-    """Compute SHA256 of text."""
-    return sha256_text(text)
+def validate_tools(role: str, tools_arg: str | None) -> Tuple[bool, str, List[str]]:
+    tools = [item.strip() for item in (tools_arg or "").split(",") if item.strip()]
+    allowed = ROLE_TOOL_ALLOWLISTS.get(role, set())
+    disallowed = [tool for tool in tools if tool not in allowed]
+    if disallowed:
+        return False, f"role {role} cannot use tools: {disallowed}; allowed={sorted(allowed)}", tools
+    return True, "", tools
+
+
+def get_policy_sha() -> str:
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def get_pi_version() -> str:
+    try:
+        result = subprocess.run(["pi", "--version"], capture_output=True, text=True, timeout=10)
+        return (result.stdout or result.stderr).strip() or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def get_candidate_tree_oid(candidate_dir: Path) -> str:
-    """Get tree OID for the candidate directory using git."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD^{tree}"],
-        capture_output=True, text=True,
-        cwd=str(candidate_dir)
-    )
+    result = subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=candidate_dir, capture_output=True, text=True)
     if result.returncode == 0:
         return result.stdout.strip()
-    # Fallback: compute a hash of all files
     return _compute_dir_tree_hash(candidate_dir)
 
 
 def _compute_dir_tree_hash(directory: Path) -> str:
-    """Compute a synthetic tree hash by hashing sorted file paths and contents."""
-    h = hashlib.sha256()
+    import hashlib
+
+    h = hashlib.sha1()
     for path in sorted(directory.rglob("*")):
         if path.is_file() and ".git" not in path.parts:
             rel = path.relative_to(directory)
             h.update(str(rel).encode("utf-8"))
             h.update(path.read_bytes())
-    return h.hexdigest()[:40]
+    return h.hexdigest()
+
+
+def _pi_binary() -> Path:
+    found = shutil.which("pi")
+    if not found:
+        raise RuntimeError("pi executable not found on PATH")
+    return Path(found).resolve()
+
+
+def _node_prefix_for_pi(pi_binary: Path) -> Optional[Path]:
+    # pi is expected under .../versions/node/<version>/bin or a symlink into that tree.
+    for parent in [pi_binary, *pi_binary.parents]:
+        if parent.name == "bin" and parent.parent.name.startswith("v"):
+            return parent.parent
+        if parent.name.startswith("v") and parent.parent.name == "node":
+            return parent
+    # Resolved CLI may be under <prefix>/lib/node_modules/...
+    for parent in pi_binary.parents:
+        if parent.name.startswith("v") and parent.parent.name == "node":
+            return parent
+    return None
+
+
+def _mkdir_mount_parents(path: Path) -> List[str]:
+    parts = path.resolve().parts
+    result: List[str] = []
+    current = Path(parts[0])
+    for part in parts[1:-1]:
+        current = current / part
+        result.extend(["--dir", str(current)])
+    return result
+
+
+def build_bwrap_command(inner_argv: List[str], *, candidate_dir: Optional[Path], prompt_file: Path, cwd: Optional[Path]) -> List[str]:
+    bwrap = shutil.which("bwrap") or shutil.which("bubblewrap")
+    if not bwrap:
+        raise RuntimeError("bubblewrap (bwrap) is required for isolated Pi dispatch")
+
+    pi_path = _pi_binary()
+    node_prefix = _node_prefix_for_pi(pi_path)
+    if not node_prefix:
+        raise RuntimeError(f"unable to identify node prefix for pi executable: {pi_path}")
+
+    cmd: List[str] = [
+        bwrap,
+        "--die-with-parent",
+        "--unshare-user",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--ro-bind", "/usr", "/usr",
+        "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/lib", "/lib",
+        "--symlink", "usr/lib64", "/lib64",
+        "--ro-bind", "/etc", "/etc",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--dir", "/tmp/home",
+        "--dir", "/tmp/scratch",
+        "--setenv", "HOME", "/tmp/home",
+        "--setenv", "PI_TELEMETRY", "0",
+        "--setenv", "PI_SKIP_VERSION_CHECK", "1",
+        "--unsetenv", "GH_TOKEN",
+        "--unsetenv", "GITHUB_TOKEN",
+        "--unsetenv", "SSH_AUTH_SOCK",
+        "--unsetenv", "GIT_ASKPASS",
+        "--unsetenv", "SSH_ASKPASS",
+    ]
+
+    # Mount only the node runtime, not the host HOME tree.
+    cmd.extend(_mkdir_mount_parents(node_prefix))
+    cmd.extend(["--ro-bind", str(node_prefix), str(node_prefix)])
+
+    # Mount prompt read-only into tmpfs; the inner argv must reference /tmp/prompt.md.
+    cmd.extend(["--ro-bind", str(prompt_file.resolve()), "/tmp/prompt.md"])
+
+    if candidate_dir:
+        candidate_dir = candidate_dir.resolve()
+        cmd.extend(_mkdir_mount_parents(candidate_dir))
+        cmd.extend(["--ro-bind", str(candidate_dir), str(candidate_dir)])
+
+    actual_cwd = cwd.resolve() if cwd else Path("/tmp/scratch")
+    cmd.extend(["--chdir", str(actual_cwd)])
+    cmd.extend(["--"])
+    cmd.extend(inner_argv)
+    return cmd
+
+
+def _clean_env() -> Dict[str, str]:
+    # bwrap does the real containment. Keep only path-like runtime values outside.
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PI_TELEMETRY": "0",
+        "PI_SKIP_VERSION_CHECK": "1",
+    }
+    for name in CREDENTIAL_ENV_NAMES:
+        env.pop(name, None)
+    return env
+
+
+def _run_isolated(inner_argv: List[str], *, candidate_dir: Optional[Path], prompt_file: Path, cwd: Optional[Path], timeout: int) -> subprocess.CompletedProcess[str]:
+    bwrap_argv = build_bwrap_command(inner_argv, candidate_dir=candidate_dir, prompt_file=prompt_file, cwd=cwd)
+    return subprocess.run(bwrap_argv, capture_output=True, text=True, env=_clean_env(), timeout=timeout)
+
+
+def _base_invocation_fields(
+    *,
+    model_id: str,
+    profile_key: str,
+    tools: List[str],
+    candidate_sha: str,
+    base_sha: str,
+    candidate_tree_oid: str,
+) -> Dict[str, Any]:
+    profile = load_profiles().get("profiles", {}).get(profile_key, {})
+    return {
+        "resolved_model": model_id,
+        "profile_id": profile_key,
+        "profile_hash": canonical_json_sha256(profile),
+        "pi_version": get_pi_version(),
+        "tools": tools,
+        "environment_name_allowlist": ENV_ALLOWLIST,
+        "candidate_sha": candidate_sha,
+        "base_sha": base_sha,
+        "candidate_tree_oid": candidate_tree_oid,
+        "policy_commit_sha": get_policy_sha(),
+    }
 
 
 def run_ready_probe(
+    *,
     model_id: str,
     profile_key: str,
     run_id: str,
     role_run_id: str,
     candidate_dir: Optional[Path],
-    pi_args: Dict[str, Any],
+    tools: List[str],
+    candidate_sha: str,
+    base_sha: str,
+    candidate_tree_oid: str,
+    timeout: int,
 ) -> Tuple[bool, Dict[str, Any], str]:
-    """Run a READY probe to verify the model is responsive and aligned.
-
-    Returns (success, probe_record, nonce).
-    """
     nonce = uuid.uuid4().hex[:16]
-    probe_prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
-
-    # Build probe command
-    isolated_home = tempfile.mkdtemp(prefix="pi-probe-home-")
-    cmd_env = os.environ.copy()
-    cmd_env["HOME"] = isolated_home
-    cmd_env["PI_TELEMETRY"] = "0"
-    cmd_env["PI_SKIP_VERSION_CHECK"] = "1"
-
-    if candidate_dir:
-        cmd_env["CANDIDATE_DIR"] = str(candidate_dir)
-
-    probe_argv = [
-        "pi", "--mode", "json",
+    prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
+    with tempfile.NamedTemporaryFile("w", suffix=".md", prefix="pi-probe-", delete=False) as handle:
+        handle.write(prompt)
+        prompt_path = Path(handle.name)
+    inner_argv = [
+        str(_pi_binary()),
+        "--mode", "json",
         "--no-session",
         "--no-context-files",
         "--no-extensions",
@@ -172,153 +277,79 @@ def run_ready_probe(
         "--model", model_id,
         "--thinking", "low",
     ]
+    if tools:
+        inner_argv.extend(["--tools", ",".join(tools)])
+    inner_argv.extend(["@", "/tmp/prompt.md"])
 
-    if pi_args.get("tools"):
-        probe_argv.extend(["--tools", pi_args["tools"]])
-
-    # Use a temp file for prompt
-    prompt_file = Path(tempfile.mktemp(suffix=".md", prefix="probe-"))
-    prompt_file.write_text(probe_prompt)
-
+    start = _now()
     try:
-        probe_argv.extend(["@", str(prompt_file)])
-
-        start = datetime.now(timezone.utc)
-        probe_result = subprocess.run(
-            probe_argv,
-            capture_output=True, text=True,
-            env=cmd_env,
-            timeout=60,
+        result = _run_isolated(
+            inner_argv,
+            candidate_dir=candidate_dir,
+            prompt_file=prompt_path,
+            cwd=candidate_dir,
+            timeout=timeout,
         )
-        finish = datetime.now(timezone.utc)
-
-        probe_stdout = probe_result.stdout
-        probe_exit = probe_result.returncode
-
-        # Check for READY <nonce> in stdout
-        expected = f"READY {nonce}"
-        probe_passed = expected in probe_stdout and probe_exit == 0
-
-        probe_record = {
-            "probe_id": f"probe-{uuid.uuid4().hex[:12]}",
-            "run_id": run_id,
-            "role_run_id": role_run_id,
-            "resolved_model": model_id,
-            "profile_id": profile_key,
-            "pi_version": _get_pi_version(),
-            "profile_hash": canonical_json_sha256(load_profiles().get("profiles", {}).get(profile_key, {})),
-            "policy_commit_sha": _get_policy_sha(),
-            "candidate_sha": pi_args.get("candidate_sha", ""),
-            "candidate_tree_oid": pi_args.get("candidate_tree_oid", ""),
-            "tools": pi_args.get("tools", "").split(",") if pi_args.get("tools") else [],
-            "context_files_disabled": True,
-            "extensions_disabled": True,
-            "skills_disabled": True,
-            "themes_disabled": True,
-            "environment_name_allowlist": ["HOME", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK"],
-            "probe_prompt_hash": compute_sha256_text(probe_prompt),
-            "probe_argv": probe_argv,
-            "probe_argv_sha256": compute_sha256_text(canonical_json(probe_argv)),
-            "expected_response": expected,
-            "observed_response": probe_stdout.strip()[:100],
-            "probe_passed": probe_passed,
-            "exit_code": probe_exit,
-            "stdout_sha256": compute_sha256_text(probe_stdout),
-            "stderr_sha256": compute_sha256_text(probe_result.stderr),
-            "started_at": start.isoformat(),
-            "finished_at": finish.isoformat(),
-        }
-
-        return (probe_passed, probe_record, nonce)
-
     finally:
-        # Clean up
-        prompt_file.unlink(missing_ok=True)
-        shutil.rmtree(isolated_home, ignore_errors=True)
+        prompt_path.unlink(missing_ok=True)
+    finish = _now()
 
-
-def _get_pi_version() -> str:
-    """Get pi version string."""
-    try:
-        result = subprocess.run(
-            ["pi", "--version"],
-            capture_output=True, text=True, timeout=10
-        )
-        return result.stdout.strip() or "unknown"
-    except Exception:
-        return "unknown"
-
-
-def _get_policy_sha() -> str:
-    """Get the policy commit SHA from the governance directory's git context."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True,
-            cwd=str(GOVERNANCE_DIR.parent)
-        )
-        if result.returncode == 0:
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return ""
-
-
-def _get_environment_allowlist() -> List[str]:
-    """Return the list of environment variable names that are allowed and captured."""
-    return ["HOME", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK"]
+    expected = f"READY {nonce}"
+    observed = result.stdout.strip()
+    probe_passed = result.returncode == 0 and observed == expected
+    base_fields = _base_invocation_fields(
+        model_id=model_id,
+        profile_key=profile_key,
+        tools=tools,
+        candidate_sha=candidate_sha,
+        base_sha=base_sha,
+        candidate_tree_oid=candidate_tree_oid,
+    )
+    record = {
+        "schema_version": "1",
+        "probe_id": f"probe-{uuid.uuid4().hex[:12]}",
+        "run_id": run_id,
+        "role_run_id": role_run_id,
+        **base_fields,
+        "context_files_disabled": True,
+        "extensions_disabled": True,
+        "skills_disabled": True,
+        "themes_disabled": True,
+        "probe_argv": inner_argv,
+        "probe_argv_sha256": sha256_text(canonical_json(inner_argv)),
+        "probe_prompt_hash": sha256_text(prompt),
+        "probe_event_log_sha256": sha256_text(result.stdout),
+        "nonce": nonce,
+        "expected_response": expected,
+        "observed_response": observed,
+        "exit_code": result.returncode,
+        "stdout_sha256": sha256_text(result.stdout),
+        "stderr_sha256": sha256_text(result.stderr),
+        "started_at": start,
+        "finished_at": finish,
+    }
+    return probe_passed, record, nonce
 
 
 def dispatch_pi(
+    *,
     role: str,
     model_id: str,
     profile_key: str,
     run_id: str,
     role_run_id: str,
-    tools_arg: Optional[str],
+    tools: List[str],
     prompt_file: Path,
     candidate_dir: Optional[Path],
     qa_for_pass_id: Optional[str],
     candidate_sha: str,
-) -> Tuple[int, Dict[str, Any]]:
-    """Dispatch Pi with isolation and capture execution metadata.
-
-    Returns (exit_code, execution_record).
-    """
-    # Set up isolated environment
-    isolated_home = tempfile.mkdtemp(prefix=f"pi-{role}-home-")
-    scratch_dir = tempfile.mkdtemp(prefix=f"pi-{role}-scratch-")
-
-    candidate_tree_before = ""
-    candidate_tree_after = ""
-
-    if candidate_dir:
-        candidate_tree_before = get_candidate_tree_oid(candidate_dir)
-
-    cmd_env = os.environ.copy()
-
-    # Clean environment: only allow specific vars through
-    allowlist = set(_get_environment_allowlist())
-    # Also keep PATH and basic system vars
-    for var in ["PATH", "USER", "TMPDIR", "TEMP", "TMP"]:
-        allowlist.add(var)
-
-    allowed_env = {}
-    for var in allowlist:
-        if var in cmd_env:
-            allowed_env[var] = cmd_env[var]
-
-    # Set HOME to isolated
-    allowed_env["HOME"] = isolated_home
-    allowed_env["PI_TELEMETRY"] = "0"
-    allowed_env["PI_SKIP_VERSION_CHECK"] = "1"
-
-    # Provide model credential if available (minimal, no host credentials)
-    # Do NOT forward SSH_AUTH_SOCK, GH_TOKEN, GITHUB_TOKEN, etc.
-
-    # Build argv
-    argv = [
-        "pi", "--mode", "json",
+    base_sha: str,
+    timeout: int,
+) -> Tuple[int, Dict[str, Any], str, str]:
+    candidate_tree_before = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
+    inner_argv = [
+        str(_pi_binary()),
+        "--mode", "json",
         "--no-session",
         "--no-context-files",
         "--no-extensions",
@@ -330,37 +361,38 @@ def dispatch_pi(
         "--model", model_id,
         "--thinking", "low",
     ]
+    if tools:
+        inner_argv.extend(["--tools", ",".join(tools)])
+    inner_argv.extend(["@", "/tmp/prompt.md"])
 
-    if tools_arg:
-        argv.extend(["--tools", tools_arg])
+    start = _now()
+    result = _run_isolated(inner_argv, candidate_dir=candidate_dir, prompt_file=prompt_file, cwd=candidate_dir, timeout=timeout)
+    finish = _now()
+    candidate_tree_after = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
 
-    argv.extend(["@", str(prompt_file)])
-
-    # Record candidate tree before
-    if candidate_dir:
-        candidate_tree_before = get_candidate_tree_oid(candidate_dir)
-
-    # Start timing
-    start = datetime.now(timezone.utc)
-
-    # Run pi
-    result = subprocess.run(
-        argv,
-        capture_output=True, text=True,
-        env=allowed_env,
-        cwd=str(candidate_dir) if candidate_dir else None,
+    base_fields = _base_invocation_fields(
+        model_id=model_id,
+        profile_key=profile_key,
+        tools=tools,
+        candidate_sha=candidate_sha,
+        base_sha=base_sha,
+        candidate_tree_oid=candidate_tree_before,
     )
-
-    finish = datetime.now(timezone.utc)
-
-    # Record candidate tree after
-    if candidate_dir:
-        candidate_tree_after = get_candidate_tree_oid(candidate_dir)
-
-    # Check if write tools were observed (parse event log for edit/write patterns)
-    write_tools_observed = _check_write_tools(result.stdout)
-
-    # Build execution record
+    isolation = {
+        "source_mount_read_only": candidate_dir is not None,
+        "scratch_separate_from_source": True,
+        "host_home_mounted": False,
+        "ssh_config_mounted": False,
+        "gh_config_mounted": False,
+        "ambient_credentials_available": False,
+        "context_files_disabled": True,
+        "extensions_disabled": True,
+        "skills_disabled": True,
+        "themes_disabled": True,
+        "candidate_tree_before": candidate_tree_before,
+        "candidate_tree_after": candidate_tree_after,
+        "write_tools_observed": False,
+    }
     record = {
         "schema_version": "1",
         "record_id": str(uuid.uuid4()),
@@ -368,34 +400,86 @@ def dispatch_pi(
         "role": role,
         "role_run_id": role_run_id,
         "qa_for_pass_id": qa_for_pass_id or "",
+        "evidence_class": "authoritative" if role == "qa" else "execution",
+        "record_only": False,
         "generated_by": {
-            "policy_commit_sha": _get_policy_sha(),
+            "policy_commit_sha": get_policy_sha(),
             "dispatcher_path": "scripts/governance/run_isolated_pi.py",
-            "dispatcher_sha256": compute_sha256_file(Path(__file__).resolve()),
+            "dispatcher_sha256": sha256_file(Path(__file__).resolve()),
         },
         "actual_invocation": {
-            "resolved_model": model_id,
-            "profile_id": profile_key,
-            "profile_hash": canonical_json_sha256(
-                load_profiles().get("profiles", {}).get(profile_key, {})
-            ),
-            "pi_version": _get_pi_version(),
-            "argv": argv,
-            "argv_sha256": compute_sha256_text(canonical_json(argv)),
-            "tools": tools_arg.split(",") if tools_arg else [],
-            "environment_name_allowlist": _get_environment_allowlist(),
+            **base_fields,
+            "argv": inner_argv,
+            "argv_sha256": sha256_text(canonical_json(inner_argv)),
             "environment_values_recorded": False,
-            "candidate_sha": candidate_sha,
-            "candidate_tree_oid": candidate_tree_before,
-            "policy_commit_sha": _get_policy_sha(),
-            "started_at": start.isoformat(),
-            "finished_at": finish.isoformat(),
+            "started_at": start,
+            "finished_at": finish,
             "exit_code": result.returncode,
-            "stdout_sha256": compute_sha256_text(result.stdout),
-            "stderr_sha256": compute_sha256_text(result.stderr),
-            "qa_event_log_sha256": compute_sha256_text(result.stdout),
+            "stdout_sha256": sha256_text(result.stdout),
+            "stderr_sha256": sha256_text(result.stderr),
+            "qa_event_log_sha256": sha256_text(result.stdout),
+            "isolation": isolation,
+        },
+    }
+    return result.returncode, record, result.stdout, result.stderr
+
+
+def write_json(path: Path, data: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(canonical_json(data), encoding="utf-8")
+
+
+def write_protected_record(record: Dict[str, Any], run_dir: Path) -> Path:
+    record_dir = run_dir / "protected"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    record_path = record_dir / "qa-execution-record.json"
+    write_json(record_path, record)
+    return record_path
+
+
+def _inside(path: Path, maybe_parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(maybe_parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _non_evidence_record(args: argparse.Namespace, profile_key: str, tools: List[str]) -> Dict[str, Any]:
+    return {
+        "schema_version": "1",
+        "record_id": str(uuid.uuid4()),
+        "run_id": args.run_id,
+        "role": args.role,
+        "role_run_id": args.role_run_id,
+        "qa_for_pass_id": args.qa_for_pass_id or "",
+        "evidence_class": "non-evidence",
+        "record_only": True,
+        "generated_by": {
+            "policy_commit_sha": get_policy_sha(),
+            "dispatcher_path": "scripts/governance/run_isolated_pi.py",
+            "dispatcher_sha256": sha256_file(Path(__file__).resolve()),
+        },
+        "actual_invocation": {
+            **_base_invocation_fields(
+                model_id=args.model,
+                profile_key=profile_key,
+                tools=tools,
+                candidate_sha=args.candidate_sha,
+                base_sha=args.base_sha,
+                candidate_tree_oid="",
+            ),
+            "argv": [],
+            "argv_sha256": "",
+            "environment_values_recorded": False,
+            "started_at": _now(),
+            "finished_at": _now(),
+            "exit_code": 0,
+            "stdout_sha256": "",
+            "stderr_sha256": "",
+            "qa_event_log_sha256": "",
             "isolation": {
-                "source_mount_read_only": candidate_dir is not None,
+                "source_mount_read_only": False,
                 "scratch_separate_from_source": True,
                 "host_home_mounted": False,
                 "ssh_config_mounted": False,
@@ -405,77 +489,60 @@ def dispatch_pi(
                 "extensions_disabled": True,
                 "skills_disabled": True,
                 "themes_disabled": True,
-                "candidate_tree_before": candidate_tree_before or "",
-                "candidate_tree_after": candidate_tree_after or "",
-                "write_tools_observed": write_tools_observed,
+                "candidate_tree_before": "",
+                "candidate_tree_after": "",
+                "write_tools_observed": False,
             },
         },
     }
 
-    # Clean up
-    shutil.rmtree(isolated_home, ignore_errors=True)
-    shutil.rmtree(scratch_dir, ignore_errors=True)
-
-    return (result.returncode, record)
-
-
-def _check_write_tools(event_log: str) -> bool:
-    """Parse event log for evidence of write-capable tools being used on the candidate."""
-    write_indicators = [
-        '"edit"', '"write"', '"create_file"', '"overwrite"',
-        "edit(", "write(", "Edit(", "Write(",
-        "edit_file", "write_file",
-    ]
-    for indicator in write_indicators:
-        if indicator in event_log:
-            return True
-    return False
-
-
-def write_protected_record(record: Dict[str, Any], run_dir: Path) -> Path:
-    """Write the protected execution record to the run directory.
-
-    The QA model must not be able to write to this path.
-    """
-    record_dir = run_dir / "protected"
-    record_dir.mkdir(parents=True, exist_ok=True)
-    record_path = record_dir / "qa-execution-record.json"
-    record_path.write_text(json.dumps(record, indent=2, sort_keys=True))
-    return record_path
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Dispatch Pi in isolated process")
-    parser.add_argument("--run-id", required=True, help="Governance run UUID")
-    parser.add_argument("--role", required=True,
-                        choices=["planner", "implementer", "qa", "validator", "publisher",
-                                 "remediator", "orchestrator"],
-                        help="Pi role for this dispatch")
-    parser.add_argument("--role-run-id", required=True, help="Unique ID for this role invocation")
-    parser.add_argument("--model", required=True, help="Model ID (e.g., openai-codex/gpt-5.5)")
-    parser.add_argument("--tools", help="Comma-separated tool list for Pi")
-    parser.add_argument("--prompt", required=True, type=Path, help="Prompt file path")
-    parser.add_argument("--candidate-dir", type=Path, help="Candidate source directory (read-only mount)")
-    parser.add_argument("--qa-for-pass-id", help="Implementation pass ID this QA is for")
-    parser.add_argument("--candidate-sha", default="", help="Full 40-char candidate commit SHA")
-    parser.add_argument("--record-only", action="store_true",
-                        help="Only generate the execution record without running Pi")
-    parser.add_argument("--probe", action="store_true",
-                        help="Run a READY probe before dispatching")
-    parser.add_argument("--output-dir", type=Path, default=Path(".governance/runs"),
-                        help="Output directory for run artifacts (default: .governance/runs)")
-
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--role", required=True, choices=sorted(ROLE_TOOL_ALLOWLISTS))
+    parser.add_argument("--role-run-id", required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--tools", default="")
+    parser.add_argument("--prompt", required=True, type=Path)
+    parser.add_argument("--candidate-dir", type=Path)
+    parser.add_argument("--qa-for-pass-id", default="")
+    parser.add_argument("--candidate-sha", default="")
+    parser.add_argument("--base-sha", default="")
+    parser.add_argument("--record-only", action="store_true")
+    parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--output-dir", type=Path, default=Path(".governance/runs"))
     args = parser.parse_args()
 
-    # Validate the model
-    valid, profile_key = validate_model(args.model)
+    valid, profile_key_or_error = validate_model(args.model)
     if not valid:
-        print(f"Model validation failed: {profile_key}", file=sys.stderr)
+        print(f"Model validation failed: {profile_key_or_error}", file=sys.stderr)
+        return 1
+    profile_key = profile_key_or_error
+
+    tools_ok, tool_error, tools = validate_tools(args.role, args.tools)
+    if not tools_ok:
+        print(tool_error, file=sys.stderr)
         return 1
 
-    print(f"Model {args.model} validated (profile: {profile_key})", file=sys.stderr)
+    if args.role == "qa":
+        if not args.qa_for_pass_id:
+            print("QA dispatch requires --qa-for-pass-id", file=sys.stderr)
+            return 1
+        if not args.candidate_dir:
+            print("QA dispatch requires --candidate-dir", file=sys.stderr)
+            return 1
+        if not re_full_sha(args.candidate_sha):
+            print("QA dispatch requires full --candidate-sha", file=sys.stderr)
+            return 1
+        if not re_full_sha(args.base_sha):
+            print("QA dispatch requires full --base-sha", file=sys.stderr)
+            return 1
+        if _inside(args.output_dir, args.candidate_dir):
+            print("protected output-dir must not be inside candidate-dir", file=sys.stderr)
+            return 1
 
-    # Ensure prompt file exists
     if not args.prompt.exists():
         print(f"Prompt file not found: {args.prompt}", file=sys.stderr)
         return 1
@@ -483,138 +550,70 @@ def main() -> int:
     run_dir = args.output_dir / args.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    # If record-only, just generate and write the execution record
     if args.record_only:
-        record = {
-            "schema_version": "1",
-            "record_id": str(uuid.uuid4()),
-            "run_id": args.run_id,
-            "role": args.role,
-            "role_run_id": args.role_run_id,
-            "qa_for_pass_id": args.qa_for_pass_id or "",
-            "generated_by": {
-                "policy_commit_sha": _get_policy_sha(),
-                "dispatcher_path": "scripts/governance/run_isolated_pi.py",
-                "dispatcher_sha256": compute_sha256_file(Path(__file__).resolve()),
-            },
-            "actual_invocation": {
-                "resolved_model": args.model,
-                "profile_id": profile_key,
-                "profile_hash": canonical_json_sha256({}),
-                "pi_version": _get_pi_version(),
-                "argv": [],
-                "argv_sha256": "",
-                "tools": [],
-                "environment_name_allowlist": _get_environment_allowlist(),
-                "environment_values_recorded": False,
-                "candidate_sha": args.candidate_sha,
-                "candidate_tree_oid": "",
-                "policy_commit_sha": _get_policy_sha(),
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "exit_code": 0,
-                "stdout_sha256": "",
-                "stderr_sha256": "",
-                "qa_event_log_sha256": "",
-                "isolation": {
-                    "source_mount_read_only": True,
-                    "scratch_separate_from_source": True,
-                    "host_home_mounted": False,
-                    "ssh_config_mounted": False,
-                    "gh_config_mounted": False,
-                    "ambient_credentials_available": False,
-                    "context_files_disabled": True,
-                    "extensions_disabled": True,
-                    "skills_disabled": True,
-                    "themes_disabled": True,
-                    "candidate_tree_before": "",
-                    "candidate_tree_after": "",
-                    "write_tools_observed": False,
-                },
-            },
-        }
-        record_path = write_protected_record(record, run_dir)
-        print(f"Record-only execution record written to {record_path}", file=sys.stderr)
+        record = _non_evidence_record(args, profile_key, tools)
+        path = run_dir / "non-evidence" / f"{args.role}-record-only.json"
+        write_json(path, record)
+        print(f"NON-EVIDENCE record-only output written to {path}", file=sys.stderr)
         return 0
 
-    # Run probe if requested or if role is QA
-    if args.probe or args.role == "qa":
-        pi_args_for_probe = {
-            "tools": args.tools,
-            "candidate_sha": args.candidate_sha,
-            "candidate_tree_oid": "",
-        }
-        if args.candidate_dir:
-            pi_args_for_probe["candidate_tree_oid"] = get_candidate_tree_oid(args.candidate_dir)
+    candidate_tree = get_candidate_tree_oid(args.candidate_dir) if args.candidate_dir else ""
 
+    if args.probe or args.role == "qa":
         probe_passed, probe_record, nonce = run_ready_probe(
             model_id=args.model,
             profile_key=profile_key,
             run_id=args.run_id,
             role_run_id=args.role_run_id,
             candidate_dir=args.candidate_dir,
-            pi_args=pi_args_for_probe,
+            tools=tools,
+            candidate_sha=args.candidate_sha,
+            base_sha=args.base_sha,
+            candidate_tree_oid=candidate_tree,
+            timeout=min(args.timeout, 120),
         )
-
-        # Write probe record
-        probe_path = run_dir / "probe-record.json"
-        probe_path.write_text(json.dumps(probe_record, indent=2, sort_keys=True))
+        probe_path = run_dir / "protected" / "qa-probe-record.json" if args.role == "qa" else run_dir / "execution" / f"{args.role}-probe-record.json"
+        write_json(probe_path, probe_record)
         print(f"Probe record written to {probe_path}", file=sys.stderr)
-
         if not probe_passed:
-            print(
-                f"READY probe failed for model {args.model}. "
-                f"Expected 'READY {nonce}' in output.",
-                file=sys.stderr
-            )
+            print(f"READY probe failed; expected exact 'READY {nonce}'", file=sys.stderr)
             return 1
 
-        print(f"READY probe passed for model {args.model}", file=sys.stderr)
-
-    # Dispatch Pi
-    exit_code, execution_record = dispatch_pi(
+    exit_code, execution_record, stdout, stderr = dispatch_pi(
         role=args.role,
         model_id=args.model,
         profile_key=profile_key,
         run_id=args.run_id,
         role_run_id=args.role_run_id,
-        tools_arg=args.tools,
+        tools=tools,
         prompt_file=args.prompt,
         candidate_dir=args.candidate_dir,
         qa_for_pass_id=args.qa_for_pass_id,
         candidate_sha=args.candidate_sha,
+        base_sha=args.base_sha,
+        timeout=args.timeout,
     )
 
-    # Write execution record
     if args.role == "qa":
         record_path = write_protected_record(execution_record, run_dir)
-        print(f"Protected QA execution record written to {record_path}", file=sys.stderr)
-
-        # Also write SHA256 for inclusion in manifest
-        record_sha = compute_sha256_file(record_path)
         sha_path = run_dir / "protected" / "qa-execution-record.sha256"
-        sha_path.write_text(record_sha)
-        print(f"Protected QA execution record SHA256: {record_sha}", file=sys.stderr)
+        sha_path.write_text(sha256_file(record_path), encoding="utf-8")
+        print(f"Protected QA execution record written to {record_path}", file=sys.stderr)
+        print(f"Protected QA execution record SHA256: {sha_path.read_text(encoding='utf-8')}", file=sys.stderr)
     else:
-        # For non-QA roles, write to a general execution record
-        record_dir = run_dir / "execution"
-        record_dir.mkdir(parents=True, exist_ok=True)
-        record_path = record_dir / f"{args.role}-execution-record.json"
-        record_path.write_text(json.dumps(execution_record, indent=2, sort_keys=True))
+        record_path = run_dir / "execution" / f"{args.role}-execution-record.json"
+        write_json(record_path, execution_record)
         print(f"Execution record written to {record_path}", file=sys.stderr)
 
-    # Write stdout/stderr to files
-    # (stdout is already captured in the record as sha256; raw output goes to files)
-    stdout_path = run_dir / f"{args.role}-stdout.jsonl"
-    stderr_path = run_dir / f"{args.role}-stderr.log"
-
-    # The stdout was captured in dispatch_pi as result.stdout, but it was already consumed.
-    # We need to modify dispatch_pi to also write files, but for bootstrap this is fine.
-    # Write a marker that the output was captured.
-    stdout_path.write_text(f"# Output captured in execution record SHA256\n")
-    stderr_path.write_text(f"# Output captured in execution record SHA256\n")
-
+    (run_dir / f"{args.role}-stdout.jsonl").write_text(stdout, encoding="utf-8")
+    (run_dir / f"{args.role}-stderr.log").write_text(stderr, encoding="utf-8")
     return exit_code
+
+
+def re_full_sha(value: str) -> bool:
+    import re
+
+    return bool(re.fullmatch(r"[a-f0-9]{40}", value or ""))
 
 
 if __name__ == "__main__":

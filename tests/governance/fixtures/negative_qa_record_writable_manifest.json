@@ -45,12 +45,12 @@
       "category": "validation",
       "command_id": "workflow.pinning",
       "cwd": "/repo",
-      "exit_code": 1,
+      "exit_code": 0,
       "finished_at": "2026-07-11T12:22:00+00:00",
       "phase": "pre_merge",
       "registry_id": "workflow.pinning",
       "started_at": "2026-07-11T12:21:00+00:00",
-      "stderr_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     },
     {
@@ -166,7 +166,7 @@
       "artifact": {
         "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
         "artifact_id": 333,
-        "manifest_sha256": "88889ab268df2c25b9f8f1ba6d0bd16111adeca99e93ad17b044beac601eb41e",
+        "manifest_sha256": "213b5abde28617f2910eb9bc9bfac4080bdaf2ec4aabd353887b3e1ebe0c0aa7",
         "name": "governance-evidence"
       },
       "github": {
@@ -318,6 +318,7 @@
               "extensions_disabled": true,
               "gh_config_mounted": false,
               "host_home_mounted": false,
+              "protected_record_writable_by_model": true,
               "scratch_separate_from_source": true,
               "skills_disabled": true,
               "source_mount_read_only": true,
@@ -355,7 +356,7 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "1"
         },
-        "protected_execution_record_sha256": "e1535965b1233c96c35390fb53ff2683352246e902804a0ce151c28eadfe2cb0",
+        "protected_execution_record_sha256": "06d4daea51abd8932f1b8f01833f0885cd56904edd22fe71feb480105abc47ca",
         "protected_probe_record": {
           "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
           "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",

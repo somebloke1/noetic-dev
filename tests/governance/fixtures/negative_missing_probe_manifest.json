@@ -45,12 +45,12 @@
       "category": "validation",
       "command_id": "workflow.pinning",
       "cwd": "/repo",
-      "exit_code": 1,
+      "exit_code": 0,
       "finished_at": "2026-07-11T12:22:00+00:00",
       "phase": "pre_merge",
       "registry_id": "workflow.pinning",
       "started_at": "2026-07-11T12:21:00+00:00",
-      "stderr_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     },
     {
@@ -166,7 +166,7 @@
       "artifact": {
         "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
         "artifact_id": 333,
-        "manifest_sha256": "88889ab268df2c25b9f8f1ba6d0bd16111adeca99e93ad17b044beac601eb41e",
+        "manifest_sha256": "f166dae7e69de7a79aa3534f7beccaff72e275345d0157888edf2af5091419f0",
         "name": "governance-evidence"
       },
       "github": {
@@ -356,53 +356,6 @@
           "schema_version": "1"
         },
         "protected_execution_record_sha256": "e1535965b1233c96c35390fb53ff2683352246e902804a0ce151c28eadfe2cb0",
-        "protected_probe_record": {
-          "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
-          "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
-          "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-          "context_files_disabled": true,
-          "environment_name_allowlist": [
-            "HOME",
-            "PI_TELEMETRY",
-            "PI_SKIP_VERSION_CHECK"
-          ],
-          "exit_code": 0,
-          "expected_response": "READY abc123def4567890",
-          "extensions_disabled": true,
-          "finished_at": "2026-07-11T12:06:00+00:00",
-          "nonce": "abc123def4567890",
-          "observed_response": "READY abc123def4567890",
-          "pi_version": "pi 1.0.0",
-          "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          "probe_argv": [
-            "pi",
-            "--mode",
-            "json",
-            "@",
-            "/tmp/prompt.md"
-          ],
-          "probe_argv_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
-          "probe_event_log_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
-          "probe_id": "probe-valid-0001",
-          "probe_prompt_hash": "6666666666666666666666666666666666666666666666666666666666666666",
-          "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
-          "profile_id": "qa_primary",
-          "resolved_model": "openai-codex/gpt-5.6-terra",
-          "role_run_id": "qa-role-g1-0001",
-          "run_id": "00000000-0000-0000-0000-000000000002",
-          "schema_version": "1",
-          "skills_disabled": true,
-          "started_at": "2026-07-11T12:05:00+00:00",
-          "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-          "stdout_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
-          "themes_disabled": true,
-          "tools": [
-            "read",
-            "grep",
-            "find",
-            "ls"
-          ]
-        },
         "protected_probe_record_sha256": "c88dec6bb429967d26c2ae5280a99e21c9ec6760d0cddb127966e8147746c0f8",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",

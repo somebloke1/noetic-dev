@@ -1,193 +1,453 @@
 #!/usr/bin/env python3
-"""Validate an evidence manifest against its schema and invariant rules.
+"""Validate an evidence manifest against schema and governance invariants.
 
-Usage:
-    check_evidence_manifest.py <manifest.json>
-
-Returns exit code 0 if valid, 1 if invalid.
-Outputs diagnostics to stderr.
+The validator is a repository validator, not a delivery test. It rejects false
+machine-readable claims before the delivery gate considers merge/publication
+readiness.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Tuple
 
-# Keep scripts directory in path for sibling imports
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
-# Direct import from sibling module
+
 from hash_tree import (  # noqa: E402
-    canonical_json,
     canonical_json_sha256,
     manifest_digest_excluding_own,
     validate_sha_hex,
     validate_sha256_hex,
 )
+from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
+
+SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
+SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+STATUS_RE = re.compile(r"^status:([a-z0-9_-]+)$")
 
 
-def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
-    """Run all validation checks. Returns list of error messages."""
-    errors: List[str] = []
+def _load_repo_json(relative: str) -> Dict[str, Any]:
+    return load_json_strict(REPO_ROOT / relative)
 
-    # Schema version
-    if manifest.get("schema_version") != "1":
-        errors.append(f"schema_version must be '1', got {manifest.get('schema_version')!r}")
 
-    # Required top-level fields
-    required_fields = [
-        "schema_version", "manifest_id", "run_id", "generated_at",
-        "policy", "repo", "issue", "pull_request", "passes", "qa",
-        "commands", "validations", "tests", "state_transitions",
-        "approvals", "publication",
-    ]
-    for field in required_fields:
-        if field not in manifest:
-            errors.append(f"missing required field: {field}")
+def _load_schema() -> Dict[str, Any]:
+    return _load_repo_json("governance/schemas/evidence-manifest.schema.json")
 
-    if errors:
-        return errors
 
-    # Policy checks
-    policy = manifest["policy"]
-    if not policy.get("sha", "").startswith("0000000"):
-        try:
-            validate_sha_hex(policy.get("sha", ""), 40, "policy.sha")
-        except ValueError as e:
-            errors.append(str(e))
+def _load_command_registry() -> Dict[str, Any]:
+    return _load_repo_json("governance/command-registry.json")
+
+
+def _load_issue_status() -> Dict[str, Any]:
+    return _load_repo_json("governance/issue-status.json")
+
+
+def _load_model_profiles() -> Dict[str, Any]:
+    return _load_repo_json("governance/model-profiles.json")
+
+
+def _load_state_machine() -> Dict[str, Any]:
+    return _load_repo_json("governance/state-machine.json")
+
+
+def _parse_time(value: str, label: str, errors: List[str]) -> datetime | None:
+    if not value:
+        errors.append(f"{label} missing timestamp")
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        errors.append(f"{label} is not an ISO-8601 timestamp: {value!r}")
+        return None
+
+
+def _validate_sha(value: str, length: int, label: str, errors: List[str]) -> None:
+    try:
+        validate_sha_hex(value, length, label)
+    except ValueError as exc:
+        errors.append(str(exc))
+
+
+def _validate_sha256(value: str, label: str, errors: List[str]) -> None:
+    try:
+        validate_sha256_hex(value, label)
+    except ValueError as exc:
+        errors.append(str(exc))
+
+
+def _status_values() -> set[str]:
+    return set(_load_issue_status().get("statuses", {}).keys())
+
+
+def _registry_commands() -> Dict[str, Any]:
+    return _load_command_registry().get("commands", {})
+
+
+def command_registry_id(command: Dict[str, Any]) -> str:
+    """Return the registry id claimed by a command record."""
+    return command.get("registry_id") or command.get("command_id", "")
+
+
+def normalize_qa_records(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return QA records, with legacy object shape mapped to a single record.
+
+    The new contract is ``qa.records``. Legacy compatibility exists only so the
+    validator can return meaningful diagnostics for old manifests.
+    """
+    qa = manifest.get("qa", {})
+    if isinstance(qa, dict) and isinstance(qa.get("records"), list):
+        return qa["records"]
+    if isinstance(qa, dict) and qa.get("qa_for_pass_id"):
+        return [qa]
+    return []
+
+
+def all_pass_ids(manifest: Dict[str, Any]) -> List[str]:
+    passes = manifest.get("passes", {})
+    return list(passes.get("implementation_pass_ids", [])) + list(passes.get("remediation_pass_ids", []))
+
+
+def pass_records_by_id(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    passes = manifest.get("passes", {})
+    return {
+        item.get("pass_id", ""): item
+        for item in passes.get("pass_records", [])
+        if isinstance(item, dict) and item.get("pass_id")
+    }
+
+
+def _check_policy(manifest: Dict[str, Any], errors: List[str]) -> None:
+    policy = manifest.get("policy", {})
+    repo = manifest.get("repo", {})
+
+    _validate_sha(policy.get("sha", ""), 40, "policy.sha", errors)
+    _validate_sha256(policy.get("generator_sha256", ""), "policy.generator_sha256", errors)
+    if policy.get("sha") and policy.get("sha") == repo.get("candidate_sha"):
+        errors.append("policy.sha must not equal repo.candidate_sha (candidate-controlled policy checkout)")
 
     if not isinstance(policy.get("trusted_runner"), bool):
         errors.append("policy.trusted_runner must be a boolean")
 
-    generator_sha = policy.get("generator_sha256", "")
-    try:
-        validate_sha256_hex(generator_sha, "policy.generator_sha256")
-    except ValueError as e:
-        errors.append(str(e))
-
-    # If trusted_runner, verify self-referencing hash
-    if policy.get("trusted_runner"):
-        try:
-            computed_digest = manifest_digest_excluding_own(manifest)
-            recorded = policy.get("runner_attestation", {}).get("artifact", {}).get("manifest_sha256", "")
-            if not recorded:
-                errors.append("trusted_runner=true but no manifest_sha256 in policy.runner_attestation.artifact")
-            elif computed_digest != recorded:
-                errors.append(
-                    f"manifest digest mismatch (excluding own field): "
-                    f"computed={computed_digest}, recorded={recorded}"
-                )
-        except Exception as e:
-            errors.append(f"error computing manifest digest: {e}")
-
-    # Repo checks
-    repo = manifest["repo"]
-    for sha_field in ["base_sha", "candidate_sha", "candidate_tree_oid"]:
-        val = repo.get(sha_field, "")
-        try:
-            validate_sha_hex(val, 40, f"repo.{sha_field}")
-        except ValueError as e:
-            errors.append(str(e))
-
-    # SHA lengths
-    for field in ["base_sha", "candidate_sha"]:
-        val = repo.get(field, "")
-        if len(val) != 40:
-            errors.append(f"repo.{field} must be 40 characters, got {len(val)}")
-
-    # PR checks
-    pr = manifest["pull_request"]
-    pr_head_sha = pr.get("head_sha", "")
-    if pr_head_sha and pr_head_sha != repo.get("candidate_sha", ""):
-        errors.append(
-            f"pull_request.head_sha ({pr_head_sha}) must equal "
-            f"repo.candidate_sha ({repo.get('candidate_sha', '')})"
-        )
-
-    # Passes checks
-    passes = manifest["passes"]
-    impl_ids = passes.get("implementation_pass_ids", [])
-    remediation_ids = passes.get("remediation_pass_ids", [])
-
-    if not impl_ids and not remediation_ids:
-        errors.append("passes must have at least one implementation or remediation pass")
-
-    if passes.get("candidate_sha") != repo.get("candidate_sha", ""):
-        errors.append(
-            f"passes.candidate_sha ({passes.get('candidate_sha')}) must equal "
-            f"repo.candidate_sha ({repo.get('candidate_sha', '')})"
-        )
-
-    # QA checks
-    qa = manifest["qa"]
-    if qa.get("qa_for_pass_id"):
-        # If qa_for_pass_id is set, check that it matches one of the pass IDs
-        all_pass_ids = impl_ids + remediation_ids
-        # The qa_for_pass_id might be a single value or pattern
-        # For first generation, it should match the only implementation pass
-        if qa["qa_for_pass_id"] not in all_pass_ids and len(all_pass_ids) > 0:
+    attestation = policy.get("runner_attestation", {})
+    recorded_digest = attestation.get("artifact", {}).get("manifest_sha256") if isinstance(attestation, dict) else None
+    if recorded_digest:
+        _validate_sha256(recorded_digest, "policy.runner_attestation.artifact.manifest_sha256", errors)
+        computed_digest = manifest_digest_excluding_own(manifest)
+        if recorded_digest != computed_digest:
             errors.append(
-                f"qa.qa_for_pass_id ({qa['qa_for_pass_id']}) not found in "
-                f"pass IDs: {all_pass_ids}"
+                "manifest digest mismatch (excluding own field): "
+                f"computed={computed_digest}, recorded={recorded_digest}"
             )
 
-    if qa.get("verdict") and qa["verdict"] not in ("pass", "fail"):
-        errors.append(f"qa.verdict must be 'pass' or 'fail', got {qa['verdict']!r}")
+    if policy.get("trusted_runner"):
+        if not isinstance(attestation, dict) or not attestation:
+            errors.append("trusted_runner=true requires external runner_attestation evidence")
+        mode = attestation.get("mode") if isinstance(attestation, dict) else None
+        if mode not in {"github_api", "github_artifact_attestation"}:
+            errors.append("trusted_runner=true requires github_api or github_artifact_attestation verification mode")
+        if attestation.get("verification_status") != "verified":
+            errors.append("trusted_runner=true requires runner_attestation.verification_status='verified'")
+        if not recorded_digest:
+            errors.append("trusted_runner=true requires policy.runner_attestation.artifact.manifest_sha256")
 
-    # Hash format checks for QA
-    for hash_field in ["report_hash", "event_log_hash"]:
-        val = qa.get(hash_field, "")
-        if val:
-            try:
-                validate_sha256_hex(val, f"qa.{hash_field}")
-            except ValueError as e:
-                errors.append(str(e))
 
-    # Isolation proof checks
-    iso = qa.get("isolation_proof", {})
-    if iso:
-        if not iso.get("source_mount_read_only", True):
-            errors.append("isolation_proof.source_mount_read_only must be True")
-        if iso.get("write_tools_observed", False):
-            errors.append("isolation_proof.write_tools_observed must be False for valid QA")
+def _check_repo_and_pr(manifest: Dict[str, Any], errors: List[str]) -> None:
+    repo = manifest.get("repo", {})
+    pr = manifest.get("pull_request", {})
+    for field in ["base_sha", "candidate_sha", "candidate_tree_oid"]:
+        _validate_sha(repo.get(field, ""), 40, f"repo.{field}", errors)
+    if repo.get("candidate_sha") != pr.get("head_sha"):
+        errors.append("pull_request.head_sha must equal repo.candidate_sha")
+    if pr.get("base") != repo.get("base_branch"):
+        errors.append("pull_request.base must equal repo.base_branch")
+    if repo.get("base_branch") != "main":
+        errors.append("repo.base_branch must be main for governed delivery")
+    if repo.get("candidate_pinned_at"):
+        _parse_time(repo["candidate_pinned_at"], "repo.candidate_pinned_at", errors)
 
-        for tree_field in ["candidate_tree_before", "candidate_tree_after"]:
-            val = iso.get(tree_field, "")
-            if val:
-                try:
-                    validate_sha_hex(val, 40, f"isolation_proof.{tree_field}")
-                except ValueError as e:
-                    errors.append(str(e))
 
-        if iso.get("candidate_tree_before") and iso.get("candidate_tree_after"):
-            if iso["candidate_tree_before"] != iso["candidate_tree_after"]:
-                errors.append(
-                    f"candidate tree changed during QA: "
-                    f"{iso['candidate_tree_before']} -> {iso['candidate_tree_after']}"
-                )
+def _check_issue(manifest: Dict[str, Any], errors: List[str]) -> None:
+    issue = manifest.get("issue", {})
+    pr = manifest.get("pull_request", {})
+    labels = issue.get("labels", [])
+    status_labels = [label for label in labels if isinstance(label, str) and label.startswith("status:")]
+    canonical = issue.get("canonical_status", "")
 
-    # Commands checks — validate_repo.py must not be categorized as test
-    for cmd in manifest.get("commands", []):
-        if "scripts/validate_repo.py" in " ".join(cmd.get("argv", [])):
-            if cmd.get("category") == "test":
-                errors.append(
-                    f"command {cmd.get('command_id')}: validate_repo.py cannot be categorized as test"
-                )
+    if not issue.get("numbers"):
+        errors.append("issue.numbers must contain at least one linked issue")
+    if not pr.get("linked_issues"):
+        errors.append("pull_request.linked_issues must contain at least one issue")
+    for number in issue.get("numbers", []):
+        if number not in pr.get("linked_issues", []):
+            errors.append(f"issue {number} missing from pull_request.linked_issues")
 
-    # State transitions
-    for st in manifest.get("state_transitions", []):
-        if not st.get("from") or not st.get("to"):
-            errors.append(f"state_transition missing 'from' or 'to': {st}")
-        if not st.get("authority"):
-            errors.append(f"state_transition missing 'authority': {st}")
+    if len(status_labels) != 1:
+        errors.append(f"exactly one status:* label is required, got {status_labels}")
+    elif canonical != status_labels[0]:
+        errors.append(f"issue.canonical_status {canonical!r} must equal status label {status_labels[0]!r}")
 
-    # Publication checks
-    pub = manifest.get("publication", {})
-    if pub.get("publication_sha") and len(pub["publication_sha"]) != 40:
-        errors.append(f"publication.publication_sha must be 40 chars, got {len(pub['publication_sha'])}")
+    match = STATUS_RE.match(canonical or "")
+    if not match:
+        errors.append(f"issue.canonical_status must match status:<value>, got {canonical!r}")
+        return
+    value = match.group(1)
+    statuses = _status_values()
+    if value not in statuses:
+        errors.append(f"unknown issue status: {canonical}")
+
+
+def _check_passes(manifest: Dict[str, Any], errors: List[str]) -> None:
+    passes = manifest.get("passes", {})
+    repo = manifest.get("repo", {})
+    ids = all_pass_ids(manifest)
+    if not ids:
+        errors.append("passes must contain at least one implementation or remediation pass")
+    if len(ids) != len(set(ids)):
+        errors.append("implementation/remediation pass IDs must be unique")
+    if passes.get("candidate_sha") != repo.get("candidate_sha"):
+        errors.append("passes.candidate_sha must equal repo.candidate_sha")
+    if passes.get("ordering") != ids:
+        errors.append("passes.ordering must exactly match implementation_pass_ids + remediation_pass_ids")
+
+    records = pass_records_by_id(manifest)
+    for pass_id in ids:
+        record = records.get(pass_id)
+        if not record:
+            errors.append(f"missing pass_records entry for {pass_id}")
+            continue
+        if record.get("candidate_sha") != repo.get("candidate_sha"):
+            errors.append(f"pass {pass_id} candidate_sha does not match repo.candidate_sha")
+        if record.get("base_sha") != repo.get("base_sha"):
+            errors.append(f"pass {pass_id} base_sha does not match repo.base_sha")
+        if record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
+            errors.append(f"pass {pass_id} candidate_tree_oid does not match repo.candidate_tree_oid")
+        if not record.get("agent_id"):
+            errors.append(f"pass {pass_id} missing agent_id for role-independence checks")
+        if not record.get("role_run_id"):
+            errors.append(f"pass {pass_id} missing role_run_id")
+        if record.get("finished_at"):
+            _parse_time(record["finished_at"], f"pass {pass_id}.finished_at", errors)
+
+
+def _check_model_profile(profile_id: str, label: str, errors: List[str]) -> None:
+    profiles = _load_model_profiles()
+    profile = profiles.get("profiles", {}).get(profile_id)
+    if not profile:
+        errors.append(f"{label} unsupported model profile: {profile_id}")
+        return
+    if not profile.get("verified"):
+        errors.append(f"{label} model profile is not verified: {profile_id}")
+    model_id = profile.get("model_id")
+    for disallowed in profiles.get("disallowed_until_reprobed", []):
+        if disallowed.get("model_id") == model_id:
+            errors.append(f"{label} model {model_id} is disallowed until re-probed")
+
+
+def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
+    repo = manifest.get("repo", {})
+    ids = all_pass_ids(manifest)
+    qa_records = normalize_qa_records(manifest)
+
+    if not isinstance(manifest.get("qa", {}).get("records"), list):
+        errors.append("qa.records array is required; legacy single qa object is not authoritative")
+    if not qa_records:
+        errors.append("no QA records present")
+
+    seen: dict[str, int] = {}
+    for record in qa_records:
+        pass_id = record.get("qa_for_pass_id", "")
+        seen[pass_id] = seen.get(pass_id, 0) + 1
+        if pass_id not in ids:
+            errors.append(f"qa record {record.get('qa_run_id', '<unknown>')} references unknown pass {pass_id}")
+        _check_model_profile(record.get("model_profile", ""), "qa", errors)
+        if record.get("verdict") not in {"pass", "fail"}:
+            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} verdict must be pass or fail")
+        for field in ["report_hash", "event_log_hash", "protected_execution_record_sha256", "protected_probe_record_sha256"]:
+            value = record.get(field, "")
+            if value:
+                _validate_sha256(value, f"qa.{field}", errors)
+        if record.get("candidate_sha") != repo.get("candidate_sha"):
+            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} candidate_sha does not match repo.candidate_sha")
+        if record.get("base_sha") != repo.get("base_sha"):
+            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} base_sha does not match repo.base_sha")
+        if record.get("candidate_tree_oid") != repo.get("candidate_tree_oid"):
+            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} candidate_tree_oid does not match repo.candidate_tree_oid")
+        if not record.get("agent_id"):
+            errors.append(f"qa {record.get('qa_run_id', '<unknown>')} missing agent_id")
+
+        iso = record.get("isolation_proof", {})
+        if iso:
+            if iso.get("candidate_tree_before") != repo.get("candidate_tree_oid"):
+                errors.append("qa isolation candidate_tree_before must equal repo.candidate_tree_oid")
+            if iso.get("candidate_tree_after") != repo.get("candidate_tree_oid"):
+                errors.append("qa isolation candidate_tree_after must equal repo.candidate_tree_oid")
+            if iso.get("candidate_tree_before") != iso.get("candidate_tree_after"):
+                errors.append("candidate tree changed during QA")
+            for flag, required in [
+                ("source_mount_read_only", True),
+                ("scratch_separate_from_source", True),
+                ("host_home_mounted", False),
+                ("ssh_config_mounted", False),
+                ("gh_config_mounted", False),
+                ("ambient_credentials_available", False),
+                ("context_files_disabled", True),
+                ("extensions_disabled", True),
+                ("skills_disabled", True),
+                ("themes_disabled", True),
+                ("write_tools_observed", False),
+            ]:
+                if iso.get(flag) is not required:
+                    errors.append(f"qa isolation {flag} must be {required}")
+
+    for pass_id in ids:
+        count = seen.get(pass_id, 0)
+        if count != 1:
+            errors.append(f"pass {pass_id} must have exactly one QA record, got {count}")
+    for pass_id, count in seen.items():
+        if count > 1:
+            errors.append(f"pass {pass_id} has multiple QA records ({count})")
+
+
+def _command_matches_registry(command: Dict[str, Any], registry_id: str, registry: Dict[str, Any]) -> bool:
+    spec = registry.get(registry_id)
+    if not spec:
+        return False
+    if command.get("category") != spec.get("category"):
+        return False
+    expected = spec.get("argv", [])
+    actual = command.get("argv", [])
+    if "{{manifest_path}}" in expected:
+        fixed = [item for item in expected if item != "{{manifest_path}}"]
+        return actual[: len(fixed)] == fixed
+    return actual == expected
+
+
+def _check_commands(manifest: Dict[str, Any], errors: List[str]) -> None:
+    registry = _registry_commands()
+    commands = manifest.get("commands", [])
+    ids = [command.get("command_id") for command in commands]
+    if len(ids) != len(set(ids)):
+        errors.append("command_id values must be unique")
+
+    by_id = {command.get("command_id"): command for command in commands}
+    for list_name in ["validations", "tests"]:
+        for command_id in manifest.get(list_name, []):
+            if command_id not in by_id:
+                errors.append(f"{list_name} references missing command_id {command_id}")
+
+    for command in commands:
+        joined = " ".join(command.get("argv", []))
+        registry_id = command_registry_id(command)
+        if registry_id not in registry:
+            errors.append(f"unregistered command: {registry_id or command.get('command_id')}")
+            continue
+        if not _command_matches_registry(command, registry_id, registry):
+            errors.append(f"command {command.get('command_id')} does not match registry entry {registry_id}")
+        if "scripts/validate_repo.py" in joined and command.get("category") == "test":
+            errors.append(f"command {command.get('command_id')}: validate_repo.py cannot be categorized as test")
+        for field in ["stdout_sha256", "stderr_sha256"]:
+            _validate_sha256(command.get(field, ""), f"command {command.get('command_id')}.{field}", errors)
+        if command.get("started_at"):
+            _parse_time(command["started_at"], f"command {command.get('command_id')}.started_at", errors)
+        if command.get("finished_at"):
+            _parse_time(command["finished_at"], f"command {command.get('command_id')}.finished_at", errors)
+
+
+def _check_state_transitions(manifest: Dict[str, Any], errors: List[str]) -> None:
+    sm = _load_state_machine()
+    state_ids = set(sm.get("states", {}))
+    transition_specs = sm.get("transitions", [])
+    for transition in manifest.get("state_transitions", []):
+        source = transition.get("from")
+        target = transition.get("to")
+        authority = transition.get("authority")
+        if source not in state_ids:
+            errors.append(f"state_transition from unknown state: {source}")
+            continue
+        if target not in state_ids:
+            errors.append(f"state_transition to unknown state: {target}")
+            continue
+        matching = [
+            spec for spec in transition_specs
+            if (spec.get("from") == source or spec.get("from") == "*") and spec.get("to") == target
+        ]
+        if not matching:
+            errors.append(f"state_transition not allowed: {source}->{target}")
+            continue
+        if not any(authority in spec.get("authorized_roles", []) for spec in matching):
+            errors.append(f"state_transition {source}->{target} not authorized for {authority}")
+        _parse_time(transition.get("timestamp", ""), f"state_transition {source}->{target}", errors)
+
+
+def _check_publication(manifest: Dict[str, Any], errors: List[str]) -> None:
+    publication = manifest.get("publication", {})
+    for field in ["merge_result_sha", "publication_sha", "tag_sha", "deploy_sha"]:
+        value = publication.get(field, "")
+        if value and not SHA1_RE.match(value):
+            errors.append(f"publication.{field} must be empty or a full 40-character lowercase hex SHA, got {value!r}")
+
+
+def _check_schema_references(errors: List[str]) -> None:
+    for path in [
+        REPO_ROOT / "governance/state-machine.json",
+        REPO_ROOT / "governance/model-profiles.json",
+        REPO_ROOT / "governance/command-registry.json",
+        REPO_ROOT / "governance/issue-status.json",
+        REPO_ROOT / "governance/audits/existing-work-freeze.json",
+    ]:
+        data = load_json_strict(path)
+        schema_ref = data.get("$schema")
+        if not schema_ref:
+            errors.append(f"{path.relative_to(REPO_ROOT)} missing $schema reference")
+            continue
+        if not schema_ref.startswith("./") and not schema_ref.startswith("../"):
+            continue
+        schema_path = (path.parent / schema_ref).resolve()
+        if not schema_path.exists():
+            errors.append(f"{path.relative_to(REPO_ROOT)} references missing schema {schema_ref}")
+            continue
+        schema = load_json_strict(schema_path)
+        schema_errors = validate_schema(data, schema)
+        for err in schema_errors:
+            errors.append(f"{path.relative_to(REPO_ROOT)} schema error: {err}")
+
+
+def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
+    """Run validation checks. Returns error messages."""
+    errors: List[str] = []
+
+    try:
+        schema_errors = validate_schema(manifest, _load_schema())
+        errors.extend(f"schema: {err}" for err in schema_errors)
+    except Exception as exc:
+        errors.append(f"schema validation failed internally: {exc}")
+        return errors
+
+    # If required top-level fields are absent, semantic checks would cascade.
+    required = [
+        "schema_version", "policy", "repo", "issue", "pull_request", "passes",
+        "qa", "commands", "validations", "tests", "state_transitions", "approvals", "publication",
+    ]
+    missing = [field for field in required if field not in manifest]
+    if missing:
+        return errors + [f"missing required field: {field}" for field in missing]
+
+    _check_schema_references(errors)
+    _check_policy(manifest, errors)
+    _check_repo_and_pr(manifest, errors)
+    _check_issue(manifest, errors)
+    _check_passes(manifest, errors)
+    _check_qa(manifest, errors)
+    _check_commands(manifest, errors)
+    _check_state_transitions(manifest, errors)
+    _check_publication(manifest, errors)
 
     return errors
 
@@ -199,14 +459,12 @@ def main() -> int:
 
     manifest_path = sys.argv[1]
     try:
-        with open(manifest_path, "r") as f:
-            manifest = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Error reading manifest: {e}", file=sys.stderr)
+        manifest = load_json_strict(manifest_path)
+    except (FileNotFoundError, json.JSONDecodeError, DuplicateKeyError, ValueError) as exc:
+        print(f"Error reading manifest: {exc}", file=sys.stderr)
         return 1
 
     errors = check(manifest, manifest_path)
-
     if errors:
         print(f"Evidence manifest validation FAILED ({len(errors)} errors):", file=sys.stderr)
         for err in errors:

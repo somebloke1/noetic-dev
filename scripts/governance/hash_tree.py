@@ -71,23 +71,20 @@ def canonical_json_from_file(path: Union[str, Path]) -> str:
 
 
 def manifest_digest_excluding_own(manifest: dict) -> str:
-    """Compute canonical manifest digest after removing /policy/runner_attestation/artifact/manifest_sha256.
+    """Compute canonical manifest digest after removing exactly its own digest.
 
-    This prevents a circular self-reference where the manifest hash includes
-    its own recorded hash field.
+    The self-reference field is precisely:
+
+        /policy/runner_attestation/artifact/manifest_sha256
+
+    No parent objects are pruned. This matches the governance contract and avoids
+    the previous bug where generated manifests and later verification hashed
+    different structures after an empty ``artifact`` object was left behind.
     """
     manifest = _deep_copy(manifest)
 
-    # Remove the self-reference field
     try:
         del manifest["policy"]["runner_attestation"]["artifact"]["manifest_sha256"]
-    except (KeyError, TypeError):
-        pass
-
-    # Also remove empty runner_attestation if that made it empty
-    try:
-        if manifest["policy"]["runner_attestation"] == {}:
-            del manifest["policy"]["runner_attestation"]
     except (KeyError, TypeError):
         pass
 

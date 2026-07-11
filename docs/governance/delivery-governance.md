@@ -91,6 +91,8 @@ Publication using a branch name (e.g., `main`, `latest`) is always forbidden. On
 
 Every governed delivery produces an evidence manifest at `.governance/runs/<run_id>/manifest.json`. The schema is defined in `governance/schemas/evidence-manifest.schema.json`.
 
+QA evidence is represented as `qa.records[]`, not as a single prose report. Each implementation/remediation pass ID must have exactly one QA record with distinct implementation and QA identities, matching candidate/base/tree bindings, a protected READY probe record hash, and a protected QA execution record hash. The canonical manifest digest is `sha256(canonical_json(manifest_without_/policy/runner_attestation/artifact/manifest_sha256))`; no other fields are removed during hashing.
+
 ### Authoritative provenance
 
 Authoritative mode requires:
@@ -110,10 +112,11 @@ Authoritative mode requires:
 Before authoritative conditions exist:
 
 - Manifests are advisory only.
-- `policy.runner_attestation.trusted_runner` must be `false`.
+- `policy.trusted_runner` must be `false` unless a captured GitHub API or signed artifact-attestation payload verifies the run, job, artifact digest, candidate SHA, protected policy SHA, and separate checkouts.
 - Local validation/tests may produce diagnostics.
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
+- The existing-work freeze in `governance/audits/existing-work-freeze.json` blocks publication until an actual audit artifact is completed and reviewed.
 
 ## Model profiles
 

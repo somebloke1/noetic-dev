@@ -45,12 +45,12 @@
       "category": "validation",
       "command_id": "workflow.pinning",
       "cwd": "/repo",
-      "exit_code": 1,
+      "exit_code": 0,
       "finished_at": "2026-07-11T12:22:00+00:00",
       "phase": "pre_merge",
       "registry_id": "workflow.pinning",
       "started_at": "2026-07-11T12:21:00+00:00",
-      "stderr_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
     },
     {
@@ -166,7 +166,7 @@
       "artifact": {
         "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
         "artifact_id": 333,
-        "manifest_sha256": "88889ab268df2c25b9f8f1ba6d0bd16111adeca99e93ad17b044beac601eb41e",
+        "manifest_sha256": "eea45e422ec72be7aa20876559ea215440b76bfbc6ee1a4b714f732b8ee88dd9",
         "name": "governance-evidence"
       },
       "github": {
@@ -387,7 +387,7 @@
           "probe_prompt_hash": "6666666666666666666666666666666666666666666666666666666666666666",
           "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
           "profile_id": "qa_primary",
-          "resolved_model": "openai-codex/gpt-5.6-terra",
+          "resolved_model": "other-model",
           "role_run_id": "qa-role-g1-0001",
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "1",
@@ -403,7 +403,7 @@
             "ls"
           ]
         },
-        "protected_probe_record_sha256": "c88dec6bb429967d26c2ae5280a99e21c9ec6760d0cddb127966e8147746c0f8",
+        "protected_probe_record_sha256": "1c1ab2efdcaace23a03aff1c8845faf2bb8ec1059deeb14d2c0b293fd568c932",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",
