@@ -18,6 +18,8 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 
 - [`SYNTHESIS.md`](SYNTHESIS.md) — adjudicated architecture and migration path
 - [`docs/cognitive-backbone.md`](docs/cognitive-backbone.md) — canonical P1–P4 form
+- [`docs/controller-architecture.md`](docs/controller-architecture.md) — proposed superior executive controller
+- [`docs/controller-adversarial-review.md`](docs/controller-adversarial-review.md) — binding pre-implementation review findings
 - [`AGENTS.md`](AGENTS.md) — project governance and invariants
 - [`docs/development-practices.md`](docs/development-practices.md) — git, worktree, issue, PR, CI, and merge discipline
 - [`KNOWNS.md`](KNOWNS.md), [`DECISIONS.md`](DECISIONS.md), [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — durable evidence and judgment
