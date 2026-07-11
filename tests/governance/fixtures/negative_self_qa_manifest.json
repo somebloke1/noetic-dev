@@ -1,0 +1,92 @@
+{
+  "schema_version": "1",
+  "manifest_id": "00000000-0000-0000-0000-000000000010",
+  "run_id": "00000000-0000-0000-0000-000000000002",
+  "generated_at": "2026-07-11T12:00:00+00:00",
+  "policy": {
+    "ref": "refs/heads/main",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generator_path": "scripts/governance/collect_evidence.py",
+    "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "trusted_runner": false
+  },
+  "repo": {
+    "remote": "https://github.com/somebloke1/noetic-dev.git",
+    "base_branch": "main",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "candidate_branch": "issue-23-self-qa",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "issue": {
+    "numbers": [99],
+    "labels": ["type:implementation", "status:in_progress"],
+    "canonical_status": "status:in_progress"
+  },
+  "pull_request": {
+    "number": 99,
+    "title": "fix: self-qa test",
+    "author": "somebloke1",
+    "draft_state": false,
+    "base": "main",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "linked_issues": [99]
+  },
+  "passes": {
+    "implementation_pass_ids": ["impl-self-001"],
+    "remediation_pass_ids": [],
+    "parent_pass_id": "impl-self-001",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "ordering": ["impl-self-001"]
+  },
+  "qa": {
+    "qa_for_pass_id": "impl-self-001",
+    "model_profile": "implementer_candidate",
+    "verdict": "pass",
+    "report_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "event_log_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "isolation_proof": {
+      "source_mount_read_only": false,
+      "scratch_separate_from_source": false,
+      "host_home_mounted": true,
+      "ssh_config_mounted": true,
+      "gh_config_mounted": true,
+      "ambient_credentials_available": true,
+      "context_files_disabled": false,
+      "extensions_disabled": false,
+      "skills_disabled": false,
+      "themes_disabled": false,
+      "candidate_tree_before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "candidate_tree_after": "ffffffffffffffffffffffffffffffffffffffff",
+      "write_tools_observed": true
+    }
+  },
+  "commands": [
+    {
+      "command_id": "cmd-validate-001",
+      "category": "validation",
+      "argv": ["python3", "scripts/validate_repo.py"],
+      "cwd": "/repo",
+      "exit_code": 0,
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "validations": ["cmd-validate-001"],
+  "tests": [],
+  "state_transitions": [
+    {"from": "UNGOVERNED_EXISTING", "to": "IMPLEMENTING", "authority": "somebloke1", "timestamp": "2026-07-11T11:00:00+00:00"}
+  ],
+  "approvals": [
+    {
+      "reviewer": "somebloke1",
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "timestamp": "2026-07-11T13:00:00+00:00",
+      "independent": false
+    }
+  ],
+  "publication": {
+    "merge_result_sha": "",
+    "publication_sha": ""
+  }
+}

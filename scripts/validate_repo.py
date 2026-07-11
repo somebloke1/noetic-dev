@@ -19,6 +19,27 @@ REQUIRED = [
     "SECURITY.md",
     "docs/cognitive-backbone.md",
     "docs/development-practices.md",
+    # Governance files (issue #23)
+    "docs/governance/delivery-governance.md",
+    "governance/state-machine.json",
+    "governance/model-profiles.json",
+    "governance/command-registry.json",
+    "governance/issue-status.json",
+    "governance/schemas/evidence-manifest.schema.json",
+    "governance/audits/README.md",
+    "scripts/governance/__init__.py",
+    "scripts/governance/hash_tree.py",
+    "scripts/governance/collect_evidence.py",
+    "scripts/governance/check_evidence_manifest.py",
+    "scripts/governance/check_delivery_gate.py",
+    "scripts/governance/run_isolated_pi.py",
+    # Governance test files
+    "tests/governance/__init__.py",
+    "tests/governance/test_command_registry.py",
+    "tests/governance/test_delivery_gate.py",
+    "tests/governance/test_evidence_manifest.py",
+    "tests/governance/test_state_machine.py",
+    "tests/governance/test_workflow_pinning.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

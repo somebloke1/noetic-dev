@@ -1,0 +1,102 @@
+{
+  "schema_version": "1",
+  "manifest_id": "00000000-0000-0000-0000-000000000001",
+  "run_id": "00000000-0000-0000-0000-000000000002",
+  "generated_at": "2026-07-11T12:00:00+00:00",
+  "policy": {
+    "ref": "refs/heads/main",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generator_path": "scripts/governance/collect_evidence.py",
+    "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "trusted_runner": false
+  },
+  "repo": {
+    "remote": "https://github.com/somebloke1/noetic-dev.git",
+    "base_branch": "main",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "candidate_branch": "issue-23-governance-correction",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "issue": {
+    "numbers": [23],
+    "labels": ["type:implementation", "status:in_progress"],
+    "canonical_status": "status:in_progress"
+  },
+  "pull_request": {
+    "number": 23,
+    "title": "fix: implement governance correction",
+    "author": "somebloke1",
+    "draft_state": false,
+    "base": "main",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "linked_issues": [23]
+  },
+  "passes": {
+    "implementation_pass_ids": ["impl-g1-0001"],
+    "remediation_pass_ids": [],
+    "parent_pass_id": "",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "ordering": ["impl-g1-0001"]
+  },
+  "qa": {
+    "qa_for_pass_id": "impl-g1-0001",
+    "model_profile": "qa_primary",
+    "verdict": "pass",
+    "report_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "event_log_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "isolation_proof": {
+      "source_mount_read_only": true,
+      "scratch_separate_from_source": true,
+      "host_home_mounted": false,
+      "ssh_config_mounted": false,
+      "gh_config_mounted": false,
+      "ambient_credentials_available": false,
+      "context_files_disabled": true,
+      "extensions_disabled": true,
+      "skills_disabled": true,
+      "themes_disabled": true,
+      "candidate_tree_before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "write_tools_observed": false
+    }
+  },
+  "commands": [
+    {
+      "command_id": "cmd-validate-001",
+      "category": "validation",
+      "argv": ["python3", "scripts/validate_repo.py"],
+      "cwd": "/repo",
+      "exit_code": 0,
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "command_id": "cmd-test-001",
+      "category": "test",
+      "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"],
+      "cwd": "/repo",
+      "exit_code": 0,
+      "stdout_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "validations": ["cmd-validate-001"],
+  "tests": ["cmd-test-001"],
+  "state_transitions": [
+    {"from": "UNGOVERNED_EXISTING", "to": "IMPLEMENTING", "authority": "human", "timestamp": "2026-07-11T11:00:00+00:00"},
+    {"from": "IMPLEMENTING", "to": "CANDIDATE_PINNED", "authority": "implementer", "timestamp": "2026-07-11T12:00:00+00:00"}
+  ],
+  "approvals": [
+    {
+      "reviewer": "human-reviewer",
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "timestamp": "2026-07-11T13:00:00+00:00",
+      "independent": true
+    }
+  ],
+  "publication": {
+    "merge_result_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "publication_sha": ""
+  }
+}

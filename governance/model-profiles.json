@@ -1,0 +1,114 @@
+{
+  "$schema": "./schemas/model-profiles.schema.json",
+  "schema_version": "1",
+  "description": "Verified model profiles for noetic-dev governance roles. Each entry must be verified callable and requires a fresh READY probe per run.",
+  "profiles": {
+    "orchestrator": {
+      "designation": "Orchestrator",
+      "model_id": "openai-codex/gpt-5.6-sol",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Coordinates planning and remediation dispatch."
+    },
+    "planner": {
+      "designation": "Planner",
+      "model_id": "openai-codex/gpt-5.5",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Produces planning artifacts. Read-only."
+    },
+    "implementer_candidate": {
+      "designation": "Implementer",
+      "model_id": "litellm/deepseek-v4-flash",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Implements plans as candidate commits."
+    },
+    "remediator": {
+      "designation": "Remediator",
+      "model_id": "openai-codex/gpt-5.5",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Fixes defects found by QA. Same constraints as implementer."
+    },
+    "qa_primary": {
+      "designation": "Primary QA",
+      "model_id": "openai-codex/gpt-5.6-terra",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Exactly one adversarial QA pass per implementation/remediation generation. Read-only source mount."
+    },
+    "qa_advisory_evaluator": {
+      "designation": "Secondary Advisory Evaluator",
+      "model_id": "litellm/deepseek-v4-pro",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Advisory only. Must not count as the single required QA pass unless later reclassified by governance."
+    },
+    "publisher_dry_run": {
+      "designation": "Publisher (dry-run / profile)",
+      "model_id": "openai-codex/gpt-5.4-mini",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Dry-run and profile only. Actual publication requires human approval."
+    },
+    "publisher_alternate_dry_run": {
+      "designation": "Publisher (alternate dry-run)",
+      "model_id": "litellm/minimax-m3",
+      "verified": true,
+      "ready_probe_required": true,
+      "notes": "Alternate dry-run only."
+    }
+  },
+  "disallowed_until_reprobed": [
+    {
+      "model_id": "openai-codex/gpt-5.6-terra-pro",
+      "reason": "Removed pending re-probe and re-adjudication."
+    },
+    {
+      "model_id": "litellm/codex/gpt-5.6-terra-pro",
+      "reason": "Removed pending re-probe and re-adjudication."
+    },
+    {
+      "model_id": "deepseek/deepseek-v4-pro",
+      "reason": "Removed pending re-probe and re-adjudication."
+    },
+    {
+      "model_id": "deepseek/deepseek-v4-flash",
+      "reason": "Removed pending re-probe and re-adjudication. Note: litellm/deepseek-v4-flash is verified for implementer."
+    }
+  ],
+  "requirements": {
+    "ready_probe": {
+      "description": "Every model invocation must be preceded by a fresh READY probe within the same run.",
+      "nonce_length": 16,
+      "expected_response_prefix": "READY ",
+      "probe_alignment_fields": [
+        "run_id",
+        "role_run_id",
+        "resolved_model",
+        "profile_id",
+        "profile_hash",
+        "pi_version",
+        "policy_commit_sha",
+        "candidate_sha",
+        "candidate_tree_oid",
+        "tools",
+        "environment_name_allowlist",
+        "context_files_disabled",
+        "extensions_disabled",
+        "skills_disabled",
+        "themes_disabled"
+      ],
+      "permitted_differences_from_probe": [
+        "prompt_path",
+        "prompt_hash",
+        "event_log_hash",
+        "stdout_sha256",
+        "stderr_sha256",
+        "started_at",
+        "finished_at"
+      ]
+    }
+  }
+}

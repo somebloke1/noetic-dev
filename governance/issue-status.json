@@ -1,0 +1,50 @@
+{
+  "$schema": "./schemas/issue-status.schema.json",
+  "schema_version": "1",
+  "description": "Canonical machine-readable issue status vocabulary for noetic-dev governance. All issue labels follow status:<value> convention.",
+  "statuses": {
+    "triage": {
+      "description": "Issue has been filed but not yet assessed.",
+      "can_transition_to": ["accepted", "blocked", "checkpointed"],
+      "prose_inference_prohibited": true
+    },
+    "accepted": {
+      "description": "Issue has been accepted for governed work.",
+      "can_transition_to": ["ready", "blocked", "checkpointed"],
+      "prose_inference_prohibited": true
+    },
+    "ready": {
+      "description": "Issue is ready for implementation.",
+      "can_transition_to": ["in_progress", "blocked", "checkpointed"],
+      "prose_inference_prohibited": true
+    },
+    "in_progress": {
+      "description": "Active work is underway.",
+      "can_transition_to": ["ready", "blocked", "checkpointed", "done"],
+      "prose_inference_prohibited": true
+    },
+    "blocked": {
+      "description": "Work is blocked. No PR may close this issue.",
+      "can_transition_to": ["accepted", "ready", "checkpointed"],
+      "prose_inference_prohibited": true,
+      "prevents_closure": true
+    },
+    "checkpointed": {
+      "description": "Work paused/checkpointed. No PR may close this issue.",
+      "can_transition_to": ["accepted", "ready", "in_progress"],
+      "prose_inference_prohibited": true,
+      "prevents_closure": true
+    },
+    "done": {
+      "description": "Work completed.",
+      "can_transition_to": [],
+      "prose_inference_prohibited": true
+    }
+  },
+  "rules": {
+    "machine_label_is_authoritative": true,
+    "prose_cannot_override_label": true,
+    "closure_blocked_by": ["blocked", "checkpointed"],
+    "label_pattern": "status:<value>"
+  }
+}

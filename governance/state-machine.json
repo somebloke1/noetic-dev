@@ -1,0 +1,184 @@
+{
+  "$schema": "./schemas/state-machine.schema.json",
+  "schema_version": "1",
+  "description": "Noetic-dev delivery governance state machine — states, transitions, and role authorities.",
+  "states": {
+    "UNGOVERNED_EXISTING": {
+      "description": "Existing branches/PRs before governance was applied.",
+      "authorized_roles": ["human"]
+    },
+    "AUDIT_REQUIRED": {
+      "description": "Audit is needed before any transition.",
+      "authorized_roles": ["human"]
+    },
+    "AUDITED": {
+      "description": "Audit complete; ready for issue acceptance.",
+      "authorized_roles": ["human"]
+    },
+    "ISSUE_ACCEPTED": {
+      "description": "Issue is accepted for governed work.",
+      "authorized_roles": ["human", "orchestrator"]
+    },
+    "PLAN_REQUESTED": {
+      "description": "A planning pass has been requested.",
+      "authorized_roles": ["orchestrator"]
+    },
+    "PLAN_READY": {
+      "description": "Planning pass complete and plan approved.",
+      "authorized_roles": ["human"]
+    },
+    "IMPLEMENTING": {
+      "description": "Implementation generation in progress.",
+      "authorized_roles": ["implementer"]
+    },
+    "CANDIDATE_PINNED": {
+      "description": "Implementation candidate SHA pinned; ready for validation and QA.",
+      "authorized_roles": ["implementer", "validator", "qa"]
+    },
+    "VALIDATING": {
+      "description": "Validation running against candidate SHA.",
+      "authorized_roles": ["validator"]
+    },
+    "QA_RUNNING": {
+      "description": "Adversarial QA running against pinned candidate.",
+      "authorized_roles": ["qa"]
+    },
+    "QA_FAILED": {
+      "description": "QA found defects; remediation required.",
+      "authorized_roles": ["qa", "human"]
+    },
+    "REMEDIATING": {
+      "description": "Remediation generation in progress (new implementation pass).",
+      "authorized_roles": ["remediator"]
+    },
+    "QA_PASSED": {
+      "description": "QA verdict passed.",
+      "authorized_roles": ["qa"]
+    },
+    "HUMAN_REVIEW_PENDING": {
+      "description": "Candidate ready for independent human review.",
+      "authorized_roles": ["human"]
+    },
+    "READY_TO_MERGE": {
+      "description": "Human approved; candidate ready to merge to main.",
+      "authorized_roles": ["publisher"]
+    },
+    "MERGED_TO_MAIN": {
+      "description": "Candidate merged to main; post-merge validation pending.",
+      "authorized_roles": ["publisher"]
+    },
+    "POST_MERGE_VALIDATING": {
+      "description": "Post-merge validation running against main.",
+      "authorized_roles": ["validator"]
+    },
+    "PUBLICATION_READY": {
+      "description": "Post-merge validation passed; ready to publish.",
+      "authorized_roles": ["publisher"]
+    },
+    "PUBLISHED": {
+      "description": "Tagged/released to the public.",
+      "authorized_roles": ["publisher"]
+    },
+    "DEPLOYED": {
+      "description": "Released version deployed.",
+      "authorized_roles": ["publisher"]
+    },
+    "BLOCKED": {
+      "description": "State blocked — no further transitions until unblocked by human.",
+      "authorized_roles": ["human"]
+    },
+    "ABORTED": {
+      "description": "Work terminated; terminal state.",
+      "authorized_roles": ["human"]
+    },
+    "ROLLED_BACK": {
+      "description": "Published/deployed work rolled back; terminal state.",
+      "authorized_roles": ["human"]
+    }
+  },
+  "transitions": [
+    {"from": "UNGOVERNED_EXISTING", "to": "AUDIT_REQUIRED", "authorized_roles": ["human"], "conditions": ["governance correction bootstrap initiated"]},
+    {"from": "AUDIT_REQUIRED", "to": "AUDITED", "authorized_roles": ["human"], "conditions": ["audit artifacts stored in governance/audits/"]},
+    {"from": "AUDITED", "to": "ISSUE_ACCEPTED", "authorized_roles": ["human"], "conditions": ["issue has valid status:* label", "not status:blocked", "not status:checkpointed"]},
+    {"from": "ISSUE_ACCEPTED", "to": "PLAN_REQUESTED", "authorized_roles": ["orchestrator"], "conditions": ["planning pass authorized"]},
+    {"from": "PLAN_REQUESTED", "to": "PLAN_READY", "authorized_roles": ["orchestrator"], "conditions": ["plan artifact exists", "plan reviewed"]},
+    {"from": "PLAN_READY", "to": "IMPLEMENTING", "authorized_roles": ["human", "orchestrator"], "conditions": ["plan accepted"]},
+    {"from": "IMPLEMENTING", "to": "CANDIDATE_PINNED", "authorized_roles": ["implementer"], "conditions": ["candidate commit created", "full 40-char SHA recorded"]},
+    {"from": "CANDIDATE_PINNED", "to": "VALIDATING", "authorized_roles": ["validator"], "conditions": ["candidate SHA is immutable"]},
+    {"from": "CANDIDATE_PINNED", "to": "QA_RUNNING", "authorized_roles": ["qa"], "conditions": ["candidate SHA pinned", "validation may be concurrent"]},
+    {"from": "VALIDATING", "to": "CANDIDATE_PINNED", "authorized_roles": ["validator"], "conditions": ["validation completed (pass or fail)"]},
+    {"from": "QA_RUNNING", "to": "QA_PASSED", "authorized_roles": ["qa"], "conditions": ["exactly one QA pass", "QA verdict passed", "QA used read-only source mount", "QA event log verified"]},
+    {"from": "QA_RUNNING", "to": "QA_FAILED", "authorized_roles": ["qa"], "conditions": ["QA verdict failed"]},
+    {"from": "QA_FAILED", "to": "REMEDIATING", "authorized_roles": ["human", "orchestrator"], "conditions": ["remediation authorized"]},
+    {"from": "REMEDIATING", "to": "CANDIDATE_PINNED", "authorized_roles": ["remediator"], "conditions": ["new implementation_pass_id", "new candidate SHA", "new qa_for_pass_id"]},
+    {"from": "QA_PASSED", "to": "HUMAN_REVIEW_PENDING", "authorized_roles": ["qa"], "conditions": ["all validations passed", "QA passed"]},
+    {"from": "HUMAN_REVIEW_PENDING", "to": "READY_TO_MERGE", "authorized_roles": ["human"], "conditions": ["independent human approval after candidate SHA", "not approved by PR author or implementer"]},
+    {"from": "HUMAN_REVIEW_PENDING", "to": "BLOCKED", "authorized_roles": ["human"], "conditions": ["human rejects candidate"]},
+    {"from": "READY_TO_MERGE", "to": "MERGED_TO_MAIN", "authorized_roles": ["publisher"], "conditions": ["squash/rebase merge to main", "merge_result_sha recorded"]},
+    {"from": "MERGED_TO_MAIN", "to": "POST_MERGE_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-merge validation running against main SHA"]},
+    {"from": "POST_MERGE_VALIDATING", "to": "PUBLICATION_READY", "authorized_roles": ["validator"], "conditions": ["post-merge validations and tests pass"]},
+    {"from": "PUBLICATION_READY", "to": "PUBLISHED", "authorized_roles": ["publisher"], "conditions": ["publication_sha is full 40-char main SHA", "trusted runner provenance verified", "independent human approval exists"]},
+    {"from": "PUBLISHED", "to": "DEPLOYED", "authorized_roles": ["publisher"], "conditions": ["deployment verified"]},
+    {"from": "*", "to": "BLOCKED", "authorized_roles": ["human"], "conditions": ["human intervention required", "gate condition failed"]},
+    {"from": "*", "to": "ABORTED", "authorized_roles": ["human"], "conditions": ["human decides to terminate"]},
+    {"from": "*", "to": "ROLLED_BACK", "authorized_roles": ["human"], "conditions": ["human decides to roll back"]}
+  ],
+  "role_authorities": {
+    "human": {
+      "description": "Real human operator with GitHub identity.",
+      "can_approve": true,
+      "can_implement": false,
+      "can_qa": false,
+      "can_publish": false
+    },
+    "orchestrator": {
+      "description": "Coordinates planning dispatch; read-only on implementation/QA.",
+      "can_approve": false,
+      "can_implement": false,
+      "can_qa": false,
+      "can_publish": false
+    },
+    "planner": {
+      "description": "Read-only; produces plans. Cannot implement, QA, remediate, approve, or publish.",
+      "can_approve": false,
+      "can_implement": false,
+      "can_qa": false,
+      "can_publish": false
+    },
+    "implementer": {
+      "description": "Modifies files in issue worktree; cannot QA or publish.",
+      "can_approve": false,
+      "can_implement": true,
+      "can_qa": false,
+      "can_publish": false
+    },
+    "remediator": {
+      "description": "Modifies files for remediation; cannot QA or publish.",
+      "can_approve": false,
+      "can_implement": true,
+      "can_qa": false,
+      "can_publish": false
+    },
+    "validator": {
+      "description": "Records command exit codes and produces validation results.",
+      "can_approve": false,
+      "can_implement": false,
+      "can_qa": false,
+      "can_publish": false
+    },
+    "qa": {
+      "description": "Exactly one adversarial QA pass per implementation/remediation generation. Read-only source mount.",
+      "can_approve": false,
+      "can_implement": false,
+      "can_qa": true,
+      "can_publish": false
+    },
+    "publisher": {
+      "description": "Deterministic execution only after all gates pass. Cannot substitute for human approval.",
+      "can_approve": false,
+      "can_implement": false,
+      "can_qa": false,
+      "can_publish": true
+    }
+  }
+}

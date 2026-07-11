@@ -16,12 +16,59 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate repository contracts
         run: python3 scripts/validate_repo.py
+      - name: Run governance tests
+        run: python3 -m unittest discover -s tests -v
       - name: Verify clean patch formatting
         run: git diff --check HEAD^
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+
+  delivery-gate:
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Check workflow action pinning
+        run: python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows/governance.yml
+      - name: Generate evidence manifest
+        run: |
+          python3 scripts/governance/collect_evidence.py \
+            --run-id "ci-$(date +%s)" \
+            --candidate-sha "${{ github.event.pull_request.head.sha }}" \
+            --candidate-branch "${{ github.event.pull_request.head.ref }}" \
+            --policy-ref "refs/heads/main" \
+            --issue-numbers "${{ github.event.pull_request.number }}" \
+            --pr-number "${{ github.event.pull_request.number }}" \
+            --pr-title "${{ github.event.pull_request.title }}" \
+            --pr-author "${{ github.event.pull_request.user.login }}" \
+            --output ".governance/runs/ci-$(date +%s)/manifest.json" || echo "Manifest generation advisory only"
+      - name: Run delivery gate
+        run: |
+          MANIFEST=$(ls .governance/runs/*/manifest.json 2>/dev/null | head -1)
+          if [ -n "$MANIFEST" ]; then
+            python3 scripts/governance/check_delivery_gate.py "$MANIFEST" || echo "Delivery gate blocked (advisory mode)"
+          else
+            echo "No manifest found — delivery gate blocked (advisory mode)"
+          fi
+
+  post-merge:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Post-merge validation
+        run: python3 scripts/validate_repo.py
+      - name: Post-merge tests
+        run: python3 -m unittest discover -s tests -v

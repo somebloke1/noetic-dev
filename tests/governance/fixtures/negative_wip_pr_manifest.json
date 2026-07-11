@@ -1,0 +1,83 @@
+{
+  "schema_version": "1",
+  "manifest_id": "00000000-0000-0000-0000-000000000080",
+  "run_id": "00000000-0000-0000-0000-000000000002",
+  "generated_at": "2026-07-11T12:00:00+00:00",
+  "policy": {
+    "ref": "refs/heads/main",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "generator_path": "scripts/governance/collect_evidence.py",
+    "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "trusted_runner": false
+  },
+  "repo": {
+    "remote": "https://github.com/somebloke1/noetic-dev.git",
+    "base_branch": "main",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "candidate_branch": "issue-wip-pr",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "issue": {
+    "numbers": [92],
+    "labels": ["type:implementation", "status:in_progress"],
+    "canonical_status": "status:in_progress"
+  },
+  "pull_request": {
+    "number": 92,
+    "title": "[WIP] fix: work in progress",
+    "author": "somebloke1",
+    "draft_state": true,
+    "base": "main",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "linked_issues": [92]
+  },
+  "passes": {
+    "implementation_pass_ids": ["impl-wip-001"],
+    "remediation_pass_ids": [],
+    "parent_pass_id": "",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "ordering": ["impl-wip-001"]
+  },
+  "qa": {
+    "qa_for_pass_id": "impl-wip-001",
+    "model_profile": "qa_primary",
+    "verdict": "pass",
+    "report_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "event_log_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "isolation_proof": {
+      "source_mount_read_only": true,
+      "scratch_separate_from_source": true,
+      "host_home_mounted": false,
+      "ssh_config_mounted": false,
+      "gh_config_mounted": false,
+      "ambient_credentials_available": false,
+      "context_files_disabled": true,
+      "extensions_disabled": true,
+      "skills_disabled": true,
+      "themes_disabled": true,
+      "candidate_tree_before": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "write_tools_observed": false
+    }
+  },
+  "commands": [
+    {
+      "command_id": "cmd-validate-001",
+      "category": "validation",
+      "argv": ["python3", "scripts/validate_repo.py"],
+      "cwd": "/repo",
+      "exit_code": 0,
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "validations": ["cmd-validate-001"],
+  "tests": [],
+  "state_transitions": [],
+  "approvals": [],
+  "publication": {
+    "merge_result_sha": "",
+    "publication_sha": ""
+  }
+}

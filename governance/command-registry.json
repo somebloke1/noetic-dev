@@ -1,0 +1,52 @@
+{
+  "$schema": "./schemas/command-registry.schema.json",
+  "schema_version": "1",
+  "description": "Canonical command registry for noetic-dev governance. Only commands registered here can satisfy validation, test, or gate requirements.",
+  "commands": {
+    "repo.validate": {
+      "category": "validation",
+      "argv": ["python3", "scripts/validate_repo.py"],
+      "cwd": "{{repo_root}}",
+      "description": "Validate repository invariants (required files, whitespace, links, anchors). This is a validation/check, not a test.",
+      "counts_as_test": false,
+      "counts_as_validation": true
+    },
+    "tests.all": {
+      "category": "test",
+      "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"],
+      "cwd": "{{repo_root}}",
+      "description": "Run all genuine tests under tests/ using Python stdlib unittest. Validate_repo.py is never counted as a test.",
+      "counts_as_test": true,
+      "counts_as_validation": false
+    },
+    "governance.manifest": {
+      "category": "validation",
+      "argv": ["python3", "scripts/governance/check_evidence_manifest.py", "{{manifest_path}}"],
+      "cwd": "{{repo_root}}",
+      "description": "Validate an evidence manifest against its schema and invariant rules.",
+      "counts_as_test": false,
+      "counts_as_validation": true
+    },
+    "governance.delivery_gate": {
+      "category": "gate",
+      "argv": ["python3", "scripts/governance/check_delivery_gate.py", "{{manifest_path}}"],
+      "cwd": "{{repo_root}}",
+      "description": "Run delivery gate checks against an evidence manifest. Fail-closed on missing provenance.",
+      "counts_as_test": false,
+      "counts_as_validation": false
+    },
+    "workflow.pinning": {
+      "category": "validation",
+      "argv": ["python3", "scripts/governance/check_delivery_gate.py", "--check-pinning-only"],
+      "cwd": "{{repo_root}}",
+      "description": "Check that all GitHub Actions workflow files use pinned full-SHA action refs.",
+      "counts_as_test": false,
+      "counts_as_validation": true
+    }
+  },
+  "rules": {
+    "validate_repo_cannot_be_test": true,
+    "unregistered_commands_invalid": true,
+    "model_prose_not_evidence": "Model output stating 'tests passed' without captured command exit codes and output hashes is ignored."
+  }
+}
