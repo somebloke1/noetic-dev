@@ -21,6 +21,7 @@ from run_isolated_pi import (
     _non_evidence_record,
     _write_tools_observed,
     build_bwrap_command,
+    materialize_candidate_checkout,
     resolve_scoped_credentials,
     validate_candidate_checkout,
     validate_model,
@@ -104,6 +105,14 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         subprocess.run(["git", "commit", "-m", "initial"], cwd=root, check=True, capture_output=True)
         return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
 
+    def _commit_file(self, root: Path, relative_path: str, content: str, message: str) -> str:
+        path = root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        subprocess.run(["git", "add", relative_path], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-m", message], cwd=root, check=True, capture_output=True)
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+
     def test_validate_candidate_checkout_requires_clean_git_tree(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -126,6 +135,61 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ok, message, _tree = validate_candidate_checkout(root, sha)
             self.assertFalse(ok)
             self.assertIn("dirty or has untracked files", message)
+
+    def test_validate_candidate_checkout_rejects_ignored_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._init_candidate_repo(root)
+            sha = self._commit_file(root, ".gitignore", "ignored.log\n", "ignore logs")
+            (root / "ignored.log").write_text("ignored but visible\n", encoding="utf-8")
+            ok, message, _tree = validate_candidate_checkout(root, sha)
+            self.assertFalse(ok)
+            self.assertIn("ignored untracked entries", message)
+            self.assertIn("ignored.log", message)
+
+    def test_validate_candidate_checkout_rejects_assume_unchanged_modified_tracked_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sha = self._init_candidate_repo(root)
+            subprocess.run(["git", "update-index", "--assume-unchanged", "tracked.txt"], cwd=root, check=True)
+            (root / "tracked.txt").write_text("hidden dirty\n", encoding="utf-8")
+            ok, message, _tree = validate_candidate_checkout(root, sha)
+            self.assertFalse(ok)
+            self.assertIn("assume-unchanged or skip-worktree", message)
+            self.assertIn("tracked.txt", message)
+
+    def test_validate_candidate_checkout_rejects_skip_worktree_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            sha = self._init_candidate_repo(root)
+            subprocess.run(["git", "update-index", "--skip-worktree", "tracked.txt"], cwd=root, check=True)
+            ok, message, _tree = validate_candidate_checkout(root, sha)
+            self.assertFalse(ok)
+            self.assertIn("assume-unchanged or skip-worktree", message)
+            self.assertIn("tracked.txt", message)
+
+    def test_materialize_candidate_checkout_creates_private_verified_tree(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
+            root = Path(tmp)
+            sha = self._init_candidate_repo(root)
+            expected_tree = subprocess.check_output(["git", "rev-parse", f"{sha}^{{tree}}"], cwd=root, text=True).strip()
+            private_dir, private_tree = materialize_candidate_checkout(root, sha, Path(private_tmp))
+            self.assertNotEqual(private_dir.resolve(), root.resolve())
+            self.assertEqual(private_tree, expected_tree)
+            ok, message, tree = validate_candidate_checkout(private_dir, sha)
+            self.assertTrue(ok, message)
+            self.assertEqual(tree, expected_tree)
+
+            (root / "tracked.txt").write_text("source mutated after materialization\n", encoding="utf-8")
+            self.assertEqual((private_dir / "tracked.txt").read_text(encoding="utf-8"), "clean\n")
+
+    def test_materialize_candidate_checkout_revalidates_source_before_clone(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
+            root = Path(tmp)
+            sha = self._init_candidate_repo(root)
+            (root / "untracked.txt").write_text("late mutation\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "changed before isolation"):
+                materialize_candidate_checkout(root, sha, Path(private_tmp))
 
     def test_record_only_is_non_evidence(self):
         args = argparse.Namespace(

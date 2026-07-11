@@ -142,13 +142,64 @@ def validate_candidate_checkout(candidate_dir: Path, candidate_sha: str) -> Tupl
     if head_tree != expected_tree:
         return False, f"candidate HEAD tree {head_tree} does not match git rev-parse {candidate_sha}^{{tree}} {expected_tree}", head_tree
 
+    ok, index_flags, stderr = _git_stdout(candidate_dir, "ls-files", "-v")
+    if not ok:
+        return False, f"candidate git ls-files -v failed: {stderr}", expected_tree
+    hidden_index_entries = [line for line in index_flags.splitlines() if line and (line[0].islower() or line[0] == "S")]
+    if hidden_index_entries:
+        return False, "candidate checkout has assume-unchanged or skip-worktree index entries: " + "; ".join(hidden_index_entries), expected_tree
+
     ok, status, stderr = _git_stdout(candidate_dir, "status", "--porcelain=v1", "--untracked-files=all")
     if not ok:
         return False, f"candidate git status failed: {stderr}", expected_tree
     if status:
         return False, f"candidate checkout is dirty or has untracked files; git status --porcelain: {status}", expected_tree
 
+    ok, ignored, stderr = _git_stdout(candidate_dir, "ls-files", "--others", "--ignored", "--exclude-standard")
+    if not ok:
+        return False, f"candidate ignored-file scan failed: {stderr}", expected_tree
+    if ignored:
+        return False, "candidate checkout has ignored untracked entries: " + ignored, expected_tree
+
     return True, "", expected_tree
+
+
+def materialize_candidate_checkout(candidate_dir: Path, candidate_sha: str, parent_dir: Path) -> Tuple[Path, str]:
+    """Create a private checkout of candidate_sha and verify its tree.
+
+    Authoritative QA must inspect this freshly materialized checkout, not the
+    caller's mutable worktree. The source checkout is revalidated immediately
+    before cloning so ignored files or hidden index state cannot influence the
+    isolated source mount.
+    """
+    source_ok, source_error, expected_tree = validate_candidate_checkout(candidate_dir, candidate_sha)
+    if not source_ok:
+        raise RuntimeError(f"candidate checkout changed before isolation: {source_error}")
+
+    parent_dir.mkdir(parents=True, exist_ok=True)
+    private_dir = parent_dir / "candidate-checkout"
+    if private_dir.exists():
+        raise RuntimeError(f"private candidate checkout path already exists: {private_dir}")
+
+    clone = subprocess.run(
+        ["git", "clone", "--no-local", "--no-hardlinks", "--quiet", str(candidate_dir.resolve()), str(private_dir)],
+        capture_output=True,
+        text=True,
+    )
+    if clone.returncode != 0:
+        raise RuntimeError(f"private candidate clone failed: {clone.stderr.strip() or clone.stdout.strip()}")
+
+    checkout = subprocess.run(["git", "checkout", "--detach", "--quiet", candidate_sha], cwd=private_dir, capture_output=True, text=True)
+    if checkout.returncode != 0:
+        raise RuntimeError(f"private candidate checkout failed: {checkout.stderr.strip() or checkout.stdout.strip()}")
+
+    private_ok, private_error, private_tree = validate_candidate_checkout(private_dir, candidate_sha)
+    if not private_ok:
+        raise RuntimeError(f"private candidate checkout validation failed: {private_error}")
+    if private_tree != expected_tree:
+        raise RuntimeError(f"private candidate tree {private_tree} does not match expected tree {expected_tree}")
+
+    return private_dir, private_tree
 
 
 def _pi_binary() -> Path:
@@ -677,44 +728,75 @@ def main() -> int:
         print(f"NON-EVIDENCE record-only output written to {path}", file=sys.stderr)
         return 0
 
-    candidate_tree = get_candidate_tree_oid(args.candidate_dir) if args.candidate_dir else ""
+    candidate_mount_dir = args.candidate_dir
+    private_candidate_tmp: Optional[tempfile.TemporaryDirectory[str]] = None
+    try:
+        if args.role == "qa":
+            private_candidate_tmp = tempfile.TemporaryDirectory(prefix="pi-candidate-")
+            try:
+                candidate_mount_dir, candidate_tree = materialize_candidate_checkout(args.candidate_dir, args.candidate_sha, Path(private_candidate_tmp.name))
+            except RuntimeError as error:
+                print(str(error), file=sys.stderr)
+                return 1
+        else:
+            candidate_tree = get_candidate_tree_oid(candidate_mount_dir) if candidate_mount_dir else ""
 
-    if args.probe or args.role == "qa":
-        probe_passed, probe_record, nonce = run_ready_probe(
+        if args.probe or args.role == "qa":
+            if args.role == "qa":
+                mount_ok, mount_error, mount_tree = validate_candidate_checkout(candidate_mount_dir, args.candidate_sha)
+                if not mount_ok:
+                    print(f"private candidate checkout changed before probe isolation: {mount_error}", file=sys.stderr)
+                    return 1
+                if mount_tree != candidate_tree:
+                    print(f"private candidate tree {mount_tree} does not match expected tree {candidate_tree} before probe isolation", file=sys.stderr)
+                    return 1
+            probe_passed, probe_record, nonce = run_ready_probe(
+                model_id=args.model,
+                profile_key=profile_key,
+                run_id=args.run_id,
+                role_run_id=args.role_run_id,
+                candidate_dir=candidate_mount_dir,
+                tools=tools,
+                candidate_sha=args.candidate_sha,
+                base_sha=args.base_sha,
+                candidate_tree_oid=candidate_tree,
+                timeout=min(args.timeout, 120),
+                scoped_credentials=scoped_credentials,
+            )
+            probe_path = run_dir / "protected" / "qa-probe-record.json" if args.role == "qa" else run_dir / "execution" / f"{args.role}-probe-record.json"
+            write_json(probe_path, probe_record)
+            print(f"Probe record written to {probe_path}", file=sys.stderr)
+            if not probe_passed:
+                print(f"READY probe failed; expected exact 'READY {nonce}'", file=sys.stderr)
+                return 1
+
+        if args.role == "qa":
+            mount_ok, mount_error, mount_tree = validate_candidate_checkout(candidate_mount_dir, args.candidate_sha)
+            if not mount_ok:
+                print(f"private candidate checkout changed before execution isolation: {mount_error}", file=sys.stderr)
+                return 1
+            if mount_tree != candidate_tree:
+                print(f"private candidate tree {mount_tree} does not match expected tree {candidate_tree} before execution isolation", file=sys.stderr)
+                return 1
+
+        exit_code, execution_record, stdout, stderr = dispatch_pi(
+            role=args.role,
             model_id=args.model,
             profile_key=profile_key,
             run_id=args.run_id,
             role_run_id=args.role_run_id,
-            candidate_dir=args.candidate_dir,
             tools=tools,
+            prompt_file=args.prompt,
+            candidate_dir=candidate_mount_dir,
+            qa_for_pass_id=args.qa_for_pass_id,
             candidate_sha=args.candidate_sha,
             base_sha=args.base_sha,
-            candidate_tree_oid=candidate_tree,
-            timeout=min(args.timeout, 120),
+            timeout=args.timeout,
             scoped_credentials=scoped_credentials,
         )
-        probe_path = run_dir / "protected" / "qa-probe-record.json" if args.role == "qa" else run_dir / "execution" / f"{args.role}-probe-record.json"
-        write_json(probe_path, probe_record)
-        print(f"Probe record written to {probe_path}", file=sys.stderr)
-        if not probe_passed:
-            print(f"READY probe failed; expected exact 'READY {nonce}'", file=sys.stderr)
-            return 1
-
-    exit_code, execution_record, stdout, stderr = dispatch_pi(
-        role=args.role,
-        model_id=args.model,
-        profile_key=profile_key,
-        run_id=args.run_id,
-        role_run_id=args.role_run_id,
-        tools=tools,
-        prompt_file=args.prompt,
-        candidate_dir=args.candidate_dir,
-        qa_for_pass_id=args.qa_for_pass_id,
-        candidate_sha=args.candidate_sha,
-        base_sha=args.base_sha,
-        timeout=args.timeout,
-        scoped_credentials=scoped_credentials,
-    )
+    finally:
+        if private_candidate_tmp is not None:
+            private_candidate_tmp.cleanup()
 
     if args.role == "qa":
         record_path = write_protected_record(execution_record, run_dir)
