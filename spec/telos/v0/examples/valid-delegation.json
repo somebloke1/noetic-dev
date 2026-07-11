@@ -1,0 +1,46 @@
+{
+  "schema_version": "telos.delegation/v0",
+  "delegation_id": "dlg_issue9_0001",
+  "idempotency_key": "delegate:chain-1:subgoal-23:v5",
+  "owner": {
+    "chain_id": "chain-1",
+    "sub_goal_id": "subgoal-23",
+    "project_id": "somebloke1/noetic-dev",
+    "reproductive_clause_version": 5,
+    "objective_digest": "sha256:75f656f41552e5f143087d5286712d1dc5669234a0728d9ff5afe3a509c79ceb"
+  },
+  "purpose": {
+    "objective": "Specify the Telos delegation-dispatch boundary without runtime effects.",
+    "governing_principles": ["Telos owns purpose; the controller enacts only authorized structure.", "Delegation narrows authority and never transfers sub-goal ownership."],
+    "acceptance_refs": ["github:somebloke1/noetic-dev/issues/9"],
+    "requested_outcome": "verified_change"
+  },
+  "program": {
+    "program_id": "noetic-dev-development",
+    "program_version": "0.1.0",
+    "graph_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "controller_target": {"run_id": "run-delegation-0001", "expected_run_version": 0},
+  "scope": {
+    "allowed_subjects": [
+      {"subject_type": "run", "subject_id": "run-delegation-0001"},
+      {"subject_type": "interaction", "subject_id": "run-delegation-0001:*"}
+    ],
+    "allowed_commands": ["run.create", "run.start", "run.abort", "interaction.resolve", "contract.amend"],
+    "forbidden_effects": ["force_push", "branch_protection_bypass", "host_service_decommission", "secret_export"]
+  },
+  "authority": {
+    "authority_id": "authority-delegation-0001",
+    "issuer_ref": "user-authorization:window-20260711",
+    "permissions": ["run.create", "run.start", "run.abort", "interaction.resolve", "contract.amend"],
+    "issued_at": "2026-07-11T13:15:42Z",
+    "not_before": "2026-07-11T13:15:42Z",
+    "expires_at": "2026-07-11T16:15:42Z",
+    "revocation_ref": null
+  },
+  "retry_policy": {"max_dispatch_attempts": 3, "backoff": "bounded_exponential", "idempotency_scope": "delegation_contract_digest"},
+  "cancellation_policy": {"cancellable_until": "awaiting_decision", "on_expiry": "abort", "command_type": "run.abort"},
+  "controller_contract_version": "controller.command/v0",
+  "event_contract_version": "noetic.event/v0",
+  "created_at": "2026-07-11T14:40:00Z"
+}

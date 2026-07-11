@@ -1,0 +1,35 @@
+{
+  "schema_version": "telos.delegation-transitions/v0",
+  "initial": "proposed",
+  "terminal": ["succeeded", "failed", "cancelled", "expired", "rejected"],
+  "states": ["proposed", "authorized", "dispatched", "accepted", "active", "awaiting_decision", "succeeded", "failed", "cancelled", "expired", "rejected"],
+  "transitions": [
+    {"from": "proposed", "event": "delegation.authorized", "to": "authorized"},
+    {"from": "proposed", "event": "delegation.rejected", "to": "rejected"},
+    {"from": "authorized", "event": "delegation.dispatched", "to": "dispatched"},
+    {"from": "authorized", "event": "delegation.cancelled", "to": "cancelled"},
+    {"from": "authorized", "event": "delegation.expired", "to": "expired"},
+    {"from": "dispatched", "event": "delegation.accepted", "to": "accepted"},
+    {"from": "dispatched", "event": "delegation.rejected", "to": "rejected"},
+    {"from": "dispatched", "event": "delegation.cancelled", "to": "cancelled"},
+    {"from": "dispatched", "event": "delegation.expired", "to": "expired"},
+    {"from": "accepted", "event": "delegation.started", "to": "active"},
+    {"from": "accepted", "event": "delegation.cancelled", "to": "cancelled"},
+    {"from": "accepted", "event": "delegation.expired", "to": "expired"},
+    {"from": "active", "event": "delegation.decision_requested", "to": "awaiting_decision"},
+    {"from": "awaiting_decision", "event": "delegation.resumed", "to": "active"},
+    {"from": "active", "event": "delegation.succeeded", "to": "succeeded"},
+    {"from": "active", "event": "delegation.failed", "to": "failed"},
+    {"from": "active", "event": "delegation.cancelled", "to": "cancelled"},
+    {"from": "active", "event": "delegation.expired", "to": "expired"},
+    {"from": "awaiting_decision", "event": "delegation.failed", "to": "failed"},
+    {"from": "awaiting_decision", "event": "delegation.cancelled", "to": "cancelled"},
+    {"from": "awaiting_decision", "event": "delegation.expired", "to": "expired"}
+  ],
+  "ownership": {
+    "telos_sub_goal_status_while_delegated": "delegated-pending",
+    "controller_owns": ["run lifecycle", "structural scheduling", "effect intents", "causal execution evidence"],
+    "telos_owns": ["objective", "governing principles", "sub-goal status", "purpose amendments", "result adjudication"],
+    "terminal_result_rule": "A terminal delegation result never directly completes or blocks the Telos sub-goal; Telos adjudicates evidence and records the sub-goal transition separately."
+  }
+}

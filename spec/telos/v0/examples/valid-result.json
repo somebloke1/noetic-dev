@@ -1,0 +1,14 @@
+{
+  "schema_version": "telos.delegation-result/v0",
+  "result_id": "dlgr_issue9_0001",
+  "delegation_id": "dlg_issue9_0001",
+  "run_id": "run-delegation-0001",
+  "delegation_contract_digest": "sha256:6605785b95446a9b50f6155e6b6266a2f5c33dbd120933232a8cc4d442263943",
+  "status": "succeeded",
+  "summary": "The controller reports structural success with evidence; Telos must separately adjudicate whether the sub-goal is complete.",
+  "evidence_refs": ["artifact:contract-commit", "trace:controller-run-0001"],
+  "interaction_ref": null,
+  "controller_final_event_id": "evt_run_succeeded_0001",
+  "idempotency_key": "result:dlg_issue9_0001:run-delegation-0001:v1",
+  "reported_at": "2026-07-11T15:00:00Z"
+}

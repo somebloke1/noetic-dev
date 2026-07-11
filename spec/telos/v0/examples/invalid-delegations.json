@@ -1,0 +1,12 @@
+{
+  "cases": [
+    {"name": "controller-command-escalation", "base": "valid-delegation.json", "mutations": {"scope.allowed_commands": ["run.create", "scheduler.tick"]}, "expected_error": "delegation command not allowed to Telos"},
+    {"name": "authority-broader-than-scope", "base": "valid-delegation.json", "mutations": {"authority.permissions": ["run.create", "run.start", "run.abort", "interaction.resolve", "contract.amend", "publication.request"]}, "expected_error": "authority permissions must equal narrowed command scope"},
+    {"name": "expired-before-created", "base": "valid-delegation.json", "mutations": {"authority.expires_at": "2026-07-11T14:00:00Z"}, "expected_error": "delegation created outside authority window"},
+    {"name": "revoked-authority", "base": "valid-delegation.json", "mutations": {"authority.revocation_ref": "revocation:0001"}, "expected_error": "delegation authority is revoked"},
+    {"name": "run-identity-confusion", "base": "valid-delegation.json", "mutations": {"scope.allowed_subjects": [{"subject_type": "run", "subject_id": "different-run"}]}, "expected_error": "controller run is outside delegation scope"},
+    {"name": "secret-bearing-objective", "base": "valid-delegation.json", "mutations": {"purpose.objective": "Use Bearer abcdefghijklmnop to dispatch"}, "expected_error": "delegation contains secret-shaped value"},
+    {"name": "unbounded-retry", "base": "valid-delegation.json", "mutations": {"retry_policy.max_dispatch_attempts": 99}, "expected_error": "dispatch retry count is out of bounds"},
+    {"name": "stale-purpose-version", "base": "valid-delegation.json", "mutations": {"owner.reproductive_clause_version": 4}, "expected_error": "fixture purpose version is stale"}
+  ]
+}

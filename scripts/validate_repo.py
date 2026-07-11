@@ -34,6 +34,13 @@ REQUIRED = [
     "spec/events/v0/cognitional-event.schema.json",
     "spec/events/v0/sink-receipt.schema.json",
     "spec/events/v0/event-class-matrix.json",
+    "docs/telos-delegation-contract.md",
+    "docs/telos-delegation-review.md",
+    "scripts/validate_telos_specs.py",
+    "spec/telos/v0/delegation.schema.json",
+    "spec/telos/v0/delegation-result.schema.json",
+    "spec/telos/v0/delegation-transitions.json",
+    "spec/telos/v0/controller-binding.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

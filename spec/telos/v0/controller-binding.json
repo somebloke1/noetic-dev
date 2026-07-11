@@ -1,0 +1,28 @@
+{
+  "schema_version": "telos.controller-binding/v0",
+  "outbound": {
+    "dispatch": {
+      "command_type": "run.create",
+      "actor_type": "telos",
+      "idempotency_key": "dispatch:{delegation_id}:{delegation_contract_digest}",
+      "required_payload_refs": ["delegation_id", "delegation_contract_digest", "program_id", "program_version", "graph_digest"]
+    },
+    "start": {"command_type": "run.start", "actor_type": "telos", "idempotency_key": "start:{delegation_id}:{run_id}"},
+    "cancel": {"command_type": "run.abort", "actor_type": "telos", "idempotency_key": "cancel:{delegation_id}:{delegation_contract_digest}"},
+    "resolve_interaction": {"command_type": "interaction.resolve", "actor_type": "telos", "idempotency_key": "resolve:{delegation_id}:{interaction_id}:{decision_digest}"},
+    "amend_purpose": {"command_type": "contract.amend", "actor_type": "telos", "idempotency_key": "amend:{delegation_id}:{amendment_digest}"}
+  },
+  "inbound": {
+    "domain": {"event_class": "domain_transition", "assertion_scope": "enacted", "accepted_prefixes": ["run.", "interaction."]},
+    "decision_request": {"event_class": "decision_request", "accepted_prefixes": ["decision."]},
+    "result": {"schema_version": "telos.delegation-result/v0"}
+  },
+  "rules": [
+    "The delegation contract digest and run identity must match on every command, event, interaction, and result.",
+    "Retries reuse the same idempotency key and cannot create a second run.",
+    "Cancellation races are resolved by aggregate expected_version; a terminal run returns its existing result rather than reopening.",
+    "Expired or revoked authority cannot dispatch, resume, amend, resolve, publish, or cancel except through separately authorized reconciliation.",
+    "Purpose changes require an append-only Telos amendment and a controller contract.amend command; mutable ambient goal text is not authority.",
+    "Controller results report evidence but never mutate Telos sub-goal status directly."
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/telos/v0/delegation.schema.json",
+  "title": "noetic-dev Telos controller delegation v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "delegation_id", "idempotency_key", "owner", "purpose", "program",
+    "controller_target", "scope", "authority", "retry_policy", "cancellation_policy",
+    "controller_contract_version", "event_contract_version", "created_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "telos.delegation/v0"},
+    "delegation_id": {"type": "string", "pattern": "^dlg_[a-z0-9][a-z0-9_-]{7,127}$"},
+    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 256},
+    "owner": {
+      "type": "object", "additionalProperties": false,
+      "required": ["chain_id", "sub_goal_id", "project_id", "reproductive_clause_version", "objective_digest"],
+      "properties": {
+        "chain_id": {"type": "string", "minLength": 1},
+        "sub_goal_id": {"type": "string", "minLength": 1},
+        "project_id": {"type": "string", "minLength": 1},
+        "reproductive_clause_version": {"type": "integer", "minimum": 1},
+        "objective_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "purpose": {
+      "type": "object", "additionalProperties": false,
+      "required": ["objective", "governing_principles", "acceptance_refs", "requested_outcome"],
+      "properties": {
+        "objective": {"type": "string", "minLength": 1, "maxLength": 4000},
+        "governing_principles": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "acceptance_refs": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "requested_outcome": {"enum": ["evidence", "artifact", "decision_support", "verified_change"]}
+      }
+    },
+    "program": {
+      "type": "object", "additionalProperties": false,
+      "required": ["program_id", "program_version", "graph_digest"],
+      "properties": {
+        "program_id": {"type": "string", "minLength": 1},
+        "program_version": {"type": "string", "minLength": 1},
+        "graph_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    },
+    "controller_target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "expected_run_version"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "expected_run_version": {"const": 0}
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["allowed_subjects", "allowed_commands", "forbidden_effects"],
+      "properties": {
+        "allowed_subjects": {
+          "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["subject_type", "subject_id"],
+            "properties": {
+              "subject_type": {"enum": ["run", "node", "interaction", "publication"]},
+              "subject_id": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "allowed_commands": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": {"enum": ["run.create", "run.start", "run.abort", "interaction.resolve", "contract.amend", "publication.request"]}
+        },
+        "forbidden_effects": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authority_id", "issuer_ref", "permissions", "issued_at", "not_before", "expires_at", "revocation_ref"],
+      "properties": {
+        "authority_id": {"type": "string", "minLength": 1},
+        "issuer_ref": {"type": "string", "minLength": 1},
+        "permissions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "issued_at": {"type": "string", "format": "date-time"},
+        "not_before": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "revocation_ref": {"type": ["string", "null"]}
+      }
+    },
+    "retry_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_dispatch_attempts", "backoff", "idempotency_scope"],
+      "properties": {
+        "max_dispatch_attempts": {"type": "integer", "minimum": 1, "maximum": 10},
+        "backoff": {"enum": ["none", "bounded_exponential"]},
+        "idempotency_scope": {"const": "delegation_contract_digest"}
+      }
+    },
+    "cancellation_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cancellable_until", "on_expiry", "command_type"],
+      "properties": {
+        "cancellable_until": {"enum": ["accepted", "active", "awaiting_decision"]},
+        "on_expiry": {"enum": ["abort", "request_decision"]},
+        "command_type": {"const": "run.abort"}
+      }
+    },
+    "controller_contract_version": {"const": "controller.command/v0"},
+    "event_contract_version": {"const": "noetic.event/v0"},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "cases": [
+    {"name": "result-cannot-complete-telos-goal", "mutations": {"sub_goal_status": "complete"}, "expected_error": "result cannot mutate Telos sub-goal status"},
+    {"name": "result-contract-confusion", "mutations": {"delegation_contract_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}, "expected_error": "result delegation digest mismatch"},
+    {"name": "result-run-confusion", "mutations": {"run_id": "different-run"}, "expected_error": "result run identity mismatch"},
+    {"name": "decision-without-interaction", "mutations": {"status": "requires_decision", "controller_final_event_id": null}, "expected_error": "requires_decision result needs interaction_ref"},
+    {"name": "secret-bearing-summary", "mutations": {"summary": "Bearer abcdefghijklmnop"}, "expected_error": "result contains secret-shaped value"}
+  ]
+}
