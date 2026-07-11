@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/programs/v0/program-manifest.schema.json",
+  "title": "noetic-dev cognitive program manifest v0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "program_id", "program_version", "program_kind", "telos_binding", "controller_binding", "stages", "transitions", "artifact_policy", "verification_policy", "termination_policy", "privacy"],
+  "properties": {
+    "schema_version": {"const": "noetic.cognitive-program/v0"},
+    "program_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]{2,127}$"},
+    "program_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "program_kind": {"enum": ["reflective_discipline", "development_pipeline"]},
+    "telos_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["delegation_id", "chain_id", "sub_goal_id", "objective_digest", "reproductive_clause_version"],
+      "properties": {
+        "delegation_id": {"type": "string"}, "chain_id": {"type": "string"}, "sub_goal_id": {"type": "string"},
+        "objective_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "reproductive_clause_version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "controller_binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["graph_contract", "graph_digest", "authority_mode", "allowed_intents"],
+      "properties": {
+        "graph_contract": {"const": "controller.program/v0"}, "graph_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "authority_mode": {"const": "propose_only"},
+        "allowed_intents": {"type": "array", "uniqueItems": true, "items": {"enum": ["emit_report", "request_interaction", "submit_artifact", "propose_remediation"]}}
+      }
+    },
+    "stages": {
+      "type": "array", "minItems": 4, "maxItems": 32,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["stage_id", "phase", "operation", "role", "inputs", "outputs", "model_request", "effect_authority", "event_types"],
+        "properties": {
+          "stage_id": {"type": "string"}, "phase": {"enum": ["P1", "P2", "P3", "P4"]},
+          "operation": {"enum": ["attend", "understand", "judge", "decide"]},
+          "role": {"enum": ["researcher", "ideator", "critic", "deliberator", "implementer", "qa_agent", "remediator"]},
+          "inputs": {"type": "array", "uniqueItems": true, "items": {"enum": ["purpose", "data", "question", "hypothesis", "evidence", "judgment", "decision", "artifact", "qa_finding"]}},
+          "outputs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["data", "question", "hypothesis", "evidence", "judgment", "decision", "artifact", "qa_finding", "remediation_proposal"]}},
+          "model_request": {
+            "type": ["object", "null"],
+            "properties": {"capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "policy_class": {"type": "string"}},
+            "required": ["capabilities", "policy_class"], "additionalProperties": false
+          },
+          "effect_authority": {"const": "none"},
+          "event_types": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^cognition\\.(report|artifact|finding|proposal)\\.[a-z0-9_.-]+$"}}
+        }
+      }
+    },
+    "transitions": {
+      "type": "array", "minItems": 3,
+      "items": {"type": "object", "additionalProperties": false, "required": ["source", "target", "requires"], "properties": {"source": {"type": "string"}, "target": {"type": "string"}, "requires": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}}}
+    },
+    "artifact_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evidence_before_judgment", "judgment_before_decision", "immutable_provenance"],
+      "properties": {"evidence_before_judgment": {"const": true}, "judgment_before_decision": {"const": true}, "immutable_provenance": {"const": true}}
+    },
+    "verification_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["implementation_qa_cardinality", "qa_independent_role", "qa_cannot_implement"],
+      "properties": {"implementation_qa_cardinality": {"const": "1:1_per_generation"}, "qa_independent_role": {"const": "qa_agent"}, "qa_cannot_implement": {"const": true}}
+    },
+    "termination_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_stage_attempts", "max_remediation_generations", "on_exhaustion"],
+      "properties": {"max_stage_attempts": {"type": "integer", "minimum": 1, "maximum": 10}, "max_remediation_generations": {"type": "integer", "minimum": 0, "maximum": 5}, "on_exhaustion": {"const": "request_controller_interaction"}}
+    },
+    "privacy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["default_classification", "secret_material", "event_payloads"],
+      "properties": {"default_classification": {"enum": ["internal", "restricted"]}, "secret_material": {"const": "reference_only"}, "event_payloads": {"const": "minimal_attributed_reports"}}
+    }
+  }
+}

@@ -1,0 +1,163 @@
+{
+  "schema_version": "noetic.cognitive-program/v0",
+  "program_id": "phronesis.cycle",
+  "program_version": "0.1.0",
+  "program_kind": "reflective_discipline",
+  "telos_binding": {
+    "delegation_id": "dlg_example1",
+    "chain_id": "chain-1",
+    "sub_goal_id": "subgoal-27",
+    "objective_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "reproductive_clause_version": 5
+  },
+  "controller_binding": {
+    "graph_contract": "controller.program/v0",
+    "graph_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "authority_mode": "propose_only",
+    "allowed_intents": [
+      "emit_report",
+      "request_interaction",
+      "submit_artifact",
+      "propose_remediation"
+    ]
+  },
+  "stages": [
+    {
+      "stage_id": "attend",
+      "phase": "P1",
+      "operation": "attend",
+      "role": "researcher",
+      "inputs": [
+        "purpose"
+      ],
+      "outputs": [
+        "data",
+        "question"
+      ],
+      "model_request": {
+        "capabilities": [
+          "source-grounded-research"
+        ],
+        "policy_class": "research"
+      },
+      "effect_authority": "none",
+      "event_types": [
+        "cognition.report.p1"
+      ]
+    },
+    {
+      "stage_id": "understand",
+      "phase": "P2",
+      "operation": "understand",
+      "role": "ideator",
+      "inputs": [
+        "data",
+        "question"
+      ],
+      "outputs": [
+        "hypothesis"
+      ],
+      "model_request": {
+        "capabilities": [
+          "abductive-synthesis"
+        ],
+        "policy_class": "reasoning"
+      },
+      "effect_authority": "none",
+      "event_types": [
+        "cognition.report.p2"
+      ]
+    },
+    {
+      "stage_id": "judge",
+      "phase": "P3",
+      "operation": "judge",
+      "role": "critic",
+      "inputs": [
+        "hypothesis",
+        "evidence"
+      ],
+      "outputs": [
+        "judgment",
+        "qa_finding"
+      ],
+      "model_request": {
+        "capabilities": [
+          "adversarial-evaluation"
+        ],
+        "policy_class": "judgment"
+      },
+      "effect_authority": "none",
+      "event_types": [
+        "cognition.finding.p3"
+      ]
+    },
+    {
+      "stage_id": "decide",
+      "phase": "P4",
+      "operation": "decide",
+      "role": "deliberator",
+      "inputs": [
+        "purpose",
+        "judgment"
+      ],
+      "outputs": [
+        "decision"
+      ],
+      "model_request": {
+        "capabilities": [
+          "practical-deliberation"
+        ],
+        "policy_class": "governance"
+      },
+      "effect_authority": "none",
+      "event_types": [
+        "cognition.proposal.p4"
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "source": "attend",
+      "target": "understand",
+      "requires": [
+        "data"
+      ]
+    },
+    {
+      "source": "understand",
+      "target": "judge",
+      "requires": [
+        "hypothesis",
+        "evidence"
+      ]
+    },
+    {
+      "source": "judge",
+      "target": "decide",
+      "requires": [
+        "judgment"
+      ]
+    }
+  ],
+  "artifact_policy": {
+    "evidence_before_judgment": true,
+    "judgment_before_decision": true,
+    "immutable_provenance": true
+  },
+  "verification_policy": {
+    "implementation_qa_cardinality": "1:1_per_generation",
+    "qa_independent_role": "qa_agent",
+    "qa_cannot_implement": true
+  },
+  "termination_policy": {
+    "max_stage_attempts": 3,
+    "max_remediation_generations": 2,
+    "on_exhaustion": "request_controller_interaction"
+  },
+  "privacy": {
+    "default_classification": "internal",
+    "secret_material": "reference_only",
+    "event_payloads": "minimal_attributed_reports"
+  }
+}

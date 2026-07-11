@@ -58,6 +58,13 @@ REQUIRED = [
     "spec/attach/v0/examples/valid-tmux.json",
     "spec/attach/v0/examples/valid-browser-observe.json",
     "spec/attach/v0/examples/invalid-sessions.json",
+    "docs/cognitive-program-contract.md",
+    "docs/cognitive-program-review.md",
+    "scripts/validate_program_specs.py",
+    "spec/programs/v0/program-manifest.schema.json",
+    "spec/programs/v0/examples/phronesis.json",
+    "spec/programs/v0/examples/verified-change.json",
+    "spec/programs/v0/examples/invalid-programs.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

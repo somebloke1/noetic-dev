@@ -1,0 +1,70 @@
+{
+  "cases": [
+    {
+      "name": "phase-collapse",
+      "base": "phronesis.json",
+      "mutation": {
+        "stages.2.phase": "P2"
+      },
+      "expected_error": "operation-phase mismatch"
+    },
+    {
+      "name": "judgment-without-evidence",
+      "base": "phronesis.json",
+      "mutation": {
+        "stages.2.inputs": [
+          "hypothesis"
+        ]
+      },
+      "expected_error": "P3 judgment requires evidence"
+    },
+    {
+      "name": "program-self-authorizes",
+      "base": "phronesis.json",
+      "mutation": {
+        "controller_binding.authority_mode": "execute"
+      },
+      "expected_error": "program authority must be propose_only"
+    },
+    {
+      "name": "unbounded-remediation",
+      "base": "verified-change.json",
+      "mutation": {
+        "termination_policy.max_remediation_generations": 99
+      },
+      "expected_error": "remediation generation bound exceeded"
+    },
+    {
+      "name": "provider-coupling",
+      "base": "phronesis.json",
+      "mutation": {
+        "stages.1.model_request.provider": "openai"
+      },
+      "expected_error": "model request owns endpoint/provider"
+    },
+    {
+      "name": "qa-cardinality-drift",
+      "base": "verified-change.json",
+      "mutation": {
+        "verification_policy.implementation_qa_cardinality": "1:many"
+      },
+      "expected_error": "implementation:QA cardinality drift"
+    },
+    {
+      "name": "qa-can-implement",
+      "base": "verified-change.json",
+      "mutation": {
+        "verification_policy.qa_cannot_implement": false
+      },
+      "expected_error": "QA independence weakened"
+    },
+    {
+      "name": "secret-embedding",
+      "base": "phronesis.json",
+      "mutation": {
+        "privacy.secret_material": "inline"
+      },
+      "expected_error": "secret material must be reference_only"
+    }
+  ]
+}
