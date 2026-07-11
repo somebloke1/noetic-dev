@@ -3,11 +3,12 @@
   "schema_version": "1",
   "authoritative_delivery_gate": {
     "status": "external_dependency_missing",
-    "required_dependency": "A separately protected required GitHub workflow or repository integration that checks PR head SHAs from protected policy code, captures authenticated GitHub provenance or signed artifact attestations, records protected QA probe/execution evidence outside model control, and is required by branch protection.",
+    "required_dependency": "A separately protected required GitHub workflow or repository integration that checks PR head SHAs from protected policy code, captures authenticated GitHub provenance or signed artifact attestations, records protected QA probe/execution evidence outside model control, uses a credential broker before QA tools are enabled, and is required by branch protection.",
     "protected_policy_ref_established": false,
     "trusted_runner_provenance_established": false,
     "branch_protection_requires_governance": false,
-    "independent_human_review_process_established": false
+    "independent_human_review_process_established": false,
+    "credential_broker_established": false
   },
   "publication": {
     "status": "blocked",

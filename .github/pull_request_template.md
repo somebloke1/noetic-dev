@@ -16,7 +16,7 @@ Relevant knowns/decisions:
 ## Validation (not tests)
 
 - [ ] `python3 scripts/validate_repo.py` — repository invariant validation only
-- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows` — all-workflow action/docker pinning validation only
+- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows` — all-workflow action/container/service digest pinning validation only
 - [ ] `python3 scripts/governance/check_evidence_manifest.py <manifest>` — manifest validation only
 
 ## Genuine tests
@@ -32,11 +32,11 @@ Relevant knowns/decisions:
 - [ ] QA ran against the immutable candidate SHA/base/tree
 - [ ] QA protected READY probe record hash: <!-- sha256 -->
 - [ ] QA protected execution record hash: <!-- sha256 -->
-- [ ] QA used read-only source mount, isolated scratch/home, no host credentials, no write tools
+- [ ] QA used read-only source mount, isolated scratch/home, no host credentials, and no tools until a credential broker exists
 
 ## Human approval
 
-- [ ] Independent human reviewer approved after candidate SHA
+- [ ] Independent human reviewer approved after candidate SHA pinning and against exactly the final candidate SHA
 - [ ] Approver is not PR author, implementer, remediator, QA, publisher, or orchestrator identity
 
 ## Merge readiness
@@ -45,7 +45,7 @@ Relevant knowns/decisions:
 - [ ] Required tests passed separately from validations
 - [ ] Protected policy checkout was separate from candidate checkout
 - [ ] Trusted runner provenance verified from external protected evidence through GitHub API or artifact attestation
-- [ ] Delivery gate passed from separately protected policy code/integration (candidate workflow is advisory only)
+- [ ] Delivery gate passed from separately protected policy code/integration (candidate workflow and caller-supplied JSON are advisory only during bootstrap)
 
 ## Publication (post-merge only)
 

@@ -231,12 +231,7 @@
             "started_at": "2026-07-11T12:07:00+00:00",
             "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
             "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-            "tools": [
-              "read",
-              "grep",
-              "find",
-              "ls"
-            ]
+            "tools": []
           },
           "evidence_class": "authoritative",
           "generated_by": {
@@ -252,7 +247,7 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "1"
         },
-        "protected_execution_record_sha256": "7d9114f876202263675106792ec989e197a1a87f4f73aadba3d0a0ce807e8c72",
+        "protected_execution_record_sha256": "3cd85000b891a44ec4641c72ae8dccc448ce2d3a2bfa17ab3039f15a4d585a9e",
         "protected_probe_record": {
           "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
           "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
@@ -293,14 +288,9 @@
           "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
           "stdout_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
           "themes_disabled": true,
-          "tools": [
-            "read",
-            "grep",
-            "find",
-            "ls"
-          ]
+          "tools": []
         },
-        "protected_probe_record_sha256": "6273e7ac0743b2c9d560433bc640c2a6a926e868ac655a60317103d75610d843",
+        "protected_probe_record_sha256": "962391bf9f1fa37b01bdc70533e62cb0fe9734d6cf25d907ddb9f7156b5a6dd4",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",
@@ -374,12 +364,7 @@
             "started_at": "2026-07-11T12:38:00+00:00",
             "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
             "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-            "tools": [
-              "read",
-              "grep",
-              "find",
-              "ls"
-            ]
+            "tools": []
           },
           "evidence_class": "authoritative",
           "generated_by": {
@@ -395,7 +380,7 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "1"
         },
-        "protected_execution_record_sha256": "0f3ca0ecbaf02230a24999932123bb655ebac868af0da2c70737ca19f2ebe9f5",
+        "protected_execution_record_sha256": "01e5a63900612e8ed657ab367be47dcb1b31d42b3ef91fe2acfadcafd8c6d3ff",
         "protected_probe_record": {
           "base_sha": "dddddddddddddddddddddddddddddddddddddddd",
           "candidate_sha": "ffffffffffffffffffffffffffffffffffffffff",
@@ -436,14 +421,9 @@
           "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
           "stdout_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
           "themes_disabled": true,
-          "tools": [
-            "read",
-            "grep",
-            "find",
-            "ls"
-          ]
+          "tools": []
         },
-        "protected_probe_record_sha256": "4810b6ae30e601b92227c5654353d15552b5ce549db87479d5226376cc04c7bd",
+        "protected_probe_record_sha256": "0d1ca14f94a684f6cc7eef88ee673e8b4eefbcae15a921a198004d0eecac57c3",
         "qa_for_pass_id": "rem-g2-0001",
         "qa_run_id": "qa-g2-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",

@@ -124,6 +124,40 @@ jobs:
         finally:
             path.unlink(missing_ok=True)
 
+    def test_job_container_tag_rejected(self):
+        content = """
+jobs:
+  test:
+    container: python:3.12
+    steps:
+      - run: python --version
+"""
+        path = Path("/tmp/test_container.yml")
+        path.write_text(content)
+        try:
+            errors = check_pinning(str(path))
+            self.assertTrue(any("job container" in e and "unpinned" in e for e in errors), errors)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_service_image_tag_rejected(self):
+        content = """
+jobs:
+  test:
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - run: echo ok
+"""
+        path = Path("/tmp/test_service.yml")
+        path.write_text(content)
+        try:
+            errors = check_pinning(str(path))
+            self.assertTrue(any("service" in e and "unpinned" in e for e in errors), errors)
+        finally:
+            path.unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     unittest.main()

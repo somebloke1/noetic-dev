@@ -2,8 +2,8 @@
 """Dispatch Pi in a process-isolated governance role.
 
 The dispatcher produces protected execution/probe records outside model output.
-For QA, source access is read-only, tools are allowlisted, context/extensions are
-disabled, and record-only mode is explicitly non-evidence.
+For QA, source access is read-only, tools are disabled until a credential broker
+exists, context/extensions are disabled, and record-only mode is non-evidence.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from hash_tree import canonical_json, canonical_json_sha256, sha256_file, sha256_text  # noqa: E402
 from json_schema import load_json_strict  # noqa: E402
 
-QA_TOOL_ALLOWLIST = {"read", "grep", "find", "ls"}
+QA_TOOL_ALLOWLIST: set[str] = set()
 ROLE_TOOL_ALLOWLISTS = {
     "qa": QA_TOOL_ALLOWLIST,
     "planner": {"read", "grep", "find", "ls"},
@@ -107,38 +107,48 @@ def get_pi_version() -> str:
         return "unknown"
 
 
+def _git_stdout(candidate_dir: Path, *args: str) -> Tuple[bool, str, str]:
+    result = subprocess.run(["git", *args], cwd=candidate_dir, capture_output=True, text=True)
+    return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+
+
 def get_candidate_tree_oid(candidate_dir: Path) -> str:
-    result = subprocess.run(["git", "rev-parse", "HEAD^{tree}"], cwd=candidate_dir, capture_output=True, text=True)
-    if result.returncode == 0:
-        return result.stdout.strip()
-    return _compute_dir_tree_hash(candidate_dir)
+    ok, stdout, _stderr = _git_stdout(candidate_dir, "rev-parse", "HEAD^{tree}")
+    return stdout if ok else ""
 
 
 def get_candidate_head_sha(candidate_dir: Path) -> str:
-    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=candidate_dir, capture_output=True, text=True)
-    return result.stdout.strip() if result.returncode == 0 else ""
+    ok, stdout, _stderr = _git_stdout(candidate_dir, "rev-parse", "HEAD")
+    return stdout if ok else ""
 
 
 def validate_candidate_checkout(candidate_dir: Path, candidate_sha: str) -> Tuple[bool, str, str]:
+    if not candidate_dir.exists():
+        return False, f"candidate-dir does not exist: {candidate_dir}", ""
+    ok, inside, stderr = _git_stdout(candidate_dir, "rev-parse", "--is-inside-work-tree")
+    if not ok or inside != "true":
+        return False, f"candidate-dir is not a git worktree: {stderr or inside or candidate_dir}", ""
+
     head_sha = get_candidate_head_sha(candidate_dir)
     if head_sha != candidate_sha:
         return False, f"candidate-dir HEAD {head_sha or '<unknown>'} does not match --candidate-sha {candidate_sha}", ""
-    tree_oid = get_candidate_tree_oid(candidate_dir)
-    if not re_full_sha(tree_oid):
-        return False, f"candidate tree OID is not a full SHA: {tree_oid}", tree_oid
-    return True, "", tree_oid
 
+    ok, expected_tree, stderr = _git_stdout(candidate_dir, "rev-parse", f"{candidate_sha}^{{tree}}")
+    if not ok or not re_full_sha(expected_tree):
+        return False, f"candidate SHA tree cannot be resolved with git rev-parse {candidate_sha}^{{tree}}: {stderr or expected_tree}", expected_tree
+    ok, head_tree, stderr = _git_stdout(candidate_dir, "rev-parse", "HEAD^{tree}")
+    if not ok or not re_full_sha(head_tree):
+        return False, f"candidate HEAD tree cannot be resolved: {stderr or head_tree}", head_tree
+    if head_tree != expected_tree:
+        return False, f"candidate HEAD tree {head_tree} does not match git rev-parse {candidate_sha}^{{tree}} {expected_tree}", head_tree
 
-def _compute_dir_tree_hash(directory: Path) -> str:
-    import hashlib
+    ok, status, stderr = _git_stdout(candidate_dir, "status", "--porcelain=v1", "--untracked-files=all")
+    if not ok:
+        return False, f"candidate git status failed: {stderr}", expected_tree
+    if status:
+        return False, f"candidate checkout is dirty or has untracked files; git status --porcelain: {status}", expected_tree
 
-    h = hashlib.sha1()
-    for path in sorted(directory.rglob("*")):
-        if path.is_file() and ".git" not in path.parts:
-            rel = path.relative_to(directory)
-            h.update(str(rel).encode("utf-8"))
-            h.update(path.read_bytes())
-    return h.hexdigest()
+    return True, "", expected_tree
 
 
 def _pi_binary() -> Path:
@@ -394,6 +404,18 @@ def _write_tools_observed(stdout: str) -> bool:
     return any(name in WRITE_CAPABLE_TOOLS for name in _observed_tool_names(stdout))
 
 
+def _credential_interface(scoped_credentials: Optional[Dict[str, str]], tools: List[str], role: str) -> Dict[str, Any]:
+    credential_names = sorted((scoped_credentials or {}).keys())
+    return {
+        "type": "scoped_env",
+        "names": credential_names,
+        "values_recorded": False,
+        "brokered": False,
+        "available_to_tools": bool(credential_names and tools),
+        "tools_disabled_for_authoritative_qa": role == "qa" and not tools,
+    }
+
+
 def dispatch_pi(
     *,
     role: str,
@@ -456,6 +478,8 @@ def dispatch_pi(
         "ssh_config_mounted": False,
         "gh_config_mounted": False,
         "ambient_credentials_available": False,
+        "host_proc_mounted": False,
+        "procfs_scope": "private_pid_namespace",
         "context_files_disabled": True,
         "extensions_disabled": True,
         "skills_disabled": True,
@@ -483,12 +507,7 @@ def dispatch_pi(
             "argv": inner_argv,
             "argv_sha256": sha256_text(canonical_json(inner_argv)),
             "environment_values_recorded": False,
-            "credential_interface": {
-                "type": "scoped_env",
-                "names": sorted((scoped_credentials or {}).keys()),
-                "values_recorded": False,
-                "available_to_tools": False,
-            },
+            "credential_interface": _credential_interface(scoped_credentials, tools, role),
             "started_at": start,
             "finished_at": finish,
             "exit_code": result.returncode,
@@ -574,6 +593,8 @@ def _non_evidence_record(args: argparse.Namespace, profile_key: str, tools: List
                 "ssh_config_mounted": False,
                 "gh_config_mounted": False,
                 "ambient_credentials_available": False,
+                "host_proc_mounted": False,
+                "procfs_scope": "private_pid_namespace",
                 "context_files_disabled": True,
                 "extensions_disabled": True,
                 "skills_disabled": True,

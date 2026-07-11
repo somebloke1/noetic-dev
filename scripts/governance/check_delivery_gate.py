@@ -18,6 +18,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+try:  # Optional; the fallback scanner keeps the checker dependency-light.
+    import yaml as _yaml  # type: ignore
+except ImportError:  # pragma: no cover - exercised only when PyYAML is absent.
+    _yaml = None
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
 if str(SCRIPT_DIR) not in sys.path:
@@ -34,10 +39,19 @@ from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # 
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
 PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
+IMAGE_DIGEST_RE = re.compile(r"@sha256:[a-f0-9]{64}$")
 WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
 REPO_FULL_NAME = "somebloke1/noetic-dev"
-QA_TOOL_ALLOWLIST = {"read", "grep", "find", "ls"}
+QA_TOOL_ALLOWLIST: set[str] = set()
 ALLOWED_MERGE_METHODS = {"squash", "rebase"}
+LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE = False
+BOOTSTRAP_AUTHORITY_FIELDS = [
+    "protected_policy_ref_established",
+    "trusted_runner_provenance_established",
+    "branch_protection_requires_governance",
+    "independent_human_review_process_established",
+    "credential_broker_established",
+]
 
 
 def load_json(path: str) -> Dict[str, Any]:
@@ -87,8 +101,79 @@ def _workflow_paths(path: str) -> List[Path]:
     return [target]
 
 
+def _image_is_digest_pinned(image_ref: str) -> bool:
+    return bool(IMAGE_DIGEST_RE.search(image_ref.strip().strip('"\'')))
+
+
+def _strip_scalar(value: str) -> str:
+    value = value.strip()
+    if " #" in value:
+        value = value.split(" #", 1)[0].rstrip()
+    return value.strip().strip('"\'')
+
+
+def _workflow_image_refs_from_yaml(content: str) -> List[Tuple[str, str]]:
+    """Return job container and service image refs from workflow YAML.
+
+    PyYAML is used when available; the fallback scanner covers the GitHub
+    workflow subset used here so the checker remains dependency-light in CI.
+    """
+    refs: List[Tuple[str, str]] = []
+    if _yaml is not None:
+        try:
+            loaded = _yaml.safe_load(content) or {}
+        except Exception:
+            loaded = {}
+        jobs = loaded.get("jobs", {}) if isinstance(loaded, dict) else {}
+        if isinstance(jobs, dict):
+            for job_id, job in jobs.items():
+                if not isinstance(job, dict):
+                    continue
+                container = job.get("container")
+                if isinstance(container, str):
+                    refs.append((f"job container {job_id}", container))
+                elif isinstance(container, dict) and isinstance(container.get("image"), str):
+                    refs.append((f"job container {job_id}", container["image"]))
+                services = job.get("services", {})
+                if isinstance(services, dict):
+                    for service_id, service in services.items():
+                        if isinstance(service, str):
+                            refs.append((f"service {job_id}.{service_id}", service))
+                        elif isinstance(service, dict) and isinstance(service.get("image"), str):
+                            refs.append((f"service {job_id}.{service_id}", service["image"]))
+            return refs
+
+    # Fallback for common workflow syntax: scalar/inline container refs and
+    # image: entries nested under container/services mappings.
+    active_blocks: List[Tuple[int, str]] = []
+    for raw in content.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        indent = len(raw) - len(raw.lstrip(" "))
+        text = raw.strip()
+        while active_blocks and indent <= active_blocks[-1][0]:
+            active_blocks.pop()
+        container_match = re.match(r"container:\s*(.*)$", text)
+        if container_match:
+            value = _strip_scalar(container_match.group(1))
+            if value:
+                inline = re.search(r"(?:^|[{,]\s*)image\s*:\s*([^,}]+)", value)
+                refs.append(("job container", _strip_scalar(inline.group(1) if inline else value)))
+            else:
+                active_blocks.append((indent, "job container"))
+            continue
+        if re.match(r"services:\s*$", text):
+            active_blocks.append((indent, "service"))
+            continue
+        image_match = re.match(r"image:\s*(.+)$", text)
+        if image_match and any(label in {"job container", "service"} for _i, label in active_blocks):
+            label = active_blocks[-1][1]
+            refs.append((label, _strip_scalar(image_match.group(1))))
+    return refs
+
+
 def check_pinning(workflow_path: str) -> List[str]:
-    """Check that all workflow remote actions and docker images are immutable."""
+    """Check that workflow actions, job containers, and services are immutable."""
     errors: List[str] = []
     action_pattern = re.compile(
         r"^\s+(?:-\s+)?uses:\s+([^\s#]+)",
@@ -106,7 +191,7 @@ def check_pinning(workflow_path: str) -> List[str]:
                 continue
             if uses.startswith("docker://"):
                 image_ref = uses.removeprefix("docker://")
-                if not re.search(r"@sha256:[a-f0-9]{64}$", image_ref):
+                if not _image_is_digest_pinned(image_ref):
                     errors.append(
                         f"unpinned docker image ref: {uses} "
                         f"(must use @sha256:<64-hex-digest>) in {path}"
@@ -122,6 +207,13 @@ def check_pinning(workflow_path: str) -> List[str]:
                 errors.append(
                     f"unpinned action ref: {action}@{ref} "
                     f"(must use full 40-char SHA) in {path}"
+                )
+
+        for label, image_ref in _workflow_image_refs_from_yaml(content):
+            if not _image_is_digest_pinned(image_ref):
+                errors.append(
+                    f"unpinned {label} image ref: {image_ref} "
+                    f"(must use @sha256:<64-hex-digest>) in {path}"
                 )
 
     return errors
@@ -393,8 +485,10 @@ def _check_probe_execution_binding(
     tools = actual.get("tools", [])
     if not _same_list(tools, probe_record.get("tools")):
         errors.append(f"qa {qa_run_id} probe/execution tools mismatch")
-    if not isinstance(tools, list) or any(tool not in QA_TOOL_ALLOWLIST for tool in tools):
-        errors.append(f"qa {qa_run_id} tools are not within QA read-only allowlist")
+    if not isinstance(tools, list):
+        errors.append(f"qa {qa_run_id} tools field must be a list")
+    elif tools:
+        errors.append(f"qa {qa_run_id} authoritative QA dispatch must use no tools until a credential broker exists")
     if not _same_list(actual.get("environment_name_allowlist"), probe_record.get("environment_name_allowlist")):
         errors.append(f"qa {qa_run_id} probe/execution environment allowlist mismatch")
 
@@ -548,18 +642,46 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
         _check_probe_execution_binding(qa_record, exec_record, probe_record, pass_record, manifest, errors)
 
 
+def _external_integration_blockers(external_evidence: Optional[Dict[str, Any]]) -> List[str]:
+    """Return bootstrap blockers for the future protected integration interface."""
+    bootstrap = _load_repo_json("governance/bootstrap-status.json")
+    gate = bootstrap.get("authoritative_delivery_gate", {})
+    blockers: List[str] = []
+    if not external_evidence:
+        blockers.append(
+            "merge readiness blocked: no authoritative trusted runner provenance supplied; "
+            "candidate-local manifest evidence is advisory only"
+        )
+    elif not LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE:
+        blockers.append(
+            "merge readiness blocked: authoritative external integration is not available to this local gate; "
+            "caller-supplied external evidence is advisory only"
+        )
+    elif gate.get("status") != "established":
+        blockers.append(
+            "merge readiness blocked: authoritative external integration is not established; "
+            "caller-supplied external evidence is advisory only"
+        )
+    for field in BOOTSTRAP_AUTHORITY_FIELDS:
+        if gate.get(field) is not True:
+            blockers.append(f"bootstrap dependency unresolved: {field}")
+    return blockers
+
+
 def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence: Optional[Dict[str, Any]] = None) -> List[str]:
-    """Verify protected-runner provenance supplied outside the manifest."""
-    errors: List[str] = []
+    """Verify the future protected-runner provenance interface, failing closed.
+
+    During bootstrap, caller-provided JSON is parsed for diagnostics only. It is
+    not accepted as authenticated provenance until the separately protected
+    integration is installed and required by branch protection.
+    """
+    errors: List[str] = _external_integration_blockers(external_evidence)
     policy = manifest.get("policy", {})
     repo = manifest.get("repo", {})
     pr = manifest.get("pull_request", {})
 
     if not external_evidence:
-        return [
-            "merge readiness blocked: no authoritative trusted runner provenance; "
-            "manifest runner_attestation/trusted_runner fields are advisory only"
-        ]
+        return errors
 
     for error in validate_schema(external_evidence, _load_schema("governance/schemas/external-evidence.schema.json")):
         errors.append(f"external evidence schema: {error}")
@@ -820,14 +942,16 @@ def check_delivery(
     merge_errors.extend(verify_authoritative_provenance(manifest, external_evidence))
     _check_approvals(manifest, merge_errors, external_evidence)
 
-    if merge_errors:
-        return False, merge_errors, "merge"
     if phase == "pre-merge":
+        if merge_errors:
+            return False, merge_errors, "merge"
         return True, [], "merge"
 
     publication_errors: List[str] = []
+    if merge_errors:
+        publication_errors.append("publication blocked: merge readiness gate did not pass")
+        publication_errors.extend(merge_errors)
     _check_publication(manifest, publication_errors, external_evidence)
-    publication_errors.extend(verify_authoritative_provenance(manifest, external_evidence))
     if publication_errors:
         return False, publication_errors, "publication"
 
@@ -848,12 +972,7 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
         gate = bootstrap.get("authoritative_delivery_gate", {})
         if gate.get("status") != "external_dependency_missing":
             errors.append("authoritative delivery gate dependency is not marked unresolved")
-        for field in [
-            "protected_policy_ref_established",
-            "trusted_runner_provenance_established",
-            "branch_protection_requires_governance",
-            "independent_human_review_process_established",
-        ]:
+        for field in BOOTSTRAP_AUTHORITY_FIELDS:
             if gate.get(field) is not False:
                 errors.append(f"bootstrap dependency must remain false until verified: {field}")
     return not errors, errors

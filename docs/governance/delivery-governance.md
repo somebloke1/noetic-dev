@@ -14,13 +14,13 @@ All changes merged to `main` and published must pass through the governance pipe
 |------|------------|
 | Validation | A structural/formatting check that reports pass/fail. Does not test semantics. |
 | Test | A genuine positive or adversarial test that exercises behavior. |
-| QA pass | An adversarial evaluation by a distinct model with read-only source access. |
+| QA pass | An adversarial evaluation by a distinct model with read-only source access and, until a credential broker exists, no Pi tools. |
 | Implementation generation | One distinct commit-producing pass by an implementer or remediator. |
 | Candidate SHA | The full 40-character SHA of the commit to be reviewed and merged. |
 | Evidence manifest | A machine-readable record of all evidence for a delivery decision. |
 | Publication SHA | The full 40-character main SHA after merging a candidate. |
 | Trusted runner | A runner whose provenance is verified from evidence outside the candidate manifest through authenticated GitHub APIs and/or signed attestations. |
-| External protected evidence | Runner-captured GitHub, approval, freeze, and post-merge evidence supplied to the gate separately from the candidate-controlled manifest. |
+| External protected evidence | Runner-captured GitHub, approval, freeze, and post-merge evidence supplied by a separately protected required integration; caller-supplied JSON is advisory during bootstrap. |
 
 ## State machine
 
@@ -38,7 +38,7 @@ The delivery state machine is defined in `governance/state-machine.json`. Key st
 | Implementer | Modifies files in issue worktree. Cannot QA or publish. |
 | Remediator | Same as implementer, for remediation. |
 | Validator | Records command exit codes. Cannot approve. |
-| QA | Exactly one adversarial pass per generation. Read-only source mount. |
+| QA | Exactly one adversarial pass per generation. Read-only source mount; no tools until a credential broker exists. |
 | Human reviewer | Separate from PR author and implementation identities. |
 | Publisher | Deterministic execution only after gates pass. |
 
@@ -67,11 +67,11 @@ A PR candidate is ready to merge only when ALL of the following hold:
 8. Required validations passed (exit code 0).
 9. Required tests passed (exit code 0).
 10. Implementation:QA pass cardinality is exactly 1:1.
-11. QA used read-only source mount, no context files, no write tools observed, candidate tree unchanged.
+11. QA used read-only source mount, no context files, no tools before a credential broker exists, candidate tree unchanged.
 12. QA verdict is `pass`.
-13. External protected human approval evidence exists, is not by PR author, not by implementation/QA identity, and is after the candidate SHA.
-14. External protected runner provenance binds repository, workflow, run/job, artifact digest, manifest digest, policy SHA, candidate SHA, and separate checkouts.
-15. All workflow action refs are pinned to full SHAs and docker refs are immutable digests.
+13. External protected human approval evidence exists, is not by PR author, not by implementation/QA identity, is after candidate pinning, and is for exactly the final candidate SHA.
+14. External protected runner provenance binds repository, workflow, run/job, artifact digest, manifest digest, policy SHA, candidate SHA, and separate checkouts, and is captured by a separately protected required integration.
+15. All workflow action refs are pinned to full SHAs, and docker/action, job container, and service images are pinned by immutable digests.
 
 ### Publication gate
 
@@ -107,19 +107,22 @@ Authoritative mode requires:
 4. Runner provenance verified through GitHub API and/or signed artifact attestations.
 5. Artifact digest and canonical manifest digest verified.
 6. Protected QA execution record generated outside QA/model control.
-7. Probe and QA execution records match.
+7. Probe and QA execution records match, with no QA tools until a credential broker exists.
 8. Branch protection requires the governance checks.
-9. Independent human reviewer approval exists after candidate SHA.
+9. Independent human reviewer approval exists after candidate SHA and is bound to the final candidate SHA.
+10. Provider credentials cross a broker/capability boundary before tools are re-enabled for authoritative QA.
 
 ### Bootstrap advisory mode
 
 Before authoritative conditions exist:
 
 - Manifests are advisory only.
-- `policy.trusted_runner` in a manifest is advisory only and must not be used to establish authority; the delivery gate requires separately supplied external protected evidence.
+- `policy.trusted_runner` in a manifest is advisory only and must not be used to establish authority.
+- Caller-supplied external evidence JSON is also advisory until a separately protected required integration captures or attests it and branch protection requires that integration.
 - Local validation/tests may produce diagnostics.
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
+- The credential broker, trusted integration, branch protection, and independent-human-review process remain unresolved in `governance/bootstrap-status.json` until independently verified.
 - The existing-work freeze in `governance/audits/existing-work-freeze.json` blocks publication until an actual audit artifact is completed and reviewed.
 
 ## Model profiles
@@ -138,7 +141,7 @@ Issue status is managed through canonical machine-readable labels following the 
 
 GitHub Actions workflows must:
 
-- Use pinned full-SHA action refs (never mutable tags like `@v4`, `@v5`) and immutable docker image digests.
+- Use pinned full-SHA action refs (never mutable tags like `@v4`, `@v5`) and immutable docker/job-container/service image digests.
 - Run repository validation and genuine tests separately.
 - Treat the candidate PR workflow as advisory only; it must not claim protected delivery-gate authority or call base-policy scripts that may not exist during bootstrap.
 - Establish a separate protected required workflow/repository integration before authoritative merge readiness can be claimed.

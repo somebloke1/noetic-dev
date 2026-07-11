@@ -26,16 +26,19 @@ def load_fixture(name: str):
         return json.load(f)
 
 
-def valid_external():
-    return load_fixture("valid_external_evidence.json")
+def advisory_external():
+    return load_fixture("advisory_external_evidence.json")
 
 
 class TestDeliveryGatePositive(unittest.TestCase):
-    def test_valid_external_premerge_fixture_passes_merge_only(self):
+    def test_self_consistent_external_evidence_remains_advisory(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest, external_evidence=valid_external())
-        self.assertTrue(passed, f"expected pre-merge fixture to pass: {errors}")
+        passed, errors, gate_type = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
         self.assertEqual(gate_type, "merge")
+        joined = "\n".join(errors)
+        self.assertIn("caller-supplied external evidence is advisory only", joined)
+        self.assertIn("credential_broker_established", joined)
 
     def test_valid_advisory_is_blocked_without_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -46,7 +49,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
 
     def test_publication_remains_blocked_by_bootstrap_freeze(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        passed, errors, gate_type = check_delivery(manifest, external_evidence=valid_external(), phase="publication")
+        passed, errors, gate_type = check_delivery(manifest, external_evidence=advisory_external(), phase="publication")
         self.assertFalse(passed)
         self.assertEqual(gate_type, "publication")
         self.assertIn("existing-work freeze", "\n".join(errors))
@@ -96,7 +99,7 @@ class TestDeliveryGateNegativeFixtures(unittest.TestCase):
         for fixture_name, expected in self.CASES.items():
             with self.subTest(fixture=fixture_name):
                 manifest = load_fixture(fixture_name)
-                passed, errors, _gate_type = check_delivery(manifest, external_evidence=valid_external())
+                passed, errors, _gate_type = check_delivery(manifest, external_evidence=advisory_external())
                 self.assertFalse(passed, f"{fixture_name} unexpectedly passed")
                 joined = "\n".join(errors)
                 self.assertIn(expected, joined, f"{fixture_name} errors were: {errors}")
@@ -115,7 +118,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_external_artifact_digest_mismatch_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["digest"] = "sha256:" + "8" * 64
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -123,7 +126,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_external_policy_hash_mismatch_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["policy_file_hashes"][manifest["policy"]["generator_path"]] = "0" * 64
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -131,7 +134,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_author_approval_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["approvals"][0]["reviewer"] = manifest["pull_request"]["author"]
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -139,7 +142,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_stale_approval_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["approvals"][0]["submitted_at"] = "2026-07-11T11:59:00+00:00"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -147,15 +150,24 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_naive_approval_timestamp_returns_controlled_failure(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["approvals"][0]["submitted_at"] = "2026-07-11T12:40:00"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("invalid timestamp", "\n".join(errors))
 
+    def test_wrong_sha_approval_after_candidate_pin_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["commit_sha"] = "f" * 40
+        external["approvals"][0]["submitted_at"] = "2026-07-11T12:40:00+00:00"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("wrong SHA", "\n".join(errors))
+
     def test_policy_ref_must_be_protected_full_sha_and_separate(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["protected_ref"]["protected"] = False
         external["checkouts"]["candidate_path"] = external["checkouts"]["policy_path"]
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
@@ -166,7 +178,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_candidate_controlled_or_short_policy_sha_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         manifest["policy"]["sha"] = manifest["repo"]["candidate_sha"]
         external["workflow"]["sha"] = manifest["policy"]["sha"]
         external["protected_ref"]["sha"] = manifest["policy"]["sha"]
@@ -182,7 +194,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 
     def test_manifest_generated_by_candidate_modifiable_code_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = valid_external()
+        external = advisory_external()
         external["generator"]["from_policy_checkout"] = False
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -198,7 +210,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
         for command in manifest["commands"]:
             if command.get("phase") == "post_merge":
                 command["commit_sha"] = publication_sha
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         external["post_merge"] = {
             "event": "push",
@@ -240,19 +252,19 @@ class TestQaBindingFailures(unittest.TestCase):
         actual["profile_id"] = "implementer_candidate"
         actual["resolved_model"] = "litellm/deepseek-v4-flash"
         self._first_qa_with_rehashed_records(manifest)
-        passed, errors, _ = check_delivery(manifest, external_evidence=valid_external())
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
         self.assertIn("profile_id does not match", "\n".join(errors))
 
-    def test_write_capable_tool_in_qa_record_rejected(self):
+    def test_any_tool_in_authoritative_qa_record_rejected_until_broker_exists(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
-        qa["protected_execution_record"]["actual_invocation"]["tools"] = ["read", "bash"]
-        qa["protected_probe_record"]["tools"] = ["read", "bash"]
+        qa["protected_execution_record"]["actual_invocation"]["tools"] = ["read"]
+        qa["protected_probe_record"]["tools"] = ["read"]
         self._first_qa_with_rehashed_records(manifest)
-        passed, errors, _ = check_delivery(manifest, external_evidence=valid_external())
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
-        self.assertIn("read-only allowlist", "\n".join(errors))
+        self.assertIn("must use no tools until a credential broker exists", "\n".join(errors))
 
     def test_failed_or_non_ready_probe_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -261,7 +273,7 @@ class TestQaBindingFailures(unittest.TestCase):
         probe["observed_response"] = "not ready"
         probe["exit_code"] = 1
         self._first_qa_with_rehashed_records(manifest)
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -274,7 +286,7 @@ class TestQaBindingFailures(unittest.TestCase):
         qa = manifest["qa"]["records"][0]
         qa["protected_probe_record"]["finished_at"] = "2026-07-11T12:08:00+00:00"
         self._first_qa_with_rehashed_records(manifest)
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -287,7 +299,7 @@ class TestQaBindingFailures(unittest.TestCase):
         probe["candidate_sha"] = "f" * 40
         probe["pi_version"] = "pi 9.9.9"
         self._first_qa_with_rehashed_records(manifest)
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -299,7 +311,7 @@ class TestQaBindingFailures(unittest.TestCase):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
         qa["event_log_hash"] = "9" * 64
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
@@ -310,22 +322,25 @@ class TestQaBindingFailures(unittest.TestCase):
         qa = manifest["qa"]["records"][0]
         qa.pop("protected_execution_record")
         qa["protected_execution_record_path"] = "missing.json"
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         passed, errors, _ = check_delivery(manifest, manifest_path=str(FIXTURES_DIR / "valid_advisory_manifest.json"), external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("missing protected QA execution record", "\n".join(errors))
 
-    def test_no_tools_qa_binding_is_allowed(self):
+    def test_no_tools_qa_binding_has_no_qa_tool_error_but_gate_stays_blocked(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
         qa["protected_execution_record"]["actual_invocation"]["tools"] = []
         qa["protected_probe_record"]["tools"] = []
         self._first_qa_with_rehashed_records(manifest)
-        external = valid_external()
+        external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
-        self.assertTrue(passed, errors)
+        joined = "\n".join(errors)
+        self.assertFalse(passed)
+        self.assertIn("caller-supplied external evidence is advisory only", joined)
+        self.assertNotIn("must use no tools", joined)
 
 
 class TestDeliveryGateCLI(unittest.TestCase):
@@ -340,14 +355,14 @@ class TestDeliveryGateCLI(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("digest mismatch", result.stderr)
 
-    def test_cli_passes_premerge_only_with_external_evidence(self):
+    def test_cli_blocks_premerge_with_advisory_external_evidence(self):
         fixture = FIXTURES_DIR / "valid_advisory_manifest.json"
         result = subprocess.run(
             [
                 sys.executable,
                 "scripts/governance/check_delivery_gate.py",
                 "--external-evidence",
-                str(FIXTURES_DIR / "valid_external_evidence.json"),
+                str(FIXTURES_DIR / "advisory_external_evidence.json"),
                 "--phase",
                 "pre-merge",
                 str(fixture),
@@ -356,8 +371,8 @@ class TestDeliveryGateCLI(unittest.TestCase):
             capture_output=True,
             text=True,
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Delivery gate PASSED (merge, phase=pre-merge)", result.stderr)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("caller-supplied external evidence is advisory only", result.stderr)
 
     def test_cli_publication_phase_remains_blocked(self):
         fixture = FIXTURES_DIR / "valid_advisory_manifest.json"
@@ -366,7 +381,7 @@ class TestDeliveryGateCLI(unittest.TestCase):
                 sys.executable,
                 "scripts/governance/check_delivery_gate.py",
                 "--external-evidence",
-                str(FIXTURES_DIR / "valid_external_evidence.json"),
+                str(FIXTURES_DIR / "advisory_external_evidence.json"),
                 "--phase",
                 "publication",
                 str(fixture),
@@ -422,6 +437,40 @@ jobs:
         try:
             errors = check_pinning(str(path))
             self.assertTrue(any("docker" in error for error in errors), errors)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_mutable_job_container_rejected(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as handle:
+            handle.write("""
+jobs:
+  test:
+    container: python:3.12
+    steps:
+      - run: python --version
+""")
+            path = Path(handle.name)
+        try:
+            errors = check_pinning(str(path))
+            self.assertTrue(any("job container" in error and "unpinned" in error for error in errors), errors)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_mutable_service_image_rejected(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as handle:
+            handle.write("""
+jobs:
+  test:
+    services:
+      db:
+        image: postgres:16
+    steps:
+      - run: echo ok
+""")
+            path = Path(handle.name)
+        try:
+            errors = check_pinning(str(path))
+            self.assertTrue(any("service" in error and "unpinned" in error for error in errors), errors)
         finally:
             path.unlink(missing_ok=True)
 
