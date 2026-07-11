@@ -123,6 +123,12 @@ def get_candidate_head_sha(candidate_dir: Path) -> str:
 
 
 def validate_candidate_checkout(candidate_dir: Path, candidate_sha: str) -> Tuple[bool, str, str]:
+    """Validate a trusted/private checkout with host Git.
+
+    Do not call this on a candidate-controlled source checkout before
+    materialization. Source checkout validation is performed inside the
+    bootstrap bubblewrap sandbox by materialize_candidate_checkout().
+    """
     if not candidate_dir.exists():
         return False, f"candidate-dir does not exist: {candidate_dir}", ""
     ok, inside, stderr = _git_stdout(candidate_dir, "rev-parse", "--is-inside-work-tree")
@@ -164,34 +170,199 @@ def validate_candidate_checkout(candidate_dir: Path, candidate_sha: str) -> Tupl
     return True, "", expected_tree
 
 
+def _read_gitfile(path: Path) -> Optional[Path]:
+    if path.is_dir():
+        return path.resolve()
+    if not path.is_file():
+        return None
+    try:
+        data = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    prefix = "gitdir:"
+    if not data.lower().startswith(prefix):
+        return None
+    gitdir = data[len(prefix):].strip()
+    gitdir_path = Path(gitdir)
+    if not gitdir_path.is_absolute():
+        gitdir_path = path.parent / gitdir_path
+    return gitdir_path.resolve()
+
+
+def _candidate_git_metadata_ro_mounts(candidate_dir: Path) -> List[Path]:
+    """Return Git metadata paths needed for a worktree without running Git.
+
+    Git worktrees often have a .git file pointing outside the working tree.
+    Parsing that file lets the bootstrap sandbox mount only the required Git
+    metadata read-only, while avoiding any host-authority Git invocation against
+    candidate-controlled local configuration.
+    """
+    mounts: List[Path] = []
+    gitdir = _read_gitfile(candidate_dir / ".git")
+    if not gitdir:
+        return mounts
+    try:
+        gitdir.relative_to(candidate_dir.resolve())
+    except ValueError:
+        mounts.append(gitdir)
+
+    commondir_file = gitdir / "commondir"
+    if commondir_file.is_file():
+        data = commondir_file.read_text(encoding="utf-8", errors="replace").strip()
+        if data:
+            common = Path(data)
+            if not common.is_absolute():
+                common = gitdir / common
+            common = common.resolve()
+            try:
+                common.relative_to(candidate_dir.resolve())
+            except ValueError:
+                mounts.append(common)
+    return sorted(set(mounts), key=lambda item: len(str(item)))
+
+
+def _build_bootstrap_bwrap_command(candidate_dir: Path, parent_dir: Path, candidate_sha: str) -> List[str]:
+    bwrap = shutil.which("bwrap") or shutil.which("bubblewrap")
+    if not bwrap:
+        raise RuntimeError("bubblewrap (bwrap) is required for private candidate materialization")
+
+    source = candidate_dir.resolve()
+    destination_parent = parent_dir.resolve()
+    if not source.exists():
+        raise RuntimeError(f"candidate-dir does not exist: {candidate_dir}")
+    if _inside(destination_parent, source):
+        raise RuntimeError("private candidate parent must not be inside candidate-dir")
+
+    script = r'''set -eu
+src="$1"
+sha="$2"
+dst_parent="$3"
+dst="$dst_parent/candidate-checkout"
+
+export HOME=/tmp/home
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/false
+export SSH_ASKPASS=/bin/false
+
+case "$sha" in
+  [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  *) echo "candidate SHA is not a full lowercase SHA-1" >&2; exit 11 ;;
+esac
+
+[ ! -e "$dst" ] || { echo "private candidate checkout path already exists: $dst" >&2; exit 12; }
+mkdir -p "$dst"
+
+# Source validation runs inside confinement. Command-line config disables known
+# executable status callbacks while preserving fail-closed clean-tree checks.
+expected_head=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" rev-parse HEAD)
+[ "$expected_head" = "$sha" ] || { echo "candidate-dir HEAD $expected_head does not match requested $sha" >&2; exit 13; }
+expected_tree=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" rev-parse "$sha^{tree}")
+head_tree=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" rev-parse HEAD^{tree})
+[ "$head_tree" = "$expected_tree" ] || { echo "candidate HEAD tree $head_tree does not match requested tree $expected_tree" >&2; exit 14; }
+
+index_flags=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" ls-files -v)
+if printf '%s\n' "$index_flags" | grep -E '^[[:lower:]S]' >/dev/null 2>&1; then
+  echo "candidate checkout has assume-unchanged or skip-worktree index entries" >&2
+  exit 15
+fi
+status=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" status --porcelain=v1 --untracked-files=all)
+if [ -n "$status" ]; then
+  echo "candidate checkout is dirty or has untracked files" >&2
+  printf '%s\n' "$status" >&2
+  exit 16
+fi
+ignored=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" ls-files --others --ignored --exclude-standard)
+if [ -n "$ignored" ]; then
+  echo "candidate checkout has ignored untracked entries" >&2
+  printf '%s\n' "$ignored" >&2
+  exit 17
+fi
+
+tmp_index=/tmp/source-tree.index
+GIT_INDEX_FILE="$tmp_index" git -c safe.directory=* -c core.fsmonitor=false -C "$src" read-tree "$expected_tree"
+GIT_INDEX_FILE="$tmp_index" git -c safe.directory=* -c core.fsmonitor=false -C "$src" checkout-index -a -f --prefix="$dst/"
+
+git -c init.defaultBranch=qa-candidate init --quiet "$dst"
+git -C "$dst" config --local core.fsmonitor false
+git -C "$dst" config --local core.hooksPath /dev/null
+git -C "$dst" add -A -f
+actual_tree=$(git -C "$dst" write-tree)
+[ "$actual_tree" = "$expected_tree" ] || { echo "neutral export tree $actual_tree does not match expected tree $expected_tree" >&2; exit 18; }
+
+git -c safe.directory=* -c core.fsmonitor=false -C "$src" cat-file commit "$sha" > /tmp/candidate.commit
+imported_sha=$(git -C "$dst" hash-object -t commit -w /tmp/candidate.commit)
+[ "$imported_sha" = "$sha" ] || { echo "imported commit $imported_sha does not match requested $sha" >&2; exit 19; }
+git -C "$dst" update-ref refs/heads/qa-candidate "$sha"
+git -C "$dst" symbolic-ref HEAD refs/heads/qa-candidate
+git -C "$dst" reset --hard --quiet "$sha"
+
+private_status=$(git -C "$dst" status --porcelain=v1 --untracked-files=all)
+[ -z "$private_status" ] || { echo "private checkout is dirty after reset" >&2; printf '%s\n' "$private_status" >&2; exit 20; }
+printf '%s\n' "$expected_tree"
+'''
+
+    cmd: List[str] = [
+        bwrap,
+        "--die-with-parent",
+        "--unshare-user",
+        "--unshare-pid",
+        "--unshare-ipc",
+        "--unshare-uts",
+        "--unshare-net",
+        "--ro-bind", "/usr", "/usr",
+        "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/lib", "/lib",
+        "--symlink", "usr/lib64", "/lib64",
+        "--ro-bind", "/etc", "/etc",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--dir", "/tmp/home",
+        "--setenv", "HOME", "/tmp/home",
+        "--setenv", "GIT_TERMINAL_PROMPT", "0",
+        "--unsetenv", "GH_TOKEN",
+        "--unsetenv", "GITHUB_TOKEN",
+        "--unsetenv", "SSH_AUTH_SOCK",
+        "--unsetenv", "GIT_ASKPASS",
+        "--unsetenv", "SSH_ASKPASS",
+    ]
+    cmd.extend(_mkdir_mount_parents(source))
+    cmd.extend(["--ro-bind", str(source), str(source)])
+    for metadata in _candidate_git_metadata_ro_mounts(source):
+        if metadata.exists():
+            cmd.extend(_mkdir_mount_parents(metadata))
+            cmd.extend(["--ro-bind", str(metadata), str(metadata)])
+    cmd.extend(_mkdir_mount_parents(destination_parent))
+    cmd.extend(["--bind", str(destination_parent), str(destination_parent)])
+    cmd.extend(["--chdir", str(source), "--", "/bin/sh", "-eu", "-c", script, "bootstrap-materialize", str(source), candidate_sha, str(destination_parent)])
+    return cmd
+
+
 def materialize_candidate_checkout(candidate_dir: Path, candidate_sha: str, parent_dir: Path) -> Tuple[Path, str]:
     """Create a private checkout of candidate_sha and verify its tree.
 
-    Authoritative QA must inspect this freshly materialized checkout, not the
-    caller's mutable worktree. The source checkout is revalidated immediately
-    before cloning so ignored files or hidden index state cannot influence the
-    isolated source mount.
+    Authoritative QA inspects a freshly materialized checkout, not the caller's
+    mutable worktree. No host-authority Git command is executed against the
+    candidate-controlled source repository: all source Git access occurs inside
+    a credential-free, network-free bubblewrap bootstrap sandbox with the source
+    and Git metadata mounted read-only and only the private destination writable.
     """
-    source_ok, source_error, expected_tree = validate_candidate_checkout(candidate_dir, candidate_sha)
-    if not source_ok:
-        raise RuntimeError(f"candidate checkout changed before isolation: {source_error}")
+    if not re_full_sha(candidate_sha):
+        raise RuntimeError("candidate SHA must be a full lowercase SHA-1")
 
     parent_dir.mkdir(parents=True, exist_ok=True)
     private_dir = parent_dir / "candidate-checkout"
     if private_dir.exists():
         raise RuntimeError(f"private candidate checkout path already exists: {private_dir}")
 
-    clone = subprocess.run(
-        ["git", "clone", "--no-local", "--no-hardlinks", "--quiet", str(candidate_dir.resolve()), str(private_dir)],
-        capture_output=True,
-        text=True,
-    )
-    if clone.returncode != 0:
-        raise RuntimeError(f"private candidate clone failed: {clone.stderr.strip() or clone.stdout.strip()}")
-
-    checkout = subprocess.run(["git", "checkout", "--detach", "--quiet", candidate_sha], cwd=private_dir, capture_output=True, text=True)
-    if checkout.returncode != 0:
-        raise RuntimeError(f"private candidate checkout failed: {checkout.stderr.strip() or checkout.stdout.strip()}")
+    command = _build_bootstrap_bwrap_command(candidate_dir, parent_dir, candidate_sha)
+    result = subprocess.run(command, capture_output=True, text=True, env=_clean_env(), timeout=120)
+    if result.returncode != 0:
+        detail = (result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}")
+        raise RuntimeError(f"private candidate bootstrap failed: {detail}")
+    expected_tree = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    if not re_full_sha(expected_tree):
+        raise RuntimeError(f"private candidate bootstrap did not return a tree oid: {result.stdout.strip()}")
 
     private_ok, private_error, private_tree = validate_candidate_checkout(private_dir, candidate_sha)
     if not private_ok:
@@ -703,10 +874,6 @@ def main() -> int:
             return 1
         if _inside(args.output_dir, args.candidate_dir):
             print("protected output-dir must not be inside candidate-dir", file=sys.stderr)
-            return 1
-        checkout_ok, checkout_error, _tree = validate_candidate_checkout(args.candidate_dir, args.candidate_sha)
-        if not checkout_ok:
-            print(checkout_error, file=sys.stderr)
             return 1
 
     if not args.prompt.exists():

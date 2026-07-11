@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -168,6 +169,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             self.assertIn("assume-unchanged or skip-worktree", message)
             self.assertIn("tracked.txt", message)
 
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
     def test_materialize_candidate_checkout_creates_private_verified_tree(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
             root = Path(tmp)
@@ -183,13 +185,63 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             (root / "tracked.txt").write_text("source mutated after materialization\n", encoding="utf-8")
             self.assertEqual((private_dir / "tracked.txt").read_text(encoding="utf-8"), "clean\n")
 
-    def test_materialize_candidate_checkout_revalidates_source_before_clone(self):
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
+    def test_materialize_candidate_checkout_revalidates_source_inside_bootstrap(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
             root = Path(tmp)
             sha = self._init_candidate_repo(root)
             (root / "untracked.txt").write_text("late mutation\n", encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "changed before isolation"):
+            with self.assertRaisesRegex(RuntimeError, "dirty or has untracked files"):
                 materialize_candidate_checkout(root, sha, Path(private_tmp))
+
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
+    def test_materialize_candidate_checkout_confines_core_fsmonitor(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
+            base = Path(tmp)
+            root = base / "candidate"
+            root.mkdir()
+            sha = self._init_candidate_repo(root)
+            marker = base / "host-fsmonitor-marker"
+            callback = base / "fsmonitor.sh"
+            callback.write_text(f"#!/bin/sh\nprintf marker > {marker}\nexit 0\n", encoding="utf-8")
+            callback.chmod(0o755)
+            subprocess.run(["git", "config", "core.fsmonitor", str(callback)], cwd=root, check=True)
+
+            expected_tree = subprocess.check_output(["git", "rev-parse", f"{sha}^{{tree}}"], cwd=root, text=True).strip()
+            private_dir, private_tree = materialize_candidate_checkout(root, sha, Path(private_tmp))
+
+            self.assertFalse(marker.exists(), "source-local core.fsmonitor escaped bootstrap confinement")
+            self.assertEqual(private_tree, expected_tree)
+            ok, message, tree = validate_candidate_checkout(private_dir, sha)
+            self.assertTrue(ok, message)
+            self.assertEqual(tree, expected_tree)
+
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
+    def test_materialize_candidate_checkout_does_not_execute_uploadpack_hook_on_host(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
+            base = Path(tmp)
+            root = base / "candidate"
+            root.mkdir()
+            sha = self._init_candidate_repo(root)
+            marker = base / "host-uploadpack-marker"
+            hook = base / "pack-objects-hook.sh"
+            hook.write_text(
+                "#!/bin/sh\n"
+                f"printf marker > {marker}\n"
+                "exec git pack-objects \"$@\"\n",
+                encoding="utf-8",
+            )
+            hook.chmod(0o755)
+            subprocess.run(["git", "config", "uploadpack.packObjectsHook", str(hook)], cwd=root, check=True)
+
+            expected_tree = subprocess.check_output(["git", "rev-parse", f"{sha}^{{tree}}"], cwd=root, text=True).strip()
+            private_dir, private_tree = materialize_candidate_checkout(root, sha, Path(private_tmp))
+
+            self.assertFalse(marker.exists(), "source-local uploadpack.packObjectsHook escaped bootstrap confinement")
+            self.assertEqual(private_tree, expected_tree)
+            ok, message, tree = validate_candidate_checkout(private_dir, sha)
+            self.assertTrue(ok, message)
+            self.assertEqual(tree, expected_tree)
 
     def test_record_only_is_non_evidence(self):
         args = argparse.Namespace(
