@@ -1,0 +1,14 @@
+{
+  "schema_version": "noetic.attach-session/v0",
+  "attach_id": "attach-tmux-0001",
+  "adapter_kind": "tmux",
+  "identity": {"run_id": "run-1", "node_id": "node-1", "attempt_id": "attempt-1", "agent_id": "agent-1", "workspace_lease_id": "lease-1", "workspace_fence": 3},
+  "session": {"session_id": "session-1", "generation": 2, "adapter_handle_ref": "adapter:tmux.session-1.pane-1", "created_at": "2026-07-11T15:20:00Z"},
+  "mode": "interactive",
+  "authority": {"authority_ref": "authority-attach-1", "actor_ref": "operator:somebloke1", "permissions": ["read_output", "send_input", "resize", "detach"], "expires_at": "2026-07-11T16:00:00Z"},
+  "bootstrap": {"strategy": "minimal_reference", "command_ref": "runtime:pi", "argv": ["--agent-id", "agent-1", "--resume", "session-1"], "environment_refs": ["env:NOETIC_RUN_ID"], "payload_bytes": 256},
+  "reconnect": {"max_attempts": 3, "backoff": "bounded_exponential", "require_same_generation": true, "require_current_fence": true},
+  "limits": {"max_input_bytes": 8192, "max_buffer_bytes": 1048576, "idle_timeout_seconds": 3600},
+  "privacy": {"classification": "restricted", "redact_logs": true, "persist_raw_output": false},
+  "audit": {"canonical_event_version": "noetic.event/v0", "record_input_digest": true, "record_lifecycle": true}
+}

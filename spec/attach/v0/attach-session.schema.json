@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/somebloke1/noetic-dev/spec/attach/v0/attach-session.schema.json",
+  "title": "noetic-dev live-agent attach session v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "attach_id", "adapter_kind", "identity", "session", "mode", "authority", "bootstrap", "reconnect", "limits", "privacy", "audit"],
+  "properties": {
+    "schema_version": {"const": "noetic.attach-session/v0"},
+    "attach_id": {"type": "string", "minLength": 1},
+    "adapter_kind": {"enum": ["tmux", "browser_pty"]},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "node_id", "attempt_id", "agent_id", "workspace_lease_id", "workspace_fence"],
+      "properties": {
+        "run_id": {"type": "string"}, "node_id": {"type": "string"}, "attempt_id": {"type": "string"}, "agent_id": {"type": "string"},
+        "workspace_lease_id": {"type": "string"}, "workspace_fence": {"type": "integer", "minimum": 1}
+      }
+    },
+    "session": {
+      "type": "object", "additionalProperties": false,
+      "required": ["session_id", "generation", "adapter_handle_ref", "created_at"],
+      "properties": {
+        "session_id": {"type": "string"}, "generation": {"type": "integer", "minimum": 1},
+        "adapter_handle_ref": {"type": "string", "pattern": "^adapter:[a-z][a-z0-9_.:-]+$"},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "mode": {"enum": ["observe", "interactive"]},
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authority_ref", "actor_ref", "permissions", "expires_at"],
+      "properties": {
+        "authority_ref": {"type": "string"}, "actor_ref": {"type": "string"},
+        "permissions": {"type": "array", "uniqueItems": true, "items": {"enum": ["read_output", "send_input", "resize", "detach"]}},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "bootstrap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["strategy", "command_ref", "argv", "environment_refs", "payload_bytes"],
+      "properties": {
+        "strategy": {"const": "minimal_reference"},
+        "command_ref": {"type": "string", "pattern": "^runtime:[a-z][a-z0-9_.-]+$"},
+        "argv": {"type": "array", "maxItems": 32, "items": {"type": "string", "maxLength": 256}},
+        "environment_refs": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "pattern": "^env:[A-Z][A-Z0-9_]+$"}},
+        "payload_bytes": {"type": "integer", "minimum": 0, "maximum": 4096}
+      }
+    },
+    "reconnect": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_attempts", "backoff", "require_same_generation", "require_current_fence"],
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 0, "maximum": 10},
+        "backoff": {"enum": ["none", "bounded_exponential"]},
+        "require_same_generation": {"const": true},
+        "require_current_fence": {"const": true}
+      }
+    },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_input_bytes", "max_buffer_bytes", "idle_timeout_seconds"],
+      "properties": {
+        "max_input_bytes": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "max_buffer_bytes": {"type": "integer", "minimum": 1024, "maximum": 10485760},
+        "idle_timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400}
+      }
+    },
+    "privacy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["classification", "redact_logs", "persist_raw_output"],
+      "properties": {
+        "classification": {"enum": ["internal", "restricted"]},
+        "redact_logs": {"const": true},
+        "persist_raw_output": {"const": false}
+      }
+    },
+    "audit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["canonical_event_version", "record_input_digest", "record_lifecycle"],
+      "properties": {
+        "canonical_event_version": {"const": "noetic.event/v0"},
+        "record_input_digest": {"const": true},
+        "record_lifecycle": {"const": true}
+      }
+    }
+  },
+  "allOf": [
+    {"if": {"properties": {"mode": {"const": "observe"}}}, "then": {"properties": {"authority": {"properties": {"permissions": {"not": {"contains": {"const": "send_input"}}}}}}}},
+    {"if": {"properties": {"mode": {"const": "interactive"}}}, "then": {"properties": {"authority": {"properties": {"permissions": {"contains": {"const": "send_input"}}}}}}}
+  ]
+}

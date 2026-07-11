@@ -1,0 +1,29 @@
+{
+  "schema_version": "noetic.attach-adapters/v0",
+  "default_adapter": "tmux",
+  "profiles": {
+    "tmux": {
+      "status": "default",
+      "handle_kind": "project_scoped_socket_session_pane",
+      "supports": ["observe", "interactive", "resize", "detach", "reconnect"],
+      "constraints": ["argument-vector process launch only", "project-scoped socket", "pane identity is not agent authority", "minimal bootstrap references full context after launch"]
+    },
+    "browser_pty": {
+      "status": "optional",
+      "handle_kind": "authenticated_session_websocket",
+      "supports": ["observe", "interactive", "resize", "detach", "reconnect"],
+      "constraints": ["short-lived attach credential outside URL logs", "bounded output replay", "reconnect revalidates session generation and workspace fence", "raw terminal output is not canonical domain truth"]
+    }
+  },
+  "kernel_boundary": [
+    "The controller stores only runtime-neutral attach identity, fence, lifecycle events, and effect intent/receipt.",
+    "No tmux socket, pane ID, PTY object, WebSocket, browser, process, or terminal buffer enters controller domain state.",
+    "Attach input cannot invoke controller commands; it is adapter-scoped terminal input under separate authority."
+  ],
+  "parity": [
+    "Both adapters enforce identical agent/run/attempt/workspace identity and current fence.",
+    "Observe mode never permits input; interactive mode requires send_input permission.",
+    "Reconnect never reuses a stale generation, expired authority, or replaced workspace fence.",
+    "Detach ends attachment, not the underlying attempt, unless a separate controller command authorizes cancellation."
+  ]
+}

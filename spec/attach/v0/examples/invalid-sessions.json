@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {"name": "observe-input", "base": "valid-browser-observe.json", "mutations": {"authority.permissions": ["read_output", "send_input"]}, "expected_error": "observe mode cannot send input"},
+    {"name": "interactive-without-input-authority", "base": "valid-tmux.json", "mutations": {"authority.permissions": ["read_output", "detach"]}, "expected_error": "interactive mode requires send_input"},
+    {"name": "stale-workspace-fence", "base": "valid-tmux.json", "mutations": {"identity.workspace_fence": 2}, "expected_error": "workspace fence is stale"},
+    {"name": "stale-session-generation", "base": "valid-tmux.json", "mutations": {"session.generation": 1}, "expected_error": "session generation is stale"},
+    {"name": "oversized-bootstrap", "base": "valid-tmux.json", "mutations": {"bootstrap.payload_bytes": 5000}, "expected_error": "bootstrap payload exceeds 4096 bytes"},
+    {"name": "shell-command-injection", "base": "valid-tmux.json", "mutations": {"bootstrap.argv": ["--resume", "session-1; rm -rf workspace"]}, "expected_error": "bootstrap argv contains shell metacharacter"},
+    {"name": "raw-handle-leak", "base": "valid-tmux.json", "mutations": {"session.adapter_handle_ref": "/tmp/tmux.sock:%1"}, "expected_error": "adapter handle must be opaque"},
+    {"name": "raw-output-persistence", "base": "valid-tmux.json", "mutations": {"privacy.persist_raw_output": true}, "expected_error": "raw terminal output persistence is forbidden"}
+  ],
+  "fixture_current_identity": {"workspace_fence": 3, "session_generation": 2}
+}

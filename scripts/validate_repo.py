@@ -50,6 +50,14 @@ REQUIRED = [
     "scripts/validate_model_specs.py",
     "spec/models/v0/endpoint-registry.schema.json",
     "spec/models/v0/selection-record.schema.json",
+    "docs/attach-adapter-contract.md",
+    "docs/attach-adapter-review.md",
+    "scripts/validate_attach_specs.py",
+    "spec/attach/v0/attach-session.schema.json",
+    "spec/attach/v0/adapter-profiles.json",
+    "spec/attach/v0/examples/valid-tmux.json",
+    "spec/attach/v0/examples/valid-browser-observe.json",
+    "spec/attach/v0/examples/invalid-sessions.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
