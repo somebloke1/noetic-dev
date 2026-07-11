@@ -1,0 +1,28 @@
+name: Research / decision support
+about: Gather evidence without smuggling in judgment
+labels: ["type:research", "status:triage"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources and inspection plan
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Required output and decision it informs
+    validations:
+      required: true
+  - type: textarea
+    id: falsifiers
+    attributes:
+      label: Adversarial checks / possible falsifiers
+    validations:
+      required: true

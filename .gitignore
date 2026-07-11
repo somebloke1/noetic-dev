@@ -1,0 +1,39 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local runtime/state
+state/
+.runtime/
+*.local.json
+*.local.yaml
+*.local.yml
+.unipi/
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs and temporary files
+*.log
+*.tmp
+.tmp/
+
+# Worktrees belong outside the repository
+.worktrees/

@@ -1,0 +1,47 @@
+name: Implementation
+about: Governed, verifiable implementation work
+labels: ["type:implementation", "status:triage"]
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: Purpose
+      description: How does this serve noetic-dev's primary goal?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: P1 evidence / governing sources
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria and verification commands
+      placeholder: "- [ ] Behavior…\n- [ ] Command…"
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and produced artifacts
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk
+      options: [low, medium, high]
+    validations:
+      required: true
+  - type: textarea
+    id: rollback
+    attributes:
+      label: Rollback path
+    validations:
+      required: true
