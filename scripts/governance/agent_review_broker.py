@@ -170,6 +170,8 @@ def validate_pr(pr: Any, payload: dict[str, Any]) -> None:
     head_repo = head.get("repo")
     if not isinstance(head_repo, dict):
         raise ReviewError("GitHub PR response has an invalid head repository")
+    if not isinstance(pr.get("title"), str) or not isinstance(pr.get("body"), (str, type(None))):
+        raise ReviewError("GitHub PR response has invalid review metadata")
     if pr.get("state") != "open" or pr.get("draft") is not False:
         raise ReviewError("PR must be open and non-draft")
     if head.get("sha") != payload["head_sha"]:
@@ -292,7 +294,7 @@ def build_prompt(pr: dict[str, Any], material: dict[str, Any], payload: dict[str
         "head_sha": payload["head_sha"],
         "base_sha": payload["base_sha"],
         "title": pr.get("title", ""),
-        "body": pr.get("body", ""),
+        "body": pr.get("body") or "",
         "files": material["files"],
         "diff_sha256": material["diff_sha256"],
         "diff": material["diff"],

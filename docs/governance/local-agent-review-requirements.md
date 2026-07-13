@@ -46,6 +46,8 @@ A QA observation is blocking only when it provides a reproducible counterexample
 
 There is no defect quota and no presumption that every candidate is defective. `PASS` is the required result when the attempted counterexamples do not violate the acceptance requirements. A reviewer must not manufacture a finding from hypothetical trusted-component compromise, stylistic preference, an unstated ideal, or the mere possibility of additional hardening. Every blocking finding bears the burden of showing the exact requirement or named threat, the observed behavior, and a reproducible counterexample; otherwise it is an open question or residual risk.
 
+Green evidence is stable across remediation generations unless the remediation changes the relevant control or a new reproducible counterexample directly falsifies it. Follow-up QA targets the failed requirement and regression risk from the changed lines; it does not reopen unaffected requirements merely to continue adversarial activity. The review stops when the bounded requirements pass.
+
 ## Completion
 
 The local review path is complete only when:

@@ -225,6 +225,8 @@ class TestAgentReview(unittest.TestCase):
             "head": {"sha": "a" * 40, "repo": {"full_name": "somebloke1/noetic-dev"}},
             "base": {"sha": "b" * 40},
             "user": {"login": "somebloke1"},
+            "title": "PR title",
+            "body": None,
         }
         validate_pr(valid, self.REQUEST)
         for mutation in [
@@ -236,6 +238,8 @@ class TestAgentReview(unittest.TestCase):
             {"base": []},
             {"user": "somebloke1"},
             {"user": {"login": []}},
+            {"title": {"unexpected": "object"}},
+            {"body": ["unexpected", "array"]},
         ]:
             with self.subTest(mutation=mutation), self.assertRaises(ReviewError):
                 validate_pr({**valid, **mutation}, self.REQUEST)
