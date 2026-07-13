@@ -7,11 +7,16 @@ import argparse
 import grp
 import hashlib
 import json
+import math
 import os
 import re
+import selectors
+import signal
+import socket
 import socketserver
 import subprocess
 import tempfile
+import time
 import unicodedata
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -25,6 +30,7 @@ SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 MAX_REQUEST_BYTES = 16_384
 MAX_PATCH_BYTES = 200_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
+MAX_GITHUB_OUTPUT_BYTES = 1_048_576
 
 
 class ReviewError(RuntimeError):
@@ -40,11 +46,18 @@ def strict_json(text: str | bytes) -> Any:
             result[key] = value
         return result
 
+    def finite_float(value: str) -> float:
+        result = float(value)
+        if not math.isfinite(result):
+            raise ReviewError("non-finite JSON number")
+        return result
+
     try:
         return json.loads(
             text,
             object_pairs_hook=reject_duplicate,
             parse_constant=lambda value: (_ for _ in ()).throw(ReviewError(f"invalid JSON constant: {value}")),
+            parse_float=finite_float,
         )
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ReviewError("invalid JSON") from error
@@ -57,28 +70,52 @@ def run_bounded(
     max_stderr: int,
     timeout: int,
     env: dict[str, str],
-    input_text: str | None = None,
 ) -> tuple[int, bytes, bytes]:
-    with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
-        try:
-            result = subprocess.run(
-                command,
-                input=input_text.encode() if input_text is not None else None,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                timeout=timeout,
-                env=env,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            raise ReviewError(f"command timed out after {timeout} seconds") from error
-        stdout_size = stdout_file.tell()
-        stderr_size = stderr_file.tell()
-        if stdout_size > max_stdout or stderr_size > max_stderr:
-            raise ReviewError("command output exceeded its byte limit")
-        stdout_file.seek(0)
-        stderr_file.seek(0)
-        return result.returncode, stdout_file.read(), stderr_file.read()
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        start_new_session=True,
+    )
+    streams = {process.stdout: (bytearray(), max_stdout), process.stderr: (bytearray(), max_stderr)}
+    selector = selectors.DefaultSelector()
+    for stream in streams:
+        if stream is not None:
+            selector.register(stream, selectors.EVENT_READ)
+    deadline = time.monotonic() + timeout
+    try:
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ReviewError(f"command timed out after {timeout} seconds")
+            for key, _ in selector.select(remaining):
+                chunk = os.read(key.fd, 65_536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                output, limit = streams[key.fileobj]
+                if len(output) + len(chunk) > limit:
+                    raise ReviewError("command output exceeded its byte limit")
+                output.extend(chunk)
+        returncode = process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        return returncode, bytes(streams[process.stdout][0]), bytes(streams[process.stderr][0])
+    except ReviewError:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        raise
+    except subprocess.TimeoutExpired as error:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+        raise ReviewError(f"command timed out after {timeout} seconds") from error
+    finally:
+        selector.close()
+        for stream in streams:
+            if stream is not None:
+                stream.close()
 
 
 def validate_request(payload: Any) -> dict[str, Any]:
@@ -102,30 +139,39 @@ def validate_request(payload: Any) -> dict[str, Any]:
 def validate_pr(pr: Any, payload: dict[str, Any]) -> None:
     if not isinstance(pr, dict):
         raise ReviewError("GitHub PR response must be an object")
+    head = pr.get("head")
+    base = pr.get("base")
+    user = pr.get("user")
+    if not isinstance(head, dict) or not isinstance(base, dict) or not isinstance(user, dict):
+        raise ReviewError("GitHub PR response has invalid nested objects")
+    head_repo = head.get("repo")
+    if not isinstance(head_repo, dict):
+        raise ReviewError("GitHub PR response has an invalid head repository")
     if pr.get("state") != "open" or pr.get("draft") is not False:
         raise ReviewError("PR must be open and non-draft")
-    if pr.get("head", {}).get("sha") != payload["head_sha"]:
+    if head.get("sha") != payload["head_sha"]:
         raise ReviewError("PR head SHA changed")
-    if pr.get("base", {}).get("sha") != payload["base_sha"]:
+    if base.get("sha") != payload["base_sha"]:
         raise ReviewError("PR base SHA changed")
-    if pr.get("head", {}).get("repo", {}).get("full_name") != payload["repository"]:
+    if head_repo.get("full_name") != payload["repository"]:
         raise ReviewError("fork PRs are not authorized for the local runner")
-    if pr.get("user", {}).get("login") not in ALLOWED_AUTHORS:
+    if user.get("login") not in ALLOWED_AUTHORS:
         raise ReviewError("PR author is not authorized for the local runner")
 
 
 def gh_json(*args: str) -> Any:
-    result = subprocess.run(
+    returncode, stdout, stderr = run_bounded(
         ["gh", "api", *args],
-        capture_output=True,
-        text=True,
+        max_stdout=MAX_GITHUB_OUTPUT_BYTES,
+        max_stderr=MAX_MODEL_OUTPUT_BYTES,
         timeout=60,
-        check=False,
+        env=os.environ.copy(),
     )
-    if result.returncode != 0:
-        raise ReviewError(f"GitHub API request failed: {result.stderr.strip()[:500]}")
+    if returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace").strip()[:500]
+        raise ReviewError(f"GitHub API request failed: {detail}")
     try:
-        return strict_json(result.stdout)
+        return strict_json(stdout)
     except ReviewError as error:
         raise ReviewError("GitHub API returned invalid JSON") from error
 
@@ -262,7 +308,11 @@ def parse_review_output(text: str) -> dict[str, Any]:
             raise ReviewError("model finding severity is invalid")
         if not _safe_file(finding["file"]) or not _safe_log_text(finding["message"], 4_000):
             raise ReviewError("model finding text is invalid")
-        if finding["line"] is not None and (not isinstance(finding["line"], int) or isinstance(finding["line"], bool) or finding["line"] < 1):
+        if finding["line"] is not None and (
+            not isinstance(finding["line"], int)
+            or isinstance(finding["line"], bool)
+            or not 1 <= finding["line"] <= 10_000_000
+        ):
             raise ReviewError("model finding line is invalid")
     if result["verdict"] == "pass" and findings:
         raise ReviewError("pass verdict cannot include findings")
@@ -276,7 +326,7 @@ def _safe_log_text(value: Any, limit: int) -> bool:
         isinstance(value, str)
         and 1 <= len(value) <= limit
         and not value.startswith("::")
-        and all(unicodedata.category(char) not in {"Cc", "Cf", "Cs"} for char in value)
+        and all(unicodedata.category(char) not in {"Cc", "Cf", "Cs", "Zl", "Zp"} for char in value)
     )
 
 
@@ -339,6 +389,10 @@ def review(payload: Any) -> dict[str, Any]:
 class Handler(BaseHTTPRequestHandler):
     server_version = "noetic-agent-review/1"
 
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(30)
+
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/review":
             self.send_error(404)
@@ -350,7 +404,7 @@ class Handler(BaseHTTPRequestHandler):
             payload = strict_json(self.rfile.read(length))
             response = review(payload)
             status = 200
-        except (ReviewError, ValueError) as error:
+        except (ReviewError, ValueError, TimeoutError, socket.timeout) as error:
             response = {"error": str(error)}
             status = 400
         body = json.dumps(response, ensure_ascii=True, separators=(",", ":")).encode()
@@ -371,11 +425,18 @@ class UnixServer(socketserver.UnixStreamServer):
 def serve(socket_path: Path, socket_group: str | None = None) -> None:
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
-    with UnixServer(str(socket_path), Handler) as server:
-        socket_path.chmod(0o600)
+    with UnixServer(str(socket_path), Handler, bind_and_activate=False) as server:
+        previous_umask = os.umask(0o177)
+        try:
+            server.server_bind()
+        finally:
+            os.umask(previous_umask)
         if socket_group:
             os.chown(socket_path, -1, grp.getgrnam(socket_group).gr_gid)
             socket_path.chmod(0o660)
+        else:
+            socket_path.chmod(0o600)
+        server.server_activate()
         server.serve_forever()
 
 

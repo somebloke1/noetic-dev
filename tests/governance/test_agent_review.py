@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -12,7 +14,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import ReviewError, build_prompt, parse_review_output, review, strict_json, validate_pr, validate_request
+from agent_review_broker import ReviewError, build_prompt, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request
 
 
 class TestAgentReview(unittest.TestCase):
@@ -72,7 +74,7 @@ class TestAgentReview(unittest.TestCase):
                 parse_review_output(text)
 
     def test_output_rejects_unicode_format_controls(self):
-        for value in ["bad\u0085text", "bad\u202etext", "bad\u200btext", "bad\u2066text"]:
+        for value in ["bad\u0085text", "bad\u202etext", "bad\u200btext", "bad\u2066text", "bad\u2028text", "bad\u2029text"]:
             text = json.dumps({
                 "verdict": "changes-needed",
                 "summary": "bad",
@@ -80,6 +82,29 @@ class TestAgentReview(unittest.TestCase):
             })
             with self.subTest(value=value), self.assertRaises(ReviewError):
                 parse_review_output(text)
+
+    def test_json_rejects_numeric_overflow(self):
+        for value in ["NaN", "Infinity", "-Infinity", "1e309", "-1e309"]:
+            with self.subTest(value=value), self.assertRaises(ReviewError):
+                strict_json(value)
+
+    def test_subprocess_output_limit_stops_producer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "completed"
+            program = (
+                "import pathlib,sys; "
+                "sys.stdout.buffer.write(b'x' * (8 * 1024 * 1024)); sys.stdout.flush(); "
+                "pathlib.Path(sys.argv[1]).touch()"
+            )
+            with self.assertRaises(ReviewError):
+                run_bounded(
+                    [sys.executable, "-c", program, str(marker)],
+                    max_stdout=1_024,
+                    max_stderr=1_024,
+                    timeout=10,
+                    env=os.environ.copy(),
+                )
+            self.assertFalse(marker.exists())
 
     def test_second_pr_validation_rechecks_full_admission(self):
         valid = {
@@ -95,6 +120,9 @@ class TestAgentReview(unittest.TestCase):
             {"draft": True},
             {"user": {"login": "attacker"}},
             {"head": {"sha": "a" * 40, "repo": {"full_name": "fork/repo"}}},
+            {"head": None},
+            {"base": []},
+            {"user": "somebloke1"},
         ]:
             with self.subTest(mutation=mutation), self.assertRaises(ReviewError):
                 validate_pr({**valid, **mutation}, self.REQUEST)
