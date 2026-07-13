@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import AUTHORITY_CONTEXT, BWRAP, Handler, ReviewError, UnixServer, build_prompt, parse_review_output, publish_status, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
 from request_agent_review import binding
 
 
@@ -26,6 +26,7 @@ class TestAgentReview(unittest.TestCase):
         "pr_number": 2,
         "head_sha": "a" * 40,
         "base_sha": "b" * 40,
+        "run_url": "https://github.com/somebloke1/noetic-dev/actions/runs/123",
     }
 
     def test_requester_binding_selects_exact_review_provenance(self):
@@ -35,13 +36,15 @@ class TestAgentReview(unittest.TestCase):
             "reasoning": "high",
             "reviewed_diff_sha256": "c" * 64,
             "prompt_sha256": "d" * 64,
+            "authority_context": AUTHORITY_CONTEXT,
+            "authority_status_id": 123,
             "verdict": "pass",
             "summary": "Reviewed.",
             "findings": [],
         }
         self.assertEqual(set(binding(result)), {
             "repository", "pr_number", "base_sha", "head_sha", "model", "reasoning",
-            "reviewed_diff_sha256", "prompt_sha256",
+            "reviewed_diff_sha256", "prompt_sha256", "run_url", "authority_context", "authority_status_id",
         })
 
     def test_request_is_fail_closed(self):
@@ -52,6 +55,7 @@ class TestAgentReview(unittest.TestCase):
             {"pr_number": True},
             {"pr_number": 10**1000},
             {"head_sha": "main"},
+            {"run_url": "https://attacker.invalid/actions/runs/123"},
             {"extra": "field"},
         ]:
             with self.subTest(mutation=mutation), self.assertRaises(ReviewError):
@@ -268,14 +272,43 @@ class TestAgentReview(unittest.TestCase):
         with self.assertRaises(ReviewError):
             validate_pr(missing_body, self.REQUEST)
 
+    @mock.patch("agent_review_broker.gh_json")
+    def test_authority_status_is_bound_to_head_and_run(self, github: mock.Mock):
+        github.return_value = {
+            "id": 123,
+            "context": AUTHORITY_CONTEXT,
+            "state": "success",
+            "target_url": self.REQUEST["run_url"],
+        }
+        self.assertEqual(publish_status(self.REQUEST, "success", "Terra review passed"), 123)
+        args = github.call_args.args
+        self.assertIn(f"repos/somebloke1/noetic-dev/statuses/{'a' * 40}", args)
+        self.assertIn(f"context={AUTHORITY_CONTEXT}", args)
+        self.assertIn(f"target_url={self.REQUEST['run_url']}", args)
+
+    @mock.patch("agent_review_broker.publish_status")
+    @mock.patch("agent_review_broker.gh_json")
     @mock.patch("agent_review_broker.run_terra")
     @mock.patch("agent_review_broker.fetch_review_material")
-    def test_review_binds_model_and_snapshot(self, fetch: mock.Mock, terra: mock.Mock):
+    def test_review_binds_model_and_snapshot(
+        self, fetch: mock.Mock, terra: mock.Mock, github: mock.Mock, status: mock.Mock,
+    ):
+        valid_pr = {
+            "state": "open",
+            "draft": False,
+            "head": {"sha": "a" * 40, "repo": {"full_name": "somebloke1/noetic-dev"}},
+            "base": {"sha": "b" * 40},
+            "user": {"login": "somebloke1"},
+            "title": "PR",
+            "body": "",
+        }
         fetch.return_value = (
-            {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
+            valid_pr,
             {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
         )
+        github.return_value = valid_pr
         terra.return_value = {"verdict": "pass", "summary": "Reviewed.", "findings": []}
+        status.return_value = 123
         result = review(self.REQUEST)
         self.assertEqual(result["head_sha"], "a" * 40)
         self.assertEqual(result["base_sha"], "b" * 40)
@@ -283,6 +316,19 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["reasoning"], "high")
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
+        self.assertEqual(result["authority_status_id"], 123)
+        status.assert_called_once_with(self.REQUEST, "success", "Terra review passed")
+
+        status.reset_mock()
+        terra.return_value = {
+            "verdict": "changes-needed",
+            "summary": "Found one issue.",
+            "findings": [{"severity": "P2", "file": "x", "line": 1, "message": "fix it"}],
+        }
+        review(self.REQUEST)
+        status.assert_called_once_with(
+            self.REQUEST, "failure", "Terra review found required changes",
+        )
 
 
 if __name__ == "__main__":

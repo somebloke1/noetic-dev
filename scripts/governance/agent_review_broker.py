@@ -27,11 +27,13 @@ ALLOWED_AUTHORS = {"somebloke1"}
 MODEL = "openai-codex/gpt-5.6-terra"
 REASONING = "high"
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
+RUN_URL_RE = re.compile(r"^https://github\.com/somebloke1/noetic-dev/actions/runs/[1-9][0-9]*$")
 MAX_REQUEST_BYTES = 16_384
 MAX_PATCH_BYTES = 200_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
 MAX_GITHUB_OUTPUT_BYTES = 1_048_576
 BWRAP = Path("/usr/bin/bwrap")
+AUTHORITY_CONTEXT = "agent-review-authority"
 
 
 class ReviewError(RuntimeError):
@@ -144,7 +146,7 @@ def run_bounded(
 def validate_request(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ReviewError("request must be a JSON object")
-    allowed = {"repository", "pr_number", "head_sha", "base_sha"}
+    allowed = {"repository", "pr_number", "head_sha", "base_sha", "run_url"}
     unknown = set(payload) - allowed
     if unknown:
         raise ReviewError(f"unknown request fields: {sorted(unknown)}")
@@ -156,6 +158,8 @@ def validate_request(payload: Any) -> dict[str, Any]:
     for field in ("head_sha", "base_sha"):
         if not isinstance(payload.get(field), str) or not SHA_RE.fullmatch(payload[field]):
             raise ReviewError(f"{field} must be a full lowercase SHA-1")
+    if not isinstance(payload.get("run_url"), str) or not RUN_URL_RE.fullmatch(payload["run_url"]):
+        raise ReviewError("run_url must identify a repository Actions run")
     return payload
 
 
@@ -200,6 +204,30 @@ def gh_json(*args: str) -> Any:
         return strict_json(stdout)
     except ReviewError as error:
         raise ReviewError("GitHub API returned invalid JSON") from error
+
+
+def publish_status(payload: dict[str, Any], state: str, description: str) -> int:
+    if state not in {"success", "failure"}:
+        raise ReviewError("authority status state is invalid")
+    status = gh_json(
+        "--method", "POST",
+        f"repos/{payload['repository']}/statuses/{payload['head_sha']}",
+        "-f", f"state={state}",
+        "-f", f"context={AUTHORITY_CONTEXT}",
+        "-f", f"description={description}",
+        "-f", f"target_url={payload['run_url']}",
+    )
+    status_id = status.get("id") if isinstance(status, dict) else None
+    if (
+        not isinstance(status_id, int)
+        or isinstance(status_id, bool)
+        or status_id < 1
+        or status.get("context") != AUTHORITY_CONTEXT
+        or status.get("state") != state
+        or status.get("target_url") != payload["run_url"]
+    ):
+        raise ReviewError("GitHub returned an invalid authority status")
+    return status_id
 
 
 def fetch_exact_diff(payload: dict[str, Any]) -> dict[str, Any]:
@@ -399,7 +427,8 @@ def review(payload: Any) -> dict[str, Any]:
     pr, material = fetch_review_material(request)
     prompt = build_prompt(pr, material, request)
     result = run_terra(prompt)
-    return {
+    validate_pr(gh_json(f"repos/{request['repository']}/pulls/{request['pr_number']}"), request)
+    response = {
         "schema_version": "1",
         "repository": request["repository"],
         "pr_number": request["pr_number"],
@@ -409,8 +438,14 @@ def review(payload: Any) -> dict[str, Any]:
         "reasoning": REASONING,
         "reviewed_diff_sha256": material["diff_sha256"],
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "run_url": request["run_url"],
+        "authority_context": AUTHORITY_CONTEXT,
         **result,
     }
+    state = "success" if result["verdict"] == "pass" else "failure"
+    description = "Terra review passed" if state == "success" else "Terra review found required changes"
+    response["authority_status_id"] = publish_status(request, state, description)
+    return response
 
 
 class Handler(BaseHTTPRequestHandler):

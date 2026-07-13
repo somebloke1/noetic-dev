@@ -36,7 +36,7 @@ def request(socket_path: Path, payload: dict[str, object]) -> dict[str, object]:
 def binding(result: dict[str, object]) -> dict[str, object]:
     fields = (
         "repository", "pr_number", "base_sha", "head_sha", "model", "reasoning",
-        "reviewed_diff_sha256", "prompt_sha256",
+        "reviewed_diff_sha256", "prompt_sha256", "run_url", "authority_context", "authority_status_id",
     )
     return {field: result[field] for field in fields}
 
@@ -47,6 +47,7 @@ def main() -> int:
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
     parser.add_argument("--base-sha", required=True)
+    parser.add_argument("--run-url", required=True)
     parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/noetic-dev/agent-review.sock"))
     parser.add_argument("--output", default="agent-review-result.json")
     args = parser.parse_args()
@@ -55,6 +56,7 @@ def main() -> int:
         "pr_number": args.pr_number,
         "head_sha": args.head_sha,
         "base_sha": args.base_sha,
+        "run_url": args.run_url,
     })
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Agent review: {result['verdict']} ({result['model']}, reasoning={result['reasoning']})")

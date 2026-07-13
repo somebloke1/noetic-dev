@@ -63,6 +63,7 @@ class TestWorkflowPinning(unittest.TestCase):
         self.assertIn("branches: [main, dev]", governance)
         self.assertIn("github.ref == 'refs/heads/dev'", governance)
         self.assertIn("branches: [main, dev]", agent_review)
+        self.assertIn("--run-url", agent_review)
 
 
 class TestPinningChecker(unittest.TestCase):

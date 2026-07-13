@@ -44,11 +44,11 @@ A candidate passes code-level QA when an independent reviewer attempts to falsif
 
 Before `agent-review` becomes a required check on a protected branch, one minimal same-repository canary PR must demonstrate the live path from that protected branch's policy. Acceptance requires all of the following:
 
-1. The GitHub check named `agent-review` succeeds for the canary's exact head SHA.
-2. The logged broker result binds the repository, PR number, exact base and head SHAs, `openai-codex/gpt-5.6-terra`, high reasoning, reviewed-diff SHA-256, and prompt SHA-256.
+1. The protected broker publishes the no-App commit status `agent-review-authority` as successful for the canary's exact head SHA, using credentials unavailable to workflows and the runner identity. The workflow job named `agent-review` also succeeds.
+2. The logged broker result binds the repository, PR number, exact base and head SHAs, `openai-codex/gpt-5.6-terra`, high reasoning, reviewed-diff SHA-256, prompt SHA-256, authority status ID and context, and the exact Actions run URL used as that status's target URL.
 3. An independent Git reconstruction matches the logged reviewed-diff digest.
-4. GitHub API readback confirms the successful check and its workflow run belong to the same exact head SHA.
-5. A durable governance record captures the PR and run URLs, binding fields, independent digest, check conclusion, and subsequent branch-protection readback. Branch protection is changed only after that record exists.
+4. GitHub API readback confirms the successful authority status targets that same `pull_request_target` workflow run, whose workflow path is `.github/workflows/agent-review.yml`, protected policy SHA is the canary base SHA, and head SHA is the canary head SHA.
+5. A durable governance record captures the PR and run URLs, workflow and authority status IDs, binding fields, independent digest, conclusions, and subsequent branch-protection readback. Branch protection is changed only after that record exists and must require `agent-review-authority` with `app_id: null`; the generic GitHub Actions `agent-review` check is not merge authority.
 
 A QA observation is blocking only when it provides a reproducible counterexample to a listed requirement or shows that a listed requirement is insufficient for a threat named above. Adjacent hardening ideas and risks outside the stated trust boundary are recorded as residual risks, not silently promoted to new acceptance requirements. Changing this boundary requires an explicit threat-model or governance decision, followed by a new implementation generation and its paired QA pass.
 
