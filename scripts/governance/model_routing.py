@@ -138,8 +138,23 @@ def load_policy(path: Path | None = None) -> dict[str, Any]:
     return policy
 
 
+def _strict_json_equal(actual: Any, expected: Any) -> bool:
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(
+            _strict_json_equal(actual[key], value) for key, value in expected.items()
+        )
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(
+            _strict_json_equal(item, expected_item)
+            for item, expected_item in zip(actual, expected, strict=True)
+        )
+    return bool(actual == expected)
+
+
 def validate_policy_invariants(policy: dict[str, Any]) -> None:
-    if not isinstance(policy, dict) or policy != EXPECTED_MODEL_POLICY:
+    if not isinstance(policy, dict) or not _strict_json_equal(policy, EXPECTED_MODEL_POLICY):
         raise ModelRoutingError("model policy does not match the protected exact contract")
     selection = _mapping(policy, "selection")
     access = _mapping(policy, "access")
@@ -183,7 +198,7 @@ def validate_policy_invariants(policy: dict[str, Any]) -> None:
         or failure.get("manual_model_escalation") is not False
     ):
         raise ModelRoutingError("model policy weakens the routed failure lifecycle")
-    if _mapping(tasks, "agent_review") != AGENT_REVIEW_TASK:
+    if not _strict_json_equal(_mapping(tasks, "agent_review"), AGENT_REVIEW_TASK):
         raise ModelRoutingError("model policy changed the protected agent-review classification")
 
 
@@ -364,7 +379,7 @@ def route_and_invoke_review(
         raise ModelRoutingError("review prompt must be non-empty")
     if len(prompt.encode("utf-8")) > MAX_MODEL_INPUT_BYTES:
         raise ModelRoutingError("review prompt exceeded its byte limit")
-    active_policy = policy or load_policy()
+    active_policy = policy if policy is not None else load_policy()
     validate_policy_invariants(active_policy)
     active_service = service or create_router_service()
     api_key = load_litellm_key(active_policy)

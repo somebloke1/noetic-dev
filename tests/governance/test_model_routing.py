@@ -362,6 +362,36 @@ class TestModelRouting(unittest.TestCase):
             with self.subTest(policy=mutated), self.assertRaisesRegex(ModelRoutingError, "exact contract"):
                 validate_policy_invariants(mutated)
 
+    @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
+    def test_empty_injected_policy_and_integer_booleans_fail_before_routing(self):
+        policies = [{}]
+        for field, value in (("high_value", 0), ("awaited", 1)):
+            mutated = json.loads(json.dumps(self.policy))
+            mutated["tasks"]["agent_review"][field] = value
+            policies.append(mutated)
+        tuple_list = json.loads(json.dumps(self.policy))
+        tuple_list["generative"]["allowed_models"] = tuple(tuple_list["generative"]["allowed_models"])
+        policies.append(tuple_list)
+        for policy in policies:
+            service = FakeService([decision(TERRA)])
+            sender = mock.Mock()
+            with self.subTest(policy=policy), self.assertRaisesRegex(ModelRoutingError, "exact contract"):
+                route_and_invoke_review(
+                    "prompt",
+                    json.loads,
+                    service=service,
+                    policy=policy,
+                    http_post=sender,
+                )
+            self.assertEqual(service.inputs, [])
+            sender.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            policy_path = Path(directory) / "policy.json"
+            for policy in policies[1:3]:
+                policy_path.write_text(json.dumps(policy), encoding="utf-8")
+                with self.subTest(loaded_policy=policy), self.assertRaisesRegex(ModelRoutingError, "exact contract"):
+                    load_policy(policy_path)
+
 
 if __name__ == "__main__":
     unittest.main()
