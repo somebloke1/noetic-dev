@@ -12,6 +12,7 @@ import re
 import socketserver
 import subprocess
 import tempfile
+import unicodedata
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,56 @@ MAX_MODEL_OUTPUT_BYTES = 65_536
 
 class ReviewError(RuntimeError):
     pass
+
+
+def strict_json(text: str | bytes) -> Any:
+    def reject_duplicate(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ReviewError(f"duplicate JSON key: {key}")
+            result[key] = value
+        return result
+
+    try:
+        return json.loads(
+            text,
+            object_pairs_hook=reject_duplicate,
+            parse_constant=lambda value: (_ for _ in ()).throw(ReviewError(f"invalid JSON constant: {value}")),
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise ReviewError("invalid JSON") from error
+
+
+def run_bounded(
+    command: list[str],
+    *,
+    max_stdout: int,
+    max_stderr: int,
+    timeout: int,
+    env: dict[str, str],
+    input_text: str | None = None,
+) -> tuple[int, bytes, bytes]:
+    with tempfile.TemporaryFile() as stdout_file, tempfile.TemporaryFile() as stderr_file:
+        try:
+            result = subprocess.run(
+                command,
+                input=input_text.encode() if input_text is not None else None,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                timeout=timeout,
+                env=env,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise ReviewError(f"command timed out after {timeout} seconds") from error
+        stdout_size = stdout_file.tell()
+        stderr_size = stderr_file.tell()
+        if stdout_size > max_stdout or stderr_size > max_stderr:
+            raise ReviewError("command output exceeded its byte limit")
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        return result.returncode, stdout_file.read(), stderr_file.read()
 
 
 def validate_request(payload: Any) -> dict[str, Any]:
@@ -48,6 +99,21 @@ def validate_request(payload: Any) -> dict[str, Any]:
     return payload
 
 
+def validate_pr(pr: Any, payload: dict[str, Any]) -> None:
+    if not isinstance(pr, dict):
+        raise ReviewError("GitHub PR response must be an object")
+    if pr.get("state") != "open" or pr.get("draft") is not False:
+        raise ReviewError("PR must be open and non-draft")
+    if pr.get("head", {}).get("sha") != payload["head_sha"]:
+        raise ReviewError("PR head SHA changed")
+    if pr.get("base", {}).get("sha") != payload["base_sha"]:
+        raise ReviewError("PR base SHA changed")
+    if pr.get("head", {}).get("repo", {}).get("full_name") != payload["repository"]:
+        raise ReviewError("fork PRs are not authorized for the local runner")
+    if pr.get("user", {}).get("login") not in ALLOWED_AUTHORS:
+        raise ReviewError("PR author is not authorized for the local runner")
+
+
 def gh_json(*args: str) -> Any:
     result = subprocess.run(
         ["gh", "api", *args],
@@ -59,8 +125,8 @@ def gh_json(*args: str) -> Any:
     if result.returncode != 0:
         raise ReviewError(f"GitHub API request failed: {result.stderr.strip()[:500]}")
     try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError as error:
+        return strict_json(result.stdout)
+    except ReviewError as error:
         raise ReviewError("GitHub API returned invalid JSON") from error
 
 
@@ -78,43 +144,62 @@ def fetch_exact_diff(payload: dict[str, Any]) -> dict[str, Any]:
         repository = Path(tmp) / "repository.git"
         commands = [
             ["git", "init", "--bare", str(repository)],
-            ["git", "-C", str(repository), "fetch", "--no-tags", "--depth=1", repo_url, payload["base_sha"]],
-            ["git", "-C", str(repository), "fetch", "--no-tags", "--depth=1", repo_url, payload["head_sha"]],
+            ["git", "-C", str(repository), "fetch", "--no-tags", "--filter=blob:none", repo_url, payload["base_sha"]],
+            ["git", "-C", str(repository), "fetch", "--no-tags", "--filter=blob:none", repo_url, payload["head_sha"]],
         ]
         for command in commands:
-            result = subprocess.run(command, capture_output=True, timeout=120, env=clean_env, check=False)
-            if result.returncode != 0:
-                raise ReviewError(f"immutable Git fetch failed with exit {result.returncode}")
-        name_result = subprocess.run(
-            ["git", "-C", str(repository), "diff", "--name-only", "-z", payload["base_sha"], payload["head_sha"], "--"],
-            capture_output=True,
+            returncode, _, _ = run_bounded(
+                command, max_stdout=65_536, max_stderr=65_536, timeout=120, env=clean_env
+            )
+            if returncode != 0:
+                raise ReviewError(f"immutable Git fetch failed with exit {returncode}")
+        returncode, merge_base_bytes, _ = run_bounded(
+            ["git", "-C", str(repository), "merge-base", payload["base_sha"], payload["head_sha"]],
+            max_stdout=100,
+            max_stderr=4_096,
             timeout=60,
             env=clean_env,
-            check=False,
         )
-        if name_result.returncode != 0:
+        if returncode != 0:
+            raise ReviewError("immutable Git merge-base failed")
+        merge_base = merge_base_bytes.decode("ascii", errors="strict").strip()
+        if not SHA_RE.fullmatch(merge_base):
+            raise ReviewError("immutable Git returned an invalid merge base")
+        returncode, names, _ = run_bounded(
+            ["git", "-C", str(repository), "diff", "--name-only", "-z", merge_base, payload["head_sha"], "--"],
+            max_stdout=MAX_PATCH_BYTES,
+            max_stderr=4_096,
+            timeout=60,
+            env=clean_env,
+        )
+        if returncode != 0:
             raise ReviewError("immutable Git file inventory failed")
-        files = [item.decode("utf-8", errors="strict") for item in name_result.stdout.split(b"\0") if item]
+        try:
+            files = [item.decode("utf-8", errors="strict") for item in names.split(b"\0") if item]
+        except UnicodeDecodeError as error:
+            raise ReviewError("changed filenames are not valid UTF-8") from error
         if len(files) > 500:
             raise ReviewError("PR exceeds 500 changed files")
-        diff_result = subprocess.run(
+        returncode, diff_bytes, _ = run_bounded(
             [
                 "git", "-C", str(repository), "diff", "--binary", "--no-ext-diff", "--no-textconv",
-                "--find-renames", payload["base_sha"], payload["head_sha"], "--",
+                "--find-renames", merge_base, payload["head_sha"], "--",
             ],
-            capture_output=True,
+            max_stdout=MAX_PATCH_BYTES,
+            max_stderr=4_096,
             timeout=120,
             env=clean_env,
-            check=False,
         )
-        if diff_result.returncode != 0:
+        if returncode != 0:
             raise ReviewError("immutable Git diff failed")
-        if len(diff_result.stdout) > MAX_PATCH_BYTES:
-            raise ReviewError("combined PR diff exceeds 200000 bytes")
+        try:
+            diff = diff_bytes.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as error:
+            raise ReviewError("combined PR diff is not valid UTF-8") from error
         return {
             "files": files,
-            "diff": diff_result.stdout.decode("utf-8", errors="replace"),
-            "diff_sha256": hashlib.sha256(diff_result.stdout).hexdigest(),
+            "diff": diff,
+            "diff_sha256": hashlib.sha256(diff_bytes).hexdigest(),
         }
 
 
@@ -122,21 +207,11 @@ def fetch_review_material(payload: dict[str, Any]) -> tuple[dict[str, Any], dict
     repo = payload["repository"]
     number = payload["pr_number"]
     pr = gh_json(f"repos/{repo}/pulls/{number}")
-    if pr.get("state") != "open" or pr.get("draft"):
-        raise ReviewError("PR must be open and non-draft")
-    if pr.get("head", {}).get("sha") != payload["head_sha"]:
-        raise ReviewError("PR head SHA changed")
-    if pr.get("base", {}).get("sha") != payload["base_sha"]:
-        raise ReviewError("PR base SHA changed")
-    if pr.get("head", {}).get("repo", {}).get("full_name") != repo:
-        raise ReviewError("fork PRs are not authorized for the local runner")
-    if pr.get("user", {}).get("login") not in ALLOWED_AUTHORS:
-        raise ReviewError("PR author is not authorized for the local runner")
+    validate_pr(pr, payload)
 
     material = fetch_exact_diff(payload)
     current = gh_json(f"repos/{repo}/pulls/{number}")
-    if current.get("head", {}).get("sha") != payload["head_sha"] or current.get("base", {}).get("sha") != payload["base_sha"]:
-        raise ReviewError("PR snapshot changed while review material was fetched")
+    validate_pr(current, payload)
     return pr, material
 
 
@@ -168,8 +243,8 @@ def parse_review_output(text: str) -> dict[str, Any]:
         raise ReviewError("model output exceeds 65536 bytes")
     stripped = text.strip()
     try:
-        result = json.loads(stripped)
-    except json.JSONDecodeError as error:
+        result = strict_json(stripped)
+    except ReviewError as error:
         raise ReviewError("model did not return valid JSON") from error
     if not isinstance(result, dict) or set(result) != {"verdict", "summary", "findings"}:
         raise ReviewError("model output has an invalid top-level shape")
@@ -201,15 +276,16 @@ def _safe_log_text(value: Any, limit: int) -> bool:
         isinstance(value, str)
         and 1 <= len(value) <= limit
         and not value.startswith("::")
-        and all(ord(char) >= 32 and char != "\x7f" for char in value)
+        and all(unicodedata.category(char) not in {"Cc", "Cf", "Cs"} for char in value)
     )
 
 
 def _safe_file(value: Any) -> bool:
     if not isinstance(value, str) or not 1 <= len(value) <= 500 or not _safe_log_text(value, 500):
         return False
-    path = Path(value)
-    return not path.is_absolute() and ".." not in path.parts
+    if value.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", value) or "\\" in value:
+        return False
+    return ".." not in Path(value).parts
 
 
 def run_terra(prompt: str) -> dict[str, Any]:
@@ -224,10 +300,21 @@ def run_terra(prompt: str) -> dict[str, Any]:
         "--no-prompt-templates", "--no-themes", "--provider", "openai-codex", "--model", "gpt-5.6-terra",
         "--thinking", REASONING, prompt,
     ]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=900, env=env, check=False)
-    if result.returncode != 0:
-        raise ReviewError(f"Terra invocation failed with exit {result.returncode}: {result.stderr.strip()[:500]}")
-    return parse_review_output(result.stdout)
+    returncode, stdout, stderr = run_bounded(
+        command,
+        max_stdout=MAX_MODEL_OUTPUT_BYTES,
+        max_stderr=MAX_MODEL_OUTPUT_BYTES,
+        timeout=900,
+        env=env,
+    )
+    if returncode != 0:
+        detail = stderr.decode("utf-8", errors="replace").strip()[:500]
+        raise ReviewError(f"Terra invocation failed with exit {returncode}: {detail}")
+    try:
+        output = stdout.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise ReviewError("Terra returned non-UTF-8 output") from error
+    return parse_review_output(output)
 
 
 def review(payload: Any) -> dict[str, Any]:
@@ -260,10 +347,10 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             if length < 1 or length > MAX_REQUEST_BYTES:
                 raise ReviewError("request size is invalid")
-            payload = json.loads(self.rfile.read(length))
+            payload = strict_json(self.rfile.read(length))
             response = review(payload)
             status = 200
-        except (ReviewError, json.JSONDecodeError, ValueError) as error:
+        except (ReviewError, ValueError) as error:
             response = {"error": str(error)}
             status = 400
         body = json.dumps(response, ensure_ascii=True, separators=(",", ":")).encode()
