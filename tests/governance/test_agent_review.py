@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request
+from agent_review_broker import Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request
 
 
 class TestAgentReview(unittest.TestCase):
@@ -33,6 +33,7 @@ class TestAgentReview(unittest.TestCase):
             {"repository": "other/repo"},
             {"pr_number": 0},
             {"pr_number": True},
+            {"pr_number": 10**1000},
             {"head_sha": "main"},
             {"extra": "field"},
         ]:
@@ -109,7 +110,7 @@ class TestAgentReview(unittest.TestCase):
                 )
             self.assertFalse(marker.exists())
 
-    def test_subprocess_timeout_kills_descendants_after_leader_exits(self):
+    def test_subprocess_namespace_kills_inheriting_descendants_after_leader_exits(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "descendant-survived"
             child = (
@@ -120,21 +121,21 @@ class TestAgentReview(unittest.TestCase):
                 "import subprocess,sys; "
                 "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]]); sys.exit(0)"
             )
-            with self.assertRaises(ReviewError):
-                run_bounded(
-                    [sys.executable, "-c", parent, child, str(marker)],
-                    max_stdout=1_024,
-                    max_stderr=1_024,
-                    timeout=0.2,
-                    env=os.environ.copy(),
-                )
+            returncode, _, _ = run_bounded(
+                [sys.executable, "-c", parent, child, str(marker)],
+                max_stdout=1_024,
+                max_stderr=1_024,
+                timeout=5,
+                env=os.environ.copy(),
+            )
+            self.assertEqual(returncode, 0)
             threading.Event().wait(0.8)
             self.assertFalse(marker.exists())
 
     def test_subprocess_success_cleans_detached_descendants(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "descendant-survived"
-            child = "import pathlib,sys,time; time.sleep(0.6); pathlib.Path(sys.argv[1]).touch()"
+            child = "import os,pathlib,sys,time; os.setsid(); time.sleep(0.6); pathlib.Path(sys.argv[1]).touch()"
             parent = (
                 "import subprocess,sys; "
                 "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]],"
@@ -150,6 +151,16 @@ class TestAgentReview(unittest.TestCase):
             self.assertEqual(returncode, 0)
             threading.Event().wait(0.8)
             self.assertFalse(marker.exists())
+
+    @mock.patch("agent_review_broker.run_bounded")
+    def test_terra_receives_large_prompt_on_stdin(self, bounded: mock.Mock):
+        bounded.return_value = (0, b'{"verdict":"pass","summary":"Reviewed.","findings":[]}', b"")
+        prompt = "x" * 200_000
+        result = run_terra(prompt)
+        command = bounded.call_args.args[0]
+        self.assertNotIn(prompt, command)
+        self.assertEqual(bounded.call_args.kwargs["input_text"], prompt)
+        self.assertEqual(result["verdict"], "pass")
 
     def test_http_rejects_body_shorter_than_content_length(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -172,6 +183,7 @@ class TestAgentReview(unittest.TestCase):
         requests = [
             b"POST /review HTTP/1.0\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n{}",
             b"POST /review HTTP/1.0\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n{}",
+            b"POST /review HTTP/1.0\r\nContent-Length: +2\r\n\r\n{}",
         ]
         for request in requests:
             with self.subTest(request=request), tempfile.TemporaryDirectory() as directory:

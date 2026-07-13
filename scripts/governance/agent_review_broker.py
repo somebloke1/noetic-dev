@@ -70,15 +70,28 @@ def run_bounded(
     max_stderr: int,
     timeout: int,
     env: dict[str, str],
+    input_text: str | None = None,
 ) -> tuple[int, bytes, bytes]:
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env,
-        start_new_session=True,
-    )
+    input_file = tempfile.TemporaryFile()
+    if input_text is not None:
+        input_file.write(input_text.encode("utf-8"))
+        input_file.seek(0)
+    isolated_command = [
+        "/usr/bin/bwrap", "--unshare-pid", "--die-with-parent",
+        "--bind", "/", "/", "--dev-bind", "/dev", "/dev", "--", *command,
+    ]
+    try:
+        process = subprocess.Popen(
+            isolated_command,
+            stdin=input_file if input_text is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            start_new_session=True,
+        )
+    except Exception:
+        input_file.close()
+        raise
     streams = {process.stdout: (bytearray(), max_stdout), process.stderr: (bytearray(), max_stderr)}
     selector = selectors.DefaultSelector()
     for stream in streams:
@@ -124,6 +137,7 @@ def run_bounded(
         for stream in streams:
             if stream is not None:
                 stream.close()
+        input_file.close()
 
 
 def validate_request(payload: Any) -> dict[str, Any]:
@@ -136,8 +150,8 @@ def validate_request(payload: Any) -> dict[str, Any]:
     if payload.get("repository") != ALLOWED_REPOSITORY:
         raise ReviewError("repository is not authorized")
     pr_number = payload.get("pr_number")
-    if not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number < 1:
-        raise ReviewError("pr_number must be a positive integer")
+    if not isinstance(pr_number, int) or isinstance(pr_number, bool) or not 1 <= pr_number <= 2_147_483_647:
+        raise ReviewError("pr_number must be a bounded positive integer")
     for field in ("head_sha", "base_sha"):
         if not isinstance(payload.get(field), str) or not SHA_RE.fullmatch(payload[field]):
             raise ReviewError(f"{field} must be a full lowercase SHA-1")
@@ -357,7 +371,7 @@ def run_terra(prompt: str) -> dict[str, Any]:
     command = [
         "pi", "--print", "--no-session", "--no-tools", "--no-context-files", "--no-extensions", "--no-skills",
         "--no-prompt-templates", "--no-themes", "--provider", "openai-codex", "--model", "gpt-5.6-terra",
-        "--thinking", REASONING, prompt,
+        "--thinking", REASONING,
     ]
     returncode, stdout, stderr = run_bounded(
         command,
@@ -365,6 +379,7 @@ def run_terra(prompt: str) -> dict[str, Any]:
         max_stderr=MAX_MODEL_OUTPUT_BYTES,
         timeout=900,
         env=env,
+        input_text=prompt,
     )
     if returncode != 0:
         detail = stderr.decode("utf-8", errors="replace").strip()[:500]
@@ -410,6 +425,8 @@ class Handler(BaseHTTPRequestHandler):
             lengths = self.headers.get_all("Content-Length", failobj=[])
             if len(lengths) != 1 or self.headers.get("Transfer-Encoding") is not None:
                 raise ReviewError("request framing is ambiguous")
+            if not re.fullmatch(r"[0-9]+", lengths[0]):
+                raise ReviewError("Content-Length must contain decimal digits")
             length = int(lengths[0])
             if length < 1 or length > MAX_REQUEST_BYTES:
                 raise ReviewError("request size is invalid")
