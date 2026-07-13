@@ -21,8 +21,10 @@ from run_isolated_pi import (
     ROLE_TOOL_ALLOWLISTS,
     ROUTED_PI_MIGRATION_REQUIRED,
     _candidate_git_metadata_ro_mounts,
+    _clean_env,
     _credential_interface,
     _non_evidence_record,
+    _run_isolated,
     _write_tools_observed,
     build_bwrap_command,
     dispatch_pi,
@@ -71,6 +73,21 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                 timeout=1,
             )
         self.assertIn("disabled", ROUTED_PI_MIGRATION_REQUIRED)
+
+    def test_low_level_pi_executor_and_direct_credentials_fail_closed(self):
+        with mock.patch("run_isolated_pi.build_bwrap_command") as build:
+            with self.assertRaisesRegex(RuntimeError, "genus-router decision"):
+                _run_isolated(
+                    ["pi", "--provider", "openai"],
+                    candidate_dir=None,
+                    prompt_file=Path("unused"),
+                    cwd=None,
+                    timeout=1,
+                    scoped_credentials={"OPENAI_API_KEY": "secret"},
+                )
+        build.assert_not_called()
+        with self.assertRaisesRegex(RuntimeError, "direct provider credential"):
+            _clean_env({"OPENAI_API_KEY": "secret"})
 
     def test_qa_tool_allowlist_is_empty_until_credential_broker_exists(self):
         self.assertEqual(QA_TOOL_ALLOWLIST, set())

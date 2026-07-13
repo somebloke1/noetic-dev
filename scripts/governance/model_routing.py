@@ -25,6 +25,13 @@ STANDARD_MODELS = [
     "codex/gpt-5.6-luna",
 ]
 ALLOWED_GENERATIVE_MODELS = {*STANDARD_MODELS, "claude-fable-5"}
+AGENT_REVIEW_TASK = {
+    "task_kind": "review",
+    "complexity": "complex",
+    "blast_radius": "interface",
+    "high_value": False,
+    "awaited": True,
+}
 
 
 class ModelRoutingError(RuntimeError):
@@ -77,6 +84,7 @@ def validate_policy_invariants(policy: dict[str, Any]) -> None:
     generative = _mapping(policy, "generative")
     failure = _mapping(policy, "failure")
     fable_eligibility = _mapping(generative, "fable_eligibility")
+    tasks = _mapping(policy, "tasks")
     required_lifecycle = ["classify", "route_task", "invoke", "report_outcome"]
     if (
         selection.get("router") != "genus-router"
@@ -98,8 +106,12 @@ def validate_policy_invariants(policy: dict[str, Any]) -> None:
     if (
         _string_list(generative, "standard_models") != STANDARD_MODELS
         or set(_string_list(generative, "allowed_models")) != ALLOWED_GENERATIVE_MODELS
+        or generative.get("capability_tiers")
+        != [[STANDARD_MODELS[0], "claude-fable-5"], [STANDARD_MODELS[1]], [STANDARD_MODELS[2]]]
         or generative.get("reasoning_effort") != "high"
         or fable_eligibility.get("limited") is not True
+        or set(_string_list(fable_eligibility, "task_kinds")) != {"review", "research", "design"}
+        or fable_eligibility.get("minimum_complexity") != "complex"
     ):
         raise ModelRoutingError("model policy weakens the governed generative set")
     if (
@@ -109,6 +121,8 @@ def validate_policy_invariants(policy: dict[str, Any]) -> None:
         or failure.get("manual_model_escalation") is not False
     ):
         raise ModelRoutingError("model policy weakens the routed failure lifecycle")
+    if _mapping(tasks, "agent_review") != AGENT_REVIEW_TASK:
+        raise ModelRoutingError("model policy changed the protected agent-review classification")
 
 
 def create_router_service() -> Any:
@@ -160,13 +174,41 @@ def validate_decision(
 ) -> dict[str, Any]:
     if not isinstance(raw, dict) or raw.get("error"):
         raise ModelRoutingError("genus-router returned no valid candidate")
+    required_fields = {
+        "availability",
+        "decision_id",
+        "effective_complexity",
+        "fable_eligible",
+        "fallback_refs",
+        "fallbacks",
+        "genus",
+        "genus_code",
+        "model",
+        "model_ref",
+        "rationale",
+        "sophistication",
+    }
+    if set(raw) != required_fields:
+        raise ModelRoutingError("genus-router decision fields are incomplete or unknown")
     decision_id = raw.get("decision_id")
     if not isinstance(decision_id, str) or not DECISION_ID.fullmatch(decision_id):
         raise ModelRoutingError("genus-router returned an invalid decision_id")
     model = raw.get("model")
-    allowed = set(_string_list(_mapping(policy, "generative"), "allowed_models"))
-    if not isinstance(model, str) or model not in allowed or model in excluded_models:
+    if not isinstance(model, str) or model not in set(STANDARD_MODELS) or model in excluded_models:
         raise ModelRoutingError("genus-router selected a forbidden or excluded model")
+    if (
+        raw.get("genus_code") != "REVIEW-COMPLEX"
+        or raw.get("effective_complexity") != "complex"
+        or raw.get("sophistication") != "complex"
+        or raw.get("availability") != "verified"
+        or raw.get("fable_eligible") is not False
+    ):
+        raise ModelRoutingError("genus-router decision does not match protected review classification")
+    if not isinstance(raw.get("genus"), str) or not raw["genus"]:
+        raise ModelRoutingError("genus-router omitted genus")
+    rationale = raw.get("rationale")
+    if not isinstance(rationale, list) or not rationale or not all(isinstance(item, str) for item in rationale):
+        raise ModelRoutingError("genus-router rationale evidence is invalid")
 
     model_ref = _validate_model_ref(raw.get("model_ref"), policy, model)
     fallbacks = raw.get("fallbacks")
@@ -177,13 +219,14 @@ def validate_decision(
         raise ModelRoutingError("genus-router fallback evidence is inconsistent")
     validated_fallbacks = []
     for fallback, fallback_ref in zip(fallbacks, fallback_refs, strict=True):
-        if not isinstance(fallback, str) or fallback in excluded_models or fallback == model:
+        if (
+            not isinstance(fallback, str)
+            or fallback not in set(STANDARD_MODELS)
+            or fallback in excluded_models
+            or fallback == model
+        ):
             raise ModelRoutingError("genus-router returned a forbidden fallback")
         validated_fallbacks.append(_validate_model_ref(fallback_ref, policy, fallback))
-
-    for field in ("genus_code", "effective_complexity", "sophistication", "availability"):
-        if not isinstance(raw.get(field), str) or not raw[field]:
-            raise ModelRoutingError(f"genus-router omitted {field}")
     return {
         **raw,
         "model_ref": model_ref,
@@ -256,12 +299,11 @@ def route_and_invoke_review(
     validate_policy_invariants(active_policy)
     active_service = service or create_router_service()
     api_key = load_litellm_key(active_policy)
-    task = dict(_mapping(_mapping(active_policy, "tasks"), "agent_review"))
-    allowed = _string_list(_mapping(active_policy, "generative"), "allowed_models")
+    task = dict(AGENT_REVIEW_TASK)
     excluded: list[str] = []
     attempts: list[dict[str, str]] = []
 
-    for _ in allowed:
+    for _ in STANDARD_MODELS:
         route_input = {
             **task,
             "prior_failure": bool(excluded),

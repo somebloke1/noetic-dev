@@ -45,6 +45,9 @@ def decision(model: str, number: int = 1) -> dict[str, object]:
     if model != FABLE:
         model_ref["reasoning_effort"] = "high"
     return {
+        "availability": "verified",
+        "fable_eligible": False,
+        "genus": "Complex Code Review",
         "model": model,
         "model_ref": model_ref,
         "genus_code": "REVIEW-COMPLEX",
@@ -52,7 +55,7 @@ def decision(model: str, number: int = 1) -> dict[str, object]:
         "fallback_refs": [],
         "effective_complexity": "complex",
         "sophistication": "complex",
-        "availability": "verified",
+        "rationale": ["fixed protected review classification"],
         "decision_id": f"d-20260713-{number:06d}",
     }
 
@@ -113,7 +116,7 @@ class TestModelRouting(unittest.TestCase):
             "model_id": "unapproved-model",
             "upstream_model_id": "unapproved-model",
         }]
-        with self.assertRaisesRegex(ModelRoutingError, "not governed"):
+        with self.assertRaisesRegex(ModelRoutingError, "forbidden fallback"):
             validate_decision(ungoverned, self.policy, set())
 
     def test_decision_rejects_reselected_excluded_model(self):
@@ -139,19 +142,24 @@ class TestModelRouting(unittest.TestCase):
         }])
         self.assertEqual(captured["headers"]["Authorization"], "Bearer key")
 
-    def test_fable_chat_invocation_enacts_high_reasoning(self):
-        captured = {}
+    def test_protected_review_rejects_fable_and_forged_route_evidence(self):
+        forged = decision(FABLE)
+        forged["fable_eligible"] = True
+        with self.assertRaisesRegex(ModelRoutingError, "forbidden or excluded"):
+            _invoke_litellm(forged, "prompt", self.policy, "key", http_post=lambda *_args: b"")
 
-        def post(_url, _headers, body, _timeout):
-            captured.update(json.loads(body))
-            return json.dumps({"choices": [{"message": {"content": "review-json"}}]}).encode()
-
-        result = _invoke_litellm(
-            decision(FABLE), "prompt", self.policy, "key", http_post=post
-        )
-        self.assertEqual(result, "review-json")
-        self.assertEqual(captured["reasoning_effort"], "high")
-        self.assertEqual(captured["messages"], [{"role": "user", "content": "prompt"}])
+        mutations = [
+            ("effective_complexity", "trivial"),
+            ("sophistication", "trivial"),
+            ("availability", "forged-unavailable"),
+            ("fable_eligible", True),
+            ("genus_code", "CHAT-TRIVIAL"),
+        ]
+        for field, value in mutations:
+            forged = decision(TERRA)
+            forged[field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ModelRoutingError, "protected review"):
+                validate_decision(forged, self.policy, set())
 
     @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
     def test_route_success_reports_outcome_and_returns_evidence(self):
@@ -196,6 +204,21 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(service.inputs[1]["exclude_models"], [TERRA])
         self.assertEqual(evidence["model"], SOL)
         self.assertEqual([item["model"] for item in evidence["attempts"]], [TERRA, SOL])
+
+    @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
+    def test_review_stops_after_three_standard_candidates_fail(self):
+        service = FakeService([decision(TERRA, 1), decision(SOL, 2), decision(LUNA, 3)])
+        with self.assertRaisesRegex(ModelRoutingError, "all routed review candidates failed"):
+            route_and_invoke_review(
+                "prompt",
+                json.loads,
+                service=service,
+                policy=self.policy,
+                http_post=lambda *_args: (_ for _ in ()).throw(ModelRoutingError("failed")),
+            )
+        self.assertEqual(len(service.inputs), 3)
+        self.assertEqual([item["outcome"] for item in service.outcomes], ["failure"] * 3)
+        self.assertEqual(service.inputs[-1]["exclude_models"], [TERRA, SOL])
 
     def test_credential_file_is_bounded_to_litellm_key(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -251,6 +274,25 @@ class TestModelRouting(unittest.TestCase):
         for section, field, value in mutations:
             weakened = json.loads(json.dumps(self.policy))
             weakened[section][field] = value
+            with self.subTest(section=section, field=field), self.assertRaises(ModelRoutingError):
+                validate_policy_invariants(weakened)
+
+    def test_policy_invariants_bind_fixed_review_and_fable_scope(self):
+        mutations = [
+            ("tasks", "agent_review", {
+                "task_kind": "chat",
+                "complexity": "trivial",
+                "blast_radius": "isolated",
+                "high_value": True,
+                "awaited": False,
+            }),
+            ("fable", "task_kinds", ["chat"]),
+            ("fable", "minimum_complexity", "trivial"),
+        ]
+        for section, field, value in mutations:
+            weakened = json.loads(json.dumps(self.policy))
+            target = weakened["tasks"] if section == "tasks" else weakened["generative"]["fable_eligibility"]
+            target[field] = value
             with self.subTest(section=section, field=field), self.assertRaises(ModelRoutingError):
                 validate_policy_invariants(weakened)
 

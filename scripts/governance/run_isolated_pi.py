@@ -555,7 +555,10 @@ def _clean_env(scoped_credentials: Optional[Dict[str, str]] = None) -> Dict[str,
         "PI_TELEMETRY": "0",
         "PI_SKIP_VERSION_CHECK": "1",
     }
-    for name, value in (scoped_credentials or {}).items():
+    supplied = scoped_credentials or {}
+    if set(supplied) - PROVIDER_CREDENTIAL_ENV_NAMES:
+        raise RuntimeError("direct provider credential is forbidden")
+    for name, value in supplied.items():
         env[name] = value
     return env
 
@@ -569,6 +572,7 @@ def _run_isolated(
     timeout: int,
     scoped_credentials: Optional[Dict[str, str]] = None,
 ) -> subprocess.CompletedProcess[str]:
+    _require_routed_pi_adapter()
     bwrap_argv = build_bwrap_command(inner_argv, candidate_dir=candidate_dir, prompt_file=prompt_file, cwd=cwd)
     return subprocess.run(
         bwrap_argv,
