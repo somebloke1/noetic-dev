@@ -102,13 +102,17 @@ def run_bounded(
         returncode = process.wait(timeout=max(0.0, deadline - time.monotonic()))
         return returncode, bytes(streams[process.stdout][0]), bytes(streams[process.stderr][0])
     except ReviewError:
-        if process.poll() is None:
+        try:
             os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         process.wait()
         raise
     except subprocess.TimeoutExpired as error:
-        if process.poll() is None:
+        try:
             os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         process.wait()
         raise ReviewError(f"command timed out after {timeout} seconds") from error
     finally:
@@ -155,7 +159,8 @@ def validate_pr(pr: Any, payload: dict[str, Any]) -> None:
         raise ReviewError("PR base SHA changed")
     if head_repo.get("full_name") != payload["repository"]:
         raise ReviewError("fork PRs are not authorized for the local runner")
-    if user.get("login") not in ALLOWED_AUTHORS:
+    login = user.get("login")
+    if not isinstance(login, str) or login not in ALLOWED_AUTHORS:
         raise ReviewError("PR author is not authorized for the local runner")
 
 
@@ -308,7 +313,7 @@ def parse_review_output(text: str) -> dict[str, Any]:
             raise ReviewError("model finding severity is invalid")
         if not _safe_file(finding["file"]) or not _safe_log_text(finding["message"], 4_000):
             raise ReviewError("model finding text is invalid")
-        if finding["line"] is not None and (
+        if (
             not isinstance(finding["line"], int)
             or isinstance(finding["line"], bool)
             or not 1 <= finding["line"] <= 10_000_000
@@ -401,7 +406,10 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0"))
             if length < 1 or length > MAX_REQUEST_BYTES:
                 raise ReviewError("request size is invalid")
-            payload = strict_json(self.rfile.read(length))
+            body = self.rfile.read(length)
+            if len(body) != length:
+                raise ReviewError("request body ended before Content-Length")
+            payload = strict_json(body)
             response = review(payload)
             status = 200
         except (ReviewError, ValueError, TimeoutError, socket.timeout) as error:

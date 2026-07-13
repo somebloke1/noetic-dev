@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -14,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import ReviewError, build_prompt, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request
+from agent_review_broker import Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request
 
 
 class TestAgentReview(unittest.TestCase):
@@ -68,6 +70,7 @@ class TestAgentReview(unittest.TestCase):
             '{"verdict":"changes-needed","summary":"bad","findings":[{"severity":"P1","severity":"P2","file":"x","line":1,"message":"bad"}]}',
             '{"verdict":"changes-needed","summary":"bad","findings":[{"severity":"P1","file":"..\\x","line":1,"message":"bad"}]}',
             '{"verdict":"changes-needed","summary":"bad","findings":[{"severity":"P1","file":"C:\\x","line":1,"message":"bad"}]}',
+            '{"verdict":"changes-needed","summary":"bad","findings":[{"severity":"P1","file":"x","line":null,"message":"bad"}]}',
         ]
         for text in invalid:
             with self.subTest(text=text), self.assertRaises(ReviewError):
@@ -106,6 +109,45 @@ class TestAgentReview(unittest.TestCase):
                 )
             self.assertFalse(marker.exists())
 
+    def test_subprocess_timeout_kills_descendants_after_leader_exits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "descendant-survived"
+            child = (
+                "import pathlib,sys,time; time.sleep(0.6); "
+                "pathlib.Path(sys.argv[1]).touch(); time.sleep(5)"
+            )
+            parent = (
+                "import subprocess,sys; "
+                "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]]); sys.exit(0)"
+            )
+            with self.assertRaises(ReviewError):
+                run_bounded(
+                    [sys.executable, "-c", parent, child, str(marker)],
+                    max_stdout=1_024,
+                    max_stderr=1_024,
+                    timeout=0.2,
+                    env=os.environ.copy(),
+                )
+            threading.Event().wait(0.8)
+            self.assertFalse(marker.exists())
+
+    def test_http_rejects_body_shorter_than_content_length(self):
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = str(Path(directory) / "broker.sock")
+            with UnixServer(socket_path, Handler) as server, mock.patch("agent_review_broker.review") as review_call:
+                thread = threading.Thread(target=server.handle_request)
+                thread.start()
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(socket_path)
+                    client.sendall(b"POST /review HTTP/1.0\r\nContent-Length: 12\r\n\r\n{}")
+                    client.shutdown(socket.SHUT_WR)
+                    response = b""
+                    while chunk := client.recv(4_096):
+                        response += chunk
+                thread.join(timeout=5)
+                self.assertIn(b" 400 ", response)
+                review_call.assert_not_called()
+
     def test_second_pr_validation_rechecks_full_admission(self):
         valid = {
             "state": "open",
@@ -123,6 +165,7 @@ class TestAgentReview(unittest.TestCase):
             {"head": None},
             {"base": []},
             {"user": "somebloke1"},
+            {"user": {"login": []}},
         ]:
             with self.subTest(mutation=mutation), self.assertRaises(ReviewError):
                 validate_pr({**valid, **mutation}, self.REQUEST)
