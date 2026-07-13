@@ -98,6 +98,7 @@ class TestModelRouting(unittest.TestCase):
         mutations = [
             ("endpoint_id", "direct-provider"),
             ("base_url", "https://provider.example"),
+            ("base_url", "http://172.22.10.160:3333/"),
             ("token_env", "OPENAI_API_KEY"),
             ("reasoning_effort", "low"),
             ("model_id", "openai-codex/gpt-5.6-terra"),
@@ -332,6 +333,34 @@ class TestModelRouting(unittest.TestCase):
         duplicate["generative"]["allowed_models"].append(SOL)
         with self.assertRaises(ModelRoutingError):
             validate_policy_invariants(duplicate)
+
+    def test_policy_invariants_reject_schema_shape_and_endpoint_list_mutations(self):
+        mutations = []
+        missing_schema = json.loads(json.dumps(self.policy))
+        missing_schema.pop("schema_version")
+        mutations.append(missing_schema)
+        wrong_schema = json.loads(json.dumps(self.policy))
+        wrong_schema["schema_version"] = "2"
+        mutations.append(wrong_schema)
+        unknown = json.loads(json.dumps(self.policy))
+        unknown["provider_override"] = {"enabled": True}
+        mutations.append(unknown)
+        for section in ("access", "generative"):
+            for operation in ("duplicate", "reverse", "partial", "extra"):
+                mutated = json.loads(json.dumps(self.policy))
+                paths = mutated[section]["allowed_endpoint_paths"]
+                if operation == "duplicate":
+                    paths.append(paths[0])
+                elif operation == "reverse":
+                    paths.reverse()
+                elif operation == "partial":
+                    paths.pop()
+                else:
+                    paths.append("/v1/provider-bypass")
+                mutations.append(mutated)
+        for mutated in mutations:
+            with self.subTest(policy=mutated), self.assertRaisesRegex(ModelRoutingError, "exact contract"):
+                validate_policy_invariants(mutated)
 
 
 if __name__ == "__main__":

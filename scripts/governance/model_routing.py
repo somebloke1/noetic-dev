@@ -40,6 +40,58 @@ AGENT_REVIEW_TASK = {
     "high_value": False,
     "awaited": True,
 }
+EXPECTED_MODEL_POLICY = {
+    "schema_version": "1",
+    "selection": {
+        "router": "genus-router",
+        "mandatory_for_generative_tasks": True,
+        "selection_varies_with_sophistication": True,
+        "lifecycle": ["classify", "route_task", "invoke", "report_outcome"],
+    },
+    "access": {
+        "endpoint_id": "local-litellm",
+        "base_url": CANONICAL_LITELLM_BASE_URL,
+        "token_env": "LITELLM_API_KEY",
+        "systemd_credential": "litellm_api_key",
+        "allowed_endpoint_paths": [
+            "/v1/responses",
+            "/v1/chat/completions",
+            "/v1/embeddings",
+            "/v1/audio/transcriptions",
+        ],
+        "litellm_required": True,
+        "applies_to_harnesses": ["pi", "opencode", "broker", "bare"],
+        "direct_provider_access": False,
+    },
+    "generative": {
+        "standard_models": STANDARD_MODELS,
+        "allowed_endpoint_paths": ["/v1/responses", "/v1/chat/completions"],
+        "reasoning_effort": "high",
+        "allowed_models": ALLOWED_GENERATIVE_MODEL_ORDER,
+        "capability_tiers": [
+            [STANDARD_MODELS[0], "claude-fable-5"],
+            [STANDARD_MODELS[1]],
+            [STANDARD_MODELS[2]],
+        ],
+        "fable_eligibility": {
+            "limited": True,
+            "task_kinds": ["review", "research", "design"],
+            "minimum_complexity": "complex",
+            "purpose": "high-value independent judgment and model-family diversity",
+        },
+    },
+    "modalities": {
+        "embed": "snowflake-arctic-embed2",
+        "asr": "qwen3-asr",
+    },
+    "failure": {
+        "report_outcome_required": True,
+        "reroute_with_prior_failure": True,
+        "exclude_failed_models": True,
+        "manual_model_escalation": False,
+    },
+    "tasks": {"agent_review": AGENT_REVIEW_TASK},
+}
 
 
 class ModelRoutingError(RuntimeError):
@@ -87,6 +139,8 @@ def load_policy(path: Path | None = None) -> dict[str, Any]:
 
 
 def validate_policy_invariants(policy: dict[str, Any]) -> None:
+    if not isinstance(policy, dict) or policy != EXPECTED_MODEL_POLICY:
+        raise ModelRoutingError("model policy does not match the protected exact contract")
     selection = _mapping(policy, "selection")
     access = _mapping(policy, "access")
     generative = _mapping(policy, "generative")
@@ -103,7 +157,7 @@ def validate_policy_invariants(policy: dict[str, Any]) -> None:
         raise ModelRoutingError("model policy weakens mandatory genus-router selection")
     if (
         access.get("endpoint_id") != "local-litellm"
-        or _required_string(access, "base_url").rstrip("/") != CANONICAL_LITELLM_BASE_URL
+        or _required_string(access, "base_url") != CANONICAL_LITELLM_BASE_URL
         or access.get("token_env") != "LITELLM_API_KEY"
         or access.get("systemd_credential") != "litellm_api_key"
         or access.get("litellm_required") is not True
@@ -275,7 +329,7 @@ def _validate_model_ref(raw: Any, policy: dict[str, Any], expected_model: str) -
         raise ModelRoutingError("genus-router model reference changed the governed model identity")
     if raw["endpoint_id"] != _required_string(access, "endpoint_id"):
         raise ModelRoutingError("genus-router bypassed the required LiteLLM endpoint")
-    if raw["base_url"].rstrip("/") != _required_string(access, "base_url").rstrip("/"):
+    if raw["base_url"] != _required_string(access, "base_url"):
         raise ModelRoutingError("genus-router returned a forbidden base URL")
     if raw["token_env"] != _required_string(access, "token_env"):
         raise ModelRoutingError("genus-router returned a forbidden credential binding")
