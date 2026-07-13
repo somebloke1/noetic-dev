@@ -2,7 +2,7 @@ name: Agent Review
 
 on:
   pull_request_target:
-    branches: [main]
+    branches: [main, dev]
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
