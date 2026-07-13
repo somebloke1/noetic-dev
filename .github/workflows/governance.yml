@@ -3,7 +3,7 @@ name: Governance
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -82,11 +82,11 @@ jobs:
           echo "Merge/publication authority requires a separately protected required workflow or repository integration."
 
   post-merge-validation:
-    name: Post-merge validation (main, no publication)
+    name: Post-merge validation (protected branch, no publication)
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     steps:
-      - name: Checkout main SHA
+      - name: Checkout protected branch SHA
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}

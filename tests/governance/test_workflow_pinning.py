@@ -57,6 +57,13 @@ class TestWorkflowPinning(unittest.TestCase):
         self.assertIn("--check-bootstrap-blocked", content)
         self.assertIn("advisory", content.lower())
 
+    def test_protected_dev_triggers_governance_and_agent_review(self):
+        governance = (WORKFLOWS_DIR / "governance.yml").read_text()
+        agent_review = (WORKFLOWS_DIR / "agent-review.yml").read_text()
+        self.assertIn("branches: [main, dev]", governance)
+        self.assertIn("github.ref == 'refs/heads/dev'", governance)
+        self.assertIn("branches: [main, dev]", agent_review)
+
 
 class TestPinningChecker(unittest.TestCase):
     """Test the pinning checker itself using synthetic workflows."""
