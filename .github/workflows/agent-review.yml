@@ -1,0 +1,40 @@
+name: Agent Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  agent-review:
+    name: agent-review
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == github.repository_owner
+    runs-on: [self-hosted, noetic-dev, terra-review]
+    timeout-minutes: 20
+    steps:
+      - name: Checkout protected policy SHA only
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: policy
+      - name: Request immutable semantic review
+        env:
+          NOETIC_AGENT_REVIEW_SOCKET: /run/user/1000/noetic-dev-agent-review.sock
+        run: >-
+          python3 policy/scripts/governance/request_agent_review.py
+          --repository "${{ github.repository }}"
+          --pr-number "${{ github.event.pull_request.number }}"
+          --head-sha "${{ github.event.pull_request.head.sha }}"
+          --base-sha "${{ github.event.pull_request.base.sha }}"
+          --output "$RUNNER_TEMP/agent-review-result.json"

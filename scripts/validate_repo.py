@@ -43,6 +43,8 @@ REQUIRED = [
     "scripts/governance/check_evidence_manifest.py",
     "scripts/governance/check_delivery_gate.py",
     "scripts/governance/run_isolated_pi.py",
+    "scripts/governance/agent_review_broker.py",
+    "scripts/governance/request_agent_review.py",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",
@@ -51,6 +53,7 @@ REQUIRED = [
     "tests/governance/test_state_machine.py",
     "tests/governance/test_workflow_pinning.py",
     "tests/governance/test_run_isolated_pi.py",
+    "tests/governance/test_agent_review.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
