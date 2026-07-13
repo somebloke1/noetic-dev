@@ -31,6 +31,7 @@ MAX_REQUEST_BYTES = 16_384
 MAX_PATCH_BYTES = 200_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
 MAX_GITHUB_OUTPUT_BYTES = 1_048_576
+BWRAP = Path("/usr/bin/bwrap")
 
 
 class ReviewError(RuntimeError):
@@ -77,7 +78,7 @@ def run_bounded(
         input_file.write(input_text.encode("utf-8"))
         input_file.seek(0)
     isolated_command = [
-        "/usr/bin/bwrap", "--unshare-pid", "--die-with-parent",
+        str(BWRAP), "--unshare-pid", "--die-with-parent",
         "--bind", "/", "/", "--dev-bind", "/dev", "/dev", "--", *command,
     ]
     try:
@@ -89,9 +90,9 @@ def run_bounded(
             env=env,
             start_new_session=True,
         )
-    except Exception:
+    except OSError as error:
         input_file.close()
-        raise
+        raise ReviewError("unable to start isolated command") from error
     streams = {process.stdout: (bytearray(), max_stdout), process.stderr: (bytearray(), max_stderr)}
     selector = selectors.DefaultSelector()
     for stream in streams:
@@ -454,7 +455,26 @@ class UnixServer(socketserver.UnixStreamServer):
     allow_reuse_address = True
 
 
+def validate_runtime() -> None:
+    if not BWRAP.is_file() or not os.access(BWRAP, os.X_OK):
+        raise ReviewError(f"required executable is unavailable: {BWRAP}")
+    try:
+        result = subprocess.run(
+            [str(BWRAP), "--unshare-pid", "--die-with-parent", "--bind", "/", "/", "--dev-bind", "/dev", "/dev", "--", "/bin/true"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ReviewError("Bubblewrap runtime validation failed") from error
+    if result.returncode != 0:
+        raise ReviewError(f"Bubblewrap runtime validation failed with exit {result.returncode}")
+
+
 def serve(socket_path: Path, socket_group: str | None = None) -> None:
+    validate_runtime()
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
     with UnixServer(str(socket_path), Handler, bind_and_activate=False) as server:

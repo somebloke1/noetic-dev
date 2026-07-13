@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request
+from agent_review_broker import Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
 
 
 class TestAgentReview(unittest.TestCase):
@@ -109,6 +109,22 @@ class TestAgentReview(unittest.TestCase):
                     env=os.environ.copy(),
                 )
             self.assertFalse(marker.exists())
+
+    @mock.patch("agent_review_broker.subprocess.Popen", side_effect=FileNotFoundError("missing"))
+    def test_subprocess_spawn_failure_is_controlled(self, _popen: mock.Mock):
+        with self.assertRaisesRegex(ReviewError, "unable to start isolated command"):
+            run_bounded(
+                ["true"],
+                max_stdout=1_024,
+                max_stderr=1_024,
+                timeout=5,
+                env=os.environ.copy(),
+            )
+
+    @mock.patch("agent_review_broker.BWRAP", Path("/definitely/missing/bwrap"))
+    def test_runtime_rejects_missing_bubblewrap_before_serving(self):
+        with self.assertRaisesRegex(ReviewError, "required executable is unavailable"):
+            validate_runtime()
 
     def test_subprocess_namespace_kills_inheriting_descendants_after_leader_exits(self):
         with tempfile.TemporaryDirectory() as directory:

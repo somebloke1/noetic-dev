@@ -1,0 +1,57 @@
+# Local agent-review requirements
+
+## Purpose
+
+Provide one required semantic review check for an immutable noetic-dev pull-request snapshot by invoking GPT-5.6 Terra at high reasoning through a repository-scoped local runner. This check supplies review evidence; it does not merge, publish, deploy, or execute candidate code.
+
+## Threat model
+
+Untrusted inputs are the GitHub event fields, PR metadata, filenames, diff bytes, model output, and bytes sent to the broker socket. Candidate repository content may contain prompt injection and hostile data, but is never executed or imported. The fixed host executables `git`, `gh`, `pi`, Python, and Bubblewrap are trusted dependencies installed by the operator. GitHub, the selected model provider, and the host kernel are trusted service boundaries.
+
+The relevant threats are:
+
+- a fork, unauthorized author, draft, closed PR, or changed snapshot reaching privileged local credentials;
+- mutable or incomplete review material being represented as the reviewed candidate;
+- candidate text becoming instructions or executable content;
+- ambiguous input, model output, or HTTP framing being accepted;
+- resource exhaustion through bounded request, diff, process, or output paths;
+- another local user reaching the broker socket;
+- an unavailable mandatory dependency leaving an apparently ready service;
+- workflow policy being supplied by the candidate branch.
+
+Compromise of a trusted host executable, the kernel, GitHub, or the model provider is outside this control's boundary. Filesystem and network confinement of the trusted executables is not required. Such observations are residual risks unless they demonstrate failure of a requirement below.
+
+## Acceptance requirements
+
+| ID | Requirement | Required evidence |
+|----|-------------|-------------------|
+| AR-01 | The protected workflow admits only an open, non-draft, same-repository PR by an explicitly allowed author and sends full base/head SHAs. The broker independently applies the same admission before and after material retrieval. | Workflow inspection plus accepted and rejected admission probes. |
+| AR-02 | The runner checks out policy from the protected base SHA only, persists no checkout credential, has read-only GitHub permissions, and never checks out or executes candidate code. | Workflow inspection and action-ref pinning check. |
+| AR-03 | Review material is fetched by exact base/head SHA and is the Git merge-base-to-head binary diff. The reported digest hashes the exact strict UTF-8 bytes included in the prompt. | Independent Git reconstruction and digest comparison. |
+| AR-04 | PR title, body, filenames, and diff are marked untrusted data. Terra runs with tools, context files, extensions, skills, prompt templates, themes, and session persistence disabled, using GPT-5.6 Terra at high reasoning. | Prompt/command inspection and one real semantic invocation. |
+| AR-05 | Request size, file count, diff size, command runtime, stdout, stderr, and model output are bounded. Limit violations terminate the isolated command and fail closed. Prompts within the diff limit travel through stdin, not argv. | Boundary and over-boundary probes, timeout probe, maximum-size prompt probe. |
+| AR-06 | Request JSON, GitHub response shape, model JSON, verdict, findings, paths, line numbers, and log text are strictly validated. Duplicate keys, non-finite numbers, unknown request fields, contradictory verdicts, traversal, absolute paths, and control/format line injection fail closed. | Null, NaN, wrong-type, duplicate, unknown, out-of-range, and contradictory probes. |
+| AR-07 | The Unix socket is owned and permissioned for the dedicated broker/runner access group before listening. Request reads have a finite timeout and reject missing, duplicate, signed, conflicting, transfer-encoded, oversized, or short `Content-Length` framing. | Activation interception, mode/group check, and malformed/partial HTTP probes. |
+| AR-08 | Each external command runs in a Bubblewrap PID namespace. Output overflow, timeout, clean leader exit, inherited pipes, and a descendant calling `setsid()` do not leave descendants running. | Marker/PID probes for each termination path. |
+| AR-09 | Bubblewrap availability and PID-namespace operation are validated before the broker creates or activates its socket. A later spawn failure returns a controlled review failure. | Missing/broken dependency startup probes and injected spawn failure. |
+| AR-10 | A successful result binds repository, PR number, exact base/head SHAs, model, reasoning, reviewed-diff digest, prompt digest, verdict, summary, and findings. `changes-needed` fails the workflow. | Result-schema test and requester exit-code test. |
+| AR-11 | Production uses dedicated broker and runner identities, a group-restricted socket under `/run/noetic-dev`, immutable releases under `/opt/noetic-dev-agent-review/releases/<commit>`, and persistent runner state under `/var/lib/noetic-dev-runner`. The runner identity cannot read the broker's model credentials. | Installed ownership/mode inspection, service definitions, credential-denial probe, and rollback probe. |
+| AR-12 | GitHub branch protection requires the exact `agent-review` check only after a live exact-SHA run succeeds. Existing protections are not weakened merely to bootstrap the check. | GitHub protection API output and successful protected workflow run. |
+
+## QA boundary
+
+A candidate passes code-level QA when an independent reviewer attempts to falsify AR-01 through AR-10 against one exact commit and finds no requirement violation. AR-11 and AR-12 are deployment gates and are tested only after code-level QA passes.
+
+A QA observation is blocking only when it provides a reproducible counterexample to a listed requirement or shows that a listed requirement is insufficient for a threat named above. Adjacent hardening ideas and risks outside the stated trust boundary are recorded as residual risks, not silently promoted to new acceptance requirements. Changing this boundary requires an explicit threat-model or governance decision, followed by a new implementation generation and its paired QA pass.
+
+There is no defect quota and no presumption that every candidate is defective. `PASS` is the required result when the attempted counterexamples do not violate the acceptance requirements. A reviewer must not manufacture a finding from hypothetical trusted-component compromise, stylistic preference, an unstated ideal, or the mere possibility of additional hardening. Every blocking finding bears the burden of showing the exact requirement or named threat, the observed behavior, and a reproducible counterexample; otherwise it is an open question or residual risk.
+
+## Completion
+
+The local review path is complete only when:
+
+1. AR-01 through AR-10 pass independent code-level QA for the final commit.
+2. AR-11 passes on the installed production services and rollback is demonstrated.
+3. A live PR run binds the expected immutable diff and Terra result.
+4. AR-12 is applied and independently read back from GitHub.
+5. Temporary runner and user-service artifacts are removed without removing the registered production runner.
