@@ -8,7 +8,24 @@
       "model_id": "openai-codex/gpt-5.6-sol",
       "verified": true,
       "ready_probe_required": true,
-      "notes": "Coordinates planning and remediation dispatch."
+      "reasoning_level": "high",
+      "notes": "Coordinates planning, review waves, remediation dispatch, and delegated decisions."
+    },
+    "reviewer_fable": {
+      "designation": "Independent PR Reviewer",
+      "model_id": "litellm/claude-fable-5",
+      "verified": true,
+      "ready_probe_required": true,
+      "reasoning_level": "high",
+      "notes": "Read-only semantic review and delegated approval authority for an immutable PR snapshot. Must be independent of implementation and QA identities."
+    },
+    "reviewer_sol": {
+      "designation": "Independent PR Reviewer (alternate)",
+      "model_id": "litellm/codex/gpt-5.6-sol",
+      "verified": false,
+      "ready_probe_required": true,
+      "reasoning_level": "high",
+      "notes": "Authorized alternate reviewer, currently unavailable: the 2026-07-13 high-reasoning LiteLLM READY probe returned HTTP 403. Re-enable only after a fresh successful probe."
     },
     "planner": {
       "designation": "Planner",
@@ -50,7 +67,7 @@
       "model_id": "openai-codex/gpt-5.4-mini",
       "verified": true,
       "ready_probe_required": true,
-      "notes": "Dry-run and profile only. Actual publication requires human approval."
+      "notes": "Dry-run and profile only. Actual publication requires independent high-reasoning agent review approval."
     },
     "publisher_alternate_dry_run": {
       "designation": "Publisher (alternate dry-run)",
@@ -61,6 +78,10 @@
     }
   },
   "disallowed_until_reprobed": [
+    {
+      "model_id": "litellm/codex/gpt-5.6-sol",
+      "reason": "Authorized for delegated review but unavailable: high-reasoning READY probe returned HTTP 403 on 2026-07-13."
+    },
     {
       "model_id": "openai-codex/gpt-5.6-terra-pro",
       "reason": "Removed pending re-probe and re-adjudication."

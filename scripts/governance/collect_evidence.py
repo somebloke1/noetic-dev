@@ -241,10 +241,10 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
         "validations": [c["command_id"] for c in commands if c["category"] == "validation" and c.get("phase") == "pre_merge"],
         "tests": [c["command_id"] for c in commands if c["category"] == "test" and c.get("phase") == "pre_merge"],
         "state_transitions": [
-            {"from": "AUDITED", "to": "ISSUE_ACCEPTED", "authority": "human", "timestamp": candidate_pinned_at},
+            {"from": "AUDITED", "to": "ISSUE_ACCEPTED", "authority": "orchestrator", "timestamp": candidate_pinned_at},
             {"from": "ISSUE_ACCEPTED", "to": "PLAN_REQUESTED", "authority": "orchestrator", "timestamp": candidate_pinned_at},
             {"from": "PLAN_REQUESTED", "to": "PLAN_READY", "authority": "orchestrator", "timestamp": candidate_pinned_at},
-            {"from": "PLAN_READY", "to": "IMPLEMENTING", "authority": "human", "timestamp": candidate_pinned_at},
+            {"from": "PLAN_READY", "to": "IMPLEMENTING", "authority": "orchestrator", "timestamp": candidate_pinned_at},
             {"from": "IMPLEMENTING", "to": "CANDIDATE_PINNED", "authority": "implementer", "timestamp": candidate_pinned_at},
         ],
         "approvals": [
@@ -253,6 +253,8 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
                 "commit_sha": candidate_sha,
                 "timestamp": args.approval_timestamp or _now(),
                 "independent": args.approver_independent,
+                "model_profile": args.approver_model_profile,
+                "reasoning_level": args.approver_reasoning_level,
                 "state": "APPROVED",
             }
         ] if args.approver else [],
@@ -340,6 +342,8 @@ def main() -> int:
 
     parser.add_argument("--approver", default="")
     parser.add_argument("--approver-independent", action="store_true")
+    parser.add_argument("--approver-model-profile", choices=["reviewer_fable", "reviewer_sol"], default="reviewer_fable")
+    parser.add_argument("--approver-reasoning-level", choices=["high", "xhigh", "max"], default="high")
     parser.add_argument("--approval-timestamp", default="")
     parser.add_argument("--merge-sha", default="")
     parser.add_argument("--publication-sha", default="")

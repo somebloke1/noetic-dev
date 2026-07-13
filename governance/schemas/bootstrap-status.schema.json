@@ -13,7 +13,7 @@
         "protected_policy_ref_established",
         "trusted_runner_provenance_established",
         "branch_protection_requires_governance",
-        "independent_human_review_process_established",
+        "independent_agent_review_process_established",
         "credential_broker_established"
       ],
       "properties": {
@@ -22,7 +22,7 @@
         "protected_policy_ref_established": {"type": "boolean"},
         "trusted_runner_provenance_established": {"type": "boolean"},
         "branch_protection_requires_governance": {"type": "boolean"},
-        "independent_human_review_process_established": {"type": "boolean"},
+        "independent_agent_review_process_established": {"type": "boolean"},
         "credential_broker_established": {"type": "boolean"}
       }
     },

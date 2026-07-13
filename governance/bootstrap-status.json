@@ -7,7 +7,7 @@
     "protected_policy_ref_established": false,
     "trusted_runner_provenance_established": false,
     "branch_protection_requires_governance": false,
-    "independent_human_review_process_established": false,
+    "independent_agent_review_process_established": false,
     "credential_broker_established": false
   },
   "publication": {

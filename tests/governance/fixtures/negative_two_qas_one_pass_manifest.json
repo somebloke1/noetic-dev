@@ -3,7 +3,7 @@
     {
       "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
       "independent": true,
-      "reviewer": "human-reviewer",
+      "reviewer": "agent-reviewer-fable",
       "state": "APPROVED",
       "timestamp": "2026-07-11T12:40:00+00:00"
     }
@@ -570,7 +570,7 @@
   "schema_version": "1",
   "state_transitions": [
     {
-      "authority": "human",
+      "authority": "orchestrator",
       "from": "AUDITED",
       "timestamp": "2026-07-11T12:30:00+00:00",
       "to": "ISSUE_ACCEPTED"
@@ -588,7 +588,7 @@
       "to": "PLAN_READY"
     },
     {
-      "authority": "human",
+      "authority": "orchestrator",
       "from": "PLAN_READY",
       "timestamp": "2026-07-11T12:30:00+00:00",
       "to": "IMPLEMENTING"
@@ -627,11 +627,11 @@
       "authority": "qa",
       "from": "QA_PASSED",
       "timestamp": "2026-07-11T12:30:00+00:00",
-      "to": "HUMAN_REVIEW_PENDING"
+      "to": "INDEPENDENT_REVIEW_PENDING"
     },
     {
-      "authority": "human",
-      "from": "HUMAN_REVIEW_PENDING",
+      "authority": "reviewer",
+      "from": "INDEPENDENT_REVIEW_PENDING",
       "timestamp": "2026-07-11T12:30:00+00:00",
       "to": "READY_TO_MERGE"
     },

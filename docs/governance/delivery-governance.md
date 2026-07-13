@@ -27,7 +27,7 @@ All changes merged to `main` and published must pass through the governance pipe
 The delivery state machine is defined in `governance/state-machine.json`. Key states:
 
 - All work starts as `UNGOVERNED_EXISTING` and must be audited.
-- A candidate moves through `IMPLEMENTING → CANDIDATE_PINNED → VALIDATING + QA_RUNNING → QA_PASSED → HUMAN_REVIEW_PENDING → READY_TO_MERGE → MERGED_TO_MAIN → PUBLICATION_READY → PUBLISHED`.
+- A candidate moves through `IMPLEMENTING → CANDIDATE_PINNED → VALIDATING + QA_RUNNING → QA_PASSED → INDEPENDENT_REVIEW_PENDING → READY_TO_MERGE → MERGED_TO_MAIN → PUBLICATION_READY → PUBLISHED`.
 - `BLOCKED`, `ABORTED`, and `ROLLED_BACK` are terminal or holding states.
 
 ## Authority model
@@ -39,7 +39,7 @@ The delivery state machine is defined in `governance/state-machine.json`. Key st
 | Remediator | Same as implementer, for remediation. |
 | Validator | Records command exit codes. Cannot approve. |
 | QA | Exactly one adversarial pass per generation. Read-only source mount; no tools until a credential broker exists. |
-| Human reviewer | Separate from PR author and implementation identities. |
+| Independent reviewer | Fable or Sol through LiteLLM at high reasoning, separate from PR author, implementation, and QA identities. |
 | Publisher | Deterministic execution only after gates pass. |
 
 ## Implementation:QA pairing
@@ -69,7 +69,7 @@ A PR candidate is ready to merge only when ALL of the following hold:
 10. Implementation:QA pass cardinality is exactly 1:1.
 11. QA used read-only source mount, no context files, no tools before a credential broker exists, candidate tree unchanged.
 12. QA verdict is `pass`.
-13. External protected human approval evidence exists, is not by PR author, not by implementation/QA identity, is after candidate pinning, and is for exactly the final candidate SHA.
+13. External protected high-reasoning Fable or Sol approval evidence exists, is not by PR author or implementation/QA identity, is after candidate pinning, and is for exactly the final candidate SHA.
 14. External protected runner provenance binds repository, workflow, run/job, artifact digest, manifest digest, policy SHA, candidate SHA, and separate checkouts, and is captured by a separately protected required integration.
 15. All workflow action refs are pinned to full SHAs, and docker/action, job container, and service images are pinned by immutable digests.
 
@@ -82,7 +82,7 @@ Publication requires ALL of the following:
 3. Post-merge validation and tests pass against main.
 4. `publication_sha` is the full 40-char main SHA.
 5. Trusted runner provenance verified from external protected evidence (GitHub artifact attestation or authenticated API), not from manifest assertions.
-6. Independent human approval exists in external protected evidence.
+6. Independent high-reasoning Fable or Sol approval exists in external protected evidence.
 7. Protected post-merge push-to-main evidence binds the command outputs to the main SHA and merge method.
 8. The protected existing-work freeze artifact is complete; the manifest cannot override it.
 9. No branch-name publication: only full SHAs.
@@ -109,7 +109,7 @@ Authoritative mode requires:
 6. Protected QA execution record generated outside QA/model control.
 7. Probe and QA execution records match, with no QA tools until a credential broker exists.
 8. Branch protection requires the governance checks.
-9. Independent human reviewer approval exists after candidate SHA and is bound to the final candidate SHA.
+9. Independent high-reasoning Fable or Sol reviewer approval exists after candidate SHA and is bound to the final candidate SHA.
 10. Provider credentials cross a broker/capability boundary before tools are re-enabled for authoritative QA.
 
 ### Bootstrap advisory mode
@@ -122,12 +122,27 @@ Before authoritative conditions exist:
 - Local validation/tests may produce diagnostics.
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
-- The credential broker, trusted integration, branch protection, and independent-human-review process remain unresolved in `governance/bootstrap-status.json` until independently verified.
+- The credential broker, trusted integration, branch protection, and independent-agent-review process remain unresolved in `governance/bootstrap-status.json` until independently verified.
 - The existing-work freeze in `governance/audits/existing-work-freeze.json` blocks publication until an actual audit artifact is completed and reviewed.
 
 ## Model profiles
 
 Model profiles are defined in `governance/model-profiles.json`. Each role maps to a verified model. Models not in the profile or in the disallowed list are rejected.
+
+## Development-system reconciliation wave
+
+Git/GitHub coordination is part of developing noetic-dev, not a runtime feature of the developed application. Run a reconciliation wave after every branch, PR, review, check, merge, or issue-state transition, and periodically while open work remains:
+
+1. Sol at high reasoning inventories every local worktree/branch/commit and every open GitHub issue, PR, project item, review thread, required check, and workflow run.
+2. The orchestrator derives dependency order from actual base/head SHAs and linked issues. Stacked PRs are processed serially from their earliest prerequisite.
+3. Fable at high reasoning reviews the next immutable PR snapshot. Sol may serve as reviewer only under a distinct reviewer role/run identity and never review its own implementation or QA work.
+4. A finding produces `changes-needed` and a separate remediation generation; the changed SHA receives a fresh independent review.
+5. Issue labels are authoritative lifecycle state: `ready` before work, `in_progress` while a branch/PR exists, `blocked` or `checkpointed` only with a named condition, and `done` only after verified merge/closure.
+6. Project status is the coordination projection: active PR-backed work is `In Review`; unstarted work is `Ready`; named blockers are `Blocked`; only merged/closed accepted work is `Done`.
+7. Actions are recorded distinctly as queued, in progress, completed-success, completed-failure, cancelled, or missing. A successful validator is never reported as tests, review, merge readiness, or publication.
+8. The orchestrator updates metadata only from authoritative evidence and records every unresolved remote protection, credential, identity, or infrastructure condition without converting it into a human-action dependency.
+
+The wave preserves all review and process gates. Delegation replaces the actor, not the requirement.
 
 ## Command registry
 

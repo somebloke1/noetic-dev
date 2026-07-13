@@ -37,7 +37,7 @@ class TestStateMachine(unittest.TestCase):
             "QA_FAILED",
             "REMEDIATING",
             "QA_PASSED",
-            "HUMAN_REVIEW_PENDING",
+            "INDEPENDENT_REVIEW_PENDING",
             "READY_TO_MERGE",
             "MERGED_TO_MAIN",
             "POST_MERGE_VALIDATING",
@@ -91,7 +91,7 @@ class TestStateMachine(unittest.TestCase):
 
     def test_role_authorities_are_complete(self):
         required_roles = [
-            "human", "orchestrator", "planner", "implementer",
+            "reviewer", "orchestrator", "planner", "implementer",
             "remediator", "validator", "qa", "publisher"
         ]
         for role in required_roles:
@@ -117,17 +117,17 @@ class TestStateMachine(unittest.TestCase):
         publisher = self.sm["role_authorities"]["publisher"]
         self.assertFalse(publisher["can_approve"])
 
-    def test_human_cannot_implement(self):
-        human = self.sm["role_authorities"]["human"]
-        self.assertFalse(human["can_implement"])
+    def test_reviewer_cannot_implement(self):
+        reviewer = self.sm["role_authorities"]["reviewer"]
+        self.assertFalse(reviewer["can_implement"])
 
-    def test_human_cannot_qa(self):
-        human = self.sm["role_authorities"]["human"]
-        self.assertFalse(human["can_qa"])
+    def test_reviewer_cannot_qa(self):
+        reviewer = self.sm["role_authorities"]["reviewer"]
+        self.assertFalse(reviewer["can_qa"])
 
-    def test_human_can_approve(self):
-        human = self.sm["role_authorities"]["human"]
-        self.assertTrue(human["can_approve"])
+    def test_reviewer_can_approve(self):
+        reviewer = self.sm["role_authorities"]["reviewer"]
+        self.assertTrue(reviewer["can_approve"])
 
     def test_blocked_is_terminal_by_default(self):
         """BLOCKED should not have any outgoing transitions except to itself."""
@@ -145,7 +145,7 @@ class TestStateMachine(unittest.TestCase):
             "CANDIDATE_PINNED",
             "QA_RUNNING",
             "QA_PASSED",
-            "HUMAN_REVIEW_PENDING",
+            "INDEPENDENT_REVIEW_PENDING",
             "READY_TO_MERGE",
             "MERGED_TO_MAIN",
             "POST_MERGE_VALIDATING",

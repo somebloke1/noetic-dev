@@ -148,6 +148,22 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("predates candidate", "\n".join(errors))
 
+    def test_unapproved_model_profile_rejected_from_external_evidence(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["model_profile"] = "qa_primary"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("authorized independent reviewer profile", "\n".join(errors))
+
+    def test_low_reasoning_approval_rejected_from_external_evidence(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["reasoning_level"] = "low"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("did not use high reasoning", "\n".join(errors))
+
     def test_naive_approval_timestamp_returns_controlled_failure(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()

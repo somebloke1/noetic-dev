@@ -39,7 +39,22 @@
     "policy_file_hashes_source": {"type": "string"},
     "policy_file_hashes": {"type": "object"},
     "branch_protection": {"type": "object"},
-    "approvals": {"type": "array", "items": {"type": "object"}},
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reviewer", "commit_sha", "submitted_at", "state", "model_profile", "reasoning_level"],
+        "properties": {
+          "reviewer": {"type": "string", "minLength": 1},
+          "commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+          "submitted_at": {"type": "string", "minLength": 1},
+          "state": {"type": "string", "const": "APPROVED"},
+          "model_profile": {"type": "string", "enum": ["reviewer_fable", "reviewer_sol"]},
+          "reasoning_level": {"type": "string", "enum": ["high", "xhigh", "max"]}
+        },
+        "additionalProperties": true
+      }
+    },
     "freeze": {"type": "object"},
     "signed_attestation": {"type": "object"},
     "post_merge": {"type": "object"}

@@ -49,7 +49,7 @@ BOOTSTRAP_AUTHORITY_FIELDS = [
     "protected_policy_ref_established",
     "trusted_runner_provenance_established",
     "branch_protection_requires_governance",
-    "independent_human_review_process_established",
+    "independent_agent_review_process_established",
     "credential_broker_established",
 ]
 
@@ -837,6 +837,9 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
     valid = False
     for approval in approvals:
         reviewer = approval.get("reviewer", "") or approval.get("user", "")
+        model_profile_id = approval.get("model_profile", "")
+        model_profile = _profile_for(model_profile_id)
+        reasoning_level = approval.get("reasoning_level", "")
         approval_time = _parse_time(approval.get("submitted_at", "") or approval.get("timestamp", ""))
         if not reviewer:
             errors.append("approval missing reviewer")
@@ -862,10 +865,16 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         if reviewer in qa_agents:
             errors.append(f"approval by QA identity is not independent: {reviewer}")
             continue
+        if model_profile_id not in {"reviewer_fable", "reviewer_sol"} or not model_profile or not model_profile.get("verified"):
+            errors.append(f"approval by {reviewer} did not use an authorized independent reviewer profile")
+            continue
+        if reasoning_level not in {"high", "xhigh", "max"}:
+            errors.append(f"approval by {reviewer} did not use high reasoning")
+            continue
         valid = True
 
     if not valid:
-        errors.append("no independent current-SHA human approval recorded")
+        errors.append("no independent current-SHA high-reasoning agent approval recorded")
 
 
 def _protected_freeze() -> Dict[str, Any]:

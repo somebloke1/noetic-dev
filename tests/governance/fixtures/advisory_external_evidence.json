@@ -2,7 +2,9 @@
   "approvals": [
     {
       "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
-      "reviewer": "human-reviewer",
+      "reviewer": "agent-reviewer-fable",
+      "model_profile": "reviewer_fable",
+      "reasoning_level": "high",
       "state": "APPROVED",
       "submitted_at": "2026-07-11T12:40:00+00:00"
     }

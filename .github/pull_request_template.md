@@ -34,9 +34,10 @@ Relevant knowns/decisions:
 - [ ] QA protected execution record hash: <!-- sha256 -->
 - [ ] QA used read-only source mount, isolated scratch/home, no host credentials, and no tools until a credential broker exists
 
-## Human approval
+## Independent Agent Review
 
-- [ ] Independent human reviewer approved after candidate SHA pinning and against exactly the final candidate SHA
+- [ ] Independent Fable or Sol reviewer used an authorized profile at high reasoning
+- [ ] Reviewer approved after candidate SHA pinning and against exactly the final candidate SHA
 - [ ] Approver is not PR author, implementer, remediator, QA, publisher, or orchestrator identity
 
 ## Merge readiness
@@ -53,7 +54,7 @@ Relevant knowns/decisions:
 - [ ] Post-merge validation and tests passed against main SHA
 - [ ] Publication SHA recorded (full 40-char SHA; branch names forbidden)
 - [ ] Existing-work freeze/audit is complete in the protected freeze artifact, or publication remains blocked
-- [ ] Independent human approval and trusted-runner provenance remain valid
+- [ ] Independent high-reasoning agent approval and trusted-runner provenance remain valid
 
 ## P4 — Responsible enactment
 
