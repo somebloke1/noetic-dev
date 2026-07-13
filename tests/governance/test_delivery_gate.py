@@ -139,6 +139,9 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         external["approvals"][0]["reviewer"] = author
         external["approvals"][0]["agent_id"] = author
         external["approvals"][0]["identity_binding"]["subject"] = author
+        reviewer_identity = next(item for item in external["agent_identities"] if item["agent_id"] == "agent-reviewer-fable")
+        reviewer_identity["agent_id"] = author
+        reviewer_identity["principal_id"] = "principal-author"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("PR author", "\n".join(errors))
@@ -204,6 +207,56 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
         self.assertIn("state_transition path is discontinuous", "\n".join(errors))
+
+    def test_equal_transition_timestamps_are_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        same = manifest["state_transitions"][0]["timestamp"]
+        for transition in manifest["state_transitions"]:
+            transition["timestamp"] = same
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("timestamp did not advance", "\n".join(errors))
+
+    def test_blocked_terminal_state_is_not_merge_eligible(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        last_time = manifest["state_transitions"][-1]["timestamp"]
+        manifest["state_transitions"].append({
+            "from": manifest["state_transitions"][-1]["to"],
+            "to": "BLOCKED",
+            "authority": "orchestrator",
+            "timestamp": last_time.replace("+00:00", ".999999+00:00"),
+        })
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("is not eligible for pre-merge", "\n".join(errors))
+
+    def test_coordinated_alias_without_canonical_principal_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        approval = external["approvals"][0]
+        approval["reviewer"] = "fresh-coordinated-alias"
+        approval["agent_id"] = "fresh-coordinated-alias"
+        approval["identity_binding"]["subject"] = "fresh-coordinated-alias"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("no protected canonical principal", "\n".join(errors))
+
+    def test_duplicate_reviewer_role_run_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"].append(copy.deepcopy(external["approvals"][0]))
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("duplicated reviewer role_run_id", "\n".join(errors))
+
+    def test_reviewer_alias_bound_to_implementation_principal_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        reviewer = next(item for item in external["agent_identities"] if item["agent_id"] == "agent-reviewer-fable")
+        reviewer["principal_id"] = "principal-implementer"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("implementation principal is not independent", "\n".join(errors))
 
     def test_naive_approval_timestamp_returns_controlled_failure(self):
         manifest = load_fixture("valid_advisory_manifest.json")

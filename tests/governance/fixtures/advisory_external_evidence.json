@@ -1,4 +1,36 @@
 {
+  "agent_identities": [
+    {
+      "agent_id": "agent-implementer-g1",
+      "principal_id": "principal-implementer",
+      "provider": "protected-runner",
+      "verified": true
+    },
+    {
+      "agent_id": "agent-remediator-g2",
+      "principal_id": "principal-remediator",
+      "provider": "protected-runner",
+      "verified": true
+    },
+    {
+      "agent_id": "agent-qa-g1",
+      "principal_id": "principal-qa-g1",
+      "provider": "protected-runner",
+      "verified": true
+    },
+    {
+      "agent_id": "agent-qa-g2",
+      "principal_id": "principal-qa-g2",
+      "provider": "protected-runner",
+      "verified": true
+    },
+    {
+      "agent_id": "agent-reviewer-fable",
+      "principal_id": "principal-reviewer-fable",
+      "provider": "protected-runner",
+      "verified": true
+    }
+  ],
   "approvals": [
     {
       "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",

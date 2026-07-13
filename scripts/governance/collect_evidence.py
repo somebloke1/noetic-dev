@@ -14,7 +14,7 @@ import json
 import subprocess
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -178,6 +178,8 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
         })
 
     candidate_pinned_at = args.candidate_pinned_at or _now()
+    transition_start = datetime.fromisoformat(candidate_pinned_at.replace("Z", "+00:00"))
+    transition_times = [(transition_start + timedelta(seconds=index)).isoformat() for index in range(5)]
     manifest: Dict[str, Any] = {
         "schema_version": "1",
         "manifest_id": str(uuid.uuid4()),
@@ -241,11 +243,11 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
         "validations": [c["command_id"] for c in commands if c["category"] == "validation" and c.get("phase") == "pre_merge"],
         "tests": [c["command_id"] for c in commands if c["category"] == "test" and c.get("phase") == "pre_merge"],
         "state_transitions": [
-            {"from": "AUDITED", "to": "ISSUE_ACCEPTED", "authority": "orchestrator", "timestamp": candidate_pinned_at},
-            {"from": "ISSUE_ACCEPTED", "to": "PLAN_REQUESTED", "authority": "orchestrator", "timestamp": candidate_pinned_at},
-            {"from": "PLAN_REQUESTED", "to": "PLAN_READY", "authority": "orchestrator", "timestamp": candidate_pinned_at},
-            {"from": "PLAN_READY", "to": "IMPLEMENTING", "authority": "orchestrator", "timestamp": candidate_pinned_at},
-            {"from": "IMPLEMENTING", "to": "CANDIDATE_PINNED", "authority": "implementer", "timestamp": candidate_pinned_at},
+            {"from": "AUDITED", "to": "ISSUE_ACCEPTED", "authority": "orchestrator", "timestamp": transition_times[0]},
+            {"from": "ISSUE_ACCEPTED", "to": "PLAN_REQUESTED", "authority": "orchestrator", "timestamp": transition_times[1]},
+            {"from": "PLAN_REQUESTED", "to": "PLAN_READY", "authority": "orchestrator", "timestamp": transition_times[2]},
+            {"from": "PLAN_READY", "to": "IMPLEMENTING", "authority": "orchestrator", "timestamp": transition_times[3]},
+            {"from": "IMPLEMENTING", "to": "CANDIDATE_PINNED", "authority": "implementer", "timestamp": transition_times[4]},
         ],
         "approvals": [
             {

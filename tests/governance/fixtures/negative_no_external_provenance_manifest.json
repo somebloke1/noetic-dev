@@ -367,85 +367,85 @@
     {
       "authority": "orchestrator",
       "from": "ISSUE_ACCEPTED",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:01+00:00",
       "to": "PLAN_REQUESTED"
     },
     {
       "authority": "orchestrator",
       "from": "PLAN_REQUESTED",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:02+00:00",
       "to": "PLAN_READY"
     },
     {
       "authority": "orchestrator",
       "from": "PLAN_READY",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:03+00:00",
       "to": "IMPLEMENTING"
     },
     {
       "authority": "implementer",
       "from": "IMPLEMENTING",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:04+00:00",
       "to": "CANDIDATE_PINNED"
     },
     {
       "authority": "validator",
       "from": "CANDIDATE_PINNED",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:05+00:00",
       "to": "VALIDATING"
     },
     {
       "authority": "validator",
       "from": "VALIDATING",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:06+00:00",
       "to": "CANDIDATE_PINNED"
     },
     {
       "authority": "qa",
       "from": "CANDIDATE_PINNED",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:07+00:00",
       "to": "QA_RUNNING"
     },
     {
       "authority": "qa",
       "from": "QA_RUNNING",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:08+00:00",
       "to": "QA_PASSED"
     },
     {
       "authority": "qa",
       "from": "QA_PASSED",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:09+00:00",
       "to": "INDEPENDENT_REVIEW_PENDING"
     },
     {
       "authority": "reviewer",
       "from": "INDEPENDENT_REVIEW_PENDING",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:10+00:00",
       "to": "READY_TO_MERGE"
     },
     {
       "authority": "publisher",
       "from": "READY_TO_MERGE",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:11+00:00",
       "to": "MERGED_TO_MAIN"
     },
     {
       "authority": "validator",
       "from": "MERGED_TO_MAIN",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:12+00:00",
       "to": "POST_MERGE_VALIDATING"
     },
     {
       "authority": "validator",
       "from": "POST_MERGE_VALIDATING",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:13+00:00",
       "to": "PUBLICATION_READY"
     },
     {
       "authority": "publisher",
       "from": "PUBLICATION_READY",
-      "timestamp": "2026-07-11T12:30:00+00:00",
+      "timestamp": "2026-07-11T12:30:14+00:00",
       "to": "PUBLISHED"
     }
   ],

@@ -19,6 +19,7 @@
     "policy_file_hashes_source",
     "policy_file_hashes",
     "branch_protection",
+    "agent_identities",
     "approvals",
     "freeze"
   ],
@@ -39,6 +40,20 @@
     "policy_file_hashes_source": {"type": "string"},
     "policy_file_hashes": {"type": "object"},
     "branch_protection": {"type": "object"},
+    "agent_identities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent_id", "principal_id", "provider", "verified"],
+        "properties": {
+          "agent_id": {"type": "string", "minLength": 1},
+          "principal_id": {"type": "string", "minLength": 1},
+          "provider": {"type": "string", "const": "protected-runner"},
+          "verified": {"type": "boolean", "const": true}
+        },
+        "additionalProperties": false
+      }
+    },
     "approvals": {
       "type": "array",
       "items": {

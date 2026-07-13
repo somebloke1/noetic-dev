@@ -409,8 +409,8 @@ def _check_state_transitions(manifest: Dict[str, Any], errors: List[str]) -> Non
         if not any(authority in spec.get("authorized_roles", []) for spec in matching):
             errors.append(f"state_transition {source}->{target} not authorized for {authority}")
         timestamp = _parse_time(transition.get("timestamp", ""), f"state_transition {source}->{target}", errors)
-        if timestamp and previous_time and timestamp < previous_time:
-            errors.append(f"state_transition timestamp regressed at {source}->{target}")
+        if timestamp and previous_time and timestamp <= previous_time:
+            errors.append(f"state_transition timestamp did not advance at {source}->{target}")
         if timestamp:
             previous_time = timestamp
         previous_target = target

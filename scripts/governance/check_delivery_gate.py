@@ -833,10 +833,25 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         errors.append("candidate_pinned_at missing or invalid; approval recency cannot be verified")
 
     approvals = (external_evidence or {}).get("approvals", [])
+    identity_records = (external_evidence or {}).get("agent_identities", [])
+    identities: Dict[str, str] = {}
+    for record in identity_records:
+        agent_id = record.get("agent_id", "")
+        if not agent_id or agent_id in identities:
+            errors.append(f"protected agent identity is missing or duplicated: {agent_id or '<empty>'}")
+            continue
+        if record.get("provider") != "protected-runner" or record.get("verified") is not True or not record.get("principal_id"):
+            errors.append(f"protected agent identity is not verified: {agent_id}")
+            continue
+        identities[agent_id] = record["principal_id"]
+    for agent_id in sorted(implementation_agents | qa_agents):
+        if agent_id not in identities:
+            errors.append(f"protected canonical identity missing for implementation/QA agent: {agent_id}")
     if not approvals:
         errors.append("no external protected approval evidence supplied")
 
     valid = False
+    reviewer_role_runs: set[str] = set()
     for approval in approvals:
         reviewer = approval.get("reviewer", "") or approval.get("user", "")
         agent_id = approval.get("agent_id", "")
@@ -855,8 +870,24 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         if not role_run_id:
             errors.append(f"approval by {reviewer} missing reviewer role_run_id")
             continue
+        if role_run_id in reviewer_role_runs:
+            errors.append(f"approval by {reviewer} duplicated reviewer role_run_id: {role_run_id}")
+            continue
+        reviewer_role_runs.add(role_run_id)
         if identity_binding.get("provider") != "protected-runner" or identity_binding.get("verified") is not True or identity_binding.get("subject") != agent_id:
             errors.append(f"approval by {reviewer} lacks verified protected-runner identity binding")
+            continue
+        reviewer_principal = identities.get(agent_id)
+        if not reviewer_principal:
+            errors.append(f"approval by {reviewer} has no protected canonical principal")
+            continue
+        implementation_principals = {identities[item] for item in implementation_agents if item in identities}
+        qa_principals = {identities[item] for item in qa_agents if item in identities}
+        if reviewer_principal in implementation_principals:
+            errors.append(f"approval by implementation principal is not independent: {reviewer_principal}")
+            continue
+        if reviewer_principal in qa_principals:
+            errors.append(f"approval by QA principal is not independent: {reviewer_principal}")
             continue
         if approval.get("commit_sha") != candidate_sha:
             errors.append(f"approval by {reviewer} is stale or for wrong SHA")
@@ -895,6 +926,18 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
 
     if not valid:
         errors.append("no independent current-SHA high-reasoning agent approval recorded")
+
+
+def _check_terminal_state(manifest: Dict[str, Any], errors: List[str], phase: str) -> None:
+    transitions = manifest.get("state_transitions", [])
+    if not transitions:
+        return
+    terminal = transitions[-1].get("to")
+    allowed = {"READY_TO_MERGE", "MERGED_TO_MAIN", "POST_MERGE_VALIDATING", "PUBLICATION_READY", "PUBLISHED", "DEPLOYED"}
+    if phase == "publication":
+        allowed = {"PUBLICATION_READY", "PUBLISHED", "DEPLOYED"}
+    if terminal not in allowed:
+        errors.append(f"delivery state {terminal} is not eligible for {phase}")
 
 
 def _protected_freeze() -> Dict[str, Any]:
@@ -971,6 +1014,7 @@ def check_delivery(
     _check_pr_and_issue(manifest, merge_errors)
     _check_required_commands(manifest, merge_errors)
     _check_qa_pairing(manifest, merge_errors, manifest_path)
+    _check_terminal_state(manifest, merge_errors, phase)
     merge_errors.extend(verify_authoritative_provenance(manifest, external_evidence))
     _check_approvals(manifest, merge_errors, external_evidence)
 
