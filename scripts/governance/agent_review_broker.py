@@ -100,6 +100,10 @@ def run_bounded(
                     raise ReviewError("command output exceeded its byte limit")
                 output.extend(chunk)
         returncode = process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         return returncode, bytes(streams[process.stdout][0]), bytes(streams[process.stderr][0])
     except ReviewError:
         try:
@@ -403,7 +407,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
+            lengths = self.headers.get_all("Content-Length", failobj=[])
+            if len(lengths) != 1 or self.headers.get("Transfer-Encoding") is not None:
+                raise ReviewError("request framing is ambiguous")
+            length = int(lengths[0])
             if length < 1 or length > MAX_REQUEST_BYTES:
                 raise ReviewError("request size is invalid")
             body = self.rfile.read(length)

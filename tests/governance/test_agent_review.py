@@ -131,6 +131,26 @@ class TestAgentReview(unittest.TestCase):
             threading.Event().wait(0.8)
             self.assertFalse(marker.exists())
 
+    def test_subprocess_success_cleans_detached_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "descendant-survived"
+            child = "import pathlib,sys,time; time.sleep(0.6); pathlib.Path(sys.argv[1]).touch()"
+            parent = (
+                "import subprocess,sys; "
+                "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]],"
+                "stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL); sys.exit(0)"
+            )
+            returncode, _, _ = run_bounded(
+                [sys.executable, "-c", parent, child, str(marker)],
+                max_stdout=1_024,
+                max_stderr=1_024,
+                timeout=5,
+                env=os.environ.copy(),
+            )
+            self.assertEqual(returncode, 0)
+            threading.Event().wait(0.8)
+            self.assertFalse(marker.exists())
+
     def test_http_rejects_body_shorter_than_content_length(self):
         with tempfile.TemporaryDirectory() as directory:
             socket_path = str(Path(directory) / "broker.sock")
@@ -147,6 +167,28 @@ class TestAgentReview(unittest.TestCase):
                 thread.join(timeout=5)
                 self.assertIn(b" 400 ", response)
                 review_call.assert_not_called()
+
+    def test_http_rejects_ambiguous_framing(self):
+        requests = [
+            b"POST /review HTTP/1.0\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n{}",
+            b"POST /review HTTP/1.0\r\nContent-Length: 2\r\nTransfer-Encoding: chunked\r\n\r\n{}",
+        ]
+        for request in requests:
+            with self.subTest(request=request), tempfile.TemporaryDirectory() as directory:
+                socket_path = str(Path(directory) / "broker.sock")
+                with UnixServer(socket_path, Handler) as server, mock.patch("agent_review_broker.review") as review_call:
+                    thread = threading.Thread(target=server.handle_request)
+                    thread.start()
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                        client.connect(socket_path)
+                        client.sendall(request)
+                        client.shutdown(socket.SHUT_WR)
+                        response = b""
+                        while chunk := client.recv(4_096):
+                            response += chunk
+                    thread.join(timeout=5)
+                    self.assertIn(b" 400 ", response)
+                    review_call.assert_not_called()
 
     def test_second_pr_validation_rechecks_full_admission(self):
         valid = {
