@@ -250,6 +250,13 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
         "approvals": [
             {
                 "reviewer": args.approver,
+                "agent_id": args.approver,
+                "role_run_id": args.approver_role_run_id,
+                "identity_binding": {
+                    "provider": "protected-runner",
+                    "subject": args.approver,
+                    "verified": True,
+                },
                 "commit_sha": candidate_sha,
                 "timestamp": args.approval_timestamp or _now(),
                 "independent": args.approver_independent,
@@ -342,6 +349,7 @@ def main() -> int:
 
     parser.add_argument("--approver", default="")
     parser.add_argument("--approver-independent", action="store_true")
+    parser.add_argument("--approver-role-run-id", default="")
     parser.add_argument("--approver-model-profile", choices=["reviewer_fable", "reviewer_sol"], default="reviewer_fable")
     parser.add_argument("--approver-reasoning-level", choices=["high", "xhigh", "max"], default="high")
     parser.add_argument("--approval-timestamp", default="")

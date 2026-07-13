@@ -135,7 +135,10 @@ class TestExternalEvidenceFailures(unittest.TestCase):
     def test_author_approval_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
-        external["approvals"][0]["reviewer"] = manifest["pull_request"]["author"]
+        author = manifest["pull_request"]["author"]
+        external["approvals"][0]["reviewer"] = author
+        external["approvals"][0]["agent_id"] = author
+        external["approvals"][0]["identity_binding"]["subject"] = author
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("PR author", "\n".join(errors))
@@ -163,6 +166,44 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("did not use high reasoning", "\n".join(errors))
+
+    def test_reviewer_alias_is_rejected_from_external_evidence(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["reviewer"] = "alias-for-same-agent"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("not bound to protected agent_id", "\n".join(errors))
+
+    def test_reviewer_role_run_reuse_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["role_run_id"] = manifest["passes"]["pass_records"][0]["role_run_id"]
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("reused implementation role_run_id", "\n".join(errors))
+
+    def test_unverified_identity_binding_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["identity_binding"]["verified"] = False
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("lacks verified protected-runner identity binding", "\n".join(errors))
+
+    def test_incomplete_transition_path_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        manifest["state_transitions"] = manifest["state_transitions"][-2:]
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("required state_transition missing", "\n".join(errors))
+
+    def test_discontinuous_transition_path_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        manifest["state_transitions"].pop(1)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("state_transition path is discontinuous", "\n".join(errors))
 
     def test_naive_approval_timestamp_returns_controlled_failure(self):
         manifest = load_fixture("valid_advisory_manifest.json")

@@ -3,6 +3,13 @@
     {
       "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
       "reviewer": "agent-reviewer-fable",
+      "agent_id": "agent-reviewer-fable",
+      "role_run_id": "review-role-run-1",
+      "identity_binding": {
+        "provider": "protected-runner",
+        "subject": "agent-reviewer-fable",
+        "verified": true
+      },
       "model_profile": "reviewer_fable",
       "reasoning_level": "high",
       "state": "APPROVED",

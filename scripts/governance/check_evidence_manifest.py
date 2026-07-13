@@ -379,10 +379,20 @@ def _check_state_transitions(manifest: Dict[str, Any], errors: List[str]) -> Non
     sm = _load_state_machine()
     state_ids = set(sm.get("states", {}))
     transition_specs = sm.get("transitions", [])
-    for transition in manifest.get("state_transitions", []):
+    transitions = manifest.get("state_transitions", [])
+    if not transitions:
+        errors.append("state_transitions must record the governed delivery path")
+        return
+
+    previous_target = None
+    previous_time = None
+    observed_edges = set()
+    for transition in transitions:
         source = transition.get("from")
         target = transition.get("to")
         authority = transition.get("authority")
+        if previous_target is not None and source != previous_target:
+            errors.append(f"state_transition path is discontinuous: expected from {previous_target}, got {source}")
         if source not in state_ids:
             errors.append(f"state_transition from unknown state: {source}")
             continue
@@ -398,7 +408,27 @@ def _check_state_transitions(manifest: Dict[str, Any], errors: List[str]) -> Non
             continue
         if not any(authority in spec.get("authorized_roles", []) for spec in matching):
             errors.append(f"state_transition {source}->{target} not authorized for {authority}")
-        _parse_time(transition.get("timestamp", ""), f"state_transition {source}->{target}", errors)
+        timestamp = _parse_time(transition.get("timestamp", ""), f"state_transition {source}->{target}", errors)
+        if timestamp and previous_time and timestamp < previous_time:
+            errors.append(f"state_transition timestamp regressed at {source}->{target}")
+        if timestamp:
+            previous_time = timestamp
+        previous_target = target
+        observed_edges.add((source, target))
+
+    required_edges = {
+        ("AUDITED", "ISSUE_ACCEPTED"),
+        ("ISSUE_ACCEPTED", "PLAN_REQUESTED"),
+        ("PLAN_REQUESTED", "PLAN_READY"),
+        ("PLAN_READY", "IMPLEMENTING"),
+        ("IMPLEMENTING", "CANDIDATE_PINNED"),
+        ("CANDIDATE_PINNED", "QA_RUNNING"),
+        ("QA_RUNNING", "QA_PASSED"),
+        ("QA_PASSED", "INDEPENDENT_REVIEW_PENDING"),
+        ("INDEPENDENT_REVIEW_PENDING", "READY_TO_MERGE"),
+    }
+    for source, target in sorted(required_edges - observed_edges):
+        errors.append(f"required state_transition missing: {source}->{target}")
 
 
 def _check_publication(manifest: Dict[str, Any], errors: List[str]) -> None:

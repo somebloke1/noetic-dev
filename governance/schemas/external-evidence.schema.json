@@ -43,9 +43,21 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["reviewer", "commit_sha", "submitted_at", "state", "model_profile", "reasoning_level"],
+        "required": ["reviewer", "agent_id", "role_run_id", "identity_binding", "commit_sha", "submitted_at", "state", "model_profile", "reasoning_level"],
         "properties": {
           "reviewer": {"type": "string", "minLength": 1},
+          "agent_id": {"type": "string", "minLength": 1},
+          "role_run_id": {"type": "string", "minLength": 1},
+          "identity_binding": {
+            "type": "object",
+            "required": ["provider", "subject", "verified"],
+            "properties": {
+              "provider": {"type": "string", "const": "protected-runner"},
+              "subject": {"type": "string", "minLength": 1},
+              "verified": {"type": "boolean", "const": true}
+            },
+            "additionalProperties": false
+          },
           "commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
           "submitted_at": {"type": "string", "minLength": 1},
           "state": {"type": "string", "const": "APPROVED"},

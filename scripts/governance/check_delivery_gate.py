@@ -824,7 +824,9 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
     repo = manifest.get("repo", {})
     records = pass_records_by_id(manifest)
     implementation_agents = {record.get("agent_id") for record in records.values() if record.get("agent_id")}
+    implementation_role_runs = {record.get("role_run_id") for record in records.values() if record.get("role_run_id")}
     qa_agents = {record.get("agent_id") for record in normalize_qa_records(manifest) if record.get("agent_id")}
+    qa_role_runs = {record.get("role_run_id") for record in normalize_qa_records(manifest) if record.get("role_run_id")}
     candidate_sha = repo.get("candidate_sha")
     candidate_pinned_at = _parse_time(repo.get("candidate_pinned_at", ""))
     if not candidate_pinned_at:
@@ -837,12 +839,24 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
     valid = False
     for approval in approvals:
         reviewer = approval.get("reviewer", "") or approval.get("user", "")
+        agent_id = approval.get("agent_id", "")
+        role_run_id = approval.get("role_run_id", "")
+        identity_binding = approval.get("identity_binding", {})
         model_profile_id = approval.get("model_profile", "")
         model_profile = _profile_for(model_profile_id)
         reasoning_level = approval.get("reasoning_level", "")
         approval_time = _parse_time(approval.get("submitted_at", "") or approval.get("timestamp", ""))
         if not reviewer:
             errors.append("approval missing reviewer")
+            continue
+        if not agent_id or reviewer != agent_id:
+            errors.append(f"approval reviewer identity is not bound to protected agent_id: {reviewer}")
+            continue
+        if not role_run_id:
+            errors.append(f"approval by {reviewer} missing reviewer role_run_id")
+            continue
+        if identity_binding.get("provider") != "protected-runner" or identity_binding.get("verified") is not True or identity_binding.get("subject") != agent_id:
+            errors.append(f"approval by {reviewer} lacks verified protected-runner identity binding")
             continue
         if approval.get("commit_sha") != candidate_sha:
             errors.append(f"approval by {reviewer} is stale or for wrong SHA")
@@ -864,6 +878,12 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
             continue
         if reviewer in qa_agents:
             errors.append(f"approval by QA identity is not independent: {reviewer}")
+            continue
+        if role_run_id in implementation_role_runs:
+            errors.append(f"approval by {reviewer} reused implementation role_run_id")
+            continue
+        if role_run_id in qa_role_runs:
+            errors.append(f"approval by {reviewer} reused QA role_run_id")
             continue
         if model_profile_id not in {"reviewer_fable", "reviewer_sol"} or not model_profile or not model_profile.get("verified"):
             errors.append(f"approval by {reviewer} did not use an authorized independent reviewer profile")
@@ -939,6 +959,9 @@ def check_delivery(
     additionally requires protected post-merge evidence bound to the main SHA.
     """
     merge_errors: List[str] = []
+    from check_evidence_manifest import check as validate_manifest  # noqa: WPS433
+
+    merge_errors.extend(validate_manifest(manifest, manifest_path or "<manifest>"))
 
     # Publication SHA format is safety-critical; surface it even when merge is also blocked.
     publication_sha = manifest.get("publication", {}).get("publication_sha", "")
