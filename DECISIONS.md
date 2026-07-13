@@ -111,7 +111,7 @@ NEW BUILD IMPLICATION: add a structured cognitional-event schema (the observabil
 ## dec-20260711-0005: Consolidate model ACCESS to LiteLLM; keep model SELECTION in genus-router with endpoint pluralism preserved
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
 - Updated: 2026-07-11
@@ -225,3 +225,19 @@ Prompted by user correction (2026-07-11): 'the APM was not just an optional side
 
 Final user decision, 2026-07-11, superseding the brief provisional `abide` name before any remote was created. The composed system/product is named `noetic-dev`. The GitHub remote repository must be `somebloke1/noetic-dev`. The existing local composition-root directory remains `/home/dgk/workspace/synthesis` to preserve session and filesystem continuity; directory name and product/repository name need not match. GitHub Project should also be titled `noetic-dev`.
 <!-- governance-crud:end id=dec-20260711-0009 -->
+
+<!-- governance-crud:start id=dec-20260713-0010 -->
+## dec-20260713-0010: Require genus-router selection and LiteLLM-only model access
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-13
+- Updated: 2026-07-13
+- Tags: litellm,genus-router,model-access,model-selection,sol,terra,luna,fable,embedding,asr
+- Confidence: 1.0
+
+User decision: ALL model access goes through LiteLLM, whether invoked directly or through Pi, OpenCode, a broker, or another harness. Every generative/coding/reasoning task SHALL be selected by genus-router according to honestly classified work sophistication. The active generative set is Sol, Terra, Luna, and limited high-value Claude Fable 5, with capability order `Sol | Fable > Terra > Luna`. Fable is restricted to explicitly governed high-value independent review, critical research, or systemic design judgment. Snowflake Arctic remains the embedding model and Qwen3-ASR the ASR model; both also go through LiteLLM.
+
+This supersedes dec-20260711-0005's endpoint-pluralism escape hatch, direct llama.cpp/Ollama caller access, and any hardcoded/direct provider profile. genus-router selects; LiteLLM is the universal access boundary; harnesses only enact routed decisions. The mandatory lifecycle is `classify -> route_task -> invoke through LiteLLM -> report_outcome`, with failure rerouting through `prior_failure` and exclusions. Canonical contract: `docs/model-routing-policy.md`.
+<!-- governance-crud:end id=dec-20260713-0010 -->

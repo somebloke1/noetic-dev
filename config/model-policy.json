@@ -1,0 +1,64 @@
+{
+  "schema_version": "1",
+  "selection": {
+    "router": "genus-router",
+    "mandatory_for_generative_tasks": true,
+    "selection_varies_with_sophistication": true,
+    "lifecycle": ["classify", "route_task", "invoke", "report_outcome"]
+  },
+  "access": {
+    "endpoint_id": "local-litellm",
+    "base_url": "http://172.22.10.160:3333",
+    "token_env": "LITELLM_API_KEY",
+    "systemd_credential": "litellm_api_key",
+    "allowed_endpoint_paths": ["/v1/responses", "/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"],
+    "litellm_required": true,
+    "applies_to_harnesses": ["pi", "opencode", "broker", "bare"],
+    "direct_provider_access": false
+  },
+  "generative": {
+    "standard_models": [
+      "codex/gpt-5.6-sol",
+      "codex/gpt-5.6-terra",
+      "codex/gpt-5.6-luna"
+    ],
+    "allowed_endpoint_paths": ["/v1/responses", "/v1/chat/completions"],
+    "reasoning_effort": "high",
+    "allowed_models": [
+      "codex/gpt-5.6-sol",
+      "claude-fable-5",
+      "codex/gpt-5.6-terra",
+      "codex/gpt-5.6-luna"
+    ],
+    "capability_tiers": [
+      ["codex/gpt-5.6-sol", "claude-fable-5"],
+      ["codex/gpt-5.6-terra"],
+      ["codex/gpt-5.6-luna"]
+    ],
+    "fable_eligibility": {
+      "limited": true,
+      "task_kinds": ["review", "research", "design"],
+      "minimum_complexity": "complex",
+      "purpose": "high-value independent judgment and model-family diversity"
+    }
+  },
+  "modalities": {
+    "embed": "snowflake-arctic-embed2",
+    "asr": "qwen3-asr"
+  },
+  "failure": {
+    "report_outcome_required": true,
+    "reroute_with_prior_failure": true,
+    "exclude_failed_models": true,
+    "manual_model_escalation": false
+  },
+  "tasks": {
+    "agent_review": {
+      "task_kind": "review",
+      "complexity": "complex",
+      "blast_radius": "interface",
+      "high_value": false,
+      "awaited": true
+    }
+  }
+}

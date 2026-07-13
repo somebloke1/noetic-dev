@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+ROOT = Path(__file__).resolve().parents[2]
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
@@ -18,13 +19,16 @@ if GOV_SCRIPTS not in sys.path:
 from run_isolated_pi import (
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
+    ROUTED_PI_MIGRATION_REQUIRED,
     _candidate_git_metadata_ro_mounts,
     _credential_interface,
     _non_evidence_record,
     _write_tools_observed,
     build_bwrap_command,
+    dispatch_pi,
     materialize_candidate_checkout,
     resolve_scoped_credentials,
+    run_ready_probe,
     validate_candidate_checkout,
     validate_model,
     validate_tools,
@@ -32,6 +36,42 @@ from run_isolated_pi import (
 
 
 class TestRunIsolatedPiPolicy(unittest.TestCase):
+    def test_every_pi_invocation_uses_high_thinking(self):
+        source = (ROOT / "scripts" / "governance" / "run_isolated_pi.py").read_text()
+        self.assertNotIn('"--thinking", "low"', source)
+        self.assertEqual(source.count('"--thinking", "high"'), 2)
+
+    def test_legacy_pi_model_execution_fails_closed_before_invocation(self):
+        with self.assertRaisesRegex(RuntimeError, "genus-router decision"):
+            run_ready_probe(
+                model_id="openai-codex/gpt-5.6-terra",
+                profile_key="qa_primary",
+                run_id="run-1",
+                role_run_id="qa-1",
+                candidate_dir=None,
+                tools=[],
+                candidate_sha="d" * 40,
+                base_sha="c" * 40,
+                candidate_tree_oid="e" * 40,
+                timeout=1,
+            )
+        with self.assertRaisesRegex(RuntimeError, "canonical LiteLLM invocation"):
+            dispatch_pi(
+                role="qa",
+                model_id="openai-codex/gpt-5.6-terra",
+                profile_key="qa_primary",
+                run_id="run-1",
+                role_run_id="qa-1",
+                tools=[],
+                prompt_file=Path("unused"),
+                candidate_dir=None,
+                qa_for_pass_id="impl-1",
+                candidate_sha="d" * 40,
+                base_sha="c" * 40,
+                timeout=1,
+            )
+        self.assertIn("disabled", ROUTED_PI_MIGRATION_REQUIRED)
+
     def test_qa_tool_allowlist_is_empty_until_credential_broker_exists(self):
         self.assertEqual(QA_TOOL_ALLOWLIST, set())
         ok, message, _tools = validate_tools("qa", "")
@@ -65,16 +105,21 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         self.assertEqual(creds, {})
         self.assertIn("not an allowed provider credential", message)
         with mock.patch.dict("run_isolated_pi.os.environ", {}, clear=True):
-            ok, message, creds = resolve_scoped_credentials(["OPENAI_API_KEY"])
+            ok, message, creds = resolve_scoped_credentials(["LITELLM_API_KEY"])
         self.assertFalse(ok)
         self.assertEqual(creds, {})
         self.assertIn("unavailable", message)
+        with mock.patch.dict("run_isolated_pi.os.environ", {"OPENAI_API_KEY": "secret"}, clear=True):
+            ok, message, creds = resolve_scoped_credentials(["OPENAI_API_KEY"])
+        self.assertFalse(ok)
+        self.assertEqual(creds, {})
+        self.assertIn("not an allowed provider credential", message)
 
     def test_scoped_env_credentials_are_not_claimed_hidden_from_tools(self):
-        interface = _credential_interface({"OPENAI_API_KEY": "secret"}, ["bash"], "validator")
+        interface = _credential_interface({"LITELLM_API_KEY": "secret"}, ["bash"], "validator")
         self.assertFalse(interface["brokered"])
         self.assertTrue(interface["available_to_tools"])
-        qa_interface = _credential_interface({"OPENAI_API_KEY": "secret"}, [], "qa")
+        qa_interface = _credential_interface({"LITELLM_API_KEY": "secret"}, [], "qa")
         self.assertTrue(qa_interface["tools_disabled_for_authoritative_qa"])
         self.assertFalse(qa_interface["available_to_tools"])
 

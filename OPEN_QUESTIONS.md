@@ -35,3 +35,18 @@ SUPERSEDES the earlier binary 'any MCP client vs Pi-only' framing.
 
 The composition root is being initialized as a private repository with all rights reserved until the owner selects a license. Resolve before any public release or external redistribution. Candidate evaluation should consider whether independently versioned components may use different licenses and whether the composition/specification layer should favor Apache-2.0, MIT, or another license.
 <!-- governance-crud:end id=oq-20260711-0002 -->
+
+<!-- governance-crud:start id=oq-20260713-0003 -->
+## oq-20260713-0003: How will Qwen3-ASR be exposed through LiteLLM?
+
+- Ledger: open-questions
+- Status: open
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-model-routing-policy
+- Created: 2026-07-13
+- Updated: 2026-07-13
+- Tags: litellm,qwen3-asr,asr,readiness,blocker
+- Source: Authenticated LiteLLM /v1/models probe and genus-router ASR selection probe, 2026-07-13
+- Confidence: 0.99
+
+The clause-v7 policy requires Qwen3-ASR through LiteLLM, but the authenticated local LiteLLM `/v1/models` response on 2026-07-13 did not contain `qwen3-asr`; it contained `qwen3.6-a3b`, which is a different generative model and must not be substituted. Determine the actual ASR deployment, canonical LiteLLM model ID, audio-transcriptions compatibility, and readiness probe. Until then, genus-router correctly fails the ASR route closed as unavailable and noetic-dev must not claim ASR readiness.
+<!-- governance-crud:end id=oq-20260713-0003 -->

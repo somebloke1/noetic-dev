@@ -45,12 +45,20 @@ ROLE_PROFILE_IDS = {
     "orchestrator": {"orchestrator"},
 }
 WRITE_CAPABLE_TOOLS = {"bash", "edit", "write"}
-PROVIDER_CREDENTIAL_ENV_NAMES = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY", "LITELLM_API_KEY"}
+PROVIDER_CREDENTIAL_ENV_NAMES = {"LITELLM_API_KEY"}
 CREDENTIAL_ENV_NAMES = {
     "GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "GIT_ASKPASS", "SSH_ASKPASS",
     *PROVIDER_CREDENTIAL_ENV_NAMES,
 }
 ENV_ALLOWLIST = ["HOME", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK"]
+ROUTED_PI_MIGRATION_REQUIRED = (
+    "Pi model execution is disabled until its protected evidence contract binds a "
+    "genus-router decision and canonical LiteLLM invocation"
+)
+
+
+def _require_routed_pi_adapter() -> None:
+    raise RuntimeError(ROUTED_PI_MIGRATION_REQUIRED)
 
 
 def _now() -> str:
@@ -609,6 +617,7 @@ def run_ready_probe(
     timeout: int,
     scoped_credentials: Optional[Dict[str, str]] = None,
 ) -> Tuple[bool, Dict[str, Any], str]:
+    _require_routed_pi_adapter()
     nonce = uuid.uuid4().hex[:16]
     prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
     with tempfile.NamedTemporaryFile("w", suffix=".md", prefix="pi-probe-", delete=False) as handle:
@@ -626,7 +635,7 @@ def run_ready_probe(
         "--no-approve",
         "--name", f"probe-{role_run_id}",
         "--model", model_id,
-        "--thinking", "low",
+        "--thinking", "high",
     ]
     if tools:
         inner_argv.extend(["--tools", ",".join(tools)])
@@ -733,6 +742,7 @@ def dispatch_pi(
     timeout: int,
     scoped_credentials: Optional[Dict[str, str]] = None,
 ) -> Tuple[int, Dict[str, Any], str, str]:
+    _require_routed_pi_adapter()
     candidate_tree_before = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
     inner_argv = [
         str(_pi_binary()),
@@ -746,7 +756,7 @@ def dispatch_pi(
         "--no-approve",
         "--name", f"{role}-{role_run_id}",
         "--model", model_id,
-        "--thinking", "low",
+        "--thinking", "high",
     ]
     if tools:
         inner_argv.extend(["--tools", ",".join(tools)])
@@ -926,6 +936,10 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--output-dir", type=Path, default=Path(".governance/runs"))
     args = parser.parse_args()
+
+    if not args.record_only:
+        print(ROUTED_PI_MIGRATION_REQUIRED, file=sys.stderr)
+        return 2
 
     valid, profile_key_or_error = validate_model(args.model, args.role)
     if not valid:

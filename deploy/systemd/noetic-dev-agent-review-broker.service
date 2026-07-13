@@ -1,5 +1,5 @@
 [Unit]
-Description=noetic-dev bounded Terra review broker
+Description=noetic-dev bounded routed review broker
 After=network-online.target
 Wants=network-online.target
 
@@ -11,6 +11,9 @@ WorkingDirectory=/opt/noetic-dev-agent-review/current
 ExecStart=/usr/bin/python3 /opt/noetic-dev-agent-review/current/scripts/governance/agent_review_broker.py --socket /run/noetic-dev/agent-review.sock --socket-group noetic-agent-review
 Environment=HOME=/var/lib/noetic-agent-review
 Environment=PATH=/opt/noetic-dev-agent-review/runtime/bin:/usr/local/bin:/usr/bin:/bin
+Environment=GENUS_ROUTER_CONFIG=/etc/noetic-dev/genus-router/router.yaml
+Environment=NOETIC_MODEL_POLICY=/opt/noetic-dev-agent-review/current/config/model-policy.json
+LoadCredential=litellm_api_key:/var/lib/noetic-agent-review/credentials/litellm-api-key
 RuntimeDirectory=noetic-dev
 RuntimeDirectoryMode=0750
 UMask=0007

@@ -19,7 +19,7 @@ GATING DECISIONS (from user):
 
 FORWARD BUILD WORK (unlocks once decided; ordered per SYNTHESIS.md migration path):
 - Build the delegation dispatcher in telos: the enactment seam turning a 'delegated-pending' sub-goal into a dispatched unit of work against an MCP organ. Telos already has delegations/delegation_events schema + guard; the dispatcher is the single genuinely-new component (k-20260711-0004). This is also the user's stated 'make telos multi-agent' intent.
-- Wire genus-router as the single model-selection MCP for telos-driven work; register the 2x3090 endpoints.
+- Enforce genus-router as the mandatory selector for every generative/coding task and LiteLLM as the universal access boundary; migrate Pi, OpenCode, brokers, and local 2x3090 modalities without direct-access exceptions.
 - Harvest organ #1 (disciplines): extract phronesis/EP-audit/differentiated-cognition contracts from noetic-pi packages/apm into one MCP 'cognitive disciplines' service (feasible across the clean IPC boundary, k-20260711-0003).
 - Harvest organ #2 (pipeline): re-express design_intentions->design->implementation_procedure->implementation w/ QA/remediation as a portable capability.
 - saeproj SMC training stays a parallel research track improving substrate models; does not gate the framework.

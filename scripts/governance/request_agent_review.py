@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Request one review from the local noetic-dev Terra broker."""
+"""Request one review from the local noetic-dev routed broker."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def request(socket_path: Path, payload: dict[str, object]) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Request immutable Terra PR review")
+    parser = argparse.ArgumentParser(description="Request immutable routed PR review")
     parser.add_argument("--repository", required=True)
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--head-sha", required=True)

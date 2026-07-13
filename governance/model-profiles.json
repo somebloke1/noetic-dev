@@ -1,7 +1,8 @@
 {
   "$schema": "./schemas/model-profiles.schema.json",
   "schema_version": "1",
-  "description": "Verified model profiles for noetic-dev governance roles. Each entry must be verified callable and requires a fresh READY probe per run.",
+  "description": "Legacy static profiles retained only for schema-v1 evidence compatibility. They are not runtime model selectors; new invocation is disabled until route evidence migration is complete.",
+  "runtime_selection": "forbidden",
   "profiles": {
     "orchestrator": {
       "designation": "Orchestrator",

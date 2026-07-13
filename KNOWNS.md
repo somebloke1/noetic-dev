@@ -166,3 +166,33 @@ These are ATTACH/VISIBILITY mechanisms, separable from the durable observability
 
 Verified 2026-07-11 from noetic-pi/packages/shared/src/apm-protocol/implementation.ts + packages/apm/src/implement.ts + implementer/*.ts:\n\nORDERING PRIMITIVES (how multi-agent orchestration is ordered):\n- WORK UNITS (WU) grouped into numbered WAVES (wave_number). Waves are SEQUENCED: a wave runs -> QA -> commit boundary (commit_hash per wave) -> advance to next wave. Wave N completes+commits before N+1.\n- TYPED DEPENDENCY ROLES per WU express ordering legality (not free-form): launch_required (branch-materialized inputs that gate launch), governing_context_refs (authority/contextual references), future_dependencies (produced by later execution - must NOT be required at launch), contextual_refs. Runtime tracks counts of each. This is the DAG/ordering contract; noetic-pi's 'dependency-ontology seam' + 'planner-procedure-total-compliance' campaigns were precisely hardening these so launch/continuity legality holds.\n- QA GATE per wave with remediation cycling (qa_pass, remediation_pass, qaIterations 0-3) and escalation on exhaustion.\n- ORDINAL delegation-tree identity places agents structurally.\n\nDETERMINISTIC / NON-DETERMINISTIC SPLIT (the crux the user flagged): APM does the DETERMINISTIC part - wave sequencing, dependency-role legality checks, spawn/retire, QA gating, commit boundaries (selective staging from WU outputs[]), model selection. AGENTS do the NON-DETERMINISTIC part - implementation, evaluation, escalation (the P1-P4 cognitive work). This matches cognitive-disciplines' own principle: keep deterministic harness mechanics separate from language-model cognitive judgment.\n\nCHARACTERIZATION: ordering is 'sequenced waves + typed dependency-role legality', not an arbitrary DAG scheduler. It is a deterministic executive STATE MACHINE. The user's correction is verified: APM is not an optional sidekick to the disciplines/pipeline tools - the disciplines and the design->implementation pipeline RUN ON it; it is the executive control plane.
 <!-- governance-crud:end id=k-20260711-0007 -->
+
+<!-- governance-crud:start id=k-20260713-0008 -->
+## k-20260713-0008: Genus-router policy implementation and live modality readiness
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-model-routing-policy
+- Created: 2026-07-13
+- Updated: 2026-07-13
+- Tags: genus-router,litellm,model-policy,qa,asr,readiness
+- Source: genus-router a2d06bb; make check; MCP smoke; QA decision d-20260713-000003; authenticated /v1/models probe
+- Confidence: 0.98
+
+Verified 2026-07-13 against genus-router commit a2d06bb, command output, exact config, and one independent routed Fable QA pass. The commit restricts the active registry to Sol, Fable, Terra, Luna, Snowflake Arctic Embed2, and Qwen3-ASR behind sole endpoint local-litellm; `make check` passed 46 tests plus Ruff, mypy, and config validation; MCP smoke succeeded against the live LiteLLM endpoint. QA decision d-20260713-000003 found no core routing or endpoint-boundary code defect and identified one low-severity config defense gap, now pending repair. A fresh authenticated `/v1/models` probe listed Sol, Fable, Terra, Luna, and Snowflake but did not list qwen3-asr. The ASR route therefore fails closed with `NoCandidatesError` under verified availability; this is a deployment-readiness blocker, not silent fallback.
+<!-- governance-crud:end id=k-20260713-0008 -->
+
+<!-- governance-crud:start id=k-20260713-0009 -->
+## k-20260713-0009: Goalchain semantic curator still bypasses LiteLLM
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-model-routing-policy
+- Created: 2026-07-13
+- Updated: 2026-07-13
+- Tags: goalchain,opencode,embedding,ollama,litellm,migration,violation
+- Source: compact_goal_chain chain-49 output and resolved ~/.config/opencode/opencode.json, 2026-07-13
+- Confidence: 1.0
+
+Verified during `compact_goal_chain` on 2026-07-13 and against the resolved OpenCode configuration: the active goalchain curator is enabled with provider `ollama`, host `http://127.0.0.1:11434`, and model `snowflake-arctic-embed2:latest`. The compaction result explicitly reported `Curator: ollama/snowflake-arctic-embed2:latest`. This is a live clause-v7 violation: embedding modality is correct, but access bypasses LiteLLM. Semantic goalchain compaction/ranking must not be invoked again until the curator adapter is migrated to LiteLLM; the noetic-dev harness scope must explicitly include goalchain curation.
+<!-- governance-crud:end id=k-20260713-0009 -->

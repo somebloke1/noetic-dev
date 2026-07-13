@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Narrow local broker for immutable, read-only Terra PR review."""
+"""Narrow local broker for immutable, read-only routed PR review."""
 
 from __future__ import annotations
 
@@ -22,10 +22,10 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
+from model_routing import ModelRoutingError, route_and_invoke_review
+
 ALLOWED_REPOSITORY = "somebloke1/noetic-dev"
 ALLOWED_AUTHORS = {"somebloke1"}
-MODEL = "openai-codex/gpt-5.6-terra"
-REASONING = "high"
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 MAX_REQUEST_BYTES = 16_384
 MAX_PATCH_BYTES = 200_000
@@ -186,12 +186,20 @@ def validate_pr(pr: Any, payload: dict[str, Any]) -> None:
 
 
 def gh_json(*args: str) -> Any:
+    env = {
+        "HOME": os.environ.get("HOME", "/dev/null"),
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "GH_PROMPT_DISABLED": "1",
+    }
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if os.environ.get(name):
+            env[name] = os.environ[name]
     returncode, stdout, stderr = run_bounded(
         ["gh", "api", *args],
         max_stdout=MAX_GITHUB_OUTPUT_BYTES,
         max_stderr=MAX_MODEL_OUTPUT_BYTES,
         timeout=60,
-        env=os.environ.copy(),
+        env=env,
     )
     if returncode != 0:
         detail = stderr.decode("utf-8", errors="replace").strip()[:500]
@@ -364,49 +372,29 @@ def _safe_file(value: Any) -> bool:
     return ".." not in Path(value).parts
 
 
-def run_terra(prompt: str) -> dict[str, Any]:
-    env = {
-        "HOME": os.environ.get("HOME", str(Path.home())),
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "PI_TELEMETRY": "0",
-        "PI_SKIP_VERSION_CHECK": "1",
-    }
-    command = [
-        "pi", "--print", "--no-session", "--no-tools", "--no-context-files", "--no-extensions", "--no-skills",
-        "--no-prompt-templates", "--no-themes", "--provider", "openai-codex", "--model", "gpt-5.6-terra",
-        "--thinking", REASONING,
-    ]
-    returncode, stdout, stderr = run_bounded(
-        command,
-        max_stdout=MAX_MODEL_OUTPUT_BYTES,
-        max_stderr=MAX_MODEL_OUTPUT_BYTES,
-        timeout=900,
-        env=env,
-        input_text=prompt,
-    )
-    if returncode != 0:
-        detail = stderr.decode("utf-8", errors="replace").strip()[:500]
-        raise ReviewError(f"Terra invocation failed with exit {returncode}: {detail}")
-    try:
-        output = stdout.decode("utf-8", errors="strict")
-    except UnicodeDecodeError as error:
-        raise ReviewError("Terra returned non-UTF-8 output") from error
-    return parse_review_output(output)
-
-
 def review(payload: Any) -> dict[str, Any]:
     request = validate_request(payload)
     pr, material = fetch_review_material(request)
     prompt = build_prompt(pr, material, request)
-    result = run_terra(prompt)
+    try:
+        result, route = route_and_invoke_review(prompt, parse_review_output)
+    except ModelRoutingError as error:
+        raise ReviewError(str(error)) from error
     return {
         "schema_version": "1",
         "repository": request["repository"],
         "pr_number": request["pr_number"],
         "head_sha": request["head_sha"],
         "base_sha": request["base_sha"],
-        "model": MODEL,
-        "reasoning": REASONING,
+        "model": route["model"],
+        "reasoning": route["reasoning"],
+        "route_decision_id": route["decision_id"],
+        "route_attempts": route["attempts"],
+        "route_genus_code": route["genus_code"],
+        "route_sophistication": route["sophistication"],
+        "route_availability": route["availability"],
+        "route_endpoint_id": route["endpoint_id"],
+        "route_endpoint_path": route["endpoint_path"],
         "reviewed_diff_sha256": material["diff_sha256"],
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         **result,
@@ -466,6 +454,7 @@ def validate_runtime() -> None:
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            env={"PATH": os.environ.get("PATH", "/usr/bin:/bin")},
             timeout=10,
             check=False,
         )
@@ -495,7 +484,7 @@ def serve(socket_path: Path, socket_group: str | None = None) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Serve bounded local Terra PR review")
+    parser = argparse.ArgumentParser(description="Serve bounded local routed PR review")
     parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/noetic-dev/agent-review.sock"))
     parser.add_argument("--socket-group")
     args = parser.parse_args()

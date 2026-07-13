@@ -74,7 +74,7 @@ A synthesis recommendation is acceptable only if it:
 ## 7. Results (current)
 
 - The system is named **noetic-dev**; this repository is its thin composition root.
-- `SYNTHESIS.md` — validated architecture: P1–P4 form; Telos teleological governance; a superior re-instantiation of APM lessons as deterministic executive governance; cognitive programs; event-driven observability/control; genus-router over LiteLLM/direct local inference.
+- `SYNTHESIS.md` — validated architecture: P1–P4 form; Telos teleological governance; a superior re-instantiation of APM lessons as deterministic executive governance; cognitive programs; event-driven observability/control; mandatory genus-router selection with LiteLLM-only model access.
 - `docs/cognitive-backbone.md` — canonical P1–P4 notation reference.
 - `docs/development-practices.md` — git, worktree, issue, PR, CI, QA, and merge discipline.
 - `KNOWNS.md`, `DECISIONS.md`, `OPEN_QUESTIONS.md` — verified evidence, adjudicated judgments, and live uncertainty.

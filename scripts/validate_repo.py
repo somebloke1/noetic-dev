@@ -20,6 +20,8 @@ REQUIRED = [
     "SECURITY.md",
     "docs/cognitive-backbone.md",
     "docs/development-practices.md",
+    "docs/model-routing-policy.md",
+    "config/model-policy.json",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
@@ -45,6 +47,7 @@ REQUIRED = [
     "scripts/governance/run_isolated_pi.py",
     "scripts/governance/agent_review_broker.py",
     "scripts/governance/request_agent_review.py",
+    "scripts/governance/model_routing.py",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",
@@ -54,6 +57,8 @@ REQUIRED = [
     "tests/governance/test_workflow_pinning.py",
     "tests/governance/test_run_isolated_pi.py",
     "tests/governance/test_agent_review.py",
+    "tests/governance/test_model_routing.py",
+    "tests/governance/test_model_policy.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

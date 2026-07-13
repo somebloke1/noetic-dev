@@ -31,6 +31,10 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("/run/noetic-dev/agent-review.sock", unit)
         self.assertIn("HOME=/var/lib/noetic-agent-review", unit)
         self.assertIn("ProtectHome=true", unit)
+        self.assertIn("GENUS_ROUTER_CONFIG=/etc/noetic-dev/genus-router/router.yaml", unit)
+        self.assertIn("NOETIC_MODEL_POLICY=/opt/noetic-dev-agent-review/current/config/model-policy.json", unit)
+        self.assertIn("LoadCredential=litellm_api_key:", unit)
+        self.assertNotIn("OPENAI_API_KEY", unit)
         self.assertNotIn("/home/dgk", unit)
 
     def test_runner_cannot_reach_broker_credentials(self):

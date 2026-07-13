@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
 
 
 class TestAgentReview(unittest.TestCase):
@@ -127,6 +127,19 @@ class TestAgentReview(unittest.TestCase):
         with self.assertRaisesRegex(ReviewError, "required executable is unavailable"):
             validate_runtime()
 
+    @mock.patch("agent_review_broker.run_bounded")
+    def test_github_subprocess_does_not_receive_litellm_credential(self, bounded: mock.Mock):
+        bounded.return_value = (0, b'{"ok":true}', b"")
+        with mock.patch.dict(
+            os.environ,
+            {"LITELLM_API_KEY": "model-secret", "GH_TOKEN": "github-secret"},
+            clear=False,
+        ):
+            self.assertEqual(gh_json("repos/example/repo"), {"ok": True})
+        child_env = bounded.call_args.kwargs["env"]
+        self.assertNotIn("LITELLM_API_KEY", child_env)
+        self.assertEqual(child_env["GH_TOKEN"], "github-secret")
+
     @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_subprocess_namespace_kills_inheriting_descendants_after_leader_exits(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -170,16 +183,6 @@ class TestAgentReview(unittest.TestCase):
             self.assertEqual(returncode, 0)
             threading.Event().wait(0.8)
             self.assertFalse(marker.exists())
-
-    @mock.patch("agent_review_broker.run_bounded")
-    def test_terra_receives_large_prompt_on_stdin(self, bounded: mock.Mock):
-        bounded.return_value = (0, b'{"verdict":"pass","summary":"Reviewed.","findings":[]}', b"")
-        prompt = "x" * 200_000
-        result = run_terra(prompt)
-        command = bounded.call_args.args[0]
-        self.assertNotIn(prompt, command)
-        self.assertEqual(bounded.call_args.kwargs["input_text"], prompt)
-        self.assertEqual(result["verdict"], "pass")
 
     def test_http_rejects_body_shorter_than_content_length(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -251,19 +254,38 @@ class TestAgentReview(unittest.TestCase):
         with self.assertRaises(ReviewError):
             validate_pr(missing_body, self.REQUEST)
 
-    @mock.patch("agent_review_broker.run_terra")
+    @mock.patch("agent_review_broker.route_and_invoke_review")
     @mock.patch("agent_review_broker.fetch_review_material")
-    def test_review_binds_model_and_snapshot(self, fetch: mock.Mock, terra: mock.Mock):
+    def test_review_binds_route_and_snapshot(self, fetch: mock.Mock, routed: mock.Mock):
         fetch.return_value = (
             {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
             {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
         )
-        terra.return_value = {"verdict": "pass", "summary": "Reviewed.", "findings": []}
+        routed.return_value = (
+            {"verdict": "pass", "summary": "Reviewed.", "findings": []},
+            {
+                "model": "codex/gpt-5.6-terra",
+                "reasoning": "high",
+                "decision_id": "d-20260713-000001",
+                "attempts": [{
+                    "decision_id": "d-20260713-000001",
+                    "model": "codex/gpt-5.6-terra",
+                    "outcome": "success",
+                }],
+                "genus_code": "REVIEW-COMPLEX",
+                "sophistication": "complex",
+                "availability": "verified",
+                "endpoint_id": "local-litellm",
+                "endpoint_path": "/v1/responses",
+            },
+        )
         result = review(self.REQUEST)
         self.assertEqual(result["head_sha"], "a" * 40)
         self.assertEqual(result["base_sha"], "b" * 40)
-        self.assertEqual(result["model"], "openai-codex/gpt-5.6-terra")
+        self.assertEqual(result["model"], "codex/gpt-5.6-terra")
         self.assertEqual(result["reasoning"], "high")
+        self.assertEqual(result["route_decision_id"], "d-20260713-000001")
+        self.assertEqual(result["route_endpoint_id"], "local-litellm")
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
 

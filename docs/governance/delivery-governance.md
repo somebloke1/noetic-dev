@@ -127,7 +127,7 @@ Before authoritative conditions exist:
 
 ## Model profiles
 
-Model profiles are defined in `governance/model-profiles.json`. Each role maps to a verified model. Models not in the profile or in the disallowed list are rejected.
+Schema-v1 evidence profiles are defined in `governance/model-profiles.json`. They preserve validation of historical protected records but do not select or authorize new runtime model calls. The legacy Pi dispatcher fails model execution closed until route decisions and LiteLLM outcomes are bound into protected evidence; the routed local review broker follows `config/model-policy.json` instead.
 
 ## Development-system reconciliation wave
 

@@ -11,7 +11,8 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 3. **Executive governance:** a superior portable re-instantiation of the noetic-pi/pi2 APM lessons orders deterministic multi-agent work.
 4. **Cognitive programs:** disciplines and development pipelines run on the executive controller while semantic judgment remains with agents.
 5. **Observability/control:** structured cognitional events feed web and TUI renderers; tmux and browser PTYs are optional attach mechanisms.
-6. **Model substrate:** genus-router selects models; LiteLLM normalizes primary access; direct local endpoints remain possible.
+6. **Model substrate:** genus-router mandatorily selects models by work sophistication; every invocation, including Pi/OpenCode and local modalities, goes through LiteLLM.
+7. **Governance review adapter:** the broker validates a genus-router decision, enacts high reasoning through LiteLLM, records every outcome, and reroutes without direct provider credentials.
 
 ## Start here
 
@@ -19,6 +20,7 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 - [`docs/cognitive-backbone.md`](docs/cognitive-backbone.md) — canonical P1–P4 form
 - [`AGENTS.md`](AGENTS.md) — project governance and invariants
 - [`docs/development-practices.md`](docs/development-practices.md) — git, worktree, issue, PR, CI, and merge discipline
+- [`docs/model-routing-policy.md`](docs/model-routing-policy.md) — mandatory genus-router selection and LiteLLM-only access
 - [`KNOWNS.md`](KNOWNS.md), [`DECISIONS.md`](DECISIONS.md), [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) — durable evidence and judgment
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`SECURITY.md`](SECURITY.md) — contribution and security rules
 
