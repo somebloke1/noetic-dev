@@ -38,7 +38,7 @@ jobs:
           test "$PR_AUTHOR" = "$REPOSITORY_OWNER"
       - name: Request immutable semantic review
         env:
-          NOETIC_AGENT_REVIEW_SOCKET: /run/user/1000/noetic-dev-agent-review.sock
+          NOETIC_AGENT_REVIEW_SOCKET: /run/noetic-dev/agent-review.sock
         run: >-
           python3 policy/scripts/governance/request_agent_review.py
           --repository "${{ github.repository }}"

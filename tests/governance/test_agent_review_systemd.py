@@ -11,6 +11,18 @@ UNITS = ROOT / "deploy" / "systemd"
 
 
 class TestAgentReviewSystemd(unittest.TestCase):
+    def test_production_socket_is_canonical(self):
+        paths = [
+            ROOT / ".github" / "workflows" / "agent-review.yml",
+            ROOT / "scripts" / "governance" / "agent_review_broker.py",
+            ROOT / "scripts" / "governance" / "request_agent_review.py",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                content = path.read_text()
+                self.assertIn("/run/noetic-dev/agent-review.sock", content)
+                self.assertNotIn("/run/user/1000/noetic-dev-agent-review.sock", content)
+
     def test_broker_uses_immutable_release_and_dedicated_identity(self):
         unit = (UNITS / "noetic-dev-agent-review-broker.service").read_text()
         self.assertIn("User=noetic-review-broker", unit)

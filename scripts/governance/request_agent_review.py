@@ -39,7 +39,7 @@ def main() -> int:
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
     parser.add_argument("--base-sha", required=True)
-    parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/user/1000/noetic-dev-agent-review.sock"))
+    parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/noetic-dev/agent-review.sock"))
     parser.add_argument("--output", default="agent-review-result.json")
     args = parser.parse_args()
     result = request(Path(args.socket), {

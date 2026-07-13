@@ -496,7 +496,7 @@ def serve(socket_path: Path, socket_group: str | None = None) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Serve bounded local Terra PR review")
-    parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/user/1000/noetic-dev-agent-review.sock"))
+    parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/noetic-dev/agent-review.sock"))
     parser.add_argument("--socket-group")
     args = parser.parse_args()
     serve(Path(args.socket), args.socket_group)

@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
 
 
 class TestAgentReview(unittest.TestCase):
@@ -92,6 +92,7 @@ class TestAgentReview(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ReviewError):
                 strict_json(value)
 
+    @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_subprocess_output_limit_stops_producer(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "completed"
@@ -126,6 +127,7 @@ class TestAgentReview(unittest.TestCase):
         with self.assertRaisesRegex(ReviewError, "required executable is unavailable"):
             validate_runtime()
 
+    @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_subprocess_namespace_kills_inheriting_descendants_after_leader_exits(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "descendant-survived"
@@ -148,6 +150,7 @@ class TestAgentReview(unittest.TestCase):
             threading.Event().wait(0.8)
             self.assertFalse(marker.exists())
 
+    @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_subprocess_success_cleans_detached_descendants(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "descendant-survived"
