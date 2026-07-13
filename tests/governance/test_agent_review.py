@@ -17,6 +17,7 @@ if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
 from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from request_agent_review import binding
 
 
 class TestAgentReview(unittest.TestCase):
@@ -26,6 +27,22 @@ class TestAgentReview(unittest.TestCase):
         "head_sha": "a" * 40,
         "base_sha": "b" * 40,
     }
+
+    def test_requester_binding_selects_exact_review_provenance(self):
+        result = {
+            **self.REQUEST,
+            "model": "openai-codex/gpt-5.6-terra",
+            "reasoning": "high",
+            "reviewed_diff_sha256": "c" * 64,
+            "prompt_sha256": "d" * 64,
+            "verdict": "pass",
+            "summary": "Reviewed.",
+            "findings": [],
+        }
+        self.assertEqual(set(binding(result)), {
+            "repository", "pr_number", "base_sha", "head_sha", "model", "reasoning",
+            "reviewed_diff_sha256", "prompt_sha256",
+        })
 
     def test_request_is_fail_closed(self):
         self.assertEqual(validate_request(dict(self.REQUEST)), self.REQUEST)

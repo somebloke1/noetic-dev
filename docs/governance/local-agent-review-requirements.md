@@ -42,7 +42,13 @@ Compromise of a trusted host executable, the kernel, GitHub, or the model provid
 
 A candidate passes code-level QA when an independent reviewer attempts to falsify AR-01 through AR-10 against one exact commit and finds no requirement violation. AR-11 and AR-12 are deployment gates and are tested only after code-level QA passes.
 
-Before `agent-review` becomes a required check on a protected branch, one minimal same-repository canary PR must demonstrate the live exact-SHA review path on that branch.
+Before `agent-review` becomes a required check on a protected branch, one minimal same-repository canary PR must demonstrate the live path from that protected branch's policy. Acceptance requires all of the following:
+
+1. The GitHub check named `agent-review` succeeds for the canary's exact head SHA.
+2. The logged broker result binds the repository, PR number, exact base and head SHAs, `openai-codex/gpt-5.6-terra`, high reasoning, reviewed-diff SHA-256, and prompt SHA-256.
+3. An independent Git reconstruction matches the logged reviewed-diff digest.
+4. GitHub API readback confirms the successful check and its workflow run belong to the same exact head SHA.
+5. A durable governance record captures the PR and run URLs, binding fields, independent digest, check conclusion, and subsequent branch-protection readback. Branch protection is changed only after that record exists.
 
 A QA observation is blocking only when it provides a reproducible counterexample to a listed requirement or shows that a listed requirement is insufficient for a threat named above. Adjacent hardening ideas and risks outside the stated trust boundary are recorded as residual risks, not silently promoted to new acceptance requirements. Changing this boundary requires an explicit threat-model or governance decision, followed by a new implementation generation and its paired QA pass.
 

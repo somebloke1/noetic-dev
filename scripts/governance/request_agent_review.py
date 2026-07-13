@@ -33,6 +33,14 @@ def request(socket_path: Path, payload: dict[str, object]) -> dict[str, object]:
     return json.loads(response_body)
 
 
+def binding(result: dict[str, object]) -> dict[str, object]:
+    fields = (
+        "repository", "pr_number", "base_sha", "head_sha", "model", "reasoning",
+        "reviewed_diff_sha256", "prompt_sha256",
+    )
+    return {field: result[field] for field in fields}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Request immutable Terra PR review")
     parser.add_argument("--repository", required=True)
@@ -50,6 +58,7 @@ def main() -> int:
     })
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Agent review: {result['verdict']} ({result['model']}, reasoning={result['reasoning']})")
+    print("Agent review binding: " + json.dumps(binding(result), sort_keys=True, separators=(",", ":")))
     print(result["summary"])
     for finding in result["findings"]:
         location = f"{finding['file']}:{finding['line']}" if finding["line"] else finding["file"]
