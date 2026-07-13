@@ -422,6 +422,58 @@ class TestQaBindingFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("invoked_model_ref does not match", "\n".join(errors))
 
+    def test_inner_execution_isolation_must_match_protected_outer_proof(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        qa["protected_execution_record"]["actual_invocation"]["isolation"]["host_home_mounted"] = True
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        joined = "\n".join(errors)
+        self.assertIn("execution isolation host_home_mounted must be False", joined)
+        self.assertIn("inner/outer isolation mismatch", joined)
+
+    def test_empty_probe_nonce_and_event_hash_are_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        probe = qa["protected_probe_record"]
+        probe["nonce"] = ""
+        probe["expected_response"] = ""
+        probe["observed_response"] = ""
+        probe["probe_event_log_sha256"] = ""
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        joined = "\n".join(errors)
+        self.assertIn("probe nonce must be 16", joined)
+        self.assertIn("probe event stream hash is missing or invalid", joined)
+
+    def test_probe_and_execution_must_not_reuse_route_decisions(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        probe = qa["protected_probe_record"]
+        probe["route_evidence"] = copy.deepcopy(actual["route_evidence"])
+        probe["invoked_model_ref"] = copy.deepcopy(actual["invoked_model_ref"])
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("reused a route decision_id", "\n".join(errors))
+
+    def test_probe_and_execution_timestamps_must_be_valid_and_ordered(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        probe = qa["protected_probe_record"]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        probe["started_at"] = "not-a-time"
+        actual["finished_at"] = "2026-07-11T12:06:00+00:00"
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        joined = "\n".join(errors)
+        self.assertIn("probe timestamps are invalid", joined)
+        self.assertIn("execution must finish after it starts", joined)
+
     def test_any_tool_in_authoritative_qa_record_rejected_until_broker_exists(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]

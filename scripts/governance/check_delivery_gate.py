@@ -508,8 +508,36 @@ def _check_probe_execution_binding(
         if left is not True or right is not True:
             errors.append(f"qa {qa_run_id} disabled-feature binding failed for {label}")
 
+    expected_inner_isolation = {
+        "source_mount_read_only": True,
+        "scratch_separate_from_source": True,
+        "host_home_mounted": False,
+        "ssh_config_mounted": False,
+        "gh_config_mounted": False,
+        "ambient_credentials_available": False,
+        "context_files_disabled": True,
+        "extensions_disabled": True,
+        "skills_disabled": True,
+        "themes_disabled": True,
+        "write_tools_observed": False,
+    }
+    outer_iso = qa_record.get("isolation_proof", {})
+    for field, expected_value in expected_inner_isolation.items():
+        if iso.get(field) is not expected_value:
+            errors.append(f"qa {qa_run_id} execution isolation {field} must be {expected_value}")
+        if iso.get(field) != outer_iso.get(field):
+            errors.append(f"qa {qa_run_id} inner/outer isolation mismatch for {field}")
+    expected_tree = pass_record.get("candidate_tree_oid")
+    for field in ("candidate_tree_before", "candidate_tree_after"):
+        if iso.get(field) != expected_tree:
+            errors.append(f"qa {qa_run_id} execution isolation {field} must equal candidate_tree_oid")
+        if iso.get(field) != outer_iso.get(field):
+            errors.append(f"qa {qa_run_id} inner/outer isolation mismatch for {field}")
+
     nonce = probe_record.get("nonce", "")
-    expected = f"READY {nonce}" if nonce else ""
+    expected = f"READY {nonce}" if isinstance(nonce, str) and re.fullmatch(r"[a-f0-9]{16}", nonce) else ""
+    if not expected:
+        errors.append(f"qa {qa_run_id} probe nonce must be 16 lowercase hexadecimal characters")
     if probe_record.get("expected_response") != expected or probe_record.get("observed_response") != expected:
         errors.append(f"qa {qa_run_id} probe did not observe exact READY nonce response")
     if probe_record.get("exit_code") != 0:
@@ -518,11 +546,39 @@ def _check_probe_execution_binding(
         errors.append(f"qa {qa_run_id} execution exit code was not 0")
     if qa_record.get("event_log_hash") != actual.get("qa_event_log_sha256"):
         errors.append(f"qa {qa_run_id} event_log_hash does not match protected execution record")
-    if probe_record.get("probe_event_log_sha256") and probe_record.get("probe_event_log_sha256") == actual.get("qa_event_log_sha256"):
+    probe_event_hash = probe_record.get("probe_event_log_sha256")
+    if not isinstance(probe_event_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", probe_event_hash):
+        errors.append(f"qa {qa_run_id} probe event stream hash is missing or invalid")
+    elif probe_event_hash == actual.get("qa_event_log_sha256"):
         errors.append(f"qa {qa_run_id} probe event stream reused as QA event stream")
 
+    execution_route = actual.get("route_evidence", {})
+    probe_route = probe_record.get("route_evidence", {})
+    execution_decisions = {
+        attempt.get("decision", {}).get("decision_id")
+        for attempt in execution_route.get("attempts", [])
+        if isinstance(attempt, dict)
+    } if isinstance(execution_route, dict) else set()
+    probe_decisions = {
+        attempt.get("decision", {}).get("decision_id")
+        for attempt in probe_route.get("attempts", [])
+        if isinstance(attempt, dict)
+    } if isinstance(probe_route, dict) else set()
+    if execution_decisions & probe_decisions:
+        errors.append(f"qa {qa_run_id} probe and execution reused a route decision_id")
+
+    probe_start = _parse_time(probe_record.get("started_at", ""))
     probe_finish = _parse_time(probe_record.get("finished_at", ""))
     qa_start = _parse_time(actual.get("started_at", ""))
+    qa_finish = _parse_time(actual.get("finished_at", ""))
+    if not probe_start or not probe_finish:
+        errors.append(f"qa {qa_run_id} probe timestamps are invalid")
+    elif probe_start >= probe_finish:
+        errors.append(f"qa {qa_run_id} probe must finish after it starts")
+    if not qa_start or not qa_finish:
+        errors.append(f"qa {qa_run_id} execution timestamps are invalid")
+    elif qa_start >= qa_finish:
+        errors.append(f"qa {qa_run_id} execution must finish after it starts")
     if not probe_finish or not qa_start:
         errors.append(f"qa {qa_run_id} probe/QA timestamps are invalid")
     elif probe_finish > qa_start:
