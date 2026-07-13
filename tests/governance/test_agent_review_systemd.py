@@ -1,0 +1,36 @@
+"""Static deployment-contract tests for the local review services."""
+
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+UNITS = ROOT / "deploy" / "systemd"
+
+
+class TestAgentReviewSystemd(unittest.TestCase):
+    def test_broker_uses_immutable_release_and_dedicated_identity(self):
+        unit = (UNITS / "noetic-dev-agent-review-broker.service").read_text()
+        self.assertIn("User=noetic-review-broker", unit)
+        self.assertIn("Group=noetic-agent-review", unit)
+        self.assertIn("WorkingDirectory=/opt/noetic-dev-agent-review/current", unit)
+        self.assertIn("/run/noetic-dev/agent-review.sock", unit)
+        self.assertIn("HOME=/var/lib/noetic-agent-review", unit)
+        self.assertIn("ProtectHome=true", unit)
+        self.assertNotIn("/home/dgk", unit)
+
+    def test_runner_cannot_reach_broker_credentials(self):
+        unit = (UNITS / "noetic-dev-actions-runner.service").read_text()
+        self.assertIn("User=noetic-github-runner", unit)
+        self.assertIn("SupplementaryGroups=noetic-agent-review", unit)
+        self.assertIn("WorkingDirectory=/var/lib/noetic-dev-runner/actions-runner", unit)
+        self.assertIn("HOME=/var/lib/noetic-dev-runner/home", unit)
+        self.assertIn("InaccessiblePaths=/var/lib/noetic-agent-review /home/dgk", unit)
+        self.assertIn("KillMode=mixed", unit)
+        self.assertNotIn("/var/tmp", unit)
+
+
+if __name__ == "__main__":
+    unittest.main()
