@@ -389,6 +389,7 @@ def review(payload: Any) -> dict[str, Any]:
         "model": route["model"],
         "reasoning": route["reasoning"],
         "route_decision_id": route["decision_id"],
+        "route_evidence": route["route_evidence"],
         "route_classification": route["classification"],
         "route_attempts": route["attempts"],
         "route_genus": route["genus"],

@@ -4,7 +4,7 @@
   "type": "object",
   "required": ["schema_version", "record_id", "run_id", "role", "role_run_id", "qa_for_pass_id", "generated_by", "actual_invocation"],
   "properties": {
-    "schema_version": {"type": "string", "const": "1"},
+    "schema_version": {"type": "string", "const": "2"},
     "record_id": {"type": "string"},
     "run_id": {"type": "string"},
     "role": {"type": "string", "const": "qa"},
@@ -24,9 +24,9 @@
     "actual_invocation": {
       "type": "object",
       "required": [
-        "resolved_model",
-        "profile_id",
-        "profile_hash",
+        "route_evidence",
+        "invoked_model_ref",
+        "reasoning_effort",
         "pi_version",
         "argv",
         "argv_sha256",
@@ -45,6 +45,9 @@
         "isolation"
       ],
       "properties": {
+        "route_evidence": {"type": "object"},
+        "invoked_model_ref": {"type": "object"},
+        "reasoning_effort": {"type": "string", "const": "high"},
         "resolved_model": {"type": "string"},
         "profile_id": {"type": "string"},
         "profile_hash": {"type": "string"},

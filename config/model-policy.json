@@ -59,6 +59,20 @@
       "blast_radius": "interface",
       "high_value": false,
       "awaited": true
+    },
+    "authoritative_qa": {
+      "task_kind": "review",
+      "complexity": "complex",
+      "blast_radius": "interface",
+      "high_value": false,
+      "awaited": true
+    },
+    "independent_approval": {
+      "task_kind": "review",
+      "complexity": "complex",
+      "blast_radius": "interface",
+      "high_value": true,
+      "awaited": true
     }
   }
 }

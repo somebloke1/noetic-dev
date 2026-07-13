@@ -59,6 +59,11 @@ class TestModelPolicy(unittest.TestCase):
             "high_value": False,
             "awaited": True,
         })
+        self.assertEqual(self.policy["tasks"]["authoritative_qa"], self.policy["tasks"]["agent_review"])
+        self.assertEqual(self.policy["tasks"]["independent_approval"], {
+            **self.policy["tasks"]["agent_review"],
+            "high_value": True,
+        })
 
     def test_modality_routes_remain_litellm_governed(self):
         self.assertEqual(self.policy["modalities"], {

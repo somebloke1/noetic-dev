@@ -62,7 +62,7 @@
     }
   },
   "properties": {
-    "schema_version": {"type": "string", "const": "1"},
+    "schema_version": {"type": "string", "const": "2"},
     "manifest_id": {"type": "string"},
     "run_id": {"type": "string"},
     "generated_at": {"$ref": "#/definitions/date_time"},
@@ -158,7 +158,7 @@
               "role_run_id",
               "agent_id",
               "qa_for_pass_id",
-              "model_profile",
+              "route_contract",
               "verdict",
               "report_hash",
               "event_log_hash",
@@ -172,6 +172,7 @@
               "role_run_id": {"type": "string"},
               "agent_id": {"type": "string"},
               "qa_for_pass_id": {"type": "string"},
+              "route_contract": {"type": "string", "const": "authoritative_qa"},
               "model_profile": {"type": "string"},
               "verdict": {"type": "string", "enum": ["pass", "fail"]},
               "report_hash": {"$ref": "#/definitions/sha256"},

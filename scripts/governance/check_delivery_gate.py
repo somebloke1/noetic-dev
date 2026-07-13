@@ -36,6 +36,7 @@ from check_evidence_manifest import (  # noqa: E402
 )
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
+from route_evidence import validate_route_evidence  # noqa: E402
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
 PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
@@ -68,10 +69,6 @@ def _command_registry() -> Dict[str, Any]:
 
 def _issue_statuses() -> Dict[str, Any]:
     return _load_repo_json("governance/issue-status.json").get("statuses", {})
-
-
-def _model_profiles() -> Dict[str, Any]:
-    return _load_repo_json("governance/model-profiles.json")
 
 
 def _parse_time(value: str) -> Optional[datetime]:
@@ -358,15 +355,6 @@ def _check_pr_and_issue(manifest: Dict[str, Any], errors: List[str]) -> None:
         errors.append(f"issue status is not merge-eligible: {canonical}")
 
 
-def _profile_for(profile_id: str) -> Optional[Dict[str, Any]]:
-    return _model_profiles().get("profiles", {}).get(profile_id)
-
-
-def _profile_hash(profile_id: str) -> Optional[str]:
-    profile = _profile_for(profile_id)
-    return canonical_json_sha256(profile) if profile else None
-
-
 def _load_schema(relative: str) -> Dict[str, Any]:
     return _load_repo_json(relative)
 
@@ -379,6 +367,24 @@ def _validate_record_schema(record: Dict[str, Any], schema_relative: str, label:
 
 def _record_hash(record: Dict[str, Any]) -> str:
     return canonical_json_sha256(record)
+
+
+def _check_route_evidence(value: Any, contract: str, label: str, errors: List[str]) -> None:
+    schema = _load_schema("governance/schemas/route-evidence.schema.json")
+    for error in validate_schema(value, schema):
+        errors.append(f"{label} schema: {error}")
+    for error in validate_route_evidence(value, contract):
+        errors.append(f"{label}: {error}")
+
+
+def _check_invocation_route_binding(record: Dict[str, Any], label: str, errors: List[str]) -> None:
+    evidence = record.get("route_evidence", {})
+    attempts = evidence.get("attempts", []) if isinstance(evidence, dict) else []
+    final_decision = attempts[-1].get("decision", {}) if attempts and isinstance(attempts[-1], dict) else {}
+    if record.get("invoked_model_ref") != final_decision.get("model_ref"):
+        errors.append(f"{label} invoked_model_ref does not match final routed model reference")
+    if record.get("reasoning_effort") != "high":
+        errors.append(f"{label} did not enact high reasoning")
 
 
 def _resolve_embedded_or_path(record: Dict[str, Any], embedded_key: str, path_key: str, manifest_path: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -424,8 +430,8 @@ def _check_probe_execution_binding(
     _validate_record_schema(exec_record, "governance/schemas/qa-execution-record.schema.json", f"qa {qa_run_id} execution", errors)
     _validate_record_schema(probe_record, "governance/schemas/qa-probe-record.schema.json", f"qa {qa_run_id} probe", errors)
 
-    if exec_record.get("schema_version") != "1" or exec_record.get("role") != "qa":
-        errors.append(f"qa {qa_run_id} protected execution record is not a QA schema_version=1 record")
+    if exec_record.get("schema_version") != "2" or exec_record.get("role") != "qa":
+        errors.append(f"qa {qa_run_id} protected execution record is not a QA schema_version=2 record")
     if exec_record.get("evidence_class", "authoritative") != "authoritative":
         errors.append(f"qa {qa_run_id} execution record is non-evidence/advisory")
     if exec_record.get("record_only"):
@@ -441,6 +447,21 @@ def _check_probe_execution_binding(
     if exec_record.get("qa_for_pass_id") != qa_record.get("qa_for_pass_id"):
         errors.append(f"qa {qa_run_id} execution qa_for_pass_id mismatch")
 
+    _check_route_evidence(
+        actual.get("route_evidence"),
+        "authoritative_qa",
+        f"qa {qa_run_id} execution route evidence",
+        errors,
+    )
+    _check_route_evidence(
+        probe_record.get("route_evidence"),
+        "authoritative_qa",
+        f"qa {qa_run_id} probe route evidence",
+        errors,
+    )
+    _check_invocation_route_binding(actual, f"qa {qa_run_id} execution", errors)
+    _check_invocation_route_binding(probe_record, f"qa {qa_run_id} probe", errors)
+
     generated_by = exec_record.get("generated_by", {})
     if generated_by.get("policy_commit_sha") != policy.get("sha"):
         errors.append(f"qa {qa_run_id} execution generated_by policy SHA mismatch")
@@ -449,22 +470,7 @@ def _check_probe_execution_binding(
     if probe_record.get("policy_commit_sha") != policy.get("sha"):
         errors.append(f"qa {qa_run_id} probe policy SHA mismatch")
 
-    expected_profile_id = qa_record.get("model_profile")
-    expected_profile = _profile_for(expected_profile_id)
-    expected_profile_hash = _profile_hash(expected_profile_id) if expected_profile else None
-    if expected_profile:
-        for label, record in [("execution", actual), ("probe", probe_record)]:
-            if record.get("profile_id") != expected_profile_id:
-                errors.append(f"qa {qa_run_id} {label} profile_id does not match qa.model_profile")
-            if record.get("resolved_model") != expected_profile.get("model_id"):
-                errors.append(f"qa {qa_run_id} {label} resolved_model does not match protected model profile")
-            if record.get("profile_hash") != expected_profile_hash:
-                errors.append(f"qa {qa_run_id} {label} profile_hash does not match protected model profile")
-
     comparable = [
-        ("resolved_model", actual.get("resolved_model"), probe_record.get("resolved_model")),
-        ("profile_id", actual.get("profile_id"), probe_record.get("profile_id")),
-        ("profile_hash", actual.get("profile_hash"), probe_record.get("profile_hash")),
         ("pi_version", actual.get("pi_version"), probe_record.get("pi_version")),
         ("candidate_sha", actual.get("candidate_sha"), probe_record.get("candidate_sha")),
         ("candidate_tree_oid", actual.get("candidate_tree_oid"), probe_record.get("candidate_tree_oid")),
@@ -580,13 +586,8 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
 
         if qa_record.get("verdict") != "pass":
             errors.append(f"QA verdict is not 'pass' for {qa_run_id}")
-        profile = _profile_for(qa_record.get("model_profile", ""))
-        if not profile:
-            errors.append(f"unsupported model profile for QA: {qa_record.get('model_profile')}")
-        elif not profile.get("verified"):
-            errors.append(f"QA model profile is not verified: {qa_record.get('model_profile')}")
-        elif not qa_record.get("model_profile", "").startswith("qa"):
-            errors.append(f"model profile is not authorized for QA: {qa_record.get('model_profile')}")
+        if qa_record.get("route_contract") != "authoritative_qa":
+            errors.append(f"QA {qa_run_id} route_contract must be authoritative_qa")
 
         if qa_record.get("agent_id") and qa_record.get("agent_id") == pass_record.get("agent_id"):
             errors.append(f"self-QA rejected for pass {pass_id}: QA agent equals implementation agent")
@@ -685,8 +686,8 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
 
     for error in validate_schema(external_evidence, _load_schema("governance/schemas/external-evidence.schema.json")):
         errors.append(f"external evidence schema: {error}")
-    if external_evidence.get("schema_version") != "1" or external_evidence.get("evidence_class") != "protected-external":
-        errors.append("external provenance evidence must be schema_version=1 protected-external")
+    if external_evidence.get("schema_version") != "2" or external_evidence.get("evidence_class") != "protected-external":
+        errors.append("external provenance evidence must be schema_version=2 protected-external")
 
     mode = external_evidence.get("mode")
     if mode not in {"github_api", "github_artifact_attestation"}:
@@ -875,9 +876,7 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         agent_id = approval.get("agent_id", "")
         role_run_id = approval.get("role_run_id", "")
         identity_binding = approval.get("identity_binding", {})
-        model_profile_id = approval.get("model_profile", "")
-        model_profile = _profile_for(model_profile_id)
-        reasoning_level = approval.get("reasoning_level", "")
+        route_errors = validate_route_evidence(approval.get("route_evidence"), "independent_approval")
         approval_time = _parse_time(approval.get("submitted_at", "") or approval.get("timestamp", ""))
         if not reviewer:
             errors.append("approval missing reviewer")
@@ -938,11 +937,8 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         if role_run_id in qa_role_runs:
             errors.append(f"approval by {reviewer} reused QA role_run_id")
             continue
-        if model_profile_id not in {"reviewer_fable", "reviewer_sol"} or not model_profile or not model_profile.get("verified"):
-            errors.append(f"approval by {reviewer} did not use an authorized independent reviewer profile")
-            continue
-        if reasoning_level not in {"high", "xhigh", "max"}:
-            errors.append(f"approval by {reviewer} did not use high reasoning")
+        if route_errors:
+            errors.extend(f"approval by {reviewer} route evidence: {error}" for error in route_errors)
             continue
         valid = True
 

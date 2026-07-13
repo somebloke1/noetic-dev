@@ -155,6 +155,11 @@
     "generator_path": "scripts/governance/collect_evidence.py",
     "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "ref": "refs/heads/main",
+    "runner_attestation": {
+      "artifact": {
+        "manifest_sha256": "51eb0d3bbb2ba8e1b2c0a1d59df2ca465b0c6a2a635385f3cdf80e56f8e3fa65"
+      }
+    },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "trusted_runner": false,
     "workflow": {
@@ -228,6 +233,16 @@
             "environment_values_recorded": false,
             "exit_code": 0,
             "finished_at": "2026-07-11T12:20:00+00:00",
+            "invoked_model_ref": {
+              "base_url": "http://172.22.10.160:3333",
+              "endpoint_id": "local-litellm",
+              "endpoint_path": "/v1/responses",
+              "interface_type": "openai-compatible",
+              "model_id": "codex/gpt-5.6-terra",
+              "reasoning_effort": "high",
+              "token_env": "LITELLM_API_KEY",
+              "upstream_model_id": "codex/gpt-5.6-terra"
+            },
             "isolation": {
               "ambient_credentials_available": false,
               "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
@@ -248,7 +263,74 @@
             "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
             "profile_id": "qa_primary",
             "qa_event_log_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "reasoning_effort": "high",
             "resolved_model": "openai-codex/gpt-5.6-terra",
+            "route_evidence": {
+              "attempts": [
+                {
+                  "decision": {
+                    "availability": "verified",
+                    "decision_id": "d-20260713-300001",
+                    "effective_complexity": "complex",
+                    "fable_eligible": false,
+                    "fallback_refs": [
+                      {
+                        "base_url": "http://172.22.10.160:3333",
+                        "endpoint_id": "local-litellm",
+                        "endpoint_path": "/v1/responses",
+                        "interface_type": "openai-compatible",
+                        "model_id": "codex/gpt-5.6-sol",
+                        "reasoning_effort": "high",
+                        "token_env": "LITELLM_API_KEY",
+                        "upstream_model_id": "codex/gpt-5.6-sol"
+                      },
+                      {
+                        "base_url": "http://172.22.10.160:3333",
+                        "endpoint_id": "local-litellm",
+                        "endpoint_path": "/v1/responses",
+                        "interface_type": "openai-compatible",
+                        "model_id": "codex/gpt-5.6-luna",
+                        "reasoning_effort": "high",
+                        "token_env": "LITELLM_API_KEY",
+                        "upstream_model_id": "codex/gpt-5.6-luna"
+                      }
+                    ],
+                    "fallbacks": [
+                      "codex/gpt-5.6-sol",
+                      "codex/gpt-5.6-luna"
+                    ],
+                    "genus": "Complex Code Review",
+                    "genus_code": "REVIEW-COMPLEX",
+                    "model": "codex/gpt-5.6-terra",
+                    "model_ref": {
+                      "base_url": "http://172.22.10.160:3333",
+                      "endpoint_id": "local-litellm",
+                      "endpoint_path": "/v1/responses",
+                      "interface_type": "openai-compatible",
+                      "model_id": "codex/gpt-5.6-terra",
+                      "reasoning_effort": "high",
+                      "token_env": "LITELLM_API_KEY",
+                      "upstream_model_id": "codex/gpt-5.6-terra"
+                    },
+                    "rationale": [
+                      "protected route evidence fixture"
+                    ],
+                    "sophistication": "complex"
+                  },
+                  "outcome": "success",
+                  "outcome_recorded": true,
+                  "reasoning_effort": "high"
+                }
+              ],
+              "classification": {
+                "awaited": true,
+                "blast_radius": "interface",
+                "complexity": "complex",
+                "high_value": false,
+                "task_kind": "review"
+              },
+              "schema_version": "1"
+            },
             "started_at": "2026-07-11T12:07:00+00:00",
             "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
             "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
@@ -266,9 +348,9 @@
           "role": "qa",
           "role_run_id": "qa-role-g1-0001",
           "run_id": "00000000-0000-0000-0000-000000000002",
-          "schema_version": "1"
+          "schema_version": "2"
         },
-        "protected_execution_record_sha256": "f7fcab815478150b3bad03d8ac4f4a402928bf2c694809d406eccc364f8e7f93",
+        "protected_execution_record_sha256": "b62ecfb6b37db7747eb6eaf7661713962648e67f0f56aa981de30d2197c97b25",
         "protected_probe_record": {
           "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
           "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
@@ -283,6 +365,16 @@
           "expected_response": "READY abc123def4567890",
           "extensions_disabled": true,
           "finished_at": "2026-07-11T12:06:00+00:00",
+          "invoked_model_ref": {
+            "base_url": "http://172.22.10.160:3333",
+            "endpoint_id": "local-litellm",
+            "endpoint_path": "/v1/responses",
+            "interface_type": "openai-compatible",
+            "model_id": "codex/gpt-5.6-terra",
+            "reasoning_effort": "high",
+            "token_env": "LITELLM_API_KEY",
+            "upstream_model_id": "codex/gpt-5.6-terra"
+          },
           "nonce": "abc123def4567890",
           "observed_response": "READY abc123def4567890",
           "pi_version": "pi 1.0.0",
@@ -300,10 +392,77 @@
           "probe_prompt_hash": "6666666666666666666666666666666666666666666666666666666666666666",
           "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
           "profile_id": "qa_primary",
+          "reasoning_effort": "high",
           "resolved_model": "openai-codex/gpt-5.6-terra",
           "role_run_id": "qa-role-g1-0001",
+          "route_evidence": {
+            "attempts": [
+              {
+                "decision": {
+                  "availability": "verified",
+                  "decision_id": "d-20260713-300002",
+                  "effective_complexity": "complex",
+                  "fable_eligible": false,
+                  "fallback_refs": [
+                    {
+                      "base_url": "http://172.22.10.160:3333",
+                      "endpoint_id": "local-litellm",
+                      "endpoint_path": "/v1/responses",
+                      "interface_type": "openai-compatible",
+                      "model_id": "codex/gpt-5.6-sol",
+                      "reasoning_effort": "high",
+                      "token_env": "LITELLM_API_KEY",
+                      "upstream_model_id": "codex/gpt-5.6-sol"
+                    },
+                    {
+                      "base_url": "http://172.22.10.160:3333",
+                      "endpoint_id": "local-litellm",
+                      "endpoint_path": "/v1/responses",
+                      "interface_type": "openai-compatible",
+                      "model_id": "codex/gpt-5.6-luna",
+                      "reasoning_effort": "high",
+                      "token_env": "LITELLM_API_KEY",
+                      "upstream_model_id": "codex/gpt-5.6-luna"
+                    }
+                  ],
+                  "fallbacks": [
+                    "codex/gpt-5.6-sol",
+                    "codex/gpt-5.6-luna"
+                  ],
+                  "genus": "Complex Code Review",
+                  "genus_code": "REVIEW-COMPLEX",
+                  "model": "codex/gpt-5.6-terra",
+                  "model_ref": {
+                    "base_url": "http://172.22.10.160:3333",
+                    "endpoint_id": "local-litellm",
+                    "endpoint_path": "/v1/responses",
+                    "interface_type": "openai-compatible",
+                    "model_id": "codex/gpt-5.6-terra",
+                    "reasoning_effort": "high",
+                    "token_env": "LITELLM_API_KEY",
+                    "upstream_model_id": "codex/gpt-5.6-terra"
+                  },
+                  "rationale": [
+                    "protected route evidence fixture"
+                  ],
+                  "sophistication": "complex"
+                },
+                "outcome": "success",
+                "outcome_recorded": true,
+                "reasoning_effort": "high"
+              }
+            ],
+            "classification": {
+              "awaited": true,
+              "blast_radius": "interface",
+              "complexity": "complex",
+              "high_value": false,
+              "task_kind": "review"
+            },
+            "schema_version": "1"
+          },
           "run_id": "00000000-0000-0000-0000-000000000002",
-          "schema_version": "1",
+          "schema_version": "2",
           "skills_disabled": true,
           "started_at": "2026-07-11T12:05:00+00:00",
           "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -311,11 +470,12 @@
           "themes_disabled": true,
           "tools": []
         },
-        "protected_probe_record_sha256": "2092383e43ed9279fb339914dc70308a8b78f0e8fc89db4572289f56495c1caf",
+        "protected_probe_record_sha256": "b19ce4110e1a9dd1a5025d27e672542be350113a464e53b083fb364d4f516956",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",
         "role_run_id": "qa-role-g1-0001",
+        "route_contract": "authoritative_qa",
         "verdict": "pass"
       }
     ]
@@ -332,7 +492,7 @@
     "repository_id": 123456
   },
   "run_id": "00000000-0000-0000-0000-000000000002",
-  "schema_version": "1",
+  "schema_version": "2",
   "state_transitions": [
     {
       "authority": "orchestrator",

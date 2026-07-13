@@ -63,12 +63,14 @@ The local review broker receives only `LITELLM_API_KEY`, preferably as the syste
 
 ## Migration state
 
-The protected local `agent-review` broker is the first routed runtime path. The legacy `run_isolated_pi.py` dispatcher may still emit explicitly non-evidentiary record-only data, but model execution and READY probes fail closed until its protected schemas bind genus-router decisions, canonical LiteLLM references, attempts, and reported outcomes. `governance/model-profiles.json` is retained only to validate schema-v1 historical evidence; it does not authorize runtime model selection.
+The protected local `agent-review` broker is the first routed runtime path. The legacy `run_isolated_pi.py` dispatcher may still emit explicitly non-evidentiary record-only data, but model execution and READY probes fail closed until it can emit schema-v2 protected records. `governance/model-profiles.json` remains historical metadata only; it does not authorize runtime model selection or delivery.
 
 OpenCode-facing execution and goalchain semantic curation are not yet accepted routed paths. They remain migration blockers rather than direct-access exceptions.
 
 ## Governance
 
 Model prose is never evidence by itself. Every governed invocation requires a fresh readiness probe and captured execution evidence bound to the candidate/work-unit identity, policy commit, route decision, resolved LiteLLM reference, harness configuration, and outcome.
+
+Delivery evidence schema v2 rejects static model-profile authorization. Each protected invocation carries `route_evidence` with the exact classification and ordered attempts; every attempt binds the complete genus-router decision, canonical LiteLLM reference, enacted high reasoning, outcome, and confirmation that `report_outcome` succeeded. Authoritative QA uses the non-high-value complex-review contract. Independent approval uses a distinct high-value complex-review contract, making Fable eligible without making it a general fallback.
 
 This policy governs both development of noetic-dev and the developed noetic-dev system. During migration, existing direct invocations are non-compliant dependencies to remove; they are not compatibility paths to preserve.

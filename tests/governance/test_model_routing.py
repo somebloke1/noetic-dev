@@ -24,6 +24,7 @@ from model_routing import (
     validate_decision,
     validate_policy_invariants,
 )
+from route_evidence import validate_route_evidence
 
 SOL = "codex/gpt-5.6-sol"
 FABLE = "claude-fable-5"
@@ -210,6 +211,7 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(evidence["model"], TERRA)
         self.assertEqual(evidence["reasoning"], "high")
         self.assertEqual(evidence["classification"]["high_value"], False)
+        self.assertEqual(validate_route_evidence(evidence["route_evidence"], "protected_review"), [])
         self.assertEqual(service.outcomes[0]["outcome"], "success")
         self.assertEqual(service.inputs[0]["prior_failure"], False)
         self.assertEqual(service.inputs[0]["exclude_models"], [])

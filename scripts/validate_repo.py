@@ -32,6 +32,7 @@ REQUIRED = [
     "governance/schemas/command-registry.schema.json",
     "governance/schemas/issue-status.schema.json",
     "governance/schemas/model-profiles.schema.json",
+    "governance/schemas/route-evidence.schema.json",
     "governance/schemas/state-machine.schema.json",
     "governance/schemas/qa-execution-record.schema.json",
     "governance/schemas/qa-probe-record.schema.json",
@@ -48,6 +49,7 @@ REQUIRED = [
     "scripts/governance/agent_review_broker.py",
     "scripts/governance/request_agent_review.py",
     "scripts/governance/model_routing.py",
+    "scripts/governance/route_evidence.py",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",
@@ -59,6 +61,7 @@ REQUIRED = [
     "tests/governance/test_agent_review.py",
     "tests/governance/test_model_routing.py",
     "tests/governance/test_model_policy.py",
+    "tests/governance/test_route_evidence.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

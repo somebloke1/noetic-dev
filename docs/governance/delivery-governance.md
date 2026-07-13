@@ -127,7 +127,7 @@ Before authoritative conditions exist:
 
 ## Model profiles
 
-Schema-v1 evidence profiles are defined in `governance/model-profiles.json`. They preserve validation of historical protected records but do not select or authorize new runtime model calls. The legacy Pi dispatcher fails model execution closed until route decisions and LiteLLM outcomes are bound into protected evidence; the routed local review broker follows `config/model-policy.json` instead.
+Legacy schema-v1 evidence profiles in `governance/model-profiles.json` are historical metadata only. Delivery evidence schema v2 requires complete routed evidence for every protected QA probe/execution and independent approval; a static profile, model name, or reasoning claim cannot authorize delivery. The legacy Pi dispatcher fails model execution closed until it can emit schema-v2 records, while the routed local review broker follows `config/model-policy.json` and emits the shared route-evidence contract.
 
 ## Development-system reconciliation wave
 

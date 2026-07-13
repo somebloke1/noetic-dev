@@ -289,7 +289,10 @@ def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
         seen[pass_id] = seen.get(pass_id, 0) + 1
         if pass_id not in ids:
             errors.append(f"qa record {qa_label} references unknown pass {pass_id}")
-        _check_model_profile(record.get("model_profile", ""), "qa", errors)
+        if record.get("route_contract") != "authoritative_qa":
+            errors.append(f"qa {qa_label} route_contract must be authoritative_qa")
+        if record.get("model_profile"):
+            _check_model_profile(record["model_profile"], "qa legacy metadata", errors)
         if record.get("verdict") not in {"pass", "fail"}:
             errors.append(f"qa {qa_label} verdict must be pass or fail")
         for field in ["report_hash", "event_log_hash", "protected_execution_record_sha256", "protected_probe_record_sha256"]:

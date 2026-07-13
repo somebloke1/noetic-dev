@@ -149,7 +149,7 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             "role_run_id": args.qa_role_run_id or f"qa-role-{uuid.uuid4().hex[:12]}",
             "agent_id": args.qa_agent_id or "unknown-qa-agent",
             "qa_for_pass_id": args.qa_for_pass_id,
-            "model_profile": args.qa_model_profile or "qa_primary",
+            "route_contract": "authoritative_qa",
             "verdict": args.qa_verdict or "fail",
             "report_hash": args.qa_report_hash or ZERO_SHA256,
             "event_log_hash": args.qa_event_log_hash or ZERO_SHA256,
@@ -181,7 +181,7 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
     transition_start = datetime.fromisoformat(candidate_pinned_at.replace("Z", "+00:00"))
     transition_times = [(transition_start + timedelta(seconds=index)).isoformat() for index in range(5)]
     manifest: Dict[str, Any] = {
-        "schema_version": "1",
+        "schema_version": "2",
         "manifest_id": str(uuid.uuid4()),
         "run_id": args.run_id,
         "generated_at": _now(),
@@ -325,7 +325,6 @@ def main() -> int:
     parser.add_argument("--qa-run-id", default="")
     parser.add_argument("--qa-role-run-id", default="")
     parser.add_argument("--qa-agent-id", default="")
-    parser.add_argument("--qa-model-profile", default="qa_primary")
     parser.add_argument("--qa-verdict", default="", choices=["", "pass", "fail"])
     parser.add_argument("--qa-report-hash", default="")
     parser.add_argument("--qa-event-log-hash", default="")

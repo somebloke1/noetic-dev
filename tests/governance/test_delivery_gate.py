@@ -93,7 +93,7 @@ class TestDeliveryGateNegativeFixtures(unittest.TestCase):
         "negative_unsupported_model_manifest.json": "unsupported model profile",
         "negative_two_qas_one_pass_manifest.json": "multiple QA",
         "negative_missing_probe_manifest.json": "missing protected READY probe",
-        "negative_probe_model_mismatch_manifest.json": "resolved_model",
+        "negative_probe_model_mismatch_manifest.json": "schema_version=2",
         "negative_qa_base_mismatch_manifest.json": "base_sha",
         "negative_execution_candidate_mismatch_manifest.json": "candidate_sha",
         "negative_execution_record_hash_mismatch_manifest.json": "execution record hash mismatch",
@@ -158,21 +158,21 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("predates candidate", "\n".join(errors))
 
-    def test_unapproved_model_profile_rejected_from_external_evidence(self):
+    def test_static_profile_without_route_evidence_is_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
-        external["approvals"][0]["model_profile"] = "qa_primary"
+        external["approvals"][0].pop("route_evidence")
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
-        self.assertIn("authorized independent reviewer profile", "\n".join(errors))
+        self.assertIn("route evidence", "\n".join(errors))
 
     def test_low_reasoning_approval_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
-        external["approvals"][0]["reasoning_level"] = "low"
+        external["approvals"][0]["route_evidence"]["attempts"][0]["reasoning_effort"] = "low"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
-        self.assertIn("did not use high reasoning", "\n".join(errors))
+        self.assertIn("did not enact high reasoning", "\n".join(errors))
 
     def test_reviewer_alias_is_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -392,16 +392,35 @@ class TestQaBindingFailures(unittest.TestCase):
         qa["protected_probe_record_sha256"] = canonical_json_sha256(qa["protected_probe_record"])
         return qa
 
-    def test_execution_profile_must_match_protected_qa_profile(self):
+    def test_execution_route_must_match_protected_qa_contract(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
         actual = qa["protected_execution_record"]["actual_invocation"]
-        actual["profile_id"] = "implementer_candidate"
-        actual["resolved_model"] = "litellm/deepseek-v4-flash"
+        actual["route_evidence"]["classification"]["high_value"] = True
         self._first_qa_with_rehashed_records(manifest)
         passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
-        self.assertIn("profile_id does not match", "\n".join(errors))
+        self.assertIn("route classification", "\n".join(errors))
+
+    def test_legacy_static_only_qa_evidence_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        qa["protected_execution_record"]["actual_invocation"].pop("route_evidence")
+        qa["protected_probe_record"].pop("route_evidence")
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("route_evidence", "\n".join(errors))
+
+    def test_invoked_model_reference_must_match_final_route(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        actual["invoked_model_ref"]["model_id"] = "codex/gpt-5.6-sol"
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("invoked_model_ref does not match", "\n".join(errors))
 
     def test_any_tool_in_authoritative_qa_record_rejected_until_broker_exists(self):
         manifest = load_fixture("valid_advisory_manifest.json")

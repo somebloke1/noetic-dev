@@ -261,6 +261,47 @@ class TestAgentReview(unittest.TestCase):
             {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
             {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
         )
+        def ref(model):
+            return {
+                "model_id": model,
+                "endpoint_id": "local-litellm",
+                "upstream_model_id": model,
+                "interface_type": "openai-compatible",
+                "base_url": "http://172.22.10.160:3333",
+                "endpoint_path": "/v1/responses",
+                "token_env": "LITELLM_API_KEY",
+                "reasoning_effort": "high",
+            }
+        fallbacks = ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"]
+        route_evidence = {
+            "schema_version": "1",
+            "classification": {
+                "task_kind": "review",
+                "complexity": "complex",
+                "blast_radius": "interface",
+                "high_value": False,
+                "awaited": True,
+            },
+            "attempts": [{
+                "decision": {
+                    "availability": "verified",
+                    "decision_id": "d-20260713-000001",
+                    "effective_complexity": "complex",
+                    "fable_eligible": False,
+                    "fallback_refs": [ref(model) for model in fallbacks],
+                    "fallbacks": fallbacks,
+                    "genus": "Complex Code Review",
+                    "genus_code": "REVIEW-COMPLEX",
+                    "model": "codex/gpt-5.6-terra",
+                    "model_ref": ref("codex/gpt-5.6-terra"),
+                    "rationale": ["protected review fixture"],
+                    "sophistication": "complex",
+                },
+                "outcome": "success",
+                "outcome_recorded": True,
+                "reasoning_effort": "high",
+            }],
+        }
         routed.return_value = (
             {"verdict": "pass", "summary": "Reviewed.", "findings": []},
             {
@@ -274,6 +315,7 @@ class TestAgentReview(unittest.TestCase):
                     "high_value": False,
                     "awaited": True,
                 },
+                "route_evidence": route_evidence,
                 "attempts": [{
                     "decision_id": "d-20260713-000001",
                     "model": "codex/gpt-5.6-terra",
@@ -297,6 +339,7 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["reasoning"], "high")
         self.assertEqual(result["route_decision_id"], "d-20260713-000001")
         self.assertEqual(result["route_classification"]["high_value"], False)
+        self.assertEqual(result["route_evidence"]["schema_version"], "1")
         self.assertEqual(result["route_endpoint_id"], "local-litellm")
         self.assertEqual(result["route_genus"], "Complex Code Review")
         self.assertEqual(result["route_effective_complexity"], "complex")

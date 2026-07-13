@@ -39,10 +39,8 @@
   ],
   "approvals": [
     {
-      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
-      "reviewer": "agent-reviewer-fable",
       "agent_id": "agent-reviewer-fable",
-      "role_run_id": "review-role-run-1",
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
       "identity_binding": {
         "provider": "protected-runner",
         "subject": "agent-reviewer-fable",
@@ -50,6 +48,84 @@
       },
       "model_profile": "reviewer_fable",
       "reasoning_level": "high",
+      "reviewer": "agent-reviewer-fable",
+      "role_run_id": "review-role-run-1",
+      "route_evidence": {
+        "attempts": [
+          {
+            "decision": {
+              "availability": "verified",
+              "decision_id": "d-20260713-400001",
+              "effective_complexity": "complex",
+              "fable_eligible": true,
+              "fallback_refs": [
+                {
+                  "base_url": "http://172.22.10.160:3333",
+                  "endpoint_id": "local-litellm",
+                  "endpoint_path": "/v1/responses",
+                  "interface_type": "openai-compatible",
+                  "model_id": "codex/gpt-5.6-terra",
+                  "reasoning_effort": "high",
+                  "token_env": "LITELLM_API_KEY",
+                  "upstream_model_id": "codex/gpt-5.6-terra"
+                },
+                {
+                  "base_url": "http://172.22.10.160:3333",
+                  "endpoint_id": "local-litellm",
+                  "endpoint_path": "/v1/responses",
+                  "interface_type": "openai-compatible",
+                  "model_id": "codex/gpt-5.6-sol",
+                  "reasoning_effort": "high",
+                  "token_env": "LITELLM_API_KEY",
+                  "upstream_model_id": "codex/gpt-5.6-sol"
+                },
+                {
+                  "base_url": "http://172.22.10.160:3333",
+                  "endpoint_id": "local-litellm",
+                  "endpoint_path": "/v1/responses",
+                  "interface_type": "openai-compatible",
+                  "model_id": "codex/gpt-5.6-luna",
+                  "reasoning_effort": "high",
+                  "token_env": "LITELLM_API_KEY",
+                  "upstream_model_id": "codex/gpt-5.6-luna"
+                }
+              ],
+              "fallbacks": [
+                "codex/gpt-5.6-terra",
+                "codex/gpt-5.6-sol",
+                "codex/gpt-5.6-luna"
+              ],
+              "genus": "Complex Code Review",
+              "genus_code": "REVIEW-COMPLEX",
+              "model": "claude-fable-5",
+              "model_ref": {
+                "base_url": "http://172.22.10.160:3333",
+                "endpoint_id": "local-litellm",
+                "endpoint_path": "/v1/chat/completions",
+                "interface_type": "openai-compatible",
+                "model_id": "claude-fable-5",
+                "token_env": "LITELLM_API_KEY",
+                "upstream_model_id": "claude-fable-5"
+              },
+              "rationale": [
+                "protected route evidence fixture"
+              ],
+              "sophistication": "complex"
+            },
+            "outcome": "success",
+            "outcome_recorded": true,
+            "reasoning_effort": "high"
+          }
+        ],
+        "classification": {
+          "awaited": true,
+          "blast_radius": "interface",
+          "complexity": "complex",
+          "high_value": true,
+          "task_kind": "review"
+        },
+        "schema_version": "1"
+      },
       "state": "APPROVED",
       "submitted_at": "2026-07-11T12:40:00+00:00"
     }
@@ -58,9 +134,9 @@
     "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
     "artifact_id": 333,
     "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
-    "manifest_sha256": "05191d777263d063e1a4ecf870336421bc17119f0b4ad1150d02be97e317e11f",
-    "review_evidence_sha256": "da52915a1c72ecdc96b5390b31eee9ddbb86822ff051039153b937275c0492ad",
-    "name": "governance-evidence"
+    "manifest_sha256": "51eb0d3bbb2ba8e1b2c0a1d59df2ca465b0c6a2a635385f3cdf80e56f8e3fa65",
+    "name": "governance-evidence",
+    "review_evidence_sha256": "8783792265e59978d34d8c4ee0b42e6b8118ed10103b740d537cf256ea49c74a"
   },
   "branch_protection": {
     "required_checks": [
@@ -128,7 +204,7 @@
     "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
     "id": 111
   },
-  "schema_version": "1",
+  "schema_version": "2",
   "verification_status": "verified",
   "workflow": {
     "path": ".github/workflows/governance.yml",

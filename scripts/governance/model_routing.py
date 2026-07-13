@@ -13,6 +13,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from route_evidence import validate_route_evidence
+
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY_PATH = ROOT / "config" / "model-policy.json"
 MAX_GATEWAY_RESPONSE_BYTES = 1_048_576
@@ -90,7 +92,11 @@ EXPECTED_MODEL_POLICY = {
         "exclude_failed_models": True,
         "manual_model_escalation": False,
     },
-    "tasks": {"agent_review": AGENT_REVIEW_TASK},
+    "tasks": {
+        "agent_review": AGENT_REVIEW_TASK,
+        "authoritative_qa": AGENT_REVIEW_TASK,
+        "independent_approval": {**AGENT_REVIEW_TASK, "high_value": True},
+    },
 }
 
 
@@ -386,6 +392,7 @@ def route_and_invoke_review(
     task = dict(AGENT_REVIEW_TASK)
     excluded: list[str] = []
     attempts: list[dict[str, str]] = []
+    routed_attempts: list[dict[str, Any]] = []
 
     for _ in STANDARD_MODELS:
         route_input = {
@@ -420,10 +427,30 @@ def route_and_invoke_review(
             )
             excluded.append(model)
             attempts.append({"decision_id": decision_id, "model": model, "outcome": "failure"})
+            routed_attempts.append({
+                "decision": decision,
+                "outcome": "failure",
+                "outcome_recorded": True,
+                "reasoning_effort": "high",
+            })
             continue
 
         _report_outcome(active_service, decision_id, "success", "Review output passed contract validation")
         attempts.append({"decision_id": decision_id, "model": model, "outcome": "success"})
+        routed_attempts.append({
+            "decision": decision,
+            "outcome": "success",
+            "outcome_recorded": True,
+            "reasoning_effort": "high",
+        })
+        route_evidence = {
+            "schema_version": "1",
+            "classification": task,
+            "attempts": routed_attempts,
+        }
+        route_errors = validate_route_evidence(route_evidence, "protected_review")
+        if route_errors:
+            raise ModelRoutingError(f"protected route evidence is invalid: {route_errors[0]}")
         evidence = {
             "decision_id": decision_id,
             "classification": task,
@@ -439,6 +466,7 @@ def route_and_invoke_review(
             "availability": decision["availability"],
             "fable_eligible": decision["fable_eligible"],
             "fallbacks": decision["fallbacks"],
+            "route_evidence": route_evidence,
         }
         return parsed, evidence
     raise ModelRoutingError("all routed review candidates failed")

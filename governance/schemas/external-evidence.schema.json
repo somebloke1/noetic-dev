@@ -24,7 +24,7 @@
     "freeze"
   ],
   "properties": {
-    "schema_version": {"type": "string", "const": "1"},
+    "schema_version": {"type": "string", "const": "2"},
     "evidence_class": {"type": "string", "const": "protected-external"},
     "mode": {"type": "string", "enum": ["github_api", "github_artifact_attestation"]},
     "verification_status": {"type": "string", "const": "verified", "description": "Advisory until captured or attested by a separately protected required integration."},
@@ -58,7 +58,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["reviewer", "agent_id", "role_run_id", "identity_binding", "commit_sha", "submitted_at", "state", "model_profile", "reasoning_level"],
+        "required": ["reviewer", "agent_id", "role_run_id", "identity_binding", "commit_sha", "submitted_at", "state", "route_evidence"],
         "properties": {
           "reviewer": {"type": "string", "minLength": 1},
           "agent_id": {"type": "string", "minLength": 1},
@@ -76,6 +76,7 @@
           "commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
           "submitted_at": {"type": "string", "minLength": 1},
           "state": {"type": "string", "const": "APPROVED"},
+          "route_evidence": {"type": "object"},
           "model_profile": {"type": "string", "enum": ["reviewer_fable", "reviewer_sol"]},
           "reasoning_level": {"type": "string", "enum": ["high", "xhigh", "max"]}
         },
