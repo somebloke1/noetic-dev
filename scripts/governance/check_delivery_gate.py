@@ -708,6 +708,12 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
             "trusted runner canonical manifest digest mismatch: "
             f"computed={computed_manifest_digest}, recorded={artifact.get('manifest_sha256')}"
         )
+    review_evidence_digest = canonical_json_sha256({
+        "agent_identities": external_evidence.get("agent_identities", []),
+        "approvals": external_evidence.get("approvals", []),
+    })
+    if artifact.get("review_evidence_sha256") != review_evidence_digest:
+        errors.append("protected review identity/approval evidence digest mismatch")
 
     repository = external_evidence.get("repository", {})
     if repository.get("full_name") != REPO_FULL_NAME:
@@ -812,6 +818,7 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
             ("run_id", run.get("id")),
             ("job_id", job.get("id")),
             ("event", "pull_request"),
+            ("review_evidence_sha256", review_evidence_digest),
         ]:
             if claims.get(label) != expected:
                 errors.append(f"artifact attestation claim mismatch: {label}")
@@ -835,6 +842,7 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
     approvals = (external_evidence or {}).get("approvals", [])
     identity_records = (external_evidence or {}).get("agent_identities", [])
     identities: Dict[str, str] = {}
+    principal_agents: Dict[str, str] = {}
     for record in identity_records:
         agent_id = record.get("agent_id", "")
         if not agent_id or agent_id in identities:
@@ -843,10 +851,18 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         if record.get("provider") != "protected-runner" or record.get("verified") is not True or not record.get("principal_id"):
             errors.append(f"protected agent identity is not verified: {agent_id}")
             continue
-        identities[agent_id] = record["principal_id"]
+        principal_id = record["principal_id"]
+        if principal_id in principal_agents:
+            errors.append(f"protected canonical principal is assigned to multiple aliases: {principal_id}")
+            continue
+        identities[agent_id] = principal_id
+        principal_agents[principal_id] = agent_id
     for agent_id in sorted(implementation_agents | qa_agents):
         if agent_id not in identities:
             errors.append(f"protected canonical identity missing for implementation/QA agent: {agent_id}")
+    author = pr.get("author", "")
+    if not author or author not in identities:
+        errors.append(f"protected canonical identity missing for PR author: {author or '<empty>'}")
     if not approvals:
         errors.append("no external protected approval evidence supplied")
 
@@ -883,6 +899,10 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
             continue
         implementation_principals = {identities[item] for item in implementation_agents if item in identities}
         qa_principals = {identities[item] for item in qa_agents if item in identities}
+        author_principal = identities.get(author)
+        if reviewer_principal == author_principal:
+            errors.append(f"approval by PR author principal is not independent: {reviewer_principal}")
+            continue
         if reviewer_principal in implementation_principals:
             errors.append(f"approval by implementation principal is not independent: {reviewer_principal}")
             continue
@@ -901,7 +921,7 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         if approval.get("state") != "APPROVED":
             errors.append(f"approval by {reviewer} state is not APPROVED")
             continue
-        if reviewer == pr.get("author"):
+        if reviewer == author:
             errors.append(f"approval by PR author is not independent: {reviewer}")
             continue
         if reviewer in implementation_agents:

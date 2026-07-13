@@ -139,9 +139,6 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         external["approvals"][0]["reviewer"] = author
         external["approvals"][0]["agent_id"] = author
         external["approvals"][0]["identity_binding"]["subject"] = author
-        reviewer_identity = next(item for item in external["agent_identities"] if item["agent_id"] == "agent-reviewer-fable")
-        reviewer_identity["agent_id"] = author
-        reviewer_identity["principal_id"] = "principal-author"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("PR author", "\n".join(errors))
@@ -256,7 +253,24 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         reviewer["principal_id"] = "principal-implementer"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
-        self.assertIn("implementation principal is not independent", "\n".join(errors))
+        self.assertIn("protected canonical principal is assigned to multiple aliases", "\n".join(errors))
+
+    def test_reviewer_alias_bound_to_author_principal_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        reviewer = next(item for item in external["agent_identities"] if item["agent_id"] == "agent-reviewer-fable")
+        reviewer["principal_id"] = "principal-author"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("protected canonical principal is assigned to multiple aliases", "\n".join(errors))
+
+    def test_review_evidence_digest_mismatch_is_rejected(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["approvals"][0]["reasoning_level"] = "xhigh"
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("review identity/approval evidence digest mismatch", "\n".join(errors))
 
     def test_naive_approval_timestamp_returns_controlled_failure(self):
         manifest = load_fixture("valid_advisory_manifest.json")
