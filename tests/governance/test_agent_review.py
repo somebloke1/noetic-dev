@@ -243,6 +243,10 @@ class TestAgentReview(unittest.TestCase):
         ]:
             with self.subTest(mutation=mutation), self.assertRaises(ReviewError):
                 validate_pr({**valid, **mutation}, self.REQUEST)
+        missing_body = dict(valid)
+        del missing_body["body"]
+        with self.assertRaises(ReviewError):
+            validate_pr(missing_body, self.REQUEST)
 
     @mock.patch("agent_review_broker.run_terra")
     @mock.patch("agent_review_broker.fetch_review_material")
