@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Existing Work Freeze Schema",
+  "type": "object",
+  "required": ["schema_version", "status", "known_open_pr_count", "blocks_publication", "audit_required", "audit_completed"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "status": {"type": "string", "enum": ["active", "complete"]},
+    "reason": {"type": "string"},
+    "known_open_pr_count": {"type": "integer"},
+    "blocks_publication": {"type": "boolean"},
+    "blocks_new_pr_opening_claims": {"type": "boolean"},
+    "audit_required": {"type": "boolean"},
+    "audit_completed": {"type": "boolean"},
+    "publication_gate": {"type": "string"}
+  }
+}

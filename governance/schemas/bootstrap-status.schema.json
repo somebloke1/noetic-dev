@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bootstrap Status Schema",
+  "type": "object",
+  "required": ["schema_version", "authoritative_delivery_gate", "publication"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "authoritative_delivery_gate": {
+      "type": "object",
+      "required": [
+        "status",
+        "required_dependency",
+        "protected_policy_ref_established",
+        "trusted_runner_provenance_established",
+        "branch_protection_requires_governance",
+        "independent_agent_review_process_established",
+        "credential_broker_established"
+      ],
+      "properties": {
+        "status": {"type": "string"},
+        "required_dependency": {"type": "string"},
+        "protected_policy_ref_established": {"type": "boolean"},
+        "trusted_runner_provenance_established": {"type": "boolean"},
+        "branch_protection_requires_governance": {"type": "boolean"},
+        "independent_agent_review_process_established": {"type": "boolean"},
+        "credential_broker_established": {"type": "boolean"}
+      }
+    },
+    "publication": {"type": "object"}
+  }
+}

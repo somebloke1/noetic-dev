@@ -1,0 +1,30 @@
+[Unit]
+Description=noetic-dev bounded Terra review broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=noetic-review-broker
+Group=noetic-agent-review
+WorkingDirectory=/opt/noetic-dev-agent-review/current
+ExecStart=/usr/bin/python3 /opt/noetic-dev-agent-review/current/scripts/governance/agent_review_broker.py --socket /run/noetic-dev/agent-review.sock --socket-group noetic-agent-review
+Environment=HOME=/var/lib/noetic-agent-review
+Environment=PATH=/opt/noetic-dev-agent-review/runtime/bin:/usr/local/bin:/usr/bin:/bin
+RuntimeDirectory=noetic-dev
+RuntimeDirectoryMode=0750
+UMask=0007
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/noetic-agent-review /run/noetic-dev
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

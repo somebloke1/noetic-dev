@@ -1,0 +1,383 @@
+{
+  "approvals": [
+    {
+      "commit_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "independent": true,
+      "reviewer": "agent-reviewer-fable",
+      "state": "APPROVED",
+      "timestamp": "2026-07-11T12:40:00+00:00"
+    }
+  ],
+  "audit": {
+    "existing_work_freeze": {
+      "audit_artifact": "governance/audits/20260711-existing-work-freeze/summary.md",
+      "audit_completed": true,
+      "audit_required": true,
+      "blocks_publication": false,
+      "known_open_pr_count": 10,
+      "status": "complete"
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "python3",
+        "scripts/validate_repo.py"
+      ],
+      "category": "validation",
+      "command_id": "repo.validate",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "pre_merge",
+      "registry_id": "repo.validate",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/governance/check_delivery_gate.py",
+        "--check-pinning-only",
+        ".github/workflows"
+      ],
+      "category": "validation",
+      "command_id": "workflow.pinning",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "pre_merge",
+      "registry_id": "workflow.pinning",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "category": "test",
+      "command_id": "tests.all",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "pre_merge",
+      "registry_id": "tests.all",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "scripts/validate_repo.py"
+      ],
+      "category": "validation",
+      "command_id": "postmerge.validate",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "post_merge",
+      "registry_id": "postmerge.validate",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "category": "test",
+      "command_id": "postmerge.tests",
+      "cwd": "/repo",
+      "exit_code": 0,
+      "finished_at": "2026-07-11T12:22:00+00:00",
+      "phase": "post_merge",
+      "registry_id": "postmerge.tests",
+      "started_at": "2026-07-11T12:21:00+00:00",
+      "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "generated_at": "2026-07-11T12:30:00+00:00",
+  "issue": {
+    "canonical_status": "status:in_progress",
+    "labels": [
+      "type:implementation",
+      "status:in_progress"
+    ],
+    "numbers": [
+      23
+    ]
+  },
+  "manifest_id": "00000000-0000-0000-0000-000000000001",
+  "passes": {
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "implementation_pass_ids": [
+      "impl-g1-0001"
+    ],
+    "ordering": [
+      "impl-g1-0001"
+    ],
+    "parent_pass_id": "",
+    "pass_records": [
+      {
+        "agent_id": "agent-implementer-g1",
+        "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+        "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+        "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "finished_at": "2026-07-11T12:00:00+00:00",
+        "model_profile": "implementer_candidate",
+        "pass_id": "impl-g1-0001",
+        "role": "implementer",
+        "role_run_id": "impl-role-g1-0001",
+        "started_at": "2026-07-11T11:45:00+00:00"
+      }
+    ],
+    "remediation_pass_ids": []
+  },
+  "policy": {
+    "checkout": {
+      "candidate_path": "/runner/work/candidate",
+      "policy_path": "/runner/work/policy",
+      "separate": true
+    },
+    "file_hashes": {
+      "scripts/governance/check_delivery_gate.py": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "scripts/governance/check_evidence_manifest.py": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "scripts/governance/run_isolated_pi.py": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "generator_path": "scripts/governance/collect_evidence.py",
+    "generator_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "ref": "refs/heads/main",
+    "runner_attestation": {
+      "artifact": {
+        "artifact_digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+        "artifact_id": 333,
+        "manifest_sha256": "5e2b68fe8a50620974937d38d776c3645a705122e9388ed43809c31a96dd156e",
+        "name": "governance-evidence"
+      },
+      "github": {
+        "artifact": {
+          "digest": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "id": 333,
+          "name": "governance-evidence"
+        },
+        "checkouts": {
+          "candidate_path": "/runner/work/candidate",
+          "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "policy_path": "/runner/work/policy",
+          "policy_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "separate": true
+        },
+        "generator": {
+          "from_policy_checkout": true,
+          "path": "scripts/governance/collect_evidence.py"
+        },
+        "job": {
+          "conclusion": "success",
+          "id": 222,
+          "name": "delivery-gate"
+        },
+        "policy_file_hashes": {
+          "scripts/governance/check_delivery_gate.py": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "scripts/governance/check_evidence_manifest.py": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "scripts/governance/collect_evidence.py": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "scripts/governance/run_isolated_pi.py": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "policy_file_hashes_source": "protected_checkout",
+        "protected_ref": {
+          "protected": true,
+          "ref": "refs/heads/main",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "pull_request": {
+          "base_ref": "main",
+          "head_ref": "issue-23-governance-correction",
+          "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "number": 23
+        },
+        "repository": {
+          "full_name": "somebloke1/noetic-dev",
+          "id": 123456,
+          "name": "noetic-dev",
+          "owner": "somebloke1"
+        },
+        "run": {
+          "attempt": 1,
+          "base_branch": "main",
+          "conclusion": "success",
+          "event": "pull_request",
+          "head_branch": "issue-23-governance-correction",
+          "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+          "id": 111
+        },
+        "workflow": {
+          "path": ".github/workflows/governance.yml",
+          "ref": "refs/heads/main",
+          "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "mode": "github_api",
+      "verification_status": "verified"
+    },
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "trusted_runner": true,
+    "workflow": {
+      "path": ".github/workflows/governance.yml",
+      "pinned": true,
+      "ref": "refs/heads/main",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  "publication": {
+    "merge_result_sha": "ffffffffffffffffffffffffffffffffffffffff",
+    "post_merge_tests": [
+      "postmerge.tests"
+    ],
+    "post_merge_validations": [
+      "postmerge.validate"
+    ],
+    "publication_sha": "ffffffffffffffffffffffffffffffffffffffff"
+  },
+  "pull_request": {
+    "author": "somebloke1",
+    "base": "main",
+    "draft_state": false,
+    "head_ref": "issue-23-governance-correction",
+    "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "is_stacked": false,
+    "linked_issues": [
+      23
+    ],
+    "number": 23,
+    "title": "fix: implement governance correction"
+  },
+  "qa": {
+    "records": []
+  },
+  "repo": {
+    "base_branch": "main",
+    "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "candidate_branch": "issue-23-governance-correction",
+    "candidate_pinned_at": "2026-07-11T12:00:00+00:00",
+    "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
+    "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "remote": "https://github.com/somebloke1/noetic-dev.git",
+    "repository": "somebloke1/noetic-dev",
+    "repository_id": 123456
+  },
+  "run_id": "00000000-0000-0000-0000-000000000002",
+  "schema_version": "1",
+  "state_transitions": [
+    {
+      "authority": "orchestrator",
+      "from": "AUDITED",
+      "timestamp": "2026-07-11T12:30:00+00:00",
+      "to": "ISSUE_ACCEPTED"
+    },
+    {
+      "authority": "orchestrator",
+      "from": "ISSUE_ACCEPTED",
+      "timestamp": "2026-07-11T12:30:01+00:00",
+      "to": "PLAN_REQUESTED"
+    },
+    {
+      "authority": "orchestrator",
+      "from": "PLAN_REQUESTED",
+      "timestamp": "2026-07-11T12:30:02+00:00",
+      "to": "PLAN_READY"
+    },
+    {
+      "authority": "orchestrator",
+      "from": "PLAN_READY",
+      "timestamp": "2026-07-11T12:30:03+00:00",
+      "to": "IMPLEMENTING"
+    },
+    {
+      "authority": "implementer",
+      "from": "IMPLEMENTING",
+      "timestamp": "2026-07-11T12:30:04+00:00",
+      "to": "CANDIDATE_PINNED"
+    },
+    {
+      "authority": "validator",
+      "from": "CANDIDATE_PINNED",
+      "timestamp": "2026-07-11T12:30:05+00:00",
+      "to": "VALIDATING"
+    },
+    {
+      "authority": "validator",
+      "from": "VALIDATING",
+      "timestamp": "2026-07-11T12:30:06+00:00",
+      "to": "CANDIDATE_PINNED"
+    },
+    {
+      "authority": "qa",
+      "from": "CANDIDATE_PINNED",
+      "timestamp": "2026-07-11T12:30:07+00:00",
+      "to": "QA_RUNNING"
+    },
+    {
+      "authority": "qa",
+      "from": "QA_RUNNING",
+      "timestamp": "2026-07-11T12:30:08+00:00",
+      "to": "QA_PASSED"
+    },
+    {
+      "authority": "qa",
+      "from": "QA_PASSED",
+      "timestamp": "2026-07-11T12:30:09+00:00",
+      "to": "INDEPENDENT_REVIEW_PENDING"
+    },
+    {
+      "authority": "reviewer",
+      "from": "INDEPENDENT_REVIEW_PENDING",
+      "timestamp": "2026-07-11T12:30:10+00:00",
+      "to": "READY_TO_MERGE"
+    },
+    {
+      "authority": "publisher",
+      "from": "READY_TO_MERGE",
+      "timestamp": "2026-07-11T12:30:11+00:00",
+      "to": "MERGED_TO_MAIN"
+    },
+    {
+      "authority": "validator",
+      "from": "MERGED_TO_MAIN",
+      "timestamp": "2026-07-11T12:30:12+00:00",
+      "to": "POST_MERGE_VALIDATING"
+    },
+    {
+      "authority": "validator",
+      "from": "POST_MERGE_VALIDATING",
+      "timestamp": "2026-07-11T12:30:13+00:00",
+      "to": "PUBLICATION_READY"
+    },
+    {
+      "authority": "publisher",
+      "from": "PUBLICATION_READY",
+      "timestamp": "2026-07-11T12:30:14+00:00",
+      "to": "PUBLISHED"
+    }
+  ],
+  "tests": [
+    "tests.all"
+  ],
+  "validations": [
+    "repo.validate",
+    "workflow.pinning"
+  ]
+}

@@ -37,3 +37,6 @@ __pycache__/
 
 # Worktrees belong outside the repository
 .worktrees/
+
+# Governance run artifacts (disposable, not committed)
+.governance/runs/

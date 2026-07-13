@@ -1,0 +1,258 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Evidence Manifest Schema",
+  "description": "Authoritative/advisory delivery evidence for noetic-dev governance. Semantic gates are enforced by scripts/governance/check_*.py.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "run_id",
+    "generated_at",
+    "policy",
+    "repo",
+    "issue",
+    "pull_request",
+    "passes",
+    "qa",
+    "commands",
+    "validations",
+    "tests",
+    "state_transitions",
+    "approvals",
+    "publication"
+  ],
+  "definitions": {
+    "sha1": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "sha1_or_empty": {"type": "string", "pattern": "^$|^[a-f0-9]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "sha256_or_empty": {"type": "string", "pattern": "^$|^[a-f0-9]{64}$"},
+    "date_time": {"type": "string"},
+    "isolation": {
+      "type": "object",
+      "required": [
+        "source_mount_read_only",
+        "scratch_separate_from_source",
+        "host_home_mounted",
+        "ssh_config_mounted",
+        "gh_config_mounted",
+        "ambient_credentials_available",
+        "context_files_disabled",
+        "extensions_disabled",
+        "skills_disabled",
+        "themes_disabled",
+        "candidate_tree_before",
+        "candidate_tree_after",
+        "write_tools_observed"
+      ],
+      "properties": {
+        "source_mount_read_only": {"type": "boolean"},
+        "scratch_separate_from_source": {"type": "boolean"},
+        "host_home_mounted": {"type": "boolean"},
+        "ssh_config_mounted": {"type": "boolean"},
+        "gh_config_mounted": {"type": "boolean"},
+        "ambient_credentials_available": {"type": "boolean"},
+        "context_files_disabled": {"type": "boolean"},
+        "extensions_disabled": {"type": "boolean"},
+        "skills_disabled": {"type": "boolean"},
+        "themes_disabled": {"type": "boolean"},
+        "candidate_tree_before": {"$ref": "#/definitions/sha1"},
+        "candidate_tree_after": {"$ref": "#/definitions/sha1"},
+        "write_tools_observed": {"type": "boolean"}
+      }
+    }
+  },
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "manifest_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "generated_at": {"$ref": "#/definitions/date_time"},
+    "audit": {"type": "object"},
+    "policy": {
+      "type": "object",
+      "required": ["ref", "sha", "generator_path", "generator_sha256", "trusted_runner"],
+      "properties": {
+        "ref": {"type": "string"},
+        "sha": {"$ref": "#/definitions/sha1"},
+        "generator_path": {"type": "string"},
+        "generator_sha256": {"$ref": "#/definitions/sha256"},
+        "trusted_runner": {"type": "boolean"},
+        "workflow": {"type": "object"},
+        "checkout": {"type": "object"},
+        "runner_attestation": {"type": "object"}
+      }
+    },
+    "repo": {
+      "type": "object",
+      "required": [
+        "remote",
+        "base_branch",
+        "base_sha",
+        "candidate_branch",
+        "candidate_sha",
+        "candidate_tree_oid"
+      ],
+      "properties": {
+        "remote": {"type": "string"},
+        "repository": {"type": "string"},
+        "repository_id": {"type": "integer"},
+        "base_branch": {"type": "string"},
+        "base_sha": {"$ref": "#/definitions/sha1"},
+        "candidate_branch": {"type": "string"},
+        "candidate_sha": {"$ref": "#/definitions/sha1"},
+        "candidate_tree_oid": {"$ref": "#/definitions/sha1"},
+        "candidate_pinned_at": {"$ref": "#/definitions/date_time"}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "required": ["numbers", "labels", "canonical_status"],
+      "properties": {
+        "numbers": {"type": "array", "items": {"type": "integer"}},
+        "labels": {"type": "array", "items": {"type": "string"}},
+        "canonical_status": {"type": "string", "pattern": "^status:[a-z0-9_-]+$"}
+      }
+    },
+    "pull_request": {
+      "type": "object",
+      "required": ["number", "title", "author", "draft_state", "base", "head_sha", "linked_issues"],
+      "properties": {
+        "number": {"type": "integer"},
+        "title": {"type": "string"},
+        "author": {"type": "string"},
+        "draft_state": {"type": "boolean"},
+        "base": {"type": "string"},
+        "head_ref": {"type": "string"},
+        "head_sha": {"$ref": "#/definitions/sha1"},
+        "linked_issues": {"type": "array", "items": {"type": "integer"}},
+        "is_stacked": {"type": "boolean"}
+      }
+    },
+    "passes": {
+      "type": "object",
+      "required": [
+        "implementation_pass_ids",
+        "remediation_pass_ids",
+        "parent_pass_id",
+        "candidate_sha",
+        "ordering"
+      ],
+      "properties": {
+        "implementation_pass_ids": {"type": "array", "items": {"type": "string"}},
+        "remediation_pass_ids": {"type": "array", "items": {"type": "string"}},
+        "parent_pass_id": {"type": "string"},
+        "candidate_sha": {"$ref": "#/definitions/sha1"},
+        "ordering": {"type": "array", "items": {"type": "string"}},
+        "pass_records": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "qa": {
+      "type": "object",
+      "required": ["records"],
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "qa_run_id",
+              "role_run_id",
+              "agent_id",
+              "qa_for_pass_id",
+              "model_profile",
+              "verdict",
+              "report_hash",
+              "event_log_hash",
+              "base_sha",
+              "candidate_sha",
+              "candidate_tree_oid",
+              "isolation_proof"
+            ],
+            "properties": {
+              "qa_run_id": {"type": "string"},
+              "role_run_id": {"type": "string"},
+              "agent_id": {"type": "string"},
+              "qa_for_pass_id": {"type": "string"},
+              "model_profile": {"type": "string"},
+              "verdict": {"type": "string", "enum": ["pass", "fail"]},
+              "report_hash": {"$ref": "#/definitions/sha256"},
+              "event_log_hash": {"$ref": "#/definitions/sha256"},
+              "base_sha": {"$ref": "#/definitions/sha1"},
+              "candidate_sha": {"$ref": "#/definitions/sha1"},
+              "candidate_tree_oid": {"$ref": "#/definitions/sha1"},
+              "protected_execution_record_sha256": {"$ref": "#/definitions/sha256_or_empty"},
+              "protected_probe_record_sha256": {"$ref": "#/definitions/sha256_or_empty"},
+              "protected_execution_record_path": {"type": "string"},
+              "protected_probe_record_path": {"type": "string"},
+              "protected_execution_record": {"type": "object"},
+              "protected_probe_record": {"type": "object"},
+              "isolation_proof": {"$ref": "#/definitions/isolation"}
+            }
+          }
+        }
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command_id", "category", "argv", "cwd", "exit_code", "stdout_sha256", "stderr_sha256"],
+        "properties": {
+          "command_id": {"type": "string"},
+          "registry_id": {"type": "string"},
+          "category": {"type": "string", "enum": ["validation", "test", "gate"]},
+          "phase": {"type": "string"},
+          "argv": {"type": "array", "items": {"type": "string"}},
+          "cwd": {"type": "string"},
+          "exit_code": {"type": "integer"},
+          "stdout_sha256": {"$ref": "#/definitions/sha256"},
+          "stderr_sha256": {"$ref": "#/definitions/sha256"},
+          "started_at": {"$ref": "#/definitions/date_time"},
+          "finished_at": {"$ref": "#/definitions/date_time"},
+          "commit_sha": {"$ref": "#/definitions/sha1_or_empty"},
+          "tree_oid": {"$ref": "#/definitions/sha1_or_empty"}
+        }
+      }
+    },
+    "validations": {"type": "array", "items": {"type": "string"}},
+    "tests": {"type": "array", "items": {"type": "string"}},
+    "state_transitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "authority", "timestamp"],
+        "properties": {
+          "from": {"type": "string"},
+          "to": {"type": "string"},
+          "authority": {"type": "string"},
+          "timestamp": {"$ref": "#/definitions/date_time"}
+        }
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reviewer", "commit_sha", "timestamp", "independent"],
+        "properties": {
+          "reviewer": {"type": "string"},
+          "commit_sha": {"$ref": "#/definitions/sha1"},
+          "timestamp": {"$ref": "#/definitions/date_time"},
+          "independent": {"type": "boolean"},
+          "state": {"type": "string"}
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "required": ["merge_result_sha", "publication_sha"],
+      "properties": {
+        "merge_result_sha": {"$ref": "#/definitions/sha1_or_empty"},
+        "publication_sha": {"$ref": "#/definitions/sha1_or_empty"},
+        "post_merge_validations": {"type": "array", "items": {"type": "string"}},
+        "post_merge_tests": {"type": "array", "items": {"type": "string"}},
+        "tag_sha": {"$ref": "#/definitions/sha1_or_empty"},
+        "deploy_sha": {"$ref": "#/definitions/sha1_or_empty"}
+      }
+    }
+  }
+}

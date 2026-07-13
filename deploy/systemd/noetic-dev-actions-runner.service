@@ -1,0 +1,34 @@
+[Unit]
+Description=noetic-dev repository-scoped GitHub Actions runner
+After=network-online.target noetic-dev-agent-review-broker.service
+Wants=network-online.target
+Requires=noetic-dev-agent-review-broker.service
+
+[Service]
+Type=simple
+User=noetic-github-runner
+Group=noetic-github-runner
+SupplementaryGroups=noetic-agent-review
+WorkingDirectory=/var/lib/noetic-dev-runner/actions-runner
+ExecStart=/var/lib/noetic-dev-runner/actions-runner/bin/runsvc.sh
+Environment=HOME=/var/lib/noetic-dev-runner/home
+Environment=NOETIC_AGENT_REVIEW_SOCKET=/run/noetic-dev/agent-review.sock
+UMask=0077
+Restart=always
+RestartSec=5
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/noetic-dev-runner
+InaccessiblePaths=/var/lib/noetic-agent-review /home/dgk /var/run/docker.sock /run/docker.sock
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

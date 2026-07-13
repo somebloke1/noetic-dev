@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Future External Protected Delivery Evidence Interface Schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_class",
+    "mode",
+    "verification_status",
+    "repository",
+    "workflow",
+    "run",
+    "job",
+    "pull_request",
+    "artifact",
+    "protected_ref",
+    "checkouts",
+    "generator",
+    "policy_file_hashes_source",
+    "policy_file_hashes",
+    "branch_protection",
+    "agent_identities",
+    "approvals",
+    "freeze"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "evidence_class": {"type": "string", "const": "protected-external"},
+    "mode": {"type": "string", "enum": ["github_api", "github_artifact_attestation"]},
+    "verification_status": {"type": "string", "const": "verified", "description": "Advisory until captured or attested by a separately protected required integration."},
+    "repository": {"type": "object"},
+    "workflow": {"type": "object"},
+    "run": {"type": "object"},
+    "job": {"type": "object"},
+    "pull_request": {"type": "object"},
+    "artifact": {"type": "object"},
+    "protected_ref": {"type": "object"},
+    "checkouts": {"type": "object"},
+    "generator": {"type": "object"},
+    "policy_file_hashes_source": {"type": "string"},
+    "policy_file_hashes": {"type": "object"},
+    "branch_protection": {"type": "object"},
+    "agent_identities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["agent_id", "principal_id", "provider", "verified"],
+        "properties": {
+          "agent_id": {"type": "string", "minLength": 1},
+          "principal_id": {"type": "string", "minLength": 1},
+          "provider": {"type": "string", "const": "protected-runner"},
+          "verified": {"type": "boolean", "const": true}
+        },
+        "additionalProperties": false
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reviewer", "agent_id", "role_run_id", "identity_binding", "commit_sha", "submitted_at", "state", "model_profile", "reasoning_level"],
+        "properties": {
+          "reviewer": {"type": "string", "minLength": 1},
+          "agent_id": {"type": "string", "minLength": 1},
+          "role_run_id": {"type": "string", "minLength": 1},
+          "identity_binding": {
+            "type": "object",
+            "required": ["provider", "subject", "verified"],
+            "properties": {
+              "provider": {"type": "string", "const": "protected-runner"},
+              "subject": {"type": "string", "minLength": 1},
+              "verified": {"type": "boolean", "const": true}
+            },
+            "additionalProperties": false
+          },
+          "commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+          "submitted_at": {"type": "string", "minLength": 1},
+          "state": {"type": "string", "const": "APPROVED"},
+          "model_profile": {"type": "string", "enum": ["reviewer_fable", "reviewer_sol"]},
+          "reasoning_level": {"type": "string", "enum": ["high", "xhigh", "max"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "freeze": {"type": "object"},
+    "signed_attestation": {"type": "object"},
+    "post_merge": {"type": "object"}
+  }
+}

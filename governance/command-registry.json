@@ -1,0 +1,86 @@
+{
+  "$schema": "./schemas/command-registry.schema.json",
+  "schema_version": "1",
+  "description": "Canonical command registry for noetic-dev governance. Only commands registered here can satisfy validation, test, or gate requirements.",
+  "commands": {
+    "repo.validate": {
+      "category": "validation",
+      "argv": ["python3", "scripts/validate_repo.py"],
+      "cwd": "{{repo_root}}",
+      "description": "Validate repository invariants (required files, whitespace, links, anchors). This is a validation/check, not a test.",
+      "counts_as_test": false,
+      "counts_as_validation": true,
+      "required_for_merge": true,
+      "phase": "pre_merge"
+    },
+    "workflow.pinning": {
+      "category": "validation",
+      "argv": ["python3", "scripts/governance/check_delivery_gate.py", "--check-pinning-only", ".github/workflows"],
+      "cwd": "{{repo_root}}",
+      "description": "Check that all GitHub Actions workflow files use pinned full-SHA action refs and immutable docker digests.",
+      "counts_as_test": false,
+      "counts_as_validation": true,
+      "required_for_merge": true,
+      "phase": "pre_merge"
+    },
+    "tests.all": {
+      "category": "test",
+      "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"],
+      "cwd": "{{repo_root}}",
+      "description": "Run all genuine tests under tests/ using Python stdlib unittest. validate_repo.py is never counted as a test.",
+      "counts_as_test": true,
+      "counts_as_validation": false,
+      "required_for_merge": true,
+      "phase": "pre_merge"
+    },
+    "governance.manifest": {
+      "category": "validation",
+      "argv": ["python3", "scripts/governance/check_evidence_manifest.py", "{{manifest_path}}"],
+      "cwd": "{{repo_root}}",
+      "description": "Validate an evidence manifest against its schema and invariant rules.",
+      "counts_as_test": false,
+      "counts_as_validation": true,
+      "required_for_merge": false,
+      "phase": "pre_merge"
+    },
+    "governance.delivery_gate": {
+      "category": "gate",
+      "argv": ["python3", "scripts/governance/check_delivery_gate.py", "{{manifest_path}}"],
+      "cwd": "{{repo_root}}",
+      "description": "Run delivery gate checks against an evidence manifest. Fail-closed on missing provenance.",
+      "counts_as_test": false,
+      "counts_as_validation": false,
+      "required_for_merge": false,
+      "phase": "pre_merge"
+    },
+    "postmerge.validate": {
+      "category": "validation",
+      "argv": ["python3", "scripts/validate_repo.py"],
+      "cwd": "{{repo_root}}",
+      "description": "Post-merge validation against the main publication SHA.",
+      "counts_as_test": false,
+      "counts_as_validation": true,
+      "required_for_publication": true,
+      "phase": "post_merge"
+    },
+    "postmerge.tests": {
+      "category": "test",
+      "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"],
+      "cwd": "{{repo_root}}",
+      "description": "Post-merge tests against the main publication SHA.",
+      "counts_as_test": true,
+      "counts_as_validation": false,
+      "required_for_publication": true,
+      "phase": "post_merge"
+    }
+  },
+  "rules": {
+    "validate_repo_cannot_be_test": true,
+    "unregistered_commands_invalid": true,
+    "required_pre_merge_validations": ["repo.validate", "workflow.pinning"],
+    "required_pre_merge_tests": ["tests.all"],
+    "required_post_merge_validations": ["postmerge.validate"],
+    "required_post_merge_tests": ["postmerge.tests"],
+    "model_prose_not_evidence": "Model output stating 'tests passed' without captured command exit codes and output hashes is ignored."
+  }
+}

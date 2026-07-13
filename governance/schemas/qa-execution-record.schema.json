@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Protected QA Execution Record Schema",
+  "type": "object",
+  "required": ["schema_version", "record_id", "run_id", "role", "role_run_id", "qa_for_pass_id", "generated_by", "actual_invocation"],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "record_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "role": {"type": "string", "const": "qa"},
+    "role_run_id": {"type": "string"},
+    "qa_for_pass_id": {"type": "string"},
+    "evidence_class": {"type": "string"},
+    "record_only": {"type": "boolean"},
+    "generated_by": {
+      "type": "object",
+      "required": ["policy_commit_sha", "dispatcher_path", "dispatcher_sha256"],
+      "properties": {
+        "policy_commit_sha": {"type": "string"},
+        "dispatcher_path": {"type": "string"},
+        "dispatcher_sha256": {"type": "string"}
+      }
+    },
+    "actual_invocation": {
+      "type": "object",
+      "required": [
+        "resolved_model",
+        "profile_id",
+        "profile_hash",
+        "pi_version",
+        "argv",
+        "argv_sha256",
+        "tools",
+        "environment_name_allowlist",
+        "environment_values_recorded",
+        "candidate_sha",
+        "candidate_tree_oid",
+        "policy_commit_sha",
+        "started_at",
+        "finished_at",
+        "exit_code",
+        "stdout_sha256",
+        "stderr_sha256",
+        "qa_event_log_sha256",
+        "isolation"
+      ],
+      "properties": {
+        "resolved_model": {"type": "string"},
+        "profile_id": {"type": "string"},
+        "profile_hash": {"type": "string"},
+        "pi_version": {"type": "string"},
+        "argv": {"type": "array", "items": {"type": "string"}},
+        "argv_sha256": {"type": "string"},
+        "tools": {"type": "array", "items": {"type": "string"}},
+        "environment_name_allowlist": {"type": "array", "items": {"type": "string"}},
+        "environment_values_recorded": {"type": "boolean"},
+        "candidate_sha": {"type": "string"},
+        "base_sha": {"type": "string"},
+        "candidate_tree_oid": {"type": "string"},
+        "policy_commit_sha": {"type": "string"},
+        "started_at": {"type": "string"},
+        "finished_at": {"type": "string"},
+        "exit_code": {"type": "integer"},
+        "stdout_sha256": {"type": "string"},
+        "stderr_sha256": {"type": "string"},
+        "qa_event_log_sha256": {"type": "string"},
+        "isolation": {"type": "object"},
+        "credential_interface": {"type": "object"}
+      }
+    }
+  }
+}
