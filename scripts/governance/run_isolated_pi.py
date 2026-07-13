@@ -190,12 +190,12 @@ def _read_gitfile(path: Path) -> Optional[Path]:
 
 
 def _candidate_git_metadata_ro_mounts(candidate_dir: Path) -> List[Path]:
-    """Return Git metadata paths needed for a worktree without running Git.
+    """Return narrowly scoped Git metadata paths needed for a worktree.
 
     Git worktrees often have a .git file pointing outside the working tree.
-    Parsing that file lets the bootstrap sandbox mount only the required Git
-    metadata read-only, while avoiding any host-authority Git invocation against
-    candidate-controlled local configuration.
+    Parsing that file lets the bootstrap sandbox mount the required object and
+    index metadata read-only, while avoiding any host-authority Git invocation
+    against candidate-controlled local configuration.
     """
     mounts: List[Path] = []
     gitdir = _read_gitfile(candidate_dir / ".git")
@@ -204,7 +204,18 @@ def _candidate_git_metadata_ro_mounts(candidate_dir: Path) -> List[Path]:
     try:
         gitdir.relative_to(candidate_dir.resolve())
     except ValueError:
-        mounts.append(gitdir)
+        if gitdir.parent.name != "worktrees":
+            raise RuntimeError(f"external gitdir is not a supported Git worktree metadata path: {gitdir}")
+        backlink_file = gitdir / "gitdir"
+        try:
+            backlink = Path(backlink_file.read_text(encoding="utf-8", errors="strict").strip())
+        except (OSError, UnicodeError) as error:
+            raise RuntimeError(f"external gitdir has no readable worktree backlink: {gitdir}") from error
+        if not backlink.is_absolute():
+            backlink = gitdir / backlink
+        if backlink.resolve() != (candidate_dir / ".git").resolve():
+            raise RuntimeError(f"external gitdir backlink does not identify candidate worktree: {gitdir}")
+        mounts.extend([gitdir / "HEAD", gitdir / "index", gitdir / "commondir"])
 
     commondir_file = gitdir / "commondir"
     if commondir_file.is_file():
@@ -217,8 +228,10 @@ def _candidate_git_metadata_ro_mounts(candidate_dir: Path) -> List[Path]:
             try:
                 common.relative_to(candidate_dir.resolve())
             except ValueError:
-                mounts.append(common)
-    return sorted(set(mounts), key=lambda item: len(str(item)))
+                if common.name != ".git" or gitdir.parent.parent != common:
+                    raise RuntimeError(f"external commondir is not the owning common Git directory: {common}")
+                mounts.extend([common / "objects", common / "refs", common / "packed-refs"])
+    return sorted(set(mounts), key=lambda item: (len(str(item)), str(item)))
 
 
 def _build_bootstrap_bwrap_command(candidate_dir: Path, parent_dir: Path, candidate_sha: str) -> List[str]:
@@ -265,22 +278,88 @@ if printf '%s\n' "$index_flags" | grep -E '^[[:lower:]S]' >/dev/null 2>&1; then
   echo "candidate checkout has assume-unchanged or skip-worktree index entries" >&2
   exit 15
 fi
-status=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" status --porcelain=v1 --untracked-files=all)
-if [ -n "$status" ]; then
-  echo "candidate checkout is dirty or has untracked files" >&2
-  printf '%s\n' "$status" >&2
-  exit 16
-fi
-ignored=$(git -c safe.directory=* -c core.fsmonitor=false -C "$src" ls-files --others --ignored --exclude-standard)
-if [ -n "$ignored" ]; then
-  echo "candidate checkout has ignored untracked entries" >&2
-  printf '%s\n' "$ignored" >&2
-  exit 17
-fi
+python3 - "$src" "$expected_tree" <<'PY'
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
 
-tmp_index=/tmp/source-tree.index
-GIT_INDEX_FILE="$tmp_index" git -c safe.directory=* -c core.fsmonitor=false -C "$src" read-tree "$expected_tree"
-GIT_INDEX_FILE="$tmp_index" git -c safe.directory=* -c core.fsmonitor=false -C "$src" checkout-index -a -f --prefix="$dst/"
+src = Path(sys.argv[1])
+tree = sys.argv[2]
+expected = {}
+entries = subprocess.check_output(
+    ["git", "-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-C", str(src), "ls-tree", "-r", "-z", "--full-tree", tree]
+).split(b"\0")
+for entry in entries:
+    if not entry:
+        continue
+    meta, raw_path = entry.split(b"\t", 1)
+    mode, kind, oid = meta.decode("ascii").split(" ")
+    if kind != "blob":
+        raise SystemExit(f"unsupported tree entry kind {kind} for {raw_path!r}")
+    path_text = raw_path.decode("utf-8", errors="surrogateescape")
+    data = subprocess.check_output(["git", "-C", str(src), "cat-file", "blob", oid])
+    expected[path_text] = (mode, data)
+
+for path_text, (mode, data) in expected.items():
+    path = src / path_text
+    if mode == "120000":
+        if not path.is_symlink() or os.readlink(path).encode("utf-8", errors="surrogateescape") != data:
+            raise SystemExit(f"candidate checkout differs from expected tree: {path_text}")
+        continue
+    if not path.is_file() or path.is_symlink() or path.read_bytes() != data:
+        raise SystemExit(f"candidate checkout differs from expected tree: {path_text}")
+    executable = bool(path.stat().st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+    if executable != (mode == "100755"):
+        raise SystemExit(f"candidate checkout executable bit differs from expected tree: {path_text}")
+
+expected_paths = set(expected)
+untracked = []
+for root, dirs, files in os.walk(src):
+    root_path = Path(root)
+    if root_path == src:
+        dirs[:] = [item for item in dirs if item != ".git"]
+        files = [item for item in files if item != ".git"]
+    for name in files:
+        rel = (root_path / name).relative_to(src).as_posix()
+        if rel not in expected_paths:
+            untracked.append(rel)
+if untracked:
+    raise SystemExit("candidate checkout has untracked files: " + "; ".join(sorted(untracked)))
+PY
+
+python3 - "$src" "$expected_tree" "$dst" <<'PY'
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+tree = sys.argv[2]
+dst = Path(sys.argv[3])
+entries = subprocess.check_output(
+    ["git", "-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-C", str(src), "ls-tree", "-r", "-z", "--full-tree", tree]
+).split(b"\0")
+for entry in entries:
+    if not entry:
+        continue
+    meta, raw_path = entry.split(b"\t", 1)
+    mode, kind, oid = meta.decode("ascii").split(" ")
+    if kind != "blob":
+        raise SystemExit(f"unsupported tree entry kind {kind} for {raw_path!r}")
+    path_text = raw_path.decode("utf-8", errors="surrogateescape")
+    target = dst / path_text
+    target.parent.mkdir(parents=True, exist_ok=True)
+    data = subprocess.check_output(["git", "-C", str(src), "cat-file", "blob", oid])
+    if mode == "120000":
+        os.symlink(data.decode("utf-8", errors="surrogateescape"), target)
+    else:
+        target.write_bytes(data)
+        if mode == "100755":
+            target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+PY
 
 git -c init.defaultBranch=qa-candidate init --quiet "$dst"
 git -C "$dst" config --local core.fsmonitor false

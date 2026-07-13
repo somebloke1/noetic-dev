@@ -18,6 +18,7 @@ if GOV_SCRIPTS not in sys.path:
 from run_isolated_pi import (
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
+    _candidate_git_metadata_ro_mounts,
     _credential_interface,
     _non_evidence_record,
     _write_tools_observed,
@@ -191,7 +192,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             root = Path(tmp)
             sha = self._init_candidate_repo(root)
             (root / "untracked.txt").write_text("late mutation\n", encoding="utf-8")
-            with self.assertRaisesRegex(RuntimeError, "dirty or has untracked files"):
+            with self.assertRaisesRegex(RuntimeError, "untracked files"):
                 materialize_candidate_checkout(root, sha, Path(private_tmp))
 
     @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
@@ -242,6 +243,128 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ok, message, tree = validate_candidate_checkout(private_dir, sha)
             self.assertTrue(ok, message)
             self.assertEqual(tree, expected_tree)
+
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
+    def test_materialize_candidate_checkout_does_not_execute_source_smudge_filter(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
+            base = Path(tmp)
+            root = base / "candidate"
+            root.mkdir()
+            marker = Path(private_tmp) / "filter-marker"
+            filter_script = root / "hostile-filter.sh"
+            filter_script.write_text(
+                "#!/bin/sh\n"
+                f"printf marker > {marker}\n"
+                "cat\n",
+                encoding="utf-8",
+            )
+            filter_script.chmod(0o755)
+            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=root, check=True)
+            subprocess.run(["git", "config", "filter.hostile.smudge", str(filter_script)], cwd=root, check=True)
+            (root / ".gitattributes").write_text("payload.txt filter=hostile\n", encoding="utf-8")
+            (root / "payload.txt").write_text("payload\n", encoding="utf-8")
+            subprocess.run(["git", "add", ".gitattributes", "payload.txt", "hostile-filter.sh"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-m", "add filtered payload"], cwd=root, check=True, capture_output=True)
+            sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+
+            private_dir, _private_tree = materialize_candidate_checkout(root, sha, Path(private_tmp))
+
+            self.assertFalse(marker.exists(), "source-local smudge filter executed during materialization")
+            self.assertEqual((private_dir / "payload.txt").read_text(encoding="utf-8"), "payload\n")
+
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
+    def test_materialize_candidate_checkout_does_not_execute_source_process_filter(self):
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as private_tmp:
+            base = Path(tmp)
+            root = base / "candidate"
+            root.mkdir()
+            marker = Path(private_tmp) / "process-filter-marker"
+            filter_script = root / "hostile-process-filter.sh"
+            filter_script.write_text(
+                "#!/bin/sh\n"
+                "while read line; do\n"
+                f"  printf marker > {marker}\n"
+                "  case \"$line\" in\n"
+                "    command=*) printf 'status=success\\n\\n' ;;\n"
+                "    '') printf '\\n' ;;\n"
+                "  esac\n"
+                "done\n",
+                encoding="utf-8",
+            )
+            filter_script.chmod(0o755)
+            subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Test User"], cwd=root, check=True)
+            (root / ".gitattributes").write_text("payload.txt filter=hostile\n", encoding="utf-8")
+            (root / "payload.txt").write_text("payload\n", encoding="utf-8")
+            subprocess.run(["git", "add", ".gitattributes", "payload.txt", "hostile-process-filter.sh"], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-m", "add process filtered payload"], cwd=root, check=True, capture_output=True)
+            sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+            subprocess.run(["git", "config", "filter.hostile.process", str(filter_script)], cwd=root, check=True)
+
+            private_dir, _private_tree = materialize_candidate_checkout(root, sha, Path(private_tmp))
+
+            self.assertFalse(marker.exists(), "source-local process filter executed during materialization")
+            self.assertEqual((private_dir / "payload.txt").read_text(encoding="utf-8"), "payload\n")
+
+    def test_candidate_git_metadata_mounts_exclude_git_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "repo" / ".git"
+            gitdir = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            gitdir.mkdir(parents=True)
+            (common / "objects").mkdir(parents=True)
+            (common / "refs").mkdir()
+            candidate.mkdir()
+            (candidate / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+            (gitdir / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+            (gitdir / "index").write_bytes(b"DIRC")
+            (gitdir / "commondir").write_text("../..\n", encoding="utf-8")
+            (gitdir / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            (common / "config").write_text("[filter \"hostile\"]\n", encoding="utf-8")
+
+            mounts = _candidate_git_metadata_ro_mounts(candidate)
+
+            self.assertIn(gitdir / "HEAD", mounts)
+            self.assertIn(gitdir / "index", mounts)
+            self.assertIn(common / "objects", mounts)
+            self.assertNotIn(gitdir, mounts)
+            self.assertNotIn(common, mounts)
+            self.assertNotIn(common / "config", mounts)
+
+    def test_candidate_git_metadata_rejects_unowned_commondir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "repo" / ".git"
+            gitdir = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            gitdir.mkdir(parents=True)
+            candidate.mkdir()
+            (candidate / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+            (gitdir / "commondir").write_text(str(base), encoding="utf-8")
+            (gitdir / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "external commondir"):
+                _candidate_git_metadata_ro_mounts(candidate)
+
+    def test_candidate_git_metadata_rejects_foreign_worktree_backlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "victim" / ".git"
+            gitdir = common / "worktrees" / "victim-worktree"
+            candidate = base / "impostor"
+            victim = base / "victim-worktree"
+            gitdir.mkdir(parents=True)
+            candidate.mkdir()
+            victim.mkdir()
+            (candidate / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+            (gitdir / "gitdir").write_text(f"{victim / '.git'}\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "backlink does not identify candidate"):
+                _candidate_git_metadata_ro_mounts(candidate)
 
     def test_record_only_is_non_evidence(self):
         args = argparse.Namespace(
