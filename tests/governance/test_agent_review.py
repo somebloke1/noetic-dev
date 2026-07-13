@@ -267,14 +267,25 @@ class TestAgentReview(unittest.TestCase):
                 "model": "codex/gpt-5.6-terra",
                 "reasoning": "high",
                 "decision_id": "d-20260713-000001",
+                "classification": {
+                    "task_kind": "review",
+                    "complexity": "complex",
+                    "blast_radius": "interface",
+                    "high_value": False,
+                    "awaited": True,
+                },
                 "attempts": [{
                     "decision_id": "d-20260713-000001",
                     "model": "codex/gpt-5.6-terra",
                     "outcome": "success",
                 }],
+                "genus": "Complex Code Review",
                 "genus_code": "REVIEW-COMPLEX",
+                "effective_complexity": "complex",
                 "sophistication": "complex",
                 "availability": "verified",
+                "fable_eligible": False,
+                "fallbacks": ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"],
                 "endpoint_id": "local-litellm",
                 "endpoint_path": "/v1/responses",
             },
@@ -285,7 +296,12 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["model"], "codex/gpt-5.6-terra")
         self.assertEqual(result["reasoning"], "high")
         self.assertEqual(result["route_decision_id"], "d-20260713-000001")
+        self.assertEqual(result["route_classification"]["high_value"], False)
         self.assertEqual(result["route_endpoint_id"], "local-litellm")
+        self.assertEqual(result["route_genus"], "Complex Code Review")
+        self.assertEqual(result["route_effective_complexity"], "complex")
+        self.assertFalse(result["route_fable_eligible"])
+        self.assertEqual(result["route_fallbacks"], ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"])
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
 

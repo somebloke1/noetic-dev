@@ -25,6 +25,14 @@ STANDARD_MODELS = [
     "codex/gpt-5.6-luna",
 ]
 ALLOWED_GENERATIVE_MODELS = {*STANDARD_MODELS, "claude-fable-5"}
+ALLOWED_GENERATIVE_MODEL_ORDER = [
+    STANDARD_MODELS[0],
+    "claude-fable-5",
+    STANDARD_MODELS[1],
+    STANDARD_MODELS[2],
+]
+REVIEW_CANDIDATES = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]]
+REVIEW_GENUS = "Complex Code Review"
 AGENT_REVIEW_TASK = {
     "task_kind": "review",
     "complexity": "complex",
@@ -100,17 +108,17 @@ def validate_policy_invariants(policy: dict[str, Any]) -> None:
         or access.get("systemd_credential") != "litellm_api_key"
         or access.get("litellm_required") is not True
         or access.get("direct_provider_access") is not False
-        or set(_string_list(access, "applies_to_harnesses")) != {"pi", "opencode", "broker", "bare"}
+        or _string_list(access, "applies_to_harnesses") != ["pi", "opencode", "broker", "bare"]
     ):
         raise ModelRoutingError("model policy weakens the canonical LiteLLM boundary")
     if (
         _string_list(generative, "standard_models") != STANDARD_MODELS
-        or set(_string_list(generative, "allowed_models")) != ALLOWED_GENERATIVE_MODELS
+        or _string_list(generative, "allowed_models") != ALLOWED_GENERATIVE_MODEL_ORDER
         or generative.get("capability_tiers")
         != [[STANDARD_MODELS[0], "claude-fable-5"], [STANDARD_MODELS[1]], [STANDARD_MODELS[2]]]
         or generative.get("reasoning_effort") != "high"
         or fable_eligibility.get("limited") is not True
-        or set(_string_list(fable_eligibility, "task_kinds")) != {"review", "research", "design"}
+        or _string_list(fable_eligibility, "task_kinds") != ["review", "research", "design"]
         or fable_eligibility.get("minimum_complexity") != "complex"
     ):
         raise ModelRoutingError("model policy weakens the governed generative set")
@@ -194,7 +202,8 @@ def validate_decision(
     if not isinstance(decision_id, str) or not DECISION_ID.fullmatch(decision_id):
         raise ModelRoutingError("genus-router returned an invalid decision_id")
     model = raw.get("model")
-    if not isinstance(model, str) or model not in set(STANDARD_MODELS) or model in excluded_models:
+    remaining_candidates = [item for item in REVIEW_CANDIDATES if item not in excluded_models]
+    if not remaining_candidates or model != remaining_candidates[0]:
         raise ModelRoutingError("genus-router selected a forbidden or excluded model")
     if (
         raw.get("genus_code") != "REVIEW-COMPLEX"
@@ -204,8 +213,8 @@ def validate_decision(
         or raw.get("fable_eligible") is not False
     ):
         raise ModelRoutingError("genus-router decision does not match protected review classification")
-    if not isinstance(raw.get("genus"), str) or not raw["genus"]:
-        raise ModelRoutingError("genus-router omitted genus")
+    if raw.get("genus") != REVIEW_GENUS:
+        raise ModelRoutingError("genus-router returned a noncanonical genus")
     rationale = raw.get("rationale")
     if not isinstance(rationale, list) or not rationale or not all(isinstance(item, str) for item in rationale):
         raise ModelRoutingError("genus-router rationale evidence is invalid")
@@ -215,7 +224,11 @@ def validate_decision(
     fallback_refs = raw.get("fallback_refs")
     if not isinstance(fallbacks, list) or not isinstance(fallback_refs, list):
         raise ModelRoutingError("genus-router fallback evidence is invalid")
-    if len(fallbacks) != len(fallback_refs) or len(fallbacks) != len(set(fallbacks)):
+    if (
+        len(fallbacks) != len(fallback_refs)
+        or len(fallbacks) != len(set(fallbacks))
+        or fallbacks != remaining_candidates[1:]
+    ):
         raise ModelRoutingError("genus-router fallback evidence is inconsistent")
     validated_fallbacks = []
     for fallback, fallback_ref in zip(fallbacks, fallback_refs, strict=True):
@@ -280,6 +293,8 @@ def _validate_model_ref(raw: Any, policy: dict[str, Any], expected_model: str) -
     reasoning = _required_string(_mapping(policy, "generative"), "reasoning_effort")
     if expected_model in standard_models and raw.get("reasoning_effort") != reasoning:
         raise ModelRoutingError("standard GPT reference does not require high reasoning")
+    if expected_model in standard_models and raw["endpoint_path"] != "/v1/responses":
+        raise ModelRoutingError("standard GPT reference uses a noncanonical endpoint path")
     return {key: value for key, value in raw.items() if isinstance(value, str)}
 
 
@@ -323,6 +338,7 @@ def route_and_invoke_review(
                 prompt,
                 active_policy,
                 api_key,
+                excluded_models=set(excluded),
                 http_post=http_post,
             )
             parsed = parse_output(output)
@@ -341,15 +357,18 @@ def route_and_invoke_review(
         attempts.append({"decision_id": decision_id, "model": model, "outcome": "success"})
         evidence = {
             "decision_id": decision_id,
+            "classification": task,
             "attempts": attempts,
             "model": model,
             "endpoint_id": decision["model_ref"]["endpoint_id"],
             "endpoint_path": decision["model_ref"]["endpoint_path"],
             "reasoning": _required_string(_mapping(active_policy, "generative"), "reasoning_effort"),
             "genus_code": decision["genus_code"],
+            "genus": decision["genus"],
             "effective_complexity": decision["effective_complexity"],
             "sophistication": decision["sophistication"],
             "availability": decision["availability"],
+            "fable_eligible": decision["fable_eligible"],
             "fallbacks": decision["fallbacks"],
         }
         return parsed, evidence
@@ -373,9 +392,10 @@ def _invoke_litellm(
     policy: dict[str, Any],
     api_key: str,
     *,
+    excluded_models: set[str],
     http_post: Callable[[str, dict[str, str], bytes, int], bytes] | None = None,
 ) -> str:
-    validated = validate_decision(decision, policy, set())
+    validated = validate_decision(decision, policy, excluded_models)
     model_ref = validated["model_ref"]
     access = _mapping(policy, "access")
     reasoning = _required_string(_mapping(policy, "generative"), "reasoning_effort")

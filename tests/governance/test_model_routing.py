@@ -31,9 +31,9 @@ TERRA = "codex/gpt-5.6-terra"
 LUNA = "codex/gpt-5.6-luna"
 
 
-def decision(model: str, number: int = 1) -> dict[str, object]:
+def model_ref(model: str) -> dict[str, str]:
     endpoint_path = "/v1/chat/completions" if model == FABLE else "/v1/responses"
-    model_ref = {
+    result = {
         "model_id": model,
         "endpoint_id": "local-litellm",
         "upstream_model_id": model,
@@ -43,16 +43,22 @@ def decision(model: str, number: int = 1) -> dict[str, object]:
         "token_env": "LITELLM_API_KEY",
     }
     if model != FABLE:
-        model_ref["reasoning_effort"] = "high"
+        result["reasoning_effort"] = "high"
+    return result
+
+
+def decision(model: str, number: int = 1) -> dict[str, object]:
+    candidate_order = [TERRA, SOL, LUNA]
+    fallbacks = candidate_order[candidate_order.index(model) + 1:] if model in candidate_order else []
     return {
         "availability": "verified",
         "fable_eligible": False,
         "genus": "Complex Code Review",
         "model": model,
-        "model_ref": model_ref,
+        "model_ref": model_ref(model),
         "genus_code": "REVIEW-COMPLEX",
-        "fallbacks": [],
-        "fallback_refs": [],
+        "fallbacks": fallbacks,
+        "fallback_refs": [model_ref(item) for item in fallbacks],
         "effective_complexity": "complex",
         "sophistication": "complex",
         "rationale": ["fixed protected review classification"],
@@ -112,16 +118,33 @@ class TestModelRouting(unittest.TestCase):
         ungoverned = decision(TERRA)
         ungoverned["fallbacks"] = ["unapproved-model"]
         ungoverned["fallback_refs"] = [{
-            **ungoverned["model_ref"],
+            **model_ref(TERRA),
             "model_id": "unapproved-model",
             "upstream_model_id": "unapproved-model",
         }]
-        with self.assertRaisesRegex(ModelRoutingError, "forbidden fallback"):
+        with self.assertRaisesRegex(ModelRoutingError, "inconsistent"):
             validate_decision(ungoverned, self.policy, set())
 
     def test_decision_rejects_reselected_excluded_model(self):
         with self.assertRaisesRegex(ModelRoutingError, "forbidden or excluded"):
             validate_decision(decision(TERRA), self.policy, {TERRA})
+
+    def test_decision_rejects_noncanonical_genus_endpoint_and_fallback_order(self):
+        wrong_genus = decision(TERRA)
+        wrong_genus["genus"] = "FORGED-NONCANONICAL-GENUS"
+        with self.assertRaisesRegex(ModelRoutingError, "noncanonical genus"):
+            validate_decision(wrong_genus, self.policy, set())
+
+        wrong_endpoint = decision(TERRA)
+        wrong_endpoint["model_ref"]["endpoint_path"] = "/v1/chat/completions"
+        with self.assertRaisesRegex(ModelRoutingError, "noncanonical endpoint"):
+            validate_decision(wrong_endpoint, self.policy, set())
+
+        wrong_order = decision(TERRA)
+        wrong_order["fallbacks"] = [LUNA, SOL]
+        wrong_order["fallback_refs"] = [model_ref(LUNA), model_ref(SOL)]
+        with self.assertRaisesRegex(ModelRoutingError, "inconsistent"):
+            validate_decision(wrong_order, self.policy, set())
 
     def test_responses_invocation_enacts_high_reasoning(self):
         captured = {}
@@ -131,7 +154,7 @@ class TestModelRouting(unittest.TestCase):
             return json.dumps({"output_text": "review-json"}).encode()
 
         result = _invoke_litellm(
-            decision(TERRA), "prompt", self.policy, "key", http_post=post
+            decision(TERRA), "prompt", self.policy, "key", excluded_models=set(), http_post=post
         )
         self.assertEqual(result, "review-json")
         self.assertEqual(captured["url"], "http://172.22.10.160:3333/v1/responses")
@@ -146,7 +169,14 @@ class TestModelRouting(unittest.TestCase):
         forged = decision(FABLE)
         forged["fable_eligible"] = True
         with self.assertRaisesRegex(ModelRoutingError, "forbidden or excluded"):
-            _invoke_litellm(forged, "prompt", self.policy, "key", http_post=lambda *_args: b"")
+            _invoke_litellm(
+                forged,
+                "prompt",
+                self.policy,
+                "key",
+                excluded_models=set(),
+                http_post=lambda *_args: b"",
+            )
 
         mutations = [
             ("effective_complexity", "trivial"),
@@ -178,6 +208,7 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(result, {"verdict": "pass"})
         self.assertEqual(evidence["model"], TERRA)
         self.assertEqual(evidence["reasoning"], "high")
+        self.assertEqual(evidence["classification"]["high_value"], False)
         self.assertEqual(service.outcomes[0]["outcome"], "success")
         self.assertEqual(service.inputs[0]["prior_failure"], False)
         self.assertEqual(service.inputs[0]["exclude_models"], [])
@@ -243,6 +274,7 @@ class TestModelRouting(unittest.TestCase):
                 "prompt",
                 self.policy,
                 "key",
+                excluded_models=set(),
                 http_post=lambda *_args: b'{"output":[]}',
             )
 
@@ -295,6 +327,11 @@ class TestModelRouting(unittest.TestCase):
             target[field] = value
             with self.subTest(section=section, field=field), self.assertRaises(ModelRoutingError):
                 validate_policy_invariants(weakened)
+
+        duplicate = json.loads(json.dumps(self.policy))
+        duplicate["generative"]["allowed_models"].append(SOL)
+        with self.assertRaises(ModelRoutingError):
+            validate_policy_invariants(duplicate)
 
 
 if __name__ == "__main__":
