@@ -42,6 +42,8 @@ Compromise of a trusted host executable, the kernel, GitHub, or the model provid
 
 A candidate passes code-level QA when an independent reviewer attempts to falsify AR-01 through AR-10 against one exact commit and finds no requirement violation. AR-11 and AR-12 are deployment gates and are tested only after code-level QA passes.
 
+Before `agent-review` becomes a required check on a protected branch, one minimal same-repository canary PR must demonstrate the live exact-SHA review path on that branch.
+
 A QA observation is blocking only when it provides a reproducible counterexample to a listed requirement or shows that a listed requirement is insufficient for a threat named above. Adjacent hardening ideas and risks outside the stated trust boundary are recorded as residual risks, not silently promoted to new acceptance requirements. Changing this boundary requires an explicit threat-model or governance decision, followed by a new implementation generation and its paired QA pass.
 
 There is no defect quota and no presumption that every candidate is defective. `PASS` is the required result when the attempted counterexamples do not violate the acceptance requirements. A reviewer must not manufacture a finding from hypothetical trusted-component compromise, stylistic preference, an unstated ideal, or the mere possibility of additional hardening. Every blocking finding bears the burden of showing the exact requirement or named threat, the observed behavior, and a reproducible counterexample; otherwise it is an open question or residual risk.
