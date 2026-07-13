@@ -39,6 +39,13 @@ class TestDeliveryGatePositive(unittest.TestCase):
         joined = "\n".join(errors)
         self.assertIn("caller-supplied external evidence is advisory only", joined)
         self.assertIn("credential_broker_established", joined)
+        self.assertNotIn("canonical manifest digest mismatch", joined)
+
+    def test_github_api_mode_cannot_establish_review_authority(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("signed artifact attestation is required", "\n".join(errors))
 
     def test_valid_advisory_is_blocked_without_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -263,6 +270,22 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("protected canonical principal is assigned to multiple aliases", "\n".join(errors))
+
+    def test_duplicate_implementation_role_run_is_rejected(self):
+        manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
+        records = manifest["passes"]["pass_records"]
+        records[1]["role_run_id"] = records[0]["role_run_id"]
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("implementation/remediation role_run_id must be unique", "\n".join(errors))
+
+    def test_duplicate_qa_role_run_is_rejected(self):
+        manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
+        records = manifest["qa"]["records"]
+        records[1]["role_run_id"] = records[0]["role_run_id"]
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("QA role_run_id must be unique", "\n".join(errors))
 
     def test_review_evidence_digest_mismatch_is_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")

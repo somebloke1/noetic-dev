@@ -216,6 +216,7 @@ def _check_passes(manifest: Dict[str, Any], errors: List[str]) -> None:
 
     records = pass_records_by_id(manifest)
     previous_candidate_sha = repo.get("base_sha")
+    role_run_ids: set[str] = set()
     for index, pass_id in enumerate(ids):
         record = records.get(pass_id)
         if not record:
@@ -231,8 +232,13 @@ def _check_passes(manifest: Dict[str, Any], errors: List[str]) -> None:
         previous_candidate_sha = record.get("candidate_sha")
         if not record.get("agent_id"):
             errors.append(f"pass {pass_id} missing agent_id for role-independence checks")
-        if not record.get("role_run_id"):
+        role_run_id = record.get("role_run_id")
+        if not role_run_id:
             errors.append(f"pass {pass_id} missing role_run_id")
+        elif role_run_id in role_run_ids:
+            errors.append(f"implementation/remediation role_run_id must be unique: {role_run_id}")
+        else:
+            role_run_ids.add(role_run_id)
         if record.get("finished_at"):
             _parse_time(record["finished_at"], f"pass {pass_id}.finished_at", errors)
         if record.get("started_at"):
@@ -271,8 +277,13 @@ def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
         errors.append("no QA records present")
 
     seen: dict[str, int] = {}
+    qa_run_ids: set[str] = set()
+    qa_role_run_ids: set[str] = set()
+    pass_role_run_ids = {record.get("role_run_id") for record in pass_records.values() if record.get("role_run_id")}
     for record in qa_records:
         qa_label = record.get("qa_run_id", "<unknown>")
+        qa_run_id = record.get("qa_run_id", "")
+        qa_role_run_id = record.get("role_run_id", "")
         pass_id = record.get("qa_for_pass_id", "")
         pass_record = pass_records.get(pass_id, {})
         seen[pass_id] = seen.get(pass_id, 0) + 1
@@ -291,6 +302,20 @@ def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
                 errors.append(f"qa {qa_label} {field} does not match pass {pass_id}")
         if not record.get("agent_id"):
             errors.append(f"qa {qa_label} missing agent_id")
+        if not qa_run_id:
+            errors.append("qa record missing qa_run_id")
+        elif qa_run_id in qa_run_ids:
+            errors.append(f"qa_run_id must be unique: {qa_run_id}")
+        else:
+            qa_run_ids.add(qa_run_id)
+        if not qa_role_run_id:
+            errors.append(f"qa {qa_label} missing role_run_id")
+        elif qa_role_run_id in qa_role_run_ids:
+            errors.append(f"QA role_run_id must be unique: {qa_role_run_id}")
+        elif qa_role_run_id in pass_role_run_ids:
+            errors.append(f"QA role_run_id reuses implementation/remediation role_run_id: {qa_role_run_id}")
+        else:
+            qa_role_run_ids.add(qa_role_run_id)
 
         iso = record.get("isolation_proof", {})
         if iso:

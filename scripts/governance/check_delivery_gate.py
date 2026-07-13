@@ -691,6 +691,8 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
     mode = external_evidence.get("mode")
     if mode not in {"github_api", "github_artifact_attestation"}:
         errors.append("trusted runner provenance must be verified by GitHub API or artifact attestation")
+    if mode == "github_api":
+        errors.append("github_api mode is diagnostic only for review authority; signed artifact attestation is required")
     if external_evidence.get("verification_status") != "verified":
         errors.append("trusted runner provenance verification_status is not verified")
 
