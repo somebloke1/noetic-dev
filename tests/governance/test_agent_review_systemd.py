@@ -28,7 +28,10 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("WorkingDirectory=/var/lib/noetic-dev-runner/actions-runner", unit)
         self.assertIn("HOME=/var/lib/noetic-dev-runner/home", unit)
         self.assertIn("InaccessiblePaths=/var/lib/noetic-agent-review /home/dgk", unit)
-        self.assertIn("KillMode=mixed", unit)
+        self.assertIn("ExecStart=/var/lib/noetic-dev-runner/actions-runner/bin/runsvc.sh", unit)
+        self.assertIn("KillMode=process", unit)
+        self.assertIn("KillSignal=SIGTERM", unit)
+        self.assertIn("TimeoutStopSec=5min", unit)
         self.assertNotIn("/var/tmp", unit)
 
 
