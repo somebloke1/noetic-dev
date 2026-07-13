@@ -2,6 +2,7 @@ name: Agent Review
 
 on:
   pull_request_target:
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
@@ -15,19 +16,26 @@ concurrency:
 jobs:
   agent-review:
     name: agent-review
-    if: >-
-      github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login == github.repository_owner
     runs-on: [self-hosted, noetic-dev, terra-review]
     timeout-minutes: 20
     steps:
       - name: Checkout protected policy SHA only
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
           path: policy
+      - name: Enforce local-runner admission policy
+        env:
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          test "$PR_DRAFT" = "false"
+          test "$PR_HEAD_REPOSITORY" = "$REPOSITORY"
+          test "$PR_AUTHOR" = "$REPOSITORY_OWNER"
       - name: Request immutable semantic review
         env:
           NOETIC_AGENT_REVIEW_SOCKET: /run/user/1000/noetic-dev-agent-review.sock
