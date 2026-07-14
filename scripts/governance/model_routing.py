@@ -5,19 +5,18 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import hashlib
 import json
 import math
 import os
 import re
 import secrets
+import stat
 import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
-
-from hash_tree import canonical_json_sha256, sha256_file, sha256_text
-from route_evidence import validate_route_evidence
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY_PATH = ROOT / "config" / "model-policy.json"
@@ -28,6 +27,7 @@ COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
 SYSTEM_GIT = Path("/usr/bin/git")
 PRODUCTION_RELEASES_ROOT = Path("/opt/noetic-dev-agent-review/releases")
 PRODUCTION_CURRENT_LINK = Path("/opt/noetic-dev-agent-review/current")
+PRODUCTION_MODE_ENV = "NOETIC_AGENT_REVIEW_PRODUCTION"
 CANONICAL_LITELLM_BASE_URL = "http://172.22.10.160:3333"
 STANDARD_MODELS = [
     "codex/gpt-5.6-sol",
@@ -116,6 +116,29 @@ class RoutedReviewExhausted(ModelRoutingError):
     def __init__(self, evidence: dict[str, Any]) -> None:
         super().__init__("all routed review candidates failed")
         self.evidence = evidence
+
+
+def sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while block := handle.read(65_536):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def canonical_json_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def strict_json(value: str | bytes) -> Any:
@@ -400,8 +423,6 @@ def route_and_invoke_review(
         raise ModelRoutingError("review prompt exceeded its byte limit")
     active_policy = policy if policy is not None else load_policy()
     validate_policy_invariants(active_policy)
-    active_service = service or create_router_service()
-    api_key = load_litellm_key(active_policy)
     task = dict(AGENT_REVIEW_TASK)
     excluded: list[str] = []
     attempts: list[dict[str, str]] = []
@@ -418,6 +439,10 @@ def route_and_invoke_review(
         "max_model_input_bytes": MAX_MODEL_INPUT_BYTES,
     }
     harness_configuration_sha256 = canonical_json_sha256(harness_configuration)
+    from route_evidence import validate_route_evidence
+
+    active_service = service or create_router_service()
+    api_key = load_litellm_key(active_policy)
 
     def failure_evidence() -> dict[str, Any]:
         return {
@@ -566,7 +591,12 @@ def _report_outcome(service: Any, decision_id: str, outcome: str, notes: str) ->
 
 
 def _policy_commit_identity() -> tuple[str, str]:
-    if ROOT.parent == PRODUCTION_RELEASES_ROOT and COMMIT_SHA.fullmatch(ROOT.name):
+    production_mode = os.environ.get(PRODUCTION_MODE_ENV)
+    if production_mode is not None and production_mode != "1":
+        raise ModelRoutingError("production policy mode is invalid")
+    if production_mode == "1" or ROOT.is_relative_to(PRODUCTION_RELEASES_ROOT.parent):
+        if ROOT.parent != PRODUCTION_RELEASES_ROOT or not COMMIT_SHA.fullmatch(ROOT.name):
+            raise ModelRoutingError("production policy root is not a canonical immutable release")
         try:
             current = PRODUCTION_CURRENT_LINK.resolve(strict=True)
             current_link = PRODUCTION_CURRENT_LINK.lstat()
@@ -574,18 +604,21 @@ def _policy_commit_identity() -> tuple[str, str]:
                 PRODUCTION_RELEASES_ROOT.parent,
                 PRODUCTION_RELEASES_ROOT,
                 ROOT,
-                ROOT / "config" / "model-policy.json",
-                ROOT / "scripts" / "governance" / "agent_review_broker.py",
-                Path(__file__).resolve(),
+                *ROOT.rglob("*"),
             ]
-            protected_stats = [path.stat() for path in protected_paths]
+            protected_stats = [(path, path.lstat()) for path in protected_paths]
         except OSError as error:
             raise ModelRoutingError("production policy release identity is unavailable") from error
         if (
             current != ROOT
             or not PRODUCTION_CURRENT_LINK.is_symlink()
             or current_link.st_uid != 0
-            or any(item.st_uid != 0 or item.st_mode & 0o022 for item in protected_stats)
+            or any(
+                item.st_uid != 0
+                or item.st_mode & 0o022
+                or not (stat.S_ISREG(item.st_mode) or stat.S_ISDIR(item.st_mode))
+                for _path, item in protected_stats
+            )
         ):
             raise ModelRoutingError("production policy release identity is not root-controlled")
         return ROOT.name, "root-owned-current-release"

@@ -404,13 +404,52 @@ class TestModelRouting(unittest.TestCase):
                 mock.patch("model_routing.ROOT", release),
                 mock.patch("model_routing.PRODUCTION_RELEASES_ROOT", releases),
                 mock.patch("model_routing.PRODUCTION_CURRENT_LINK", current),
-                mock.patch.object(Path, "stat", return_value=root_owned),
                 mock.patch.object(Path, "lstat", return_value=root_owned),
                 mock.patch.object(Path, "is_symlink", return_value=True),
+                mock.patch.dict(os.environ, {"NOETIC_AGENT_REVIEW_PRODUCTION": "1"}, clear=False),
             ):
                 commit, source = _policy_commit_identity()
         self.assertEqual(commit, sha)
         self.assertEqual(source, "root-owned-current-release")
+
+    def test_production_mode_rejects_noncanonical_root_without_git_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                mock.patch("model_routing.ROOT", Path(directory)),
+                mock.patch("model_routing.subprocess.run") as run,
+                mock.patch.dict(os.environ, {"NOETIC_AGENT_REVIEW_PRODUCTION": "1"}, clear=False),
+                self.assertRaisesRegex(ModelRoutingError, "not a canonical immutable release"),
+            ):
+                _policy_commit_identity()
+        run.assert_not_called()
+
+    def test_production_mode_rejects_writable_release_child(self):
+        sha = "d" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            install_root = Path(directory) / "noetic-dev-agent-review"
+            releases = install_root / "releases"
+            release = releases / sha
+            release.mkdir(parents=True)
+            writable = release / "hash_tree.py"
+            writable.write_text("pass\n", encoding="utf-8")
+            current = install_root / "current"
+            current.symlink_to(release)
+            root_owned = SimpleNamespace(st_uid=0, st_mode=0o100755)
+            root_writable = SimpleNamespace(st_uid=0, st_mode=0o100666)
+
+            def fake_lstat(path: Path):
+                return root_writable if path == writable else root_owned
+
+            with (
+                mock.patch("model_routing.ROOT", release),
+                mock.patch("model_routing.PRODUCTION_RELEASES_ROOT", releases),
+                mock.patch("model_routing.PRODUCTION_CURRENT_LINK", current),
+                mock.patch.object(Path, "lstat", fake_lstat),
+                mock.patch.object(Path, "is_symlink", return_value=True),
+                mock.patch.dict(os.environ, {"NOETIC_AGENT_REVIEW_PRODUCTION": "1"}, clear=False),
+                self.assertRaisesRegex(ModelRoutingError, "not root-controlled"),
+            ):
+                _policy_commit_identity()
 
     def test_credential_file_is_bounded_to_litellm_key(self):
         with tempfile.TemporaryDirectory() as directory:

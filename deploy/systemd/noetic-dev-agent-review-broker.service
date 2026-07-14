@@ -13,6 +13,7 @@ Environment=HOME=/var/lib/noetic-agent-review
 Environment=PATH=/opt/noetic-dev-agent-review/runtime/bin:/usr/local/bin:/usr/bin:/bin
 Environment=GENUS_ROUTER_CONFIG=/etc/noetic-dev/genus-router/router.yaml
 Environment=NOETIC_MODEL_POLICY=/opt/noetic-dev-agent-review/current/config/model-policy.json
+Environment=NOETIC_AGENT_REVIEW_PRODUCTION=1
 LoadCredential=litellm_api_key:/var/lib/noetic-agent-review/credentials/litellm-api-key
 RuntimeDirectory=noetic-dev
 RuntimeDirectoryMode=0750

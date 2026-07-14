@@ -33,6 +33,7 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("ProtectHome=true", unit)
         self.assertIn("GENUS_ROUTER_CONFIG=/etc/noetic-dev/genus-router/router.yaml", unit)
         self.assertIn("NOETIC_MODEL_POLICY=/opt/noetic-dev-agent-review/current/config/model-policy.json", unit)
+        self.assertIn("NOETIC_AGENT_REVIEW_PRODUCTION=1", unit)
         self.assertIn("LoadCredential=litellm_api_key:", unit)
         self.assertNotIn("OPENAI_API_KEY", unit)
         self.assertNotIn("/home/dgk", unit)
