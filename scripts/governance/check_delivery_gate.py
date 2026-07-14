@@ -681,10 +681,11 @@ def _check_probe_execution_binding(
             errors.append(f"qa {qa_run_id} stdout hash does not match retained events")
         try:
             parsed_final_text = parse_pi_jsonl_final_assistant(event_log)
-        except (ModelRoutingError, TypeError, ValueError) as error:
+        except Exception as error:
             detail = (
                 "forbidden tool event"
-                if str(error) == "Pi emitted a tool event while tools were disabled"
+                if isinstance(error, ModelRoutingError)
+                and str(error) == "Pi emitted a tool event while tools were disabled"
                 else "malformed or inconsistent event data"
             )
             errors.append(f"qa {qa_run_id} retained event stream is not valid Pi JSONL: {detail}")

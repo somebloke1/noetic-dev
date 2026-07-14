@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
@@ -175,6 +176,18 @@ class TestDeliveryGatePositive(unittest.TestCase):
 
         self.assertIn("malformed or inconsistent event data", joined)
         self.assertNotIn(sentinel, joined)
+
+    def test_qa_retained_event_stream_normalizes_unexpected_parser_errors(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        with mock.patch(
+            "check_delivery_gate.parse_pi_jsonl_final_assistant",
+            side_effect=RecursionError("attacker-controlled recursion detail"),
+        ):
+            _passed, errors, _gate = check_delivery(manifest)
+        joined = "\n".join(errors)
+
+        self.assertIn("malformed or inconsistent event data", joined)
+        self.assertNotIn("attacker-controlled recursion detail", joined)
 
 
 class TestDeliveryGateNegativeFixtures(unittest.TestCase):
