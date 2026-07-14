@@ -909,6 +909,10 @@ def _terminal_failure_record(
             "candidate_tree_oid": candidate_tree_oid,
         },
         **failure.evidence,
+        "operation_contract": {
+            **AUTHORITATIVE_QA_PI_CONTRACT,
+            "operations": list(AUTHORITATIVE_QA_PI_CONTRACT["operations"]),
+        },
         "terminal_accounting": {
             "invocation_count": str(final_attempt["invocation_count"]),
             "outcome_count": str(final_accounting["outcome_count"]),

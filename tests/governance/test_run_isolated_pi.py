@@ -467,6 +467,27 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ):
                 _validate_terminal_failure_record(record)
 
+    def test_terminal_record_copies_authoritative_contract_without_source_alias(self):
+        source_contract = {
+            **isolated_pi.AUTHORITATIVE_QA_PI_CONTRACT,
+            "operations": list(isolated_pi.AUTHORITATIVE_QA_PI_CONTRACT["operations"]),
+        }
+        failure = _RoutedOperationFailure("forced", {
+            "operation_contract": source_contract,
+            "route_attempts": [{"invocation_count": 0, "outcome_report_state": "not-attempted"}],
+            "attempt_accounting": [{"outcome_count": 0}],
+        })
+        with mock.patch("run_isolated_pi._validate_terminal_failure_record"):
+            record = _terminal_failure_record(
+                failure=failure, role="qa", run_id="run", role_run_id="qa-run",
+                qa_for_pass_id="implementation", candidate_sha="a" * 40,
+                base_sha="b" * 40, candidate_tree_oid="c" * 40,
+                successful_probe_record=None,
+            )
+        source_contract["maximum_invocations_per_decision"] = 1.0
+        self.assertEqual(record["operation_contract"], isolated_pi.AUTHORITATIVE_QA_PI_CONTRACT)
+        self.assertIsNot(record["operation_contract"], source_contract)
+
     def test_qa_terminal_failure_requires_complete_candidate_binding(self):
         for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
             record = self.terminal_failure_record()
