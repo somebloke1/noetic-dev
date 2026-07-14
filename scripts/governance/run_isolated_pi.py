@@ -738,6 +738,8 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
     errors = validate_schema(record, schema)
     if errors:
         raise ModelRoutingError(f"protected Pi terminal failure record is invalid: {errors[0]}")
+    if not _strict_json_equal(record["operation_contract"], AUTHORITATIVE_QA_PI_CONTRACT):
+        raise ModelRoutingError("protected Pi terminal failure operation contract is invalid")
     binding = record["candidate_binding"]
     if record["role"] == "qa" and not all(re_full_sha(binding[field]) for field in binding):
         raise ModelRoutingError("protected QA terminal failure candidate binding is incomplete")

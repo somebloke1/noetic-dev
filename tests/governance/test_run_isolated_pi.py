@@ -456,6 +456,17 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ):
                 _validate_terminal_failure_record(record)
 
+    def test_runtime_type_strictly_binds_terminal_operation_contract(self):
+        for malformed in [True, 1.0]:
+            record = self.terminal_failure_record()
+            record["operation_contract"]["maximum_invocations_per_decision"] = malformed
+            with self.subTest(malformed=malformed), mock.patch(
+                "run_isolated_pi.validate_schema", return_value=[]
+            ), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "operation contract is invalid"
+            ):
+                _validate_terminal_failure_record(record)
+
     def test_qa_terminal_failure_requires_complete_candidate_binding(self):
         for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
             record = self.terminal_failure_record()
