@@ -66,6 +66,7 @@ CREDENTIAL_ENV_NAMES = {
 ENV_ALLOWLIST = ["HOME", "PI_CODING_AGENT_DIR", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK", "LITELLM_API_KEY"]
 PI_CONFIG_MOUNT = Path("/tmp/pi-agent")
 PI_JSONL_EVENT_TYPES = {
+    "session",
     "agent_start", "agent_end", "turn_start", "turn_end",
     "message_start", "message_update", "message_end",
     "tool_execution_start", "tool_execution_update", "tool_execution_end",

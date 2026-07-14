@@ -95,6 +95,7 @@ def assistant_message(text: str) -> dict[str, object]:
 def pi_jsonl(text: str) -> str:
     message = assistant_message(text)
     events = [
+        {"type": "session", "version": 3, "id": "session-fixture", "timestamp": "2026-07-14T00:00:00Z", "cwd": "/tmp/scratch"},
         {"type": "agent_start"},
         {"type": "turn_start"},
         {"type": "message_start", "message": {"role": "assistant", "content": []}},
@@ -237,6 +238,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
 
     def test_parser_extracts_one_final_assistant_text(self):
         self.assertEqual(parse_pi_jsonl_final_assistant(pi_jsonl("READY abc123def4567890")), "READY abc123def4567890")
+        self.assertIn("session", PI_JSONL_EVENT_TYPES)
         self.assertIn("agent_end", PI_JSONL_EVENT_TYPES)
 
     def test_parser_rejects_malformed_nonfinite_unknown_ambiguous_and_tool_outputs(self):

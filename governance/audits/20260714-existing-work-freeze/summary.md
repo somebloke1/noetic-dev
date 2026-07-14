@@ -73,3 +73,15 @@ current exact-SHA semantic review through a compliant independent routed
 reviewer, unresolved findings are dispositioned, the audit artifact itself is
 independently reviewed, and protected delivery evidence authorizes
 publication. Structural classification alone cannot clear the freeze.
+
+## QA lifecycle trace
+
+The first independent QA lifecycle for checkpoint generation `1a71945d` did
+not reach the audit prompt. Genus-router selected Terra, Sol, and Luna under
+decisions `d-20260714-000001` through `d-20260714-000003`; all READY probes
+were recorded as failures. A separate routed diagnostic established that Pi
+0.80.3 emits a leading canonical `session` JSONL event that the strict parser
+did not recognize. Terra and Luna responses were therefore rejected before
+their exact READY text could be evaluated, while Sol timed out. This is a
+failed QA lifecycle, not independent acceptance, and it is not retried against
+the same generation. Parser remediation belongs to a new immutable generation.
