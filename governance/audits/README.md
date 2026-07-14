@@ -11,7 +11,7 @@ governance/audits/<YYYYMMDD>-<topic>/
 ## Current freeze state
 
 - `existing-work-freeze.json` is active.
-- The bootstrap audit covers the ten pre-existing PRs/branches known when issue #23 began.
+- The bootstrap audit covers the original ten PRs/branches known when issue #23 began, later PR #28, and the orphan cognitive-programs branch.
 - Until that audit is actually completed and verified, publication remains blocked and no new PR-opening/publication claim is authoritative.
 
 ## Audit procedure

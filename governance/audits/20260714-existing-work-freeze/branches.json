@@ -1,0 +1,268 @@
+{
+  "branches": [
+    {
+      "commit": {
+        "sha": "33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc"
+      },
+      "name": "dev",
+      "protected": true,
+      "protection": {
+        "enabled": true,
+        "required_status_checks": {
+          "checks": [
+            {
+              "app_id": 15368,
+              "context": "Repository validation (candidate)"
+            },
+            {
+              "app_id": 15368,
+              "context": "Workflow pinning validation (candidate)"
+            },
+            {
+              "app_id": 15368,
+              "context": "Genuine tests (candidate)"
+            }
+          ],
+          "contexts": [
+            "Repository validation (candidate)",
+            "Workflow pinning validation (candidate)",
+            "Genuine tests (candidate)"
+          ],
+          "enforcement_level": "everyone"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev/protection"
+    },
+    {
+      "commit": {
+        "sha": "6c8de726b431c411d3c9420e9a269b1b526a5063",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/6c8de726b431c411d3c9420e9a269b1b526a5063"
+      },
+      "name": "issue-1-architecture",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-1-architecture/protection"
+    },
+    {
+      "commit": {
+        "sha": "54b3e83e43135e61f335176d3de113fb5b056a4f",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/54b3e83e43135e61f335176d3de113fb5b056a4f"
+      },
+      "name": "issue-3-controller-spec",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-3-controller-spec/protection"
+    },
+    {
+      "commit": {
+        "sha": "5be6cf087fc01129360ecc32f67b1cea5c0d7aa9",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/5be6cf087fc01129360ecc32f67b1cea5c0d7aa9"
+      },
+      "name": "issue-5-roadmap",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-5-roadmap/protection"
+    },
+    {
+      "commit": {
+        "sha": "c6040ce09b1946556d5b7b999bd008bbbf6815ef",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/c6040ce09b1946556d5b7b999bd008bbbf6815ef"
+      },
+      "name": "issue-6-controller-contracts",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-6-controller-contracts/protection"
+    },
+    {
+      "commit": {
+        "sha": "250f9b460b687a37b702b232b4d3c6ed624207a1",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/250f9b460b687a37b702b232b4d3c6ed624207a1"
+      },
+      "name": "issue-7-donor-fixtures",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-7-donor-fixtures/protection"
+    },
+    {
+      "commit": {
+        "sha": "d424533ccbd014968e2e204fd2c1fb27819eaa95",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/d424533ccbd014968e2e204fd2c1fb27819eaa95"
+      },
+      "name": "issue-8-cognitional-events",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-8-cognitional-events/protection"
+    },
+    {
+      "commit": {
+        "sha": "7ba81b1680551e14a883d3d60ff425046325f993",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/7ba81b1680551e14a883d3d60ff425046325f993"
+      },
+      "name": "issue-9-telos-delegation",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-9-telos-delegation/protection"
+    },
+    {
+      "commit": {
+        "sha": "69704c8badcc170edf02276ea761f1b5a3967117",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/69704c8badcc170edf02276ea761f1b5a3967117"
+      },
+      "name": "issue-10-model-composition",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-10-model-composition/protection"
+    },
+    {
+      "commit": {
+        "sha": "e25083c5b05ac2b5b10868b7f681681c29736008",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/e25083c5b05ac2b5b10868b7f681681c29736008"
+      },
+      "name": "issue-11-cognitive-programs",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-11-cognitive-programs/protection"
+    },
+    {
+      "commit": {
+        "sha": "feebb0673130686b83f02de389ccfccdc50ab28a",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/feebb0673130686b83f02de389ccfccdc50ab28a"
+      },
+      "name": "issue-13-attach-contracts",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-13-attach-contracts/protection"
+    },
+    {
+      "commit": {
+        "sha": "7e6a0e68b31e5d20ebbab1f73ae4dcd2180d77bd",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/7e6a0e68b31e5d20ebbab1f73ae4dcd2180d77bd"
+      },
+      "name": "issue-14-contextforge-inventory",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-14-contextforge-inventory/protection"
+    },
+    {
+      "commit": {
+        "sha": "161b262b2321444d4fb322931b640483d0a14eb2",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/161b262b2321444d4fb322931b640483d0a14eb2"
+      },
+      "name": "issue-27-terra-canary",
+      "protected": false,
+      "protection": {
+        "enabled": false,
+        "required_status_checks": {
+          "checks": [],
+          "contexts": [],
+          "enforcement_level": "off"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/issue-27-terra-canary/protection"
+    },
+    {
+      "commit": {
+        "sha": "29196a67349537d6f8a8a711df11b86da0430857",
+        "url": "https://api.github.com/repos/somebloke1/noetic-dev/commits/29196a67349537d6f8a8a711df11b86da0430857"
+      },
+      "name": "main",
+      "protected": true,
+      "protection": {
+        "enabled": true,
+        "required_status_checks": {
+          "checks": [
+            {
+              "app_id": 15368,
+              "context": "validate"
+            }
+          ],
+          "contexts": [
+            "validate"
+          ],
+          "enforcement_level": "everyone"
+        }
+      },
+      "protection_url": "https://api.github.com/repos/somebloke1/noetic-dev/branches/main/protection"
+    }
+  ],
+  "captured_at": "2026-07-14T04:14:09Z",
+  "count": 14
+}
