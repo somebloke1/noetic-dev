@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import subprocess
 import sys
@@ -99,6 +100,28 @@ class TestDeliveryGatePositive(unittest.TestCase):
                 actual[field] = value
                 _passed, errors, _gate = check_delivery(changed)
                 self.assertIn(expected, "\n".join(errors))
+
+    def test_qa_retained_event_stream_rejects_unknown_assistant_parts(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        events = [json.loads(line) for line in actual["qa_event_log"].splitlines()]
+        unknown = {"type": "toolCall", "name": "write"}
+        events[1]["message"]["content"].append(unknown)
+        events[2]["messages"][0]["content"].append(unknown)
+        event_log = "".join(
+            json.dumps(event, ensure_ascii=True, separators=(",", ":")) + "\n"
+            for event in events
+        )
+        event_hash = hashlib.sha256(event_log.encode("utf-8")).hexdigest()
+        actual["qa_event_log"] = event_log
+        actual["qa_event_log_sha256"] = event_hash
+        actual["stdout_sha256"] = event_hash
+        qa["event_log_hash"] = event_hash
+
+        _passed, errors, _gate = check_delivery(manifest)
+
+        self.assertIn("retained event stream is not valid Pi JSONL", "\n".join(errors))
 
 
 class TestDeliveryGateNegativeFixtures(unittest.TestCase):
