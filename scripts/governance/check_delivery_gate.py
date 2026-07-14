@@ -34,8 +34,9 @@ from check_evidence_manifest import (  # noqa: E402
     normalize_qa_records,
     pass_records_by_id,
 )
-from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
+from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
+from model_routing import ModelRoutingError, strict_json  # noqa: E402
 from route_evidence import validate_route_evidence  # noqa: E402
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
@@ -56,6 +57,60 @@ BOOTSTRAP_AUTHORITY_FIELDS = [
     "independent_agent_review_process_established",
     "credential_broker_established",
 ]
+
+PI_JSONL_EVENT_TYPES = {
+    "agent_start", "agent_end", "turn_start", "turn_end",
+    "message_start", "message_update", "message_end",
+    "tool_execution_start", "tool_execution_update", "tool_execution_end",
+    "queue_update", "compaction_start", "compaction_end",
+    "auto_retry_start", "auto_retry_end", "session_info_changed",
+    "thinking_level_changed",
+}
+
+
+def _parse_pi_event_log_final_text(event_log: str) -> str:
+    events: List[Dict[str, Any]] = []
+    for line in event_log.splitlines():
+        if not line.strip():
+            continue
+        event = strict_json(line)
+        if not isinstance(event, dict) or event.get("type") not in PI_JSONL_EVENT_TYPES:
+            raise ModelRoutingError("Pi event log contains an invalid event")
+        if str(event["type"]).startswith("tool_execution_"):
+            raise ModelRoutingError("Pi event log contains a forbidden tool event")
+        events.append(event)
+    if not events or events[-1].get("type") != "agent_end":
+        raise ModelRoutingError("Pi event log did not end with agent_end")
+    agent_ends = [event for event in events if event.get("type") == "agent_end"]
+    if len(agent_ends) != 1 or agent_ends[0].get("willRetry") is not False:
+        raise ModelRoutingError("Pi event log has an ambiguous agent_end")
+    messages = agent_ends[0].get("messages")
+    if not isinstance(messages, list):
+        raise ModelRoutingError("Pi event log has invalid final messages")
+    final_assistants = [
+        message for message in messages
+        if isinstance(message, dict) and message.get("role") == "assistant"
+    ]
+    ended_assistants = [
+        event.get("message") for event in events
+        if event.get("type") == "message_end"
+        and isinstance(event.get("message"), dict)
+        and event["message"].get("role") == "assistant"
+    ]
+    if len(final_assistants) != 1 or len(ended_assistants) != 1:
+        raise ModelRoutingError("Pi event log has ambiguous assistant messages")
+    if canonical_json(final_assistants[0]) != canonical_json(ended_assistants[0]):
+        raise ModelRoutingError("Pi event log assistant messages disagree")
+    message = final_assistants[0]
+    if message.get("stopReason") != "stop" or not isinstance(message.get("content"), list):
+        raise ModelRoutingError("Pi event log did not stop successfully")
+    texts = [
+        part.get("text") for part in message["content"]
+        if isinstance(part, dict) and part.get("type") == "text"
+    ]
+    if len(texts) != 1 or not isinstance(texts[0], str) or not texts[0]:
+        raise ModelRoutingError("Pi event log has invalid final assistant text")
+    return texts[0]
 
 
 def load_json(path: str) -> Dict[str, Any]:
@@ -646,12 +701,22 @@ def _check_probe_execution_binding(
         errors.append(f"qa {qa_run_id} probe prompt hash does not match the exact READY prompt")
     if probe_record.get("final_assistant_text_sha256") != sha256_text(expected):
         errors.append(f"qa {qa_run_id} probe final assistant hash does not match the READY response")
+    execution_prompt = actual.get("prompt_text")
     execution_prompt_hash = actual.get("prompt_sha256")
+    if not isinstance(execution_prompt, str) or not execution_prompt:
+        errors.append(f"qa {qa_run_id} retained execution prompt is missing")
+    elif execution_prompt_hash != sha256_text(execution_prompt):
+        errors.append(f"qa {qa_run_id} execution prompt hash does not match retained prompt")
     if not isinstance(execution_prompt_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", execution_prompt_hash):
         errors.append(f"qa {qa_run_id} execution prompt hash is missing or invalid")
     elif execution_prompt_hash == probe_record.get("probe_prompt_hash"):
         errors.append(f"qa {qa_run_id} execution prompt reused the READY probe prompt")
+    final_text = actual.get("final_assistant_text")
     final_text_hash = actual.get("final_assistant_text_sha256")
+    if not isinstance(final_text, str) or not final_text:
+        errors.append(f"qa {qa_run_id} retained final assistant text is missing")
+    elif final_text_hash != sha256_text(final_text):
+        errors.append(f"qa {qa_run_id} final assistant hash does not match retained text")
     if not isinstance(final_text_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", final_text_hash):
         errors.append(f"qa {qa_run_id} execution final assistant hash is missing or invalid")
     if probe_record.get("exit_code") != 0:
@@ -660,6 +725,21 @@ def _check_probe_execution_binding(
         errors.append(f"qa {qa_run_id} execution exit code was not 0")
     if qa_record.get("event_log_hash") != actual.get("qa_event_log_sha256"):
         errors.append(f"qa {qa_run_id} event_log_hash does not match protected execution record")
+    event_log = actual.get("qa_event_log")
+    if not isinstance(event_log, str) or not event_log:
+        errors.append(f"qa {qa_run_id} retained event stream is missing")
+    else:
+        if actual.get("qa_event_log_sha256") != sha256_text(event_log):
+            errors.append(f"qa {qa_run_id} event stream hash does not match retained events")
+        if actual.get("stdout_sha256") != sha256_text(event_log):
+            errors.append(f"qa {qa_run_id} stdout hash does not match retained events")
+        try:
+            parsed_final_text = _parse_pi_event_log_final_text(event_log)
+        except (ModelRoutingError, TypeError, ValueError):
+            errors.append(f"qa {qa_run_id} retained event stream is not valid Pi JSONL")
+        else:
+            if parsed_final_text != final_text:
+                errors.append(f"qa {qa_run_id} retained event stream final text mismatch")
     probe_event_hash = probe_record.get("probe_event_log_sha256")
     if not isinstance(probe_event_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", probe_event_hash):
         errors.append(f"qa {qa_run_id} probe event stream hash is missing or invalid")

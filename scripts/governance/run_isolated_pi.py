@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -709,6 +710,8 @@ def parse_pi_jsonl_final_assistant(stdout: str) -> str:
 
 def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
     """Atomically claim a router decision across dispatcher processes."""
+    if not re.fullmatch(r"d-\d{8}-\d{6}", decision_id):
+        raise ModelRoutingError("genus-router decision_id is unsafe for a replay claim")
     claim_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     directory_stat = claim_dir.lstat()
     if claim_dir.is_symlink() or directory_stat.st_uid != os.getuid():
@@ -726,7 +729,11 @@ def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
         except FileExistsError as error:
             raise ModelRoutingError("genus-router decision_id was replayed across Pi invocations") from error
         else:
-            os.close(claim_fd)
+            try:
+                os.fsync(claim_fd)
+            finally:
+                os.close(claim_fd)
+            os.fsync(directory_fd)
     finally:
         os.close(directory_fd)
 
@@ -1014,8 +1021,11 @@ def _make_routed_pi_lifecycle():
                 "authority_worker_pid": os.getpid(),
                 "argv": routed.inner_argv,
                 "argv_sha256": sha256_text(canonical_json(routed.inner_argv)),
+                "prompt_text": prompt_text,
                 "prompt_sha256": sha256_text(prompt_text),
+                "final_assistant_text": routed.final_assistant_text,
                 "final_assistant_text_sha256": sha256_text(routed.final_assistant_text),
+                "qa_event_log": routed.process.stdout,
                 "model_config_sha256": routed.model_config_sha256,
                 "model_config_delivery": "inherited-fd-copy",
                 "environment_values_recorded": False,

@@ -209,6 +209,15 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         self.assertNotEqual(child.returncode, 0)
         self.assertIn("replayed", child.stderr)
 
+    def test_decision_claim_rejects_pathlike_or_malformed_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            for decision_id in ["../escape", "/tmp/escape", "d-20260713-1", ""]:
+                with self.subTest(decision_id=decision_id), self.assertRaisesRegex(
+                    RuntimeError, "unsafe"
+                ):
+                    _claim_decision_id(claim_dir, decision_id)
+
     def test_helper_children_receive_scrubbed_environments(self):
         calls = []
 

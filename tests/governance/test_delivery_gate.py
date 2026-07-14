@@ -40,6 +40,9 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertIn("caller-supplied external evidence is advisory only", joined)
         self.assertIn("credential_broker_established", joined)
         self.assertNotIn("canonical manifest digest mismatch", joined)
+        self.assertNotIn("retained execution prompt", joined)
+        self.assertNotIn("retained final assistant text", joined)
+        self.assertNotIn("retained event stream", joined)
 
     def test_github_api_mode_cannot_establish_review_authority(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -75,6 +78,27 @@ class TestDeliveryGatePositive(unittest.TestCase):
     def test_bootstrap_blocked_check_passes_while_dependencies_unresolved(self):
         passed, errors = check_bootstrap_blocked()
         self.assertTrue(passed, errors)
+
+    def test_qa_retained_prompt_and_event_stream_are_recomputed(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        mutations = [
+            ("prompt_text", "forged prompt", "execution prompt hash"),
+            ("final_assistant_text", "forged answer", "final assistant hash"),
+            (
+                "qa_event_log",
+                '{"type":"agent_end","willRetry":false,"messages":[]}\n',
+                "event stream",
+            ),
+        ]
+        for field, value, expected in mutations:
+            with self.subTest(field=field):
+                changed = copy.deepcopy(manifest)
+                actual = changed["qa"]["records"][0]["protected_execution_record"][
+                    "actual_invocation"
+                ]
+                actual[field] = value
+                _passed, errors, _gate = check_delivery(changed)
+                self.assertIn(expected, "\n".join(errors))
 
 
 class TestDeliveryGateNegativeFixtures(unittest.TestCase):

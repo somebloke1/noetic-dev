@@ -157,7 +157,7 @@
     "ref": "refs/heads/main",
     "runner_attestation": {
       "artifact": {
-        "manifest_sha256": "63e28166cc3127b6a34ca1785e5d2a698d564ad5c49f587655bfedf9865cccf7"
+        "manifest_sha256": "27fdb2943a184fe83668d98836852d9064bda02ae40f3f8f855be69daecef4b2"
       }
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -195,7 +195,7 @@
         "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
         "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
         "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        "event_log_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+        "event_log_hash": "1ac8aa9ccc7b6db6774754b040ceb4b632f790cfe2fae2ac50606bec308e5eff",
         "isolation_proof": {
           "ambient_credentials_available": false,
           "candidate_tree_after": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
@@ -249,7 +249,7 @@
             ],
             "environment_values_recorded": false,
             "exit_code": 0,
-            "final_assistant_text_sha256": "4afd6d3d2b27704bbfe24631682f2dbdc454a52093de82a18254036374675e4a",
+            "final_assistant_text_sha256": "c50c4813c3a98043befc2e26337d5b0c21945720b888540766b10aed83d0ec3a",
             "finished_at": "2026-07-11T12:20:00+00:00",
             "invoked_model_ref": {
               "base_url": "http://172.22.10.160:3333",
@@ -282,8 +282,8 @@
             "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
             "profile_id": "qa_primary",
-            "prompt_sha256": "bb4dd4d30d2676b24deb39e6ecb6a44e3e02f42467450157420290566c15b800",
-            "qa_event_log_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "prompt_sha256": "7a2fe63483211abb8f45e1921fc82714c557a810af004d52cd64ab681dd88fb3",
+            "qa_event_log_sha256": "1ac8aa9ccc7b6db6774754b040ceb4b632f790cfe2fae2ac50606bec308e5eff",
             "reasoning_effort": "high",
             "resolved_model": "openai-codex/gpt-5.6-terra",
             "route_evidence": {
@@ -354,8 +354,11 @@
             },
             "started_at": "2026-07-11T12:07:00+00:00",
             "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "stdout_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-            "tools": []
+            "stdout_sha256": "1ac8aa9ccc7b6db6774754b040ceb4b632f790cfe2fae2ac50606bec308e5eff",
+            "tools": [],
+            "prompt_text": "Adversarially falsify impl-g1-0001 at dddddddddddddddddddddddddddddddddddddddd.",
+            "final_assistant_text": "QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.",
+            "qa_event_log": "{\"type\":\"agent_start\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}],\"willRetry\":false}\n"
           },
           "evidence_class": "authoritative",
           "generated_by": {
@@ -371,7 +374,7 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "2"
         },
-        "protected_execution_record_sha256": "95c0359cac1d37678828303501bd1d7e5a11869667fad8db24a3008f5b82bddc",
+        "protected_execution_record_sha256": "79dae7b376e9f164a84eec19a2a00884a2ae7a76495175ce6e6995610cd804b8",
         "protected_probe_record": {
           "authority_process": "fresh-isolated-worker",
           "authority_worker_pid": 4242,
