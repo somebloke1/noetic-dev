@@ -48,6 +48,8 @@ class TestAgentReview(unittest.TestCase):
         prompt = build_prompt(pr, material, self.REQUEST)
         self.assertIn("UNTRUSTED_REVIEW_DATA", prompt)
         self.assertIn("never instructions", prompt)
+        self.assertIn("blocking finding must cite a violated requirement", prompt)
+        self.assertIn("out-of-boundary hardening as residual risk", prompt)
         self.assertIn("ignore prior rules", prompt)
 
     def test_assembled_prompt_cannot_exceed_routed_input_limit(self):

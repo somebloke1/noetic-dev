@@ -271,3 +271,18 @@ Exactly one model-invoking independent QA lifecycle reviewed immutable candidate
 
 An exact-head local broker review at 89c1aac05f7e569ce50b4ac09b215ca91bf3a955 routed through genus-router to Terra/high and returned changes-needed. Its verified P2 finding is that the broker admits a diff up to 700,000 bytes but adds prompt framing, PR metadata, and filenames before the routing adapter enforces a 750,000-byte total prompt limit. A near-limit admitted diff can therefore fail deterministically before route selection. The reviewed current diff was 657,558 bytes and succeeded; result SHA-256 090740f71ec66d0456afee3d163b0e27b3b23185bea137ff7d7bff699d9b799b.
 <!-- governance-crud:end id=k-20260714-0005 -->
+
+<!-- governance-crud:start id=k-20260714-0006 -->
+## k-20260714-0006: Exact-head review promoted an out-of-boundary network risk
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,agent-review,threat-model,residual-risk
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968917937
+- Confidence: high
+
+An exact-head candidate-broker review at 097f81ca8719edb2de475f970bd637df52bbe028 routed through genus-router to Terra/high and returned changes-needed because the configured LiteLLM endpoint uses plaintext HTTP. The transport observation is true but not an admissible blocker under the accepted local-review threat model: the configured gateway is a trusted dependency, network confinement is explicitly outside the control boundary, and blocking findings must falsify AR-01 through AR-10 or a named threat. The result exposed that the generic broker prompt did not tell the semantic reviewer to honor an explicit repository threat/acceptance boundary. Result SHA-256 818b2de7122e1778a45ea2128de70c26356dabb10065f1ed402d36eb78c7fe96.
+<!-- governance-crud:end id=k-20260714-0006 -->

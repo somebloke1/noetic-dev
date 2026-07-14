@@ -271,3 +271,18 @@ For the one-shot local agent-review broker, treat the deterministic READY probe 
 
 Keep the 700,000-byte Git diff capture bound needed by the current PR, but treat it as a subprocess-output safety limit rather than a promise that every captured diff is reviewable. After adding instructions, exact identities, PR metadata, filenames, and the diff, the broker must reject any assembled UTF-8 prompt larger than the routing adapter's model-input limit. This provides one shared upper bound and prevents an admitted broker prompt from failing only after entering routed execution.
 <!-- governance-crud:end id=dec-20260714-0002 -->
+
+<!-- governance-crud:start id=dec-20260714-0003 -->
+## dec-20260714-0003: Semantic review honors explicit repository boundaries
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,agent-review,threat-model,review-discipline
+- Source: docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968917937
+- Confidence: high
+
+When changed code defines an explicit repository threat model or acceptance boundary, the semantic reviewer must cite a violated requirement or reproducible gap in a named threat before returning a blocking finding. Adjacent hardening and risks assigned outside the boundary remain residual in the summary. This does not suppress counterexamples showing that a listed requirement is insufficient; it prevents a model from silently expanding accepted scope and turning every possible hardening idea into a blocker.
+<!-- governance-crud:end id=dec-20260714-0003 -->
