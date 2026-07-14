@@ -436,3 +436,18 @@ run_isolated_pi SHALL derive policy_commit_sha through model_routing's existing 
 
 The protected Pi claim primitive SHALL distinguish newly created from pre-existing claim directories. It MAY normalize a newly created directory to 0700 through its already-open file descriptor because no broader permissions were requested; it SHALL NOT repair a pre-existing directory. Before inspecting any decision-ID filename, it SHALL open the directory with O_DIRECTORY|O_NOFOLLOW and verify by fstat that it is a directory, owned by the authority UID, and exactly mode 0700. Unsafe existing type, owner, mode, symlink, or open failures are claim-infrastructure failures, never replay. Only EEXIST from O_EXCL within an already validated directory establishes decision replay. Tests SHALL cover permissive pre-existing directories with precreated claim files, cross-UID rejection, safe replay, and restrictive-umask creation.
 <!-- governance-crud:end id=dec-20260714-0013 -->
+
+<!-- governance-crud:start id=dec-20260714-0014 -->
+## dec-20260714-0014: Normalize only cross-user-private claim-directory modes
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,replay,claim-directory,concurrency,umask,fd-normalization
+- Source: k-20260714-0021;DECISIONS.md#dec-20260714-0013;scripts/governance/run_isolated_pi.py
+- Confidence: high
+
+Superseding dec-20260714-0013's exact-0700 treatment of restrictive existing modes: after O_DIRECTORY|O_NOFOLLOW open and fstat owner/type validation, the claim primitive MAY fd-normalize a mode that is a strict subset of owner rwx (mode & ~0700 == 0) because this adds no group, other, or special-bit access and closes the concurrent restrictive-umask initialization window. It SHALL reject every mode carrying group/other permissions or setuid/setgid/sticky bits without repair. Both creator and concurrent observer perform the same fd validation/normalization before relative O_EXCL, yielding one successful claim and one replay. A deterministic concurrent regression SHALL pause the creator before fchmod and prove the observer normalizes safely, claims once, and leaves the creator with replay rather than claim-failure evidence.
+<!-- governance-crud:end id=dec-20260714-0014 -->

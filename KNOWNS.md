@@ -496,3 +496,18 @@ A candidate-broker semantic review of immutable head 2c5924efd8436e4cce65589b367
 
 A candidate-broker semantic review of immutable head 3e23397524e22ab146652f712090406e09b98ffe against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000074 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. _claim_decision_id accepts an existing UID-owned claim directory at any mode and chmods it to 0700 rather than rejecting unsafe pre-existing permissions. If another local user precreates a future decision-ID file while the directory is permissive, the later authority chmod is too late: O_EXCL sees the file and emits decision-replayed 0/0 evidence without invocation or outcome. This violates dec-20260714-0006's retained mandatory existing owner/mode checks and weakens delivery-governance requirement 7. Result SHA-256 38b0122f3095becb94b624e3e933653da0ff8a164d9f517b61692bd2f101ea28; reviewed diff SHA-256 d7194063a7b016f6f7efb12109e701813e734c04c06d35849c96cb9966088aab.
 <!-- governance-crud:end id=k-20260714-0020 -->
+
+<!-- governance-crud:start id=k-20260714-0021 -->
+## k-20260714-0021: PR #31 claim-directory QA exposed concurrent restrictive-umask initialization
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,replay,claim-directory,concurrency,umask
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974414193
+- Confidence: high
+
+Exactly one protected Pi QA lifecycle reviewed immutable candidate c0516866bb2e6b20bda2c87199a63dbb4cc249e6 through LiteLLM-served Terra/high. READY decision d-20260714-000075 and execution decision d-20260714-000076 completed with one invocation and one recorded outcome each; QA returned CHANGES_NEEDED. With restrictive umask 0100, creator A can mkdir the new claim directory as owner-only 0600 and pause before fd normalization. Concurrent caller B sees an existing directory and rejects the transient 0600 mode as claim failure, while A later completes the same decision claim. This violates the intended one-success/one-replay concurrent result and can produce an extra claim-failed outcome. The reviewer confirmed permissive/special modes, wrong type/UID, symlinks, and relative fd-bound O_EXCL were otherwise fail-closed. Probe SHA-256 666ecf61e618a7c349726a5091dc8c2a7a308b0133b316241c65b8921b9c3046; execution SHA-256 aeec938ee255b9915f8e104f57091e92edbaeb2399d72cc883422b4753eacd93.
+<!-- governance-crud:end id=k-20260714-0021 -->

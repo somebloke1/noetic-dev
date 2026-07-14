@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -585,17 +586,18 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
 
     def test_existing_unsafe_claim_directory_is_rejected_before_precreated_claim(self):
         decision_id = "d-20260713-999992"
-        with tempfile.TemporaryDirectory() as directory:
-            claim_dir = Path(directory) / "claims"
-            claim_dir.mkdir(mode=0o700)
-            (claim_dir / decision_id).touch(mode=0o600)
-            claim_dir.chmod(0o777)
-            with self.assertRaisesRegex(
-                isolated_pi.ModelRoutingError, "directory mode is not private"
-            ) as raised:
-                _claim_decision_id(claim_dir, decision_id)
-            self.assertEqual(claim_dir.stat().st_mode & 0o777, 0o777)
-        self.assertNotIsInstance(raised.exception, _DecisionReplayError)
+        for unsafe_mode in [0o777, 0o755, 0o1700, 0o2700, 0o4700]:
+            with self.subTest(unsafe_mode=oct(unsafe_mode)), tempfile.TemporaryDirectory() as directory:
+                claim_dir = Path(directory) / "claims"
+                claim_dir.mkdir(mode=0o700)
+                (claim_dir / decision_id).touch(mode=0o600)
+                claim_dir.chmod(unsafe_mode)
+                with self.assertRaisesRegex(
+                    isolated_pi.ModelRoutingError, "directory mode is not private"
+                ) as raised:
+                    _claim_decision_id(claim_dir, decision_id)
+                self.assertEqual(claim_dir.stat().st_mode & 0o7777, unsafe_mode)
+                self.assertNotIsInstance(raised.exception, _DecisionReplayError)
 
     def test_existing_cross_uid_claim_directory_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -614,6 +616,51 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                 _claim_decision_id(claim_dir, "d-20260713-999996")
             finally:
                 os.umask(previous_umask)
+            self.assertEqual(claim_dir.stat().st_mode & 0o777, 0o700)
+
+    def test_concurrent_restrictive_umask_initialization_yields_success_and_replay(self):
+        decision_id = "d-20260713-999997"
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            creator_at_fchmod = threading.Event()
+            release_creator = threading.Event()
+            results = []
+            original_fchmod = os.fchmod
+
+            def delayed_fchmod(fd, mode):
+                if threading.current_thread().name == "claim-creator":
+                    creator_at_fchmod.set()
+                    if not release_creator.wait(5):
+                        raise TimeoutError("concurrent claim test timed out")
+                return original_fchmod(fd, mode)
+
+            def claim(label):
+                try:
+                    _claim_decision_id(claim_dir, decision_id)
+                except _DecisionReplayError:
+                    results.append((label, "replay"))
+                except Exception as error:
+                    results.append((label, type(error).__name__))
+                else:
+                    results.append((label, "success"))
+
+            previous_umask = os.umask(0o100)
+            try:
+                with mock.patch("run_isolated_pi.os.fchmod", side_effect=delayed_fchmod):
+                    creator = threading.Thread(target=claim, args=("creator",), name="claim-creator")
+                    observer = threading.Thread(target=claim, args=("observer",), name="claim-observer")
+                    creator.start()
+                    self.assertTrue(creator_at_fchmod.wait(5))
+                    observer.start()
+                    observer.join(5)
+                    release_creator.set()
+                    creator.join(5)
+            finally:
+                release_creator.set()
+                os.umask(previous_umask)
+            self.assertFalse(creator.is_alive())
+            self.assertFalse(observer.is_alive())
+            self.assertEqual(sorted(result for _label, result in results), ["replay", "success"])
             self.assertEqual(claim_dir.stat().st_mode & 0o777, 0o700)
 
     def test_claim_infrastructure_failure_is_not_classified_as_replay(self):

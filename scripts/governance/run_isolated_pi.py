@@ -985,10 +985,8 @@ def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
     """Atomically claim a router decision across dispatcher processes."""
     if not re.fullmatch(r"d-\d{8}-\d{6}", decision_id):
         raise ModelRoutingError("genus-router decision_id is unsafe for a replay claim")
-    created = False
     try:
         claim_dir.mkdir(mode=0o700)
-        created = True
     except FileExistsError:
         pass
     directory_fd = os.open(claim_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -996,7 +994,10 @@ def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
         directory_stat = os.fstat(directory_fd)
         if not stat.S_ISDIR(directory_stat.st_mode) or directory_stat.st_uid != os.getuid():
             raise ModelRoutingError("decision claim directory is not privately owned")
-        if created:
+        directory_mode = stat.S_IMODE(directory_stat.st_mode)
+        if directory_mode & ~0o700:
+            raise ModelRoutingError("decision claim directory mode is not private")
+        if directory_mode != 0o700:
             os.fchmod(directory_fd, 0o700)
             directory_stat = os.fstat(directory_fd)
         if stat.S_IMODE(directory_stat.st_mode) != 0o700:
