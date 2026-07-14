@@ -105,15 +105,43 @@ class TestDeliveryGatePositive(unittest.TestCase):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
         actual = qa["protected_execution_record"]["actual_invocation"]
-        events = [json.loads(line) for line in actual["qa_event_log"].splitlines()]
-        unknown = {
+        final_message = json.loads(actual["qa_event_log"].splitlines()[1])["message"]
+        tool_call = {
             "type": "toolCall",
             "id": "call-qa-forgery-1",
             "name": "write",
             "arguments": {"path": "/tmp/forbidden", "content": "forged"},
         }
-        events[1]["message"]["content"].append(unknown)
-        events[2]["messages"][0]["content"].append(unknown)
+        tool_message = copy.deepcopy(final_message)
+        tool_message["content"] = [tool_call]
+        tool_message["stopReason"] = "toolUse"
+        events = [
+            {"type": "agent_start"},
+            {"type": "turn_start"},
+            {"type": "message_end", "message": tool_message},
+            {
+                "type": "tool_execution_start",
+                "toolCallId": tool_call["id"],
+                "toolName": tool_call["name"],
+                "args": tool_call["arguments"],
+            },
+            {
+                "type": "tool_execution_end",
+                "toolCallId": tool_call["id"],
+                "toolName": tool_call["name"],
+                "result": {"content": [{"type": "text", "text": "written"}]},
+                "isError": False,
+            },
+            {"type": "turn_end", "message": tool_message},
+            {"type": "turn_start"},
+            {"type": "message_end", "message": final_message},
+            {"type": "turn_end", "message": final_message},
+            {
+                "type": "agent_end",
+                "messages": [tool_message, final_message],
+                "willRetry": False,
+            },
+        ]
         event_log = "".join(
             json.dumps(event, ensure_ascii=True, separators=(",", ":")) + "\n"
             for event in events
@@ -126,7 +154,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
 
         _passed, errors, _gate = check_delivery(manifest)
 
-        self.assertIn("retained event stream is not valid Pi JSONL", "\n".join(errors))
+        self.assertIn("tool event while tools were disabled", "\n".join(errors))
 
 
 class TestDeliveryGateNegativeFixtures(unittest.TestCase):

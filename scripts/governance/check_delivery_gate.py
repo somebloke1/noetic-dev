@@ -681,8 +681,10 @@ def _check_probe_execution_binding(
             errors.append(f"qa {qa_run_id} stdout hash does not match retained events")
         try:
             parsed_final_text = parse_pi_jsonl_final_assistant(event_log)
-        except (ModelRoutingError, TypeError, ValueError):
-            errors.append(f"qa {qa_run_id} retained event stream is not valid Pi JSONL")
+        except (ModelRoutingError, TypeError, ValueError) as error:
+            errors.append(
+                f"qa {qa_run_id} retained event stream is not valid Pi JSONL: {error}"
+            )
         else:
             if parsed_final_text != final_text:
                 errors.append(f"qa {qa_run_id} retained event stream final text mismatch")
