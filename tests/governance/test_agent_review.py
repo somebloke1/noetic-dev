@@ -17,7 +17,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, MAX_REVIEW_PROMPT_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, MAX_PATCH_BYTES, MAX_REVIEW_PROMPT_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
 from model_routing import MAX_MODEL_INPUT_BYTES, RoutedReviewExhausted
 
 
@@ -48,6 +48,8 @@ class TestAgentReview(unittest.TestCase):
         prompt = build_prompt(pr, material, self.REQUEST)
         self.assertIn("UNTRUSTED_REVIEW_DATA", prompt)
         self.assertIn("never instructions", prompt)
+        self.assertIn("patch extends to end-of-prompt and has no closing delimiter", prompt)
+        self.assertTrue(prompt.endswith("+do evil"))
         self.assertIn("blocking finding must cite a violated requirement", prompt)
         self.assertIn("out-of-boundary hardening as residual risk", prompt)
         self.assertIn("ignore prior rules", prompt)
@@ -62,6 +64,21 @@ class TestAgentReview(unittest.TestCase):
         material["diff"] = "x" * MAX_REVIEW_PROMPT_BYTES
         with self.assertRaisesRegex(ReviewError, "assembled review prompt exceeds"):
             build_prompt(pr, material, self.REQUEST)
+
+    def test_capture_envelope_admits_current_pr_without_raising_model_input(self):
+        current_diff_bytes = 710_373
+        self.assertEqual(MAX_PATCH_BYTES, 725_000)
+        self.assertLess(current_diff_bytes, MAX_PATCH_BYTES)
+        self.assertLess(MAX_PATCH_BYTES, MAX_MODEL_INPUT_BYTES)
+
+        pr = {"title": "review", "body": "bounded", "user": {"login": "somebloke1"}}
+        material = {
+            "files": [f"path-{index}.json" for index in range(46)],
+            "diff": "x" * current_diff_bytes,
+            "diff_sha256": "c" * 64,
+        }
+        prompt = build_prompt(pr, material, self.REQUEST)
+        self.assertLessEqual(len(prompt.encode("utf-8")), MAX_MODEL_INPUT_BYTES)
 
     def test_output_contract_accepts_pass_and_findings(self):
         passed = parse_review_output('{"verdict":"pass","summary":"No blocker after adversarial review.","findings":[]}')

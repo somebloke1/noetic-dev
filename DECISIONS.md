@@ -301,3 +301,18 @@ When changed code defines an explicit repository threat model or acceptance boun
 
 Retain the complete genus-router attempt sequence for independent approval, including failed Terra or Luna attempts, but accept a successful independent approval only when its final model is Claude Fable 5 or GPT-5.6 Sol at high reasoning. This directly enforces delivery-governance requirement 9 without pretending that ineligible attempts did not occur.
 <!-- governance-crud:end id=dec-20260714-0004 -->
+
+<!-- governance-crud:start id=dec-20260714-0005 -->
+## dec-20260714-0005: Raise the broker capture envelope without raising model input
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,agent-review,diff-bound,prompt-bound,resource-safety
+- Source: k-20260714-0012;DECISIONS.md#dec-20260714-0002;scripts/governance/agent_review_broker.py
+- Confidence: high
+
+Raise `MAX_PATCH_BYTES` from 700,000 to 725,000 so the verified 710,373-byte PR #31 exact-head diff can be captured. Keep `MAX_REVIEW_PROMPT_BYTES == MAX_MODEL_INPUT_BYTES == 750,000` as the authoritative assembled UTF-8 prompt gate, retain the 500-file cap, and continue rejecting over-limit subprocess output before it is buffered. Serialize bounded PR metadata as JSON, then append the validated UTF-8 patch as an untrusted tail extending to end-of-prompt rather than JSON-escaping the patch; the fixed instruction declares all following bytes untrusted and no closing delimiter exists for candidate data to escape. This removes transport-only escaping overhead without omitting review content or weakening injection framing. This narrowly updates dec-20260714-0002's now-stale capture/framing mechanics; it does not enlarge the model-input contract or promise that every captured patch is admissible after metadata and framing are added.
+<!-- governance-crud:end id=dec-20260714-0005 -->

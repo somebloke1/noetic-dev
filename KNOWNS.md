@@ -361,3 +361,18 @@ Exactly one adversarial QA pass reviewed immutable candidate 081d386e5ede5464802
 
 Exactly one adversarial QA pass reviewed immutable candidate ad06871eba0d78823db9286027b67ad3627bc2d9 through Pi using LiteLLM-served Terra/high. READY decision d-20260714-000049 and execution decision d-20260714-000050 completed with recorded success. QA returned changes-needed because Python str.isspace rejects C0 U+001C while standards-compliant Draft-07/ECMAScript ^\S+$ accepts it, producing runtime/schema divergence and a schema-valid visually absent generation identity. Protected probe SHA-256 f2e3de9a5bf8d584f4a4b21d59d1e7cee83e87dc1b7ef3d8a511fe72bfc1e209; execution SHA-256 6cbc8a2e888d9b7f33b525e53b7c86f5a172bf9c70d49ffd626b572cde412257.
 <!-- governance-crud:end id=k-20260714-0011 -->
+
+<!-- governance-crud:start id=k-20260714-0012 -->
+## k-20260714-0012: PR #31 exact-head diff outgrew the broker capture envelope
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,agent-review,diff-bound,prompt-bound
+- Source: scripts/governance/agent_review_broker.py;git diff --no-ext-diff 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc 8c2ee47a2a0f76bdefc1b50fce8fd135eacc44e0;https://github.com/somebloke1/noetic-dev/pull/31
+- Confidence: high
+
+A local exact-head candidate-broker review request for PR #31 at 8c2ee47a2a0f76bdefc1b50fce8fd135eacc44e0 failed before route selection with `command output exceeded its byte limit`. Verified Git output for protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc through head 8c2ee47 is 710,373 bytes across 46 files. The broker's MAX_PATCH_BYTES is 700,000, while its separately enforced assembled model-input bound remains 750,000. This is deterministic capture-envelope drift, not a model failure or semantic verdict.
+<!-- governance-crud:end id=k-20260714-0012 -->
