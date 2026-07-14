@@ -25,6 +25,9 @@ MAX_GATEWAY_RESPONSE_BYTES = 1_048_576
 MAX_MODEL_INPUT_BYTES = 750_000
 DECISION_ID = re.compile(r"^d-\d{8}-\d{6}$")
 COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
+SYSTEM_GIT = Path("/usr/bin/git")
+PRODUCTION_RELEASES_ROOT = Path("/opt/noetic-dev-agent-review/releases")
+PRODUCTION_CURRENT_LINK = Path("/opt/noetic-dev-agent-review/current")
 CANONICAL_LITELLM_BASE_URL = "http://172.22.10.160:3333"
 STANDARD_MODELS = [
     "codex/gpt-5.6-sol",
@@ -107,6 +110,12 @@ EXPECTED_MODEL_POLICY = {
 
 class ModelRoutingError(RuntimeError):
     pass
+
+
+class RoutedReviewExhausted(ModelRoutingError):
+    def __init__(self, evidence: dict[str, Any]) -> None:
+        super().__init__("all routed review candidates failed")
+        self.evidence = evidence
 
 
 def strict_json(value: str | bytes) -> Any:
@@ -399,7 +408,7 @@ def route_and_invoke_review(
     routed_attempts: list[dict[str, Any]] = []
     readiness_probes: list[dict[str, Any]] = []
     work_unit_sha256 = sha256_text(prompt)
-    policy_commit_sha = _policy_commit_sha()
+    policy_commit_sha, policy_commit_source = _policy_commit_identity()
     policy_sha256 = canonical_json_sha256(active_policy)
     harness_configuration = {
         "harness": "agent-review-broker",
@@ -409,6 +418,26 @@ def route_and_invoke_review(
         "max_model_input_bytes": MAX_MODEL_INPUT_BYTES,
     }
     harness_configuration_sha256 = canonical_json_sha256(harness_configuration)
+
+    def failure_evidence() -> dict[str, Any]:
+        return {
+            "schema_version": "1",
+            "classification": task,
+            "attempts": attempts,
+            "readiness_probes": readiness_probes,
+            "route_evidence": {
+                "schema_version": "1",
+                "classification": task,
+                "attempts": routed_attempts,
+            },
+            "work_unit_sha256": work_unit_sha256,
+            "policy_commit_sha": policy_commit_sha,
+            "policy_commit_source": policy_commit_source,
+            "policy_sha256": policy_sha256,
+            "harness_configuration": harness_configuration,
+            "harness_configuration_sha256": harness_configuration_sha256,
+            "outcome": "failure",
+        }
 
     for _ in STANDARD_MODELS:
         route_input = {
@@ -432,6 +461,7 @@ def route_and_invoke_review(
                 excluded_models=set(excluded),
                 work_unit_sha256=work_unit_sha256,
                 policy_commit_sha=policy_commit_sha,
+                policy_commit_source=policy_commit_source,
                 policy_sha256=policy_sha256,
                 harness_configuration=harness_configuration,
                 harness_configuration_sha256=harness_configuration_sha256,
@@ -448,23 +478,39 @@ def route_and_invoke_review(
             )
             parsed = parse_output(output)
         except Exception as error:
-            _report_outcome(
-                active_service,
-                decision_id,
-                "failure",
-                f"{type(error).__name__}: routed review invocation failed",
-            )
+            try:
+                _report_outcome(
+                    active_service,
+                    decision_id,
+                    "failure",
+                    f"{type(error).__name__}: routed review invocation failed",
+                )
+                outcome_recorded = True
+            except ModelRoutingError:
+                outcome_recorded = False
             excluded.append(model)
             attempts.append({"decision_id": decision_id, "model": model, "outcome": "failure"})
             routed_attempts.append({
                 "decision": decision,
                 "outcome": "failure",
-                "outcome_recorded": True,
+                "outcome_recorded": outcome_recorded,
                 "reasoning_effort": "high",
             })
+            if not outcome_recorded:
+                raise RoutedReviewExhausted(failure_evidence())
             continue
 
-        _report_outcome(active_service, decision_id, "success", "Review output passed contract validation")
+        try:
+            _report_outcome(active_service, decision_id, "success", "Review output passed contract validation")
+        except ModelRoutingError:
+            attempts.append({"decision_id": decision_id, "model": model, "outcome": "failure"})
+            routed_attempts.append({
+                "decision": decision,
+                "outcome": "failure",
+                "outcome_recorded": False,
+                "reasoning_effort": "high",
+            })
+            raise RoutedReviewExhausted(failure_evidence())
         attempts.append({"decision_id": decision_id, "model": model, "outcome": "success"})
         routed_attempts.append({
             "decision": decision,
@@ -499,12 +545,13 @@ def route_and_invoke_review(
             "readiness_probes": readiness_probes,
             "work_unit_sha256": work_unit_sha256,
             "policy_commit_sha": policy_commit_sha,
+            "policy_commit_source": policy_commit_source,
             "policy_sha256": policy_sha256,
             "harness_configuration": harness_configuration,
             "harness_configuration_sha256": harness_configuration_sha256,
         }
         return parsed, evidence
-    raise ModelRoutingError("all routed review candidates failed")
+    raise RoutedReviewExhausted(failure_evidence())
 
 
 def _report_outcome(service: Any, decision_id: str, outcome: str, notes: str) -> None:
@@ -518,30 +565,61 @@ def _report_outcome(service: Any, decision_id: str, outcome: str, notes: str) ->
         raise ModelRoutingError("genus-router did not record the outcome")
 
 
-def _policy_commit_sha() -> str:
-    if COMMIT_SHA.fullmatch(ROOT.name):
-        return ROOT.name
+def _policy_commit_identity() -> tuple[str, str]:
+    if ROOT.parent == PRODUCTION_RELEASES_ROOT and COMMIT_SHA.fullmatch(ROOT.name):
+        try:
+            current = PRODUCTION_CURRENT_LINK.resolve(strict=True)
+            current_link = PRODUCTION_CURRENT_LINK.lstat()
+            protected_paths = [
+                PRODUCTION_RELEASES_ROOT.parent,
+                PRODUCTION_RELEASES_ROOT,
+                ROOT,
+                ROOT / "config" / "model-policy.json",
+                ROOT / "scripts" / "governance" / "agent_review_broker.py",
+                Path(__file__).resolve(),
+            ]
+            protected_stats = [path.stat() for path in protected_paths]
+        except OSError as error:
+            raise ModelRoutingError("production policy release identity is unavailable") from error
+        if (
+            current != ROOT
+            or not PRODUCTION_CURRENT_LINK.is_symlink()
+            or current_link.st_uid != 0
+            or any(item.st_uid != 0 or item.st_mode & 0o022 for item in protected_stats)
+        ):
+            raise ModelRoutingError("production policy release identity is not root-controlled")
+        return ROOT.name, "root-owned-current-release"
+
+    if not SYSTEM_GIT.is_file() or not os.access(SYSTEM_GIT, os.X_OK):
+        raise ModelRoutingError("trusted Git executable is unavailable")
     env = {
-        "HOME": os.environ.get("HOME", "/dev/null"),
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "HOME": "/dev/null",
+        "PATH": "/usr/bin:/bin",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_TERMINAL_PROMPT": "0",
     }
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            env=env,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise ModelRoutingError("policy commit identity is unavailable") from error
-    policy_commit_sha = result.stdout.strip()
-    if result.returncode != 0 or not COMMIT_SHA.fullmatch(policy_commit_sha):
+
+    def git_stdout(*arguments: str) -> str:
+        try:
+            result = subprocess.run(
+                [str(SYSTEM_GIT), "-C", str(ROOT), *arguments],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ModelRoutingError("policy commit identity is unavailable") from error
+        if result.returncode != 0:
+            raise ModelRoutingError("policy commit identity is unavailable")
+        return result.stdout.strip()
+
+    top_level = Path(git_stdout("rev-parse", "--show-toplevel")).resolve()
+    policy_commit_sha = git_stdout("rev-parse", "--verify", "HEAD^{commit}")
+    if top_level != ROOT or not COMMIT_SHA.fullmatch(policy_commit_sha):
         raise ModelRoutingError("policy commit identity is unavailable")
-    return policy_commit_sha
+    return policy_commit_sha, "verified-git-worktree"
 
 
 def _now() -> str:
@@ -556,6 +634,7 @@ def _run_readiness_probe(
     excluded_models: set[str],
     work_unit_sha256: str,
     policy_commit_sha: str,
+    policy_commit_source: str,
     policy_sha256: str,
     harness_configuration: dict[str, Any],
     harness_configuration_sha256: str,
@@ -568,6 +647,7 @@ def _run_readiness_probe(
         "nonce": nonce,
         "work_unit_sha256": work_unit_sha256,
         "policy_commit_sha": policy_commit_sha,
+        "policy_commit_source": policy_commit_source,
         "policy_sha256": policy_sha256,
         "route_decision_id": decision["decision_id"],
         "model_ref_sha256": canonical_json_sha256(model_ref),
@@ -581,6 +661,7 @@ def _run_readiness_probe(
         "probe_id": f"ready-{nonce}",
         "work_unit_sha256": work_unit_sha256,
         "policy_commit_sha": policy_commit_sha,
+        "policy_commit_source": policy_commit_source,
         "policy_sha256": policy_sha256,
         "route_decision_id": decision["decision_id"],
         "model_ref": model_ref,

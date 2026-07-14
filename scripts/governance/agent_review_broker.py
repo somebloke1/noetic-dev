@@ -15,6 +15,7 @@ import signal
 import socket
 import socketserver
 import subprocess
+import sys
 import tempfile
 import time
 import unicodedata
@@ -22,7 +23,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
-from model_routing import ModelRoutingError, route_and_invoke_review
+from model_routing import ModelRoutingError, RoutedReviewExhausted, route_and_invoke_review
 
 ALLOWED_REPOSITORY = "somebloke1/noetic-dev"
 ALLOWED_AUTHORS = {"somebloke1"}
@@ -36,6 +37,12 @@ BWRAP = Path("/usr/bin/bwrap")
 
 class ReviewError(RuntimeError):
     pass
+
+
+class ReviewExecutionError(ReviewError):
+    def __init__(self, evidence: dict[str, Any]) -> None:
+        super().__init__("all routed review candidates failed")
+        self.evidence = evidence
 
 
 def strict_json(text: str | bytes) -> Any:
@@ -378,6 +385,24 @@ def review(payload: Any) -> dict[str, Any]:
     prompt = build_prompt(pr, material, request)
     try:
         result, route = route_and_invoke_review(prompt, parse_review_output)
+    except RoutedReviewExhausted as error:
+        evidence = {
+            "schema_version": "1",
+            "repository": request["repository"],
+            "pr_number": request["pr_number"],
+            "head_sha": request["head_sha"],
+            "base_sha": request["base_sha"],
+            "reviewed_diff_sha256": material["diff_sha256"],
+            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            **error.evidence,
+        }
+        print(
+            "NOETIC_AGENT_REVIEW_FAILURE "
+            + json.dumps(evidence, ensure_ascii=True, separators=(",", ":")),
+            file=sys.stderr,
+            flush=True,
+        )
+        raise ReviewExecutionError(evidence) from error
     except ModelRoutingError as error:
         raise ReviewError(str(error)) from error
     return {
@@ -404,6 +429,7 @@ def review(payload: Any) -> dict[str, Any]:
         "readiness_probes": route["readiness_probes"],
         "work_unit_sha256": route["work_unit_sha256"],
         "policy_commit_sha": route["policy_commit_sha"],
+        "policy_commit_source": route["policy_commit_source"],
         "model_policy_sha256": route["policy_sha256"],
         "harness_configuration": route["harness_configuration"],
         "harness_configuration_sha256": route["harness_configuration_sha256"],
@@ -439,6 +465,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = strict_json(body)
             response = review(payload)
             status = 200
+        except ReviewExecutionError as error:
+            response = {"error": str(error), "evidence": error.evidence}
+            status = 503
         except (ReviewError, ValueError, TimeoutError, socket.timeout) as error:
             response = {"error": str(error)}
             status = 400

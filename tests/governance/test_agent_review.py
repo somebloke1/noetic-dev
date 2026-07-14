@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import socket
@@ -16,7 +17,8 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
+from model_routing import RoutedReviewExhausted
 
 
 class TestAgentReview(unittest.TestCase):
@@ -224,6 +226,54 @@ class TestAgentReview(unittest.TestCase):
                     self.assertIn(b" 400 ", response)
                     review_call.assert_not_called()
 
+    def test_http_returns_failure_evidence_when_all_routes_fail(self):
+        evidence = {"schema_version": "1", "readiness_probes": [{"outcome": "failure"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = str(Path(directory) / "broker.sock")
+            with UnixServer(socket_path, Handler) as server, mock.patch(
+                "agent_review_broker.review", side_effect=ReviewExecutionError(evidence)
+            ):
+                thread = threading.Thread(target=server.handle_request)
+                thread.start()
+                body = json.dumps(self.REQUEST).encode()
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(socket_path)
+                    client.sendall(
+                        b"POST /review HTTP/1.0\r\nContent-Length: "
+                        + str(len(body)).encode()
+                        + b"\r\n\r\n"
+                        + body
+                    )
+                    response = b""
+                    while chunk := client.recv(4_096):
+                        response += chunk
+                thread.join(timeout=5)
+        self.assertIn(b" 503 ", response)
+        response_body = strict_json(response.partition(b"\r\n\r\n")[2])
+        self.assertEqual(response_body["evidence"], evidence)
+
+    @mock.patch("agent_review_broker.route_and_invoke_review")
+    @mock.patch("agent_review_broker.fetch_review_material")
+    def test_review_journals_bound_all_route_failure(self, fetch: mock.Mock, routed: mock.Mock):
+        fetch.return_value = (
+            {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
+            {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
+        )
+        routed.side_effect = RoutedReviewExhausted({
+            "schema_version": "1",
+            "readiness_probes": [{"outcome": "failure"}],
+            "outcome": "failure",
+        })
+        stderr = io.StringIO()
+        with mock.patch("sys.stderr", stderr), self.assertRaises(ReviewExecutionError) as caught:
+            review(self.REQUEST)
+        self.assertEqual(caught.exception.evidence["head_sha"], "a" * 40)
+        self.assertEqual(caught.exception.evidence["reviewed_diff_sha256"], "c" * 64)
+        journal_line = stderr.getvalue()
+        self.assertTrue(journal_line.startswith("NOETIC_AGENT_REVIEW_FAILURE "))
+        journal_evidence = strict_json(journal_line.split(" ", 1)[1])
+        self.assertEqual(journal_evidence, caught.exception.evidence)
+
     def test_second_pr_validation_rechecks_full_admission(self):
         valid = {
             "state": "open",
@@ -337,6 +387,7 @@ class TestAgentReview(unittest.TestCase):
                 }],
                 "work_unit_sha256": "d" * 64,
                 "policy_commit_sha": "e" * 40,
+                "policy_commit_source": "verified-git-worktree",
                 "policy_sha256": "f" * 64,
                 "harness_configuration": {"harness": "agent-review-broker"},
                 "harness_configuration_sha256": "0" * 64,
@@ -360,6 +411,7 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["readiness_probes"][0]["outcome"], "success")
         self.assertEqual(result["work_unit_sha256"], "d" * 64)
         self.assertEqual(result["policy_commit_sha"], "e" * 40)
+        self.assertEqual(result["policy_commit_source"], "verified-git-worktree")
         self.assertEqual(result["model_policy_sha256"], "f" * 64)
 
 

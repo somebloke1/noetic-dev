@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
@@ -19,7 +20,9 @@ if GOV_SCRIPTS not in sys.path:
 from model_routing import (  # noqa: E402
     MAX_MODEL_INPUT_BYTES,
     ModelRoutingError,
+    RoutedReviewExhausted,
     _invoke_litellm,
+    _policy_commit_identity,
     load_litellm_key,
     load_policy,
     route_and_invoke_review,
@@ -87,8 +90,9 @@ def routed_response(body: bytes, review_output: str = '{"verdict":"pass"}') -> b
 
 
 class FakeService:
-    def __init__(self, decisions: list[dict[str, object]]) -> None:
+    def __init__(self, decisions: list[dict[str, object]], *, reject_outcomes: bool = False) -> None:
         self.decisions = list(decisions)
+        self.reject_outcomes = reject_outcomes
         self.inputs: list[dict[str, object]] = []
         self.outcomes: list[dict[str, object]] = []
 
@@ -98,6 +102,8 @@ class FakeService:
 
     def report_outcome(self, payload: dict[str, object]) -> dict[str, bool]:
         self.outcomes.append(payload)
+        if self.reject_outcomes:
+            raise RuntimeError("outcome ledger unavailable")
         return {"recorded": True}
 
 
@@ -253,6 +259,7 @@ class TestModelRouting(unittest.TestCase):
             "nonce": nonce,
             "work_unit_sha256": probe["work_unit_sha256"],
             "policy_commit_sha": probe["policy_commit_sha"],
+            "policy_commit_source": probe["policy_commit_source"],
             "policy_sha256": probe["policy_sha256"],
             "route_decision_id": probe["route_decision_id"],
             "model_ref_sha256": probe["model_ref_sha256"],
@@ -316,9 +323,26 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(service.inputs[1]["exclude_models"], [TERRA])
 
     @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
+    def test_outcome_reporting_failure_preserves_evidence_without_rerouting(self):
+        service = FakeService([decision(TERRA, 1)], reject_outcomes=True)
+        with self.assertRaises(RoutedReviewExhausted) as caught:
+            route_and_invoke_review(
+                "prompt",
+                json.loads,
+                service=service,
+                policy=self.policy,
+                http_post=lambda _url, _headers, body, _timeout: routed_response(body),
+            )
+        self.assertEqual(len(service.inputs), 1)
+        self.assertEqual(len(service.outcomes), 1)
+        self.assertEqual(caught.exception.evidence["outcome"], "failure")
+        self.assertEqual(caught.exception.evidence["readiness_probes"][0]["outcome"], "success")
+        self.assertFalse(caught.exception.evidence["route_evidence"]["attempts"][0]["outcome_recorded"])
+
+    @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
     def test_review_stops_after_three_standard_candidates_fail(self):
         service = FakeService([decision(TERRA, 1), decision(SOL, 2), decision(LUNA, 3)])
-        with self.assertRaisesRegex(ModelRoutingError, "all routed review candidates failed"):
+        with self.assertRaisesRegex(RoutedReviewExhausted, "all routed review candidates failed") as caught:
             route_and_invoke_review(
                 "prompt",
                 json.loads,
@@ -329,6 +353,64 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(len(service.inputs), 3)
         self.assertEqual([item["outcome"] for item in service.outcomes], ["failure"] * 3)
         self.assertEqual(service.inputs[-1]["exclude_models"], [TERRA, SOL])
+        self.assertEqual(caught.exception.evidence["outcome"], "failure")
+        self.assertEqual(len(caught.exception.evidence["readiness_probes"]), 3)
+        self.assertEqual(
+            [item["outcome"] for item in caught.exception.evidence["readiness_probes"]],
+            ["failure"] * 3,
+        )
+
+    def test_policy_commit_uses_fixed_git_and_rejects_bare_hex_directory(self):
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            fake_root = Path(directory) / sha
+            fake_root.mkdir()
+            failed = subprocess.CompletedProcess([], 1, "", "not a repository")
+            with (
+                mock.patch("model_routing.ROOT", fake_root),
+                mock.patch("model_routing.subprocess.run", return_value=failed) as run,
+                mock.patch.dict(os.environ, {"PATH": str(Path(directory) / "hostile")}, clear=False),
+                self.assertRaisesRegex(ModelRoutingError, "identity is unavailable"),
+            ):
+                _policy_commit_identity()
+        command = run.call_args.args[0]
+        child_env = run.call_args.kwargs["env"]
+        self.assertEqual(command[0], "/usr/bin/git")
+        self.assertEqual(child_env["PATH"], "/usr/bin:/bin")
+
+    @mock.patch("model_routing.subprocess.run")
+    def test_policy_commit_verifies_git_root_and_commit(self, run: mock.Mock):
+        run.side_effect = [
+            subprocess.CompletedProcess([], 0, str(Path(__file__).resolve().parents[2]) + "\n", ""),
+            subprocess.CompletedProcess([], 0, "b" * 40 + "\n", ""),
+        ]
+        commit, source = _policy_commit_identity()
+        self.assertEqual(commit, "b" * 40)
+        self.assertEqual(source, "verified-git-worktree")
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_args_list[1].args[0][-3:], ["rev-parse", "--verify", "HEAD^{commit}"])
+
+    def test_policy_commit_accepts_only_root_controlled_current_release(self):
+        sha = "c" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            install_root = Path(directory) / "noetic-dev-agent-review"
+            releases = install_root / "releases"
+            release = releases / sha
+            release.mkdir(parents=True)
+            current = install_root / "current"
+            current.symlink_to(release)
+            root_owned = SimpleNamespace(st_uid=0, st_mode=0o100755)
+            with (
+                mock.patch("model_routing.ROOT", release),
+                mock.patch("model_routing.PRODUCTION_RELEASES_ROOT", releases),
+                mock.patch("model_routing.PRODUCTION_CURRENT_LINK", current),
+                mock.patch.object(Path, "stat", return_value=root_owned),
+                mock.patch.object(Path, "lstat", return_value=root_owned),
+                mock.patch.object(Path, "is_symlink", return_value=True),
+            ):
+                commit, source = _policy_commit_identity()
+        self.assertEqual(commit, sha)
+        self.assertEqual(source, "root-owned-current-release")
 
     def test_credential_file_is_bounded_to_litellm_key(self):
         with tempfile.TemporaryDirectory() as directory:
