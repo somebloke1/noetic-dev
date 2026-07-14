@@ -154,7 +154,27 @@ class TestDeliveryGatePositive(unittest.TestCase):
 
         _passed, errors, _gate = check_delivery(manifest)
 
-        self.assertIn("tool event while tools were disabled", "\n".join(errors))
+        self.assertIn("forbidden tool event", "\n".join(errors))
+
+    def test_qa_retained_event_stream_does_not_expose_parser_input(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        sentinel = "::error::attacker-controlled"
+        event_log = (
+            '{"type":"agent_start","\\n' + sentinel + '":1,"\\n' + sentinel + '":2}\n'
+        )
+        event_hash = hashlib.sha256(event_log.encode("utf-8")).hexdigest()
+        actual["qa_event_log"] = event_log
+        actual["qa_event_log_sha256"] = event_hash
+        actual["stdout_sha256"] = event_hash
+        qa["event_log_hash"] = event_hash
+
+        _passed, errors, _gate = check_delivery(manifest)
+        joined = "\n".join(errors)
+
+        self.assertIn("malformed or inconsistent event data", joined)
+        self.assertNotIn(sentinel, joined)
 
 
 class TestDeliveryGateNegativeFixtures(unittest.TestCase):

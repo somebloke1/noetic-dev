@@ -682,9 +682,12 @@ def _check_probe_execution_binding(
         try:
             parsed_final_text = parse_pi_jsonl_final_assistant(event_log)
         except (ModelRoutingError, TypeError, ValueError) as error:
-            errors.append(
-                f"qa {qa_run_id} retained event stream is not valid Pi JSONL: {error}"
+            detail = (
+                "forbidden tool event"
+                if str(error) == "Pi emitted a tool event while tools were disabled"
+                else "malformed or inconsistent event data"
             )
+            errors.append(f"qa {qa_run_id} retained event stream is not valid Pi JSONL: {detail}")
         else:
             if parsed_final_text != final_text:
                 errors.append(f"qa {qa_run_id} retained event stream final text mismatch")
