@@ -466,3 +466,18 @@ Exactly one protected Pi QA lifecycle reviewed immutable candidate 20474911bbc2b
 
 Exactly one protected Pi QA lifecycle reviewed immutable candidate 6bf2d0977deccb55144cd972f20231086cdf27be through LiteLLM-served Terra/high. READY decision d-20260714-000065 and execution decision d-20260714-000066 completed with one invocation and one recorded outcome each; QA returned CHANGES_NEEDED. Its sole proposed counterexample claimed internally agreeing False/0.0 source counts and "False"/"0.0" summary strings would survive a schema bypass. Direct reproduction refuted the claim: _validate_terminal_failure_record executes exact type(value) is int checks for route-attempt invocation counts and attempt-accounting invocation/outcome counts before deriving summary strings, and both mutations failed with `protected Pi terminal failure accounting types are invalid`. Probe SHA-256 fa60a8bee5c336b24fa9f43c0905720403173349b067949fa6c1cf4fe7ccae9f; execution SHA-256 5052cd7de0eeb01ac6a43db02bc24b350eb7e5395b29c8a8b3db4cf8fa34f6db.
 <!-- governance-crud:end id=k-20260714-0018 -->
+
+<!-- governance-crud:start id=k-20260714-0019 -->
+## k-20260714-0019: PR #31 exact-head review exposed Git-dependent Pi policy identity in production releases
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,semantic-review,production,policy-identity,terminal-evidence
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974312308
+- Confidence: high
+
+A candidate-broker semantic review of immutable head 2c5924efd8436e4cce65589b36764fdf30f00f7b against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000071 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. run_isolated_pi.get_policy_sha invokes git rev-parse HEAD and returns an empty string when Git metadata is unavailable. Canonical immutable production releases under /opt/noetic-dev-agent-review/releases/<commit> contain no .git, as directly verified for the active release and current symlink. A routed terminal failure in that layout therefore constructs an empty generated_by.policy_commit_sha, fails the required 40-hex schema field, and can lose the protected terminal record required by delivery-governance requirement 7. Result SHA-256 88bb6ca930d4e24b3f7718af143be6c80baab0e8b606e3b2e7ab864a7ae72394; reviewed diff SHA-256 b85e74f56155158b426f5b6bb4ec55b049dabfab23af3b124f61154b626396cc.
+<!-- governance-crud:end id=k-20260714-0019 -->

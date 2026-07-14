@@ -406,3 +406,18 @@ The redundant terminal_accounting summary SHALL encode invocation_count and outc
 
 The 6bf2d09 QA verdict SHALL be retained as returned but its sole finding is rejected because the cited bypass is contradicted by direct execution and existing pre-derivation exact source-type checks. The next generation SHALL not add redundant production checks. It SHALL add an explicit schema-bypass regression test in which False and 0.0 source invocation counts agree with correspondingly malformed summary strings, proving rejection occurs at source-type validation before summary derivation. This preserves the smallest requirement-mapped remediation, avoids complexity added to answer a false counterexample, and gives the next immutable QA complete evidence rather than diff-only ambiguity.
 <!-- governance-crud:end id=dec-20260714-0011 -->
+
+<!-- governance-crud:start id=dec-20260714-0012 -->
+## dec-20260714-0012: Use the shared verified policy identity for protected Pi evidence
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,production,policy-identity,terminal-evidence,shared-invariant
+- Source: k-20260714-0019;scripts/governance/model_routing.py;scripts/governance/run_isolated_pi.py
+- Confidence: high
+
+run_isolated_pi SHALL derive policy_commit_sha through model_routing's existing verified policy identity mechanism rather than directly invoking repository Git. In a development worktree, that mechanism binds the verified top-level Git commit using fixed /usr/bin/git and a scrubbed environment. In production mode or a canonical release path, it binds the root-controlled current release directory's 40-hex identity without requiring .git. Failure to establish either identity remains fail-closed. Protected Pi tests SHALL cover delegation and a no-Git canonical production release, including terminal-record construction retaining the release SHA. Do not add a second production-identity implementation.
+<!-- governance-crud:end id=dec-20260714-0012 -->

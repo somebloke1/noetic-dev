@@ -35,6 +35,7 @@ from model_routing import (  # noqa: E402
     AUTHORITATIVE_QA_PI_CONTRACT,
     ModelRoutingError,
     STANDARD_MODELS,
+    _policy_commit_identity,
     _report_outcome,
     _rejected_decision_evidence,
     _strict_json_equal,
@@ -143,10 +144,8 @@ def _require_validated_identity(role: str, qa_for_pass_id: Optional[str]) -> Non
 
 
 def get_policy_sha() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, env=_clean_env()
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    policy_sha, _source = _policy_commit_identity()
+    return policy_sha
 
 
 def get_pi_version() -> str:

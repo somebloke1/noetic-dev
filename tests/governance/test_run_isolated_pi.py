@@ -694,12 +694,41 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         with mock.patch.dict(os.environ, {"UNRELATED_SECRET": "sentinel"}, clear=False), \
                 mock.patch("run_isolated_pi.subprocess.run", side_effect=run):
             isolated_pi.get_pi_version()
-            isolated_pi.get_policy_sha()
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 1)
         for _command, kwargs in calls:
             self.assertIn("env", kwargs)
             self.assertNotIn("UNRELATED_SECRET", kwargs["env"])
             self.assertNotIn("LITELLM_API_KEY", kwargs["env"])
+
+    def test_policy_sha_delegates_to_shared_verified_identity(self):
+        with mock.patch(
+            "run_isolated_pi._policy_commit_identity",
+            return_value=("a" * 40, "verified-git-worktree"),
+        ) as identity:
+            self.assertEqual(isolated_pi.get_policy_sha(), "a" * 40)
+        identity.assert_called_once_with()
+
+    def test_terminal_failure_uses_no_git_root_controlled_release_identity(self):
+        release_sha = "b" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            install_root = Path(directory) / "noetic-dev-agent-review"
+            releases = install_root / "releases"
+            release = releases / release_sha
+            release.mkdir(parents=True)
+            current = install_root / "current"
+            current.symlink_to(release)
+            self.assertFalse((release / ".git").exists())
+            root_owned = type("RootOwned", (), {"st_uid": 0, "st_mode": 0o100755})()
+            with (
+                mock.patch("model_routing.ROOT", release),
+                mock.patch("model_routing.PRODUCTION_RELEASES_ROOT", releases),
+                mock.patch("model_routing.PRODUCTION_CURRENT_LINK", current),
+                mock.patch.object(Path, "lstat", return_value=root_owned),
+                mock.patch.object(Path, "is_symlink", return_value=True),
+                mock.patch.dict(os.environ, {"NOETIC_AGENT_REVIEW_PRODUCTION": "1"}, clear=False),
+            ):
+                record = self.terminal_failure_record()
+        self.assertEqual(record["generated_by"]["policy_commit_sha"], release_sha)
 
     def test_parser_extracts_one_final_assistant_text(self):
         self.assertEqual(parse_pi_jsonl_final_assistant(pi_jsonl("READY abc123def4567890")), "READY abc123def4567890")
