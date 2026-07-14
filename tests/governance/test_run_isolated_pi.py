@@ -171,6 +171,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         def run(command, **kwargs):
             captured["command"] = command
             captured["env"] = kwargs["env"]
+            captured["timeout"] = kwargs["timeout"]
             Path(command[-1]).write_text(json.dumps({
                 "probe_record": None,
                 "execution_record": {"actual_invocation": {"authority_process": "fresh-isolated-worker"}},
@@ -192,8 +193,31 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                 )
         self.assertEqual(captured["command"][1], "-I")
         self.assertEqual(captured["command"][3], "--routed-worker")
+        self.assertEqual(captured["timeout"], 63)
         self.assertEqual(result.execution_record["actual_invocation"]["authority_process"], "fresh-isolated-worker")
         self.assertNotIn("UNRELATED_SECRET", captured["env"])
+
+    def test_outer_worker_timeout_covers_qa_reroute_envelope_and_fails_controlled(self):
+        captured = {}
+
+        def timeout(_command, **kwargs):
+            captured["timeout"] = kwargs["timeout"]
+            raise subprocess.TimeoutExpired("worker", kwargs["timeout"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prompt = root / "prompt.md"
+            prompt.write_text("Review", encoding="utf-8")
+            with mock.patch("run_isolated_pi.subprocess.run", side_effect=timeout), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "authority worker timed out"
+            ):
+                run_routed_pi_lifecycle(
+                    role="qa", run_id="run", role_run_id="qa-1", tools=[],
+                    prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-1",
+                    candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
+                    timeout=300, decision_claim_dir=root / "claims",
+                )
+        self.assertEqual(captured["timeout"], 1_320)
 
     def test_cross_process_decision_claim_is_atomic_and_durable(self):
         with tempfile.TemporaryDirectory() as directory:

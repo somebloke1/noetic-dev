@@ -33,6 +33,7 @@ from hash_tree import canonical_json, canonical_json_sha256, sha256_file, sha256
 from json_schema import load_json_strict  # noqa: E402
 from model_routing import (  # noqa: E402
     ModelRoutingError,
+    STANDARD_MODELS,
     _report_outcome,
     create_router_service,
     load_litellm_key,
@@ -1084,6 +1085,8 @@ def run_routed_pi_lifecycle(
     """Run the authority-bearing lifecycle in a fresh isolated interpreter."""
     if decision_claim_dir is None:
         raise RuntimeError("a protected cross-process decision claim directory is required")
+    if timeout < 1:
+        raise RuntimeError("routed Pi timeout must be positive")
     request = {
         "role": role,
         "run_id": run_id,
@@ -1104,13 +1107,19 @@ def run_routed_pi_lifecycle(
         request_path = root / "request.json"
         response_path = root / "response.json"
         request_path.write_text(canonical_json(request), encoding="utf-8")
-        result = subprocess.run(
-            [sys.executable, "-I", str(Path(__file__).resolve()), "--routed-worker", str(request_path), str(response_path)],
-            capture_output=True,
-            text=True,
-            env=_worker_env(),
-            timeout=max(timeout, 120) + 30,
-        )
+        candidate_count = len(STANDARD_MODELS)
+        probe_budget = min(timeout, 120) * candidate_count if role == "qa" or perform_probe else 0
+        worker_timeout = timeout * candidate_count + probe_budget + 60
+        try:
+            result = subprocess.run(
+                [sys.executable, "-I", str(Path(__file__).resolve()), "--routed-worker", str(request_path), str(response_path)],
+                capture_output=True,
+                text=True,
+                env=_worker_env(),
+                timeout=worker_timeout,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise ModelRoutingError("fresh routed Pi authority worker timed out") from error
         if result.returncode != 0 or not response_path.is_file():
             raise ModelRoutingError("fresh routed Pi authority worker failed")
         response = load_json_strict(response_path)
