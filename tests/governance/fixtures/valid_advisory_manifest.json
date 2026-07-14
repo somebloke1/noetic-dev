@@ -157,7 +157,7 @@
     "ref": "refs/heads/main",
     "runner_attestation": {
       "artifact": {
-        "manifest_sha256": "27fdb2943a184fe83668d98836852d9064bda02ae40f3f8f855be69daecef4b2"
+        "manifest_sha256": "cbb07d8020cd2de2442d0d9cef7b12d768934efd3809733733388187ad168d46"
       }
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -358,7 +358,25 @@
             "tools": [],
             "prompt_text": "Adversarially falsify impl-g1-0001 at dddddddddddddddddddddddddddddddddddddddd.",
             "final_assistant_text": "QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.",
-            "qa_event_log": "{\"type\":\"agent_start\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}],\"willRetry\":false}\n"
+            "qa_event_log": "{\"type\":\"agent_start\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}],\"willRetry\":false}\n",
+            "operation": "execution",
+            "operation_contract": {
+              "operations": [
+                "readiness_probe",
+                "execution"
+              ],
+              "decision_scope": "per_operation",
+              "maximum_invocations_per_decision": 1,
+              "report_outcome_scope": "per_operation"
+            },
+            "attempt_accounting": [
+              {
+                "operation": "execution",
+                "decision_id": "d-20260713-300001",
+                "invocation_count": 1,
+                "outcome_count": 1
+              }
+            ]
           },
           "evidence_class": "authoritative",
           "generated_by": {
@@ -374,7 +392,7 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "2"
         },
-        "protected_execution_record_sha256": "79dae7b376e9f164a84eec19a2a00884a2ae7a76495175ce6e6995610cd804b8",
+        "protected_execution_record_sha256": "f72e44ad6566ef2770abea17f4d168c81af7cbd19f0368a1040b98f18c7e5b71",
         "protected_probe_record": {
           "authority_process": "fresh-isolated-worker",
           "authority_worker_pid": 4242,
@@ -512,9 +530,27 @@
           "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
           "stdout_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
           "themes_disabled": true,
-          "tools": []
+          "tools": [],
+          "operation": "readiness_probe",
+          "operation_contract": {
+            "operations": [
+              "readiness_probe",
+              "execution"
+            ],
+            "decision_scope": "per_operation",
+            "maximum_invocations_per_decision": 1,
+            "report_outcome_scope": "per_operation"
+          },
+          "attempt_accounting": [
+            {
+              "operation": "readiness_probe",
+              "decision_id": "d-20260713-300002",
+              "invocation_count": 1,
+              "outcome_count": 1
+            }
+          ]
         },
-        "protected_probe_record_sha256": "2754462c82ddc908199303f7d234a836f1c25c3363244a2e771ddb1f08770b18",
+        "protected_probe_record_sha256": "95d7dde981f5b3920afb6cf08c6f815a1f72986bcf83311a2269a95314ec67d5",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",

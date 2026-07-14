@@ -251,8 +251,8 @@ This supersedes dec-20260711-0005's endpoint-pluralism escape hatch, direct llam
 - Created: 2026-07-14
 - Updated: 2026-07-14
 - Tags: issue-29,model-routing,readiness,governance
-- Source: docs/model-routing-policy.md;docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968172876
+- Source: docs/model-routing-policy.md;docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968538611
 - Confidence: high
 
-For the one-shot local agent-review broker, treat the deterministic READY probe and at-most-one substantive review call as phases of the same genus-router task attempt. The route decision selects the candidate before both calls; both use the validated LiteLLM reference; readiness has explicit bound evidence; report_outcome records the aggregate attempt. This contract does not govern protected Pi QA, whose READY and execution are separate routed operations with distinct decision IDs and outcomes under its anti-replay evidence contract. Scoping avoids recursive probe-of-probe behavior without misrepresenting a separate-operation harness.
+For the one-shot local agent-review broker, treat the deterministic READY probe and at-most-one substantive review call as phases of the same genus-router task attempt. The route decision selects the candidate before both calls; both use the validated LiteLLM reference; readiness has explicit bound evidence; report_outcome records the aggregate attempt. This contract does not govern protected Pi QA, whose READY and execution are separate routed operations with distinct decision IDs and outcomes under its anti-replay evidence contract. Protected Pi consumes its machine contract at runtime, guards each decision to at most one invocation and one outcome, and emits gate-validated attempt accounting. Scoping avoids recursive probe-of-probe behavior without misrepresenting a separate-operation harness.
 <!-- governance-crud:end id=dec-20260714-0001 -->

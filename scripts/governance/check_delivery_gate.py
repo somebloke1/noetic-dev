@@ -36,7 +36,7 @@ from check_evidence_manifest import (  # noqa: E402
 )
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
-from model_routing import ModelRoutingError  # noqa: E402
+from model_routing import AUTHORITATIVE_QA_PI_CONTRACT, ModelRoutingError  # noqa: E402
 from route_evidence import validate_route_evidence  # noqa: E402
 from run_isolated_pi import parse_pi_jsonl_final_assistant  # noqa: E402
 
@@ -391,6 +391,43 @@ def _check_invocation_route_binding(record: Dict[str, Any], label: str, errors: 
         errors.append(f"{label} did not enact high reasoning")
 
 
+def _check_pi_operation_accounting(
+    record: Dict[str, Any],
+    operation: str,
+    label: str,
+    errors: List[str],
+) -> None:
+    if record.get("operation") != operation:
+        errors.append(f"{label} operation does not match {operation}")
+    if record.get("operation_contract") != AUTHORITATIVE_QA_PI_CONTRACT:
+        errors.append(f"{label} does not bind the authoritative QA Pi execution contract")
+
+    route_evidence = record.get("route_evidence")
+    attempts = route_evidence.get("attempts") if isinstance(route_evidence, dict) else None
+    accounting = record.get("attempt_accounting")
+    if not isinstance(attempts, list) or not isinstance(accounting, list) or len(accounting) != len(attempts):
+        errors.append(f"{label} attempt accounting does not match routed attempts")
+        return
+
+    for index, (attempt, item) in enumerate(zip(attempts, accounting, strict=True), 1):
+        decision = attempt.get("decision") if isinstance(attempt, dict) else None
+        expected_decision_id = decision.get("decision_id") if isinstance(decision, dict) else None
+        expected_fields = {"operation", "decision_id", "invocation_count", "outcome_count"}
+        if not isinstance(item, dict) or set(item) != expected_fields:
+            errors.append(f"{label} attempt {index} accounting fields are incomplete or unknown")
+            continue
+        if item.get("operation") != operation or item.get("decision_id") != expected_decision_id:
+            errors.append(f"{label} attempt {index} accounting is not bound to its operation and decision")
+        invocation_count = item.get("invocation_count")
+        outcome_count = item.get("outcome_count")
+        if type(invocation_count) is not int or not 0 <= invocation_count <= 1:
+            errors.append(f"{label} attempt {index} exceeded one invocation per decision")
+        if type(outcome_count) is not int or outcome_count != 1:
+            errors.append(f"{label} attempt {index} does not bind exactly one reported outcome")
+        if isinstance(attempt, dict) and attempt.get("outcome") == "success" and invocation_count != 1:
+            errors.append(f"{label} successful attempt {index} does not bind exactly one invocation")
+
+
 def _expected_pi_config(model_ref: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "providers": {
@@ -545,6 +582,8 @@ def _check_probe_execution_binding(
     )
     _check_invocation_route_binding(actual, f"qa {qa_run_id} execution", errors)
     _check_invocation_route_binding(probe_record, f"qa {qa_run_id} probe", errors)
+    _check_pi_operation_accounting(actual, "execution", f"qa {qa_run_id} execution", errors)
+    _check_pi_operation_accounting(probe_record, "readiness_probe", f"qa {qa_run_id} probe", errors)
     _check_pi_argv_binding(
         actual,
         argv_key="argv",

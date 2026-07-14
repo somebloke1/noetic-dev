@@ -253,6 +253,7 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(self.policy["execution_contracts"]["authoritative_qa_pi"], {
             "operations": ["readiness_probe", "execution"],
             "decision_scope": "per_operation",
+            "maximum_invocations_per_decision": 1,
             "report_outcome_scope": "per_operation",
         })
         self.assertEqual(probe["outcome"], "success")

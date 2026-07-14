@@ -32,6 +32,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from hash_tree import canonical_json, canonical_json_sha256, sha256_file, sha256_text  # noqa: E402
 from json_schema import load_json_strict  # noqa: E402
 from model_routing import (  # noqa: E402
+    AUTHORITATIVE_QA_PI_CONTRACT,
     ModelRoutingError,
     STANDARD_MODELS,
     _report_outcome,
@@ -642,6 +643,9 @@ class _RoutedRunResult:
     invoked_model_name: str
     final_assistant_text: str
     model_config_sha256: str
+    operation: str
+    operation_contract: Dict[str, Any]
+    attempt_accounting: List[Dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -650,6 +654,43 @@ class _RoutedPiLifecycleResult:
     execution_record: Dict[str, Any]
     stdout: str
     stderr: str
+
+
+@dataclass
+class _OperationAttemptAccounting:
+    operation: str
+    decision_id: str
+    maximum_invocations: int
+    invocation_count: int = 0
+    outcome_count: int = 0
+
+    def record_invocation(self) -> None:
+        self.invocation_count += 1
+        if self.invocation_count > self.maximum_invocations:
+            raise ModelRoutingError("routed Pi decision exceeded its invocation contract")
+
+    def record_outcome(self) -> None:
+        self.outcome_count += 1
+        if self.outcome_count > 1:
+            raise ModelRoutingError("routed Pi decision reported more than one outcome")
+
+    def evidence(self) -> Dict[str, Any]:
+        if self.invocation_count > self.maximum_invocations or self.outcome_count != 1:
+            raise ModelRoutingError("routed Pi attempt accounting is incomplete")
+        return {
+            "operation": self.operation,
+            "decision_id": self.decision_id,
+            "invocation_count": self.invocation_count,
+            "outcome_count": self.outcome_count,
+        }
+
+
+def _authoritative_qa_pi_contract(policy: Dict[str, Any]) -> Dict[str, Any]:
+    contracts = policy.get("execution_contracts")
+    contract = contracts.get("authoritative_qa_pi") if isinstance(contracts, dict) else None
+    if contract != AUTHORITATIVE_QA_PI_CONTRACT:
+        raise ModelRoutingError("authoritative QA Pi execution contract is invalid")
+    return {**contract, "operations": list(contract["operations"])}
 
 
 def parse_pi_jsonl_final_assistant(stdout: str) -> str:
@@ -755,11 +796,15 @@ def _make_routed_pi_lifecycle():
         decision_claim_dir: Path,
     ) -> _RoutedRunResult:
         policy = load_policy()
+        operation_contract = _authoritative_qa_pi_contract(policy)
+        if operation not in operation_contract["operations"]:
+            raise ModelRoutingError("routed Pi operation is outside its execution contract")
         classification = dict(policy["tasks"]["authoritative_qa"])
         service = create_router_service()
         api_key = load_litellm_key(policy)
         excluded: List[str] = []
         attempts: List[Dict[str, Any]] = []
+        attempt_accounting: List[Dict[str, Any]] = []
 
         for _ in range(3):
             route_input = {
@@ -782,6 +827,12 @@ def _make_routed_pi_lifecycle():
                         f"{type(error).__name__}: routed Pi {operation} decision rejected",
                     )
                 raise
+
+            accounting = _OperationAttemptAccounting(
+                operation=operation,
+                decision_id=decision["decision_id"],
+                maximum_invocations=operation_contract["maximum_invocations_per_decision"],
+            )
 
             model_ref = dict(decision["model_ref"])
             model_name = f"{model_ref['endpoint_id']}/{model_ref['upstream_model_id']}"
@@ -823,6 +874,7 @@ def _make_routed_pi_lifecycle():
                         cwd=cwd,
                         pi_config_fd=config_fd,
                     )
+                    accounting.record_invocation()
                     result = subprocess.run(
                         bwrap_argv,
                         capture_output=True,
@@ -854,6 +906,7 @@ def _make_routed_pi_lifecycle():
                 if errors:
                     raise ModelRoutingError(f"protected Pi route evidence is invalid: {errors[0]}")
             except Exception as error:
+                accounting.record_outcome()
                 _report_outcome(
                     service,
                     decision["decision_id"],
@@ -866,10 +919,13 @@ def _make_routed_pi_lifecycle():
                     "outcome_recorded": True,
                     "reasoning_effort": "high",
                 })
+                attempt_accounting.append(accounting.evidence())
                 excluded.append(decision["model"])
                 continue
 
+            accounting.record_outcome()
             _report_outcome(service, decision["decision_id"], "success", f"Routed Pi {operation} passed its contract")
+            attempt_accounting.append(accounting.evidence())
             return _RoutedRunResult(
                 process=result,
                 inner_argv=inner_argv,
@@ -878,6 +934,9 @@ def _make_routed_pi_lifecycle():
                 invoked_model_name=model_name,
                 final_assistant_text=final_text,
                 model_config_sha256=sha256_text(config_text),
+                operation=operation,
+                operation_contract=operation_contract,
+                attempt_accounting=attempt_accounting,
             )
         raise ModelRoutingError(f"all routed Pi {operation} candidates failed")
 
@@ -914,7 +973,7 @@ def _make_routed_pi_lifecycle():
             expected = f"READY {nonce}"
             probe_start = _now()
             probe = route_operation(
-                operation="READY probe",
+                operation="readiness_probe",
                 name=f"probe-{role_run_id}",
                 tools=tools,
                 candidate_dir=candidate_dir,
@@ -1147,6 +1206,9 @@ def _base_invocation_fields(
     candidate_tree_oid: str,
 ) -> Dict[str, Any]:
     return {
+        "operation": routed.operation,
+        "operation_contract": routed.operation_contract,
+        "attempt_accounting": routed.attempt_accounting,
         "route_evidence": routed.route_evidence,
         "invoked_model_ref": routed.invoked_model_ref,
         "reasoning_effort": "high",

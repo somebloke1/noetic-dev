@@ -633,8 +633,19 @@ class TestQaBindingFailures(unittest.TestCase):
         self.assertEqual(policy["execution_contracts"]["authoritative_qa_pi"], {
             "operations": ["readiness_probe", "execution"],
             "decision_scope": "per_operation",
+            "maximum_invocations_per_decision": 1,
             "report_outcome_scope": "per_operation",
         })
+
+    def test_pi_attempt_accounting_rejects_duplicate_invocation(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        actual["attempt_accounting"][0]["invocation_count"] = 2
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("exceeded one invocation per decision", "\n".join(errors))
 
     def test_probe_and_execution_timestamps_must_be_valid_and_ordered(self):
         manifest = load_fixture("valid_advisory_manifest.json")

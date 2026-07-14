@@ -58,6 +58,7 @@ BROKER_ATTEMPT_CONTRACT = {
 AUTHORITATIVE_QA_PI_CONTRACT = {
     "operations": ["readiness_probe", "execution"],
     "decision_scope": "per_operation",
+    "maximum_invocations_per_decision": 1,
     "report_outcome_scope": "per_operation",
 }
 EXECUTION_CONTRACTS = {

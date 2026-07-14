@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import inspect
 import io
 import json
@@ -25,6 +26,8 @@ from run_isolated_pi import (  # noqa: E402
     PI_JSONL_EVENT_TYPES,
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
+    _OperationAttemptAccounting,
+    _authoritative_qa_pi_contract,
     _candidate_git_metadata_ro_mounts,
     _claim_decision_id,
     _clean_env,
@@ -251,6 +254,50 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             child = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
         self.assertNotEqual(child.returncode, 0)
         self.assertIn("replayed", child.stderr)
+
+    def test_authoritative_pi_contract_is_consumed_and_attempts_are_bounded(self):
+        policy = json.loads((ROOT / "config" / "model-policy.json").read_text())
+        contract = _authoritative_qa_pi_contract(policy)
+        self.assertEqual(contract["operations"], ["readiness_probe", "execution"])
+        self.assertEqual(contract["maximum_invocations_per_decision"], 1)
+
+        mutated = json.loads(json.dumps(policy))
+        mutated["execution_contracts"]["authoritative_qa_pi"]["maximum_invocations_per_decision"] = 2
+        with self.assertRaisesRegex(RuntimeError, "execution contract is invalid"):
+            _authoritative_qa_pi_contract(mutated)
+
+        accounting = _OperationAttemptAccounting("execution", "d-20260713-999992", 1)
+        accounting.record_invocation()
+        with self.assertRaisesRegex(RuntimeError, "exceeded its invocation contract"):
+            accounting.record_invocation()
+
+        accounting = _OperationAttemptAccounting("execution", "d-20260713-999993", 1)
+        accounting.record_invocation()
+        accounting.record_outcome()
+        self.assertEqual(accounting.evidence()["invocation_count"], 1)
+        with self.assertRaisesRegex(RuntimeError, "more than one outcome"):
+            accounting.record_outcome()
+
+    def test_routed_operation_has_one_guarded_model_process_site(self):
+        tree = ast.parse((ROOT / "scripts" / "governance" / "run_isolated_pi.py").read_text())
+        maker = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_make_routed_pi_lifecycle")
+        route = next(node for node in maker.body if isinstance(node, ast.FunctionDef) and node.name == "route_operation")
+        process_calls = [
+            node for node in ast.walk(route)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "subprocess"
+            and node.func.attr == "run"
+        ]
+        guard_calls = [
+            node for node in ast.walk(route)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "record_invocation"
+        ]
+        self.assertEqual(len(process_calls), 1)
+        self.assertEqual(len(guard_calls), 1)
 
     def test_decision_claim_rejects_pathlike_or_malformed_ids(self):
         with tempfile.TemporaryDirectory() as directory:
