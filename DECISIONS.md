@@ -256,3 +256,18 @@ This supersedes dec-20260711-0005's endpoint-pluralism escape hatch, direct llam
 
 For the one-shot local agent-review broker, treat the deterministic READY probe and at-most-one substantive review call as phases of the same genus-router task attempt. The route decision selects the candidate before both calls; both use the validated LiteLLM reference; readiness has explicit bound evidence; report_outcome records the aggregate attempt. This contract does not govern protected Pi QA, whose READY and execution are separate routed operations with distinct decision IDs and outcomes under its anti-replay evidence contract. Protected Pi consumes its machine contract at runtime, uses type-strict JSON equality at runtime and gate boundaries, guards each decision to at most one invocation and one outcome, and emits gate-validated attempt accounting. Scoping avoids recursive probe-of-probe behavior without misrepresenting a separate-operation harness.
 <!-- governance-crud:end id=dec-20260714-0001 -->
+
+<!-- governance-crud:start id=dec-20260714-0002 -->
+## dec-20260714-0002: Bound the final broker prompt before routing
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,agent-review,prompt-bounds,fail-closed
+- Source: docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968846952
+- Confidence: high
+
+Keep the 700,000-byte Git diff capture bound needed by the current PR, but treat it as a subprocess-output safety limit rather than a promise that every captured diff is reviewable. After adding instructions, exact identities, PR metadata, filenames, and the diff, the broker must reject any assembled UTF-8 prompt larger than the routing adapter's model-input limit. This provides one shared upper bound and prevents an admitted broker prompt from failing only after entering routed execution.
+<!-- governance-crud:end id=dec-20260714-0002 -->

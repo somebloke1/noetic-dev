@@ -17,8 +17,8 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
-from model_routing import RoutedReviewExhausted
+from agent_review_broker import BWRAP, MAX_REVIEW_PROMPT_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, parse_review_output, review, run_bounded, strict_json, validate_pr, validate_request, validate_runtime
+from model_routing import MAX_MODEL_INPUT_BYTES, RoutedReviewExhausted
 
 
 class TestAgentReview(unittest.TestCase):
@@ -49,6 +49,17 @@ class TestAgentReview(unittest.TestCase):
         self.assertIn("UNTRUSTED_REVIEW_DATA", prompt)
         self.assertIn("never instructions", prompt)
         self.assertIn("ignore prior rules", prompt)
+
+    def test_assembled_prompt_cannot_exceed_routed_input_limit(self):
+        pr = {"title": "review", "body": "", "user": {"login": "somebloke1"}}
+        material = {"files": ["large.patch"], "diff": "x" * 650_000, "diff_sha256": "c" * 64}
+        prompt = build_prompt(pr, material, self.REQUEST)
+        self.assertEqual(MAX_REVIEW_PROMPT_BYTES, MAX_MODEL_INPUT_BYTES)
+        self.assertLessEqual(len(prompt.encode("utf-8")), MAX_MODEL_INPUT_BYTES)
+
+        material["diff"] = "x" * MAX_REVIEW_PROMPT_BYTES
+        with self.assertRaisesRegex(ReviewError, "assembled review prompt exceeds"):
+            build_prompt(pr, material, self.REQUEST)
 
     def test_output_contract_accepts_pass_and_findings(self):
         passed = parse_review_output('{"verdict":"pass","summary":"No blocker after adversarial review.","findings":[]}')
