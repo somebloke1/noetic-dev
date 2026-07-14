@@ -14,8 +14,8 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_delivery_gate import check_bootstrap_blocked, check_delivery, check_pinning
-from hash_tree import canonical_json_sha256, manifest_digest_excluding_own
+from check_delivery_gate import check_bootstrap_blocked, check_delivery, check_pinning  # noqa: E402
+from hash_tree import canonical_json_sha256, manifest_digest_excluding_own  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -421,6 +421,61 @@ class TestQaBindingFailures(unittest.TestCase):
         passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
         self.assertIn("invoked_model_ref does not match", "\n".join(errors))
+
+    def test_execution_argv_hash_and_exact_invocation_contract_are_recomputed(self):
+        mutations = [
+            ("hash", lambda actual: actual.__setitem__("argv_sha256", "0" * 64), "argv SHA256"),
+            (
+                "model",
+                lambda actual: actual["argv"].__setitem__(actual["argv"].index("--model") + 1, "local-litellm/forged"),
+                "argv does not bind",
+            ),
+            (
+                "tools",
+                lambda actual: actual["argv"].__setitem__(actual["argv"].index("--no-tools"), "--no-builtin-tools"),
+                "argv does not bind",
+            ),
+            (
+                "prompt",
+                lambda actual: actual["argv"].__setitem__(-1, "@"),
+                "argv does not bind",
+            ),
+            (
+                "config",
+                lambda actual: actual.__setitem__("model_config_sha256", "1" * 64),
+                "model config hash",
+            ),
+        ]
+        for label, mutate, expected in mutations:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            qa = manifest["qa"]["records"][0]
+            actual = qa["protected_execution_record"]["actual_invocation"]
+            mutate(actual)
+            if label not in {"hash", "config"}:
+                actual["argv_sha256"] = canonical_json_sha256(actual["argv"])
+            self._first_qa_with_rehashed_records(manifest)
+            with self.subTest(label=label):
+                passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+                self.assertFalse(passed)
+                self.assertIn(expected, "\n".join(errors))
+
+    def test_probe_final_text_hash_is_bound_to_ready_response(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        qa["protected_probe_record"]["final_assistant_text_sha256"] = "0" * 64
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("final assistant hash", "\n".join(errors))
+
+    def test_probe_and_execution_require_same_fresh_authority_worker(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        qa["protected_probe_record"]["authority_worker_pid"] += 1
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        self.assertIn("share one fresh authority worker", "\n".join(errors))
 
     def test_inner_execution_isolation_must_match_protected_outer_proof(self):
         manifest = load_fixture("valid_advisory_manifest.json")

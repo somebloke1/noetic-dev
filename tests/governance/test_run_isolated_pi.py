@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import inspect
+import io
+import json
+import os
 import shutil
 import subprocess
 import sys
@@ -12,153 +16,310 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
-GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
+GOV_SCRIPTS = str(ROOT / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from run_isolated_pi import (
+import run_isolated_pi as isolated_pi  # noqa: E402
+from run_isolated_pi import (  # noqa: E402
+    PI_JSONL_EVENT_TYPES,
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
-    ROUTED_PI_MIGRATION_REQUIRED,
     _candidate_git_metadata_ro_mounts,
+    _claim_decision_id,
     _clean_env,
     _credential_interface,
     _non_evidence_record,
-    _run_isolated,
+    _pi_models_config,
     _write_tools_observed,
     build_bwrap_command,
-    dispatch_pi,
+    main,
     materialize_candidate_checkout,
+    parse_pi_jsonl_final_assistant,
     resolve_scoped_credentials,
-    run_ready_probe,
+    run_routed_pi_lifecycle,
     validate_candidate_checkout,
     validate_model,
     validate_tools,
 )
 
+SOL = "codex/gpt-5.6-sol"
+TERRA = "codex/gpt-5.6-terra"
+LUNA = "codex/gpt-5.6-luna"
+
+
+def model_ref(model: str) -> dict[str, str]:
+    return {
+        "model_id": model,
+        "endpoint_id": "local-litellm",
+        "upstream_model_id": model,
+        "interface_type": "openai-compatible",
+        "base_url": "http://172.22.10.160:3333",
+        "endpoint_path": "/v1/responses",
+        "token_env": "LITELLM_API_KEY",
+        "reasoning_effort": "high",
+    }
+
+
+def decision(model: str = TERRA, number: int = 1) -> dict[str, object]:
+    order = [TERRA, SOL, LUNA]
+    remaining = order[order.index(model):]
+    return {
+        "availability": "verified",
+        "decision_id": f"d-20260713-{number:06d}",
+        "effective_complexity": "complex",
+        "fable_eligible": False,
+        "fallback_refs": [model_ref(item) for item in remaining[1:]],
+        "fallbacks": remaining[1:],
+        "genus": "Complex Code Review",
+        "genus_code": "REVIEW-COMPLEX",
+        "model": model,
+        "model_ref": model_ref(model),
+        "rationale": ["protected authoritative QA fixture"],
+        "sophistication": "complex",
+    }
+
+
+def assistant_message(text: str) -> dict[str, object]:
+    return {
+        "role": "assistant",
+        "content": [{"type": "thinking", "thinking": "bounded"}, {"type": "text", "text": text}],
+        "stopReason": "stop",
+        "provider": "local-litellm",
+        "model": TERRA,
+        "usage": {"input": 1, "output": 1, "cost": {"total": 0}},
+        "timestamp": 1,
+    }
+
+
+def pi_jsonl(text: str) -> str:
+    message = assistant_message(text)
+    events = [
+        {"type": "agent_start"},
+        {"type": "turn_start"},
+        {"type": "message_start", "message": {"role": "assistant", "content": []}},
+        {"type": "message_end", "message": message},
+        {"type": "turn_end", "message": message},
+        {"type": "agent_end", "messages": [{"role": "user", "content": "prompt"}, message], "willRetry": False},
+    ]
+    return "".join(json.dumps(event, separators=(",", ":")) + "\n" for event in events)
+
+
+class FakeService:
+    def __init__(self, decisions: list[dict[str, object]], report_result=None) -> None:
+        self.decisions = list(decisions)
+        self.inputs: list[dict[str, object]] = []
+        self.outcomes: list[dict[str, object]] = []
+        self.report_result = report_result
+
+    async def route_task(self, payload):
+        self.inputs.append(payload)
+        return self.decisions.pop(0)
+
+    def report_outcome(self, payload):
+        self.outcomes.append(payload)
+        return self.report_result if self.report_result is not None else {"recorded": True}
+
 
 class TestRunIsolatedPiPolicy(unittest.TestCase):
-    def test_every_pi_invocation_uses_high_thinking(self):
-        source = (ROOT / "scripts" / "governance" / "run_isolated_pi.py").read_text()
-        self.assertNotIn('"--thinking", "low"', source)
-        self.assertEqual(source.count('"--thinking", "high"'), 2)
+    _decision_counter = 1000
 
-    def test_legacy_pi_model_execution_fails_closed_before_invocation(self):
-        with self.assertRaisesRegex(RuntimeError, "genus-router decision"):
-            run_ready_probe(
-                model_id="openai-codex/gpt-5.6-terra",
-                profile_key="qa_primary",
-                run_id="run-1",
-                role_run_id="qa-1",
-                candidate_dir=None,
-                tools=[],
-                candidate_sha="d" * 40,
-                base_sha="c" * 40,
-                candidate_tree_oid="e" * 40,
-                timeout=1,
-            )
-        with self.assertRaisesRegex(RuntimeError, "canonical LiteLLM invocation"):
-            dispatch_pi(
-                role="qa",
-                model_id="openai-codex/gpt-5.6-terra",
-                profile_key="qa_primary",
-                run_id="run-1",
-                role_run_id="qa-1",
-                tools=[],
-                prompt_file=Path("unused"),
-                candidate_dir=None,
-                qa_for_pass_id="impl-1",
-                candidate_sha="d" * 40,
-                base_sha="c" * 40,
-                timeout=1,
-            )
-        self.assertIn("disabled", ROUTED_PI_MIGRATION_REQUIRED)
+    @classmethod
+    def next_decision(cls, model: str = TERRA):
+        cls._decision_counter += 1
+        return decision(model, cls._decision_counter)
 
-    def test_low_level_pi_executor_and_direct_credentials_fail_closed(self):
-        with mock.patch("run_isolated_pi.build_bwrap_command") as build:
-            with self.assertRaisesRegex(RuntimeError, "genus-router decision"):
-                _run_isolated(
-                    ["pi", "--provider", "openai"],
-                    candidate_dir=None,
-                    prompt_file=Path("unused"),
-                    cwd=None,
-                    timeout=1,
-                    scoped_credentials={"OPENAI_API_KEY": "secret"},
+    def test_installed_pi_0803_contract_explicitly_disables_tools_and_parses_file_arg(self):
+        pi = shutil.which("pi")
+        self.assertIsNotNone(pi)
+        version = subprocess.run([pi, "--version"], capture_output=True, text=True, check=True).stdout.strip()
+        help_text = subprocess.run([pi, "--help"], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(version, "0.80.3")
+        self.assertIn("--no-tools, -nt", help_text)
+        cli_js = Path(pi).resolve()
+        args_module = cli_js.parent / "cli" / "args.js"
+        script = (
+            f'import {{parseArgs}} from {json.dumps(args_module.as_uri())};'
+            'console.log(JSON.stringify(parseArgs(["--no-tools","@/tmp/prompt.md"])));'
+        )
+        parsed = json.loads(subprocess.run(
+            ["node", "--input-type=module", "-e", script], capture_output=True, text=True, check=True
+        ).stdout)
+        self.assertIs(parsed["noTools"], True)
+        self.assertEqual(parsed["fileArgs"], ["/tmp/prompt.md"])
+        self.assertEqual(parsed["messages"], [])
+
+    def test_only_public_routed_lifecycle_holds_authority(self):
+        self.assertTrue(callable(run_routed_pi_lifecycle))
+        self.assertIsNone(run_routed_pi_lifecycle.__closure__)
+        for name in [
+            "_CAPABILITY_MARKER", "_ACTIVE_CAPABILITIES", "_mint_routed_invocation",
+            "_consume_routed_invocation", "_run_isolated", "dispatch_pi", "run_ready_probe",
+            "_route_and_run_pi", "_make_routed_pi_lifecycle", "_worker_lifecycle",
+        ]:
+            self.assertFalse(hasattr(isolated_pi, name), name)
+        parameters = inspect.signature(build_bwrap_command).parameters
+        self.assertNotIn("decision", parameters)
+        self.assertNotIn("route_evidence", parameters)
+        self.assertNotIn("api_key", parameters)
+
+    def test_public_lifecycle_crosses_fresh_isolated_worker_process(self):
+        captured = {}
+
+        def run(command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs["env"]
+            Path(command[-1]).write_text(json.dumps({
+                "probe_record": None,
+                "execution_record": {"actual_invocation": {"authority_process": "fresh-isolated-worker"}},
+                "stdout": "events",
+                "stderr": "",
+            }), encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prompt = root / "prompt.md"
+            prompt.write_text("Review", encoding="utf-8")
+            with mock.patch("run_isolated_pi.subprocess.run", side_effect=run):
+                result = run_routed_pi_lifecycle(
+                    role="validator", run_id="run", role_run_id="validator-1", tools=[],
+                    prompt_file=prompt, candidate_dir=None, qa_for_pass_id=None,
+                    candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="",
+                    timeout=1, decision_claim_dir=root / "claims",
                 )
-        build.assert_not_called()
-        with self.assertRaisesRegex(RuntimeError, "direct provider credential"):
-            _clean_env({"OPENAI_API_KEY": "secret"})
+        self.assertEqual(captured["command"][1], "-I")
+        self.assertEqual(captured["command"][3], "--routed-worker")
+        self.assertEqual(result.execution_record["actual_invocation"]["authority_process"], "fresh-isolated-worker")
+        self.assertNotIn("UNRELATED_SECRET", captured["env"])
 
-    def test_qa_tool_allowlist_is_empty_until_credential_broker_exists(self):
+    def test_cross_process_decision_claim_is_atomic_and_durable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            _claim_decision_id(claim_dir, "d-20260713-999991")
+            with self.assertRaisesRegex(RuntimeError, "replayed"):
+                _claim_decision_id(claim_dir, "d-20260713-999991")
+            script = (
+                "import sys; from pathlib import Path; "
+                f"sys.path.insert(0,{str(GOV_SCRIPTS)!r}); "
+                "from run_isolated_pi import _claim_decision_id; "
+                f"_claim_decision_id(Path({str(claim_dir)!r}), 'd-20260713-999991')"
+            )
+            child = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+        self.assertNotEqual(child.returncode, 0)
+        self.assertIn("replayed", child.stderr)
+
+    def test_helper_children_receive_scrubbed_environments(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            return subprocess.CompletedProcess(command, 0, "0.80.3\n" if command[0] == "pi" else "a" * 40 + "\n", "")
+
+        with mock.patch.dict(os.environ, {"UNRELATED_SECRET": "sentinel"}, clear=False), \
+                mock.patch("run_isolated_pi.subprocess.run", side_effect=run):
+            isolated_pi.get_pi_version()
+            isolated_pi.get_policy_sha()
+        self.assertEqual(len(calls), 2)
+        for _command, kwargs in calls:
+            self.assertIn("env", kwargs)
+            self.assertNotIn("UNRELATED_SECRET", kwargs["env"])
+            self.assertNotIn("LITELLM_API_KEY", kwargs["env"])
+
+    def test_parser_extracts_one_final_assistant_text(self):
+        self.assertEqual(parse_pi_jsonl_final_assistant(pi_jsonl("READY abc123def4567890")), "READY abc123def4567890")
+        self.assertIn("agent_end", PI_JSONL_EVENT_TYPES)
+
+    def test_parser_rejects_malformed_nonfinite_unknown_ambiguous_and_tool_outputs(self):
+        cases = [
+            "not-json\n",
+            '{"type":"agent_start","x":NaN}\n',
+            '{"type":"future_relevant_event"}\n',
+            pi_jsonl("one") + pi_jsonl("two"),
+            json.dumps({"type": "tool_execution_start", "toolName": "write"}) + "\n",
+        ]
+        duplicate = pi_jsonl("ok").replace('{"type":"agent_start"}', '{"type":"agent_start","type":"agent_start"}', 1)
+        cases.append(duplicate)
+        for stream in cases:
+            with self.subTest(stream=stream[:60]), self.assertRaises(RuntimeError):
+                parse_pi_jsonl_final_assistant(stream)
+
+    def test_qa_tool_allowlist_is_empty_and_fails_before_routing(self):
         self.assertEqual(QA_TOOL_ALLOWLIST, set())
-        ok, message, _tools = validate_tools("qa", "")
-        self.assertTrue(ok, message)
         ok, message, _tools = validate_tools("qa", "read")
         self.assertFalse(ok)
         self.assertIn("cannot use tools", message)
 
-    def test_unsupported_model_rejected(self):
-        ok, message = validate_model("unsupported/model")
-        self.assertFalse(ok)
-        self.assertIn("not in allowed profiles", message)
+    @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
+    def test_bwrap_copies_actual_held_config_fd_payload_read_only(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            node_prefix = root / "node" / "v24.0.0"
+            pi_bin = node_prefix / "bin" / "pi"
+            pi_bin.parent.mkdir(parents=True)
+            pi_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+            with tempfile.TemporaryFile() as prompt, tempfile.TemporaryFile() as config:
+                prompt.write(b"prompt")
+                prompt.seek(0)
+                config.write(b'{"sentinel":"exact-config"}')
+                config.seek(0)
+                with mock.patch("run_isolated_pi.shutil.which", side_effect=lambda name: "/usr/bin/bwrap" if name == "bwrap" else str(pi_bin)):
+                    command = build_bwrap_command(
+                        ["/bin/sh", "-c", "test ! -w /tmp/pi-agent/models.json && cat /tmp/pi-agent/models.json"],
+                        candidate_dir=None,
+                        prompt_fd=prompt.fileno(),
+                        cwd=None,
+                        pi_config_fd=config.fileno(),
+                    )
+                result = subprocess.run(
+                    command, pass_fds=(prompt.fileno(), config.fileno()), capture_output=True, text=True
+                )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, '{"sentinel":"exact-config"}')
+        self.assertIn("--ro-bind-data", command)
 
-    def test_role_specific_model_binding_rejects_implementer_model_for_qa(self):
-        ok, message = validate_model("litellm/deepseek-v4-flash", "qa")
-        self.assertFalse(ok)
-        self.assertIn("not authorized for role qa", message)
+    def test_direct_provider_credentials_fail_closed(self):
+        with self.assertRaisesRegex(RuntimeError, "direct provider credential"):
+            _clean_env({"OPENAI_API_KEY": "secret"})
 
-    def test_dispatcher_no_longer_pretends_to_support_writable_implementers(self):
-        self.assertNotIn("implementer", ROLE_TOOL_ALLOWLISTS)
-        self.assertNotIn("remediator", ROLE_TOOL_ALLOWLISTS)
+    def test_exact_generated_config_has_one_canonical_provider_and_model(self):
+        config = _pi_models_config(model_ref(TERRA))
+        self.assertEqual(list(config["providers"]), ["local-litellm"])
+        self.assertEqual(config["providers"]["local-litellm"]["models"][0]["id"], TERRA)
+        malformed = model_ref(TERRA)
+        malformed["endpoint_path"] = "/v1/chat/completions"
+        with self.assertRaisesRegex(RuntimeError, "Responses endpoint"):
+            _pi_models_config(malformed)
 
-    def test_write_tool_observation_is_derived_from_events(self):
-        stdout = '{"tool_name":"read"}\n{"tool_name":"write"}\n'
-        self.assertTrue(_write_tools_observed(stdout))
-        self.assertFalse(_write_tools_observed('{"tool_name":"read"}\n'))
-
-    def test_scoped_credentials_block_missing_or_disallowed_names(self):
+    def test_scoped_credentials_and_interface_remain_bounded(self):
         ok, message, creds = resolve_scoped_credentials(["GH_TOKEN"])
         self.assertFalse(ok)
         self.assertEqual(creds, {})
         self.assertIn("not an allowed provider credential", message)
-        with mock.patch.dict("run_isolated_pi.os.environ", {}, clear=True):
-            ok, message, creds = resolve_scoped_credentials(["LITELLM_API_KEY"])
-        self.assertFalse(ok)
-        self.assertEqual(creds, {})
-        self.assertIn("unavailable", message)
-        with mock.patch.dict("run_isolated_pi.os.environ", {"OPENAI_API_KEY": "secret"}, clear=True):
-            ok, message, creds = resolve_scoped_credentials(["OPENAI_API_KEY"])
-        self.assertFalse(ok)
-        self.assertEqual(creds, {})
-        self.assertIn("not an allowed provider credential", message)
+        interface = _credential_interface({"LITELLM_API_KEY": "secret"}, [], "qa")
+        self.assertTrue(interface["tools_disabled_for_authoritative_qa"])
+        self.assertFalse(interface["available_to_tools"])
 
-    def test_scoped_env_credentials_are_not_claimed_hidden_from_tools(self):
-        interface = _credential_interface({"LITELLM_API_KEY": "secret"}, ["bash"], "validator")
-        self.assertFalse(interface["brokered"])
-        self.assertTrue(interface["available_to_tools"])
-        qa_interface = _credential_interface({"LITELLM_API_KEY": "secret"}, [], "qa")
-        self.assertTrue(qa_interface["tools_disabled_for_authoritative_qa"])
-        self.assertFalse(qa_interface["available_to_tools"])
+    def test_model_and_role_policy_surfaces_remain_fail_closed(self):
+        ok, message = validate_model("unsupported/model")
+        self.assertFalse(ok)
+        self.assertIn("not in allowed profiles", message)
+        self.assertNotIn("implementer", ROLE_TOOL_ALLOWLISTS)
+        self.assertNotIn("remediator", ROLE_TOOL_ALLOWLISTS)
 
-    def test_build_bwrap_command_mounts_candidate_read_only_and_hides_home(self):
-        with tempfile.TemporaryDirectory(dir="/tmp") as tmp, mock.patch.dict("os.environ", {"HOME": "/tmp"}):
-            root = Path(tmp)
-            node_prefix = root / "node" / "v24.0.0"
-            pi_bin = node_prefix / "bin" / "pi"
-            prompt = root / "prompt.md"
-            candidate = root / "candidate"
-            pi_bin.parent.mkdir(parents=True)
-            pi_bin.write_text("#!/bin/sh\n", encoding="utf-8")
-            prompt.write_text("prompt", encoding="utf-8")
-            candidate.mkdir()
-            with mock.patch("run_isolated_pi.shutil.which", side_effect=lambda name: "/usr/bin/bwrap" if name == "bwrap" else str(pi_bin)):
-                command = build_bwrap_command([str(pi_bin), "--version"], candidate_dir=candidate, prompt_file=prompt, cwd=candidate)
-        self.assertIn("--ro-bind", command)
-        triples = list(zip(command, command[1:], command[2:]))
-        ro_pairs = [triple for triple in triples if triple[0] == "--ro-bind"]
-        self.assertIn(("--ro-bind", str(candidate), str(candidate)), ro_pairs)
-        self.assertNotIn(("--ro-bind", "/tmp", "/tmp"), ro_pairs)
-        self.assertIn(("--setenv", "HOME", "/tmp/home"), triples)
+    def test_write_tool_observation_is_derived_from_events(self):
+        self.assertTrue(_write_tools_observed('{"tool_name":"write"}\n'))
+        self.assertFalse(_write_tools_observed('{"tool_name":"read"}\n'))
+
+    def test_cli_rejects_static_model_authorization_for_real_execution(self):
+        argv = [
+            "run_isolated_pi.py", "--run-id", "run-1", "--role", "qa",
+            "--role-run-id", "qa-1", "--model", TERRA, "--prompt", "unused",
+        ]
+        stderr = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), mock.patch("sys.stderr", stderr):
+            self.assertEqual(main(), 1)
+        self.assertIn("cannot authorize routed Pi execution", stderr.getvalue())
 
     def _init_candidate_repo(self, root: Path) -> str:
         subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)

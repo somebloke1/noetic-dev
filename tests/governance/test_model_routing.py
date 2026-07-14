@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,7 +15,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from model_routing import (
+from model_routing import (  # noqa: E402
     ModelRoutingError,
     _invoke_litellm,
     load_litellm_key,
@@ -24,7 +25,7 @@ from model_routing import (
     validate_decision,
     validate_policy_invariants,
 )
-from route_evidence import validate_route_evidence
+from route_evidence import validate_route_evidence  # noqa: E402
 
 SOL = "codex/gpt-5.6-sol"
 FABLE = "claude-fable-5"
@@ -265,7 +266,14 @@ class TestModelRouting(unittest.TestCase):
             ):
                 os.environ.pop("LITELLM_API_KEY", None)
                 self.assertEqual(load_litellm_key(self.policy), "file-key")
-                os.environ.pop("LITELLM_API_KEY", None)
+                self.assertNotIn("LITELLM_API_KEY", os.environ)
+                inherited = subprocess.run(
+                    [sys.executable, "-c", "import os; print(os.environ.get('LITELLM_API_KEY', ''))"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                self.assertEqual(inherited.stdout.strip(), "")
 
     def test_gateway_json_and_output_fail_closed(self):
         for value in [b'{"x":1,"x":2}', b"NaN", b"Infinity", b"1e309"]:

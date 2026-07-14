@@ -246,7 +246,6 @@ def load_litellm_key(policy: dict[str, Any]) -> str:
         raise ModelRoutingError(f"{token_env} credential is unavailable") from error
     if not value or any(char.isspace() for char in value):
         raise ModelRoutingError(f"{token_env} credential is invalid")
-    os.environ[token_env] = value
     return value
 
 

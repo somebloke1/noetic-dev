@@ -9,12 +9,14 @@ exists, context/extensions are disabled, and record-only mode is non-evidence.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -28,6 +30,16 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from hash_tree import canonical_json, canonical_json_sha256, sha256_file, sha256_text  # noqa: E402
 from json_schema import load_json_strict  # noqa: E402
+from model_routing import (  # noqa: E402
+    ModelRoutingError,
+    _report_outcome,
+    create_router_service,
+    load_litellm_key,
+    load_policy,
+    strict_json,
+    validate_decision,
+)
+from route_evidence import validate_route_evidence  # noqa: E402
 
 QA_TOOL_ALLOWLIST: set[str] = set()
 ROLE_TOOL_ALLOWLISTS = {
@@ -50,15 +62,16 @@ CREDENTIAL_ENV_NAMES = {
     "GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "GIT_ASKPASS", "SSH_ASKPASS",
     *PROVIDER_CREDENTIAL_ENV_NAMES,
 }
-ENV_ALLOWLIST = ["HOME", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK"]
-ROUTED_PI_MIGRATION_REQUIRED = (
-    "Pi model execution is disabled until its protected evidence contract binds a "
-    "genus-router decision and canonical LiteLLM invocation"
-)
-
-
-def _require_routed_pi_adapter() -> None:
-    raise RuntimeError(ROUTED_PI_MIGRATION_REQUIRED)
+ENV_ALLOWLIST = ["HOME", "PI_CODING_AGENT_DIR", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK", "LITELLM_API_KEY"]
+PI_CONFIG_MOUNT = Path("/tmp/pi-agent")
+PI_JSONL_EVENT_TYPES = {
+    "agent_start", "agent_end", "turn_start", "turn_end",
+    "message_start", "message_update", "message_end",
+    "tool_execution_start", "tool_execution_update", "tool_execution_end",
+    "queue_update", "compaction_start", "compaction_end",
+    "auto_retry_start", "auto_retry_end", "session_info_changed",
+    "thinking_level_changed",
+}
 
 
 def _now() -> str:
@@ -102,14 +115,26 @@ def validate_tools(role: str, tools_arg: str | None) -> Tuple[bool, str, List[st
     return True, "", tools
 
 
+def _require_validated_tools(role: str, tools: List[str]) -> None:
+    if not isinstance(tools, list) or not all(isinstance(tool, str) and tool for tool in tools):
+        raise RuntimeError("routed Pi tools must be a list of non-empty names")
+    allowed = ROLE_TOOL_ALLOWLISTS.get(role)
+    if allowed is None or any(tool not in allowed for tool in tools):
+        raise RuntimeError(f"role {role} cannot use routed Pi tools: {tools}")
+
+
 def get_policy_sha() -> str:
-    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True)
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, env=_clean_env()
+    )
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
 def get_pi_version() -> str:
     try:
-        result = subprocess.run(["pi", "--version"], capture_output=True, text=True, timeout=10)
+        result = subprocess.run(
+            ["pi", "--version"], capture_output=True, text=True, timeout=10, env=_clean_env()
+        )
         return (result.stdout or result.stderr).strip() or "unknown"
     except Exception:
         return "unknown"
@@ -491,7 +516,14 @@ def _mkdir_mount_parents(path: Path) -> List[str]:
     return result
 
 
-def build_bwrap_command(inner_argv: List[str], *, candidate_dir: Optional[Path], prompt_file: Path, cwd: Optional[Path]) -> List[str]:
+def build_bwrap_command(
+    inner_argv: List[str],
+    *,
+    candidate_dir: Optional[Path],
+    prompt_fd: int,
+    cwd: Optional[Path],
+    pi_config_fd: int,
+) -> List[str]:
     bwrap = shutil.which("bwrap") or shutil.which("bubblewrap")
     if not bwrap:
         raise RuntimeError("bubblewrap (bwrap) is required for isolated Pi dispatch")
@@ -518,7 +550,9 @@ def build_bwrap_command(inner_argv: List[str], *, candidate_dir: Optional[Path],
         "--tmpfs", "/tmp",
         "--dir", "/tmp/home",
         "--dir", "/tmp/scratch",
+        "--dir", str(PI_CONFIG_MOUNT),
         "--setenv", "HOME", "/tmp/home",
+        "--setenv", "PI_CODING_AGENT_DIR", str(PI_CONFIG_MOUNT),
         "--setenv", "PI_TELEMETRY", "0",
         "--setenv", "PI_SKIP_VERSION_CHECK", "1",
         "--unsetenv", "GH_TOKEN",
@@ -532,8 +566,10 @@ def build_bwrap_command(inner_argv: List[str], *, candidate_dir: Optional[Path],
     cmd.extend(_mkdir_mount_parents(node_prefix))
     cmd.extend(["--ro-bind", str(node_prefix), str(node_prefix)])
 
-    # Mount prompt read-only into tmpfs; the inner argv must reference /tmp/prompt.md.
-    cmd.extend(["--ro-bind", str(prompt_file.resolve()), "/tmp/prompt.md"])
+    # bwrap copies held descriptors into private read-only files, eliminating
+    # path lookup between validation and use.
+    cmd.extend(["--perms", "0400", "--ro-bind-data", str(prompt_fd), "/tmp/prompt.md"])
+    cmd.extend(["--perms", "0400", "--ro-bind-data", str(pi_config_fd), str(PI_CONFIG_MOUNT / "models.json")])
 
     if candidate_dir:
         candidate_dir = candidate_dir.resolve()
@@ -563,40 +599,537 @@ def _clean_env(scoped_credentials: Optional[Dict[str, str]] = None) -> Dict[str,
     return env
 
 
-def _run_isolated(
-    inner_argv: List[str],
+def _pi_models_config(model_ref: Dict[str, str]) -> Dict[str, Any]:
+    if model_ref.get("endpoint_path") != "/v1/responses":
+        raise ModelRoutingError("Pi authoritative QA requires the canonical Responses endpoint")
+    base_url = model_ref["base_url"].rstrip("/") + "/v1"
+    token_env = model_ref["token_env"]
+    return {
+        "providers": {
+            model_ref["endpoint_id"]: {
+                "api": "openai-responses",
+                "apiKey": f"${token_env}",
+                "authHeader": True,
+                "baseUrl": base_url,
+                "models": [{
+                    "id": model_ref["upstream_model_id"],
+                    "name": model_ref["model_id"],
+                    "reasoning": True,
+                    "thinkingLevelMap": {
+                        "off": None,
+                        "minimal": None,
+                        "low": None,
+                        "medium": None,
+                        "high": "high",
+                        "xhigh": None,
+                    },
+                }],
+            },
+        },
+    }
+
+
+@dataclass(frozen=True)
+class _RoutedRunResult:
+    process: subprocess.CompletedProcess[str]
+    inner_argv: List[str]
+    route_evidence: Dict[str, Any]
+    invoked_model_ref: Dict[str, str]
+    invoked_model_name: str
+    final_assistant_text: str
+    model_config_sha256: str
+
+
+@dataclass(frozen=True)
+class _RoutedPiLifecycleResult:
+    probe_record: Optional[Dict[str, Any]]
+    execution_record: Dict[str, Any]
+    stdout: str
+    stderr: str
+
+
+def parse_pi_jsonl_final_assistant(stdout: str) -> str:
+    """Validate Pi 0.80.3 JSON events and return its sole final answer."""
+    events: List[Dict[str, Any]] = []
+    for line_number, line in enumerate(stdout.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            event = strict_json(line)
+        except ModelRoutingError as error:
+            raise ModelRoutingError(f"Pi JSONL line {line_number} is malformed") from error
+        if not isinstance(event, dict):
+            raise ModelRoutingError(f"Pi JSONL line {line_number} is not an event object")
+        event_type = event.get("type")
+        if not isinstance(event_type, str) or event_type not in PI_JSONL_EVENT_TYPES:
+            raise ModelRoutingError(f"Pi JSONL line {line_number} has an unknown event type")
+        if event_type.startswith("tool_execution_"):
+            raise ModelRoutingError("Pi emitted a tool event while tools were disabled")
+        events.append(event)
+    if not events or events[-1].get("type") != "agent_end":
+        raise ModelRoutingError("Pi JSONL did not end with agent_end")
+
+    agent_ends = [event for event in events if event.get("type") == "agent_end"]
+    if len(agent_ends) != 1 or agent_ends[0].get("willRetry") is not False:
+        raise ModelRoutingError("Pi JSONL has an ambiguous or retrying agent_end")
+    messages = agent_ends[0].get("messages")
+    if not isinstance(messages, list):
+        raise ModelRoutingError("Pi agent_end messages are invalid")
+    final_assistants = [message for message in messages if isinstance(message, dict) and message.get("role") == "assistant"]
+    ended_assistants = [
+        event.get("message") for event in events
+        if event.get("type") == "message_end"
+        and isinstance(event.get("message"), dict)
+        and event["message"].get("role") == "assistant"
+    ]
+    if len(final_assistants) != 1 or len(ended_assistants) != 1:
+        raise ModelRoutingError("Pi JSONL does not contain exactly one final assistant message")
+    if canonical_json(final_assistants[0]) != canonical_json(ended_assistants[0]):
+        raise ModelRoutingError("Pi message_end and agent_end assistant messages disagree")
+
+    message = final_assistants[0]
+    if message.get("stopReason") != "stop":
+        raise ModelRoutingError("Pi final assistant message did not stop successfully")
+    content = message.get("content")
+    if not isinstance(content, list):
+        raise ModelRoutingError("Pi final assistant content is invalid")
+    texts: List[str] = []
+    for part in content:
+        if not isinstance(part, dict) or part.get("type") not in {"text", "thinking"}:
+            raise ModelRoutingError("Pi final assistant content contains an unknown relevant part")
+        if part["type"] == "text":
+            text = part.get("text")
+            if not isinstance(text, str) or not text:
+                raise ModelRoutingError("Pi final assistant text is invalid")
+            texts.append(text)
+    if len(texts) != 1:
+        raise ModelRoutingError("Pi final assistant text is missing or ambiguous")
+    return texts[0]
+
+
+def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
+    """Atomically claim a router decision across dispatcher processes."""
+    claim_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    directory_stat = claim_dir.lstat()
+    if claim_dir.is_symlink() or directory_stat.st_uid != os.getuid():
+        raise ModelRoutingError("decision claim directory is not privately owned")
+    claim_dir.chmod(0o700)
+    directory_fd = os.open(claim_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            claim_fd = os.open(
+                decision_id,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=directory_fd,
+            )
+        except FileExistsError as error:
+            raise ModelRoutingError("genus-router decision_id was replayed across Pi invocations") from error
+        else:
+            os.close(claim_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _make_routed_pi_lifecycle():
+    def route_operation(
+        *,
+        operation: str,
+        name: str,
+        tools: List[str],
+        candidate_dir: Optional[Path],
+        prompt_text: str,
+        cwd: Optional[Path],
+        timeout: int,
+        expected_response: Optional[str],
+        decision_claim_dir: Path,
+    ) -> _RoutedRunResult:
+        policy = load_policy()
+        classification = dict(policy["tasks"]["authoritative_qa"])
+        service = create_router_service()
+        api_key = load_litellm_key(policy)
+        excluded: List[str] = []
+        attempts: List[Dict[str, Any]] = []
+
+        for _ in range(3):
+            route_input = {
+                **classification,
+                "prior_failure": bool(excluded),
+                "exclude_models": list(excluded),
+                "task_summary": f"Immutable noetic-dev authoritative QA Pi {operation}",
+            }
+            raw_decision = asyncio.run(service.route_task(route_input))
+            decision_id = raw_decision.get("decision_id") if isinstance(raw_decision, dict) else None
+            try:
+                decision = validate_decision(raw_decision, policy, set(excluded))
+                _claim_decision_id(decision_claim_dir, decision["decision_id"])
+            except Exception as error:
+                if isinstance(decision_id, str) and decision_id:
+                    _report_outcome(
+                        service,
+                        decision_id,
+                        "failure",
+                        f"{type(error).__name__}: routed Pi {operation} decision rejected",
+                    )
+                raise
+
+            model_ref = dict(decision["model_ref"])
+            model_name = f"{model_ref['endpoint_id']}/{model_ref['upstream_model_id']}"
+            config_text = canonical_json(_pi_models_config(model_ref))
+            inner_argv = [
+                str(_pi_binary()),
+                "--mode", "json",
+                "--no-session",
+                "--no-context-files",
+                "--no-extensions",
+                "--no-skills",
+                "--no-prompt-templates",
+                "--no-themes",
+                "--no-approve",
+                "--name", name,
+                "--model", model_name,
+                "--thinking", "high",
+            ]
+            if tools:
+                inner_argv.extend(["--tools", ",".join(tools)])
+            else:
+                inner_argv.append("--no-tools")
+            inner_argv.append("@/tmp/prompt.md")
+
+            try:
+                with tempfile.TemporaryFile() as prompt_handle, tempfile.TemporaryFile() as config_handle:
+                    prompt_handle.write(prompt_text.encode("utf-8"))
+                    prompt_handle.flush()
+                    prompt_handle.seek(0)
+                    config_handle.write(config_text.encode("utf-8"))
+                    config_handle.flush()
+                    config_handle.seek(0)
+                    prompt_fd = prompt_handle.fileno()
+                    config_fd = config_handle.fileno()
+                    bwrap_argv = build_bwrap_command(
+                        inner_argv,
+                        candidate_dir=candidate_dir,
+                        prompt_fd=prompt_fd,
+                        cwd=cwd,
+                        pi_config_fd=config_fd,
+                    )
+                    result = subprocess.run(
+                        bwrap_argv,
+                        capture_output=True,
+                        text=True,
+                        env=_clean_env({"LITELLM_API_KEY": api_key}),
+                        pass_fds=(prompt_fd, config_fd),
+                        timeout=timeout,
+                    )
+                if api_key in bwrap_argv or api_key in result.stdout or api_key in result.stderr:
+                    raise RuntimeError("routed Pi credential leakage detected; output discarded")
+                if result.returncode != 0:
+                    raise RuntimeError(f"routed Pi exited with status {result.returncode}")
+                final_text = parse_pi_jsonl_final_assistant(result.stdout)
+                if expected_response is not None and final_text != expected_response:
+                    raise RuntimeError("routed Pi final assistant response failed its exact contract")
+
+                success_attempt = {
+                    "decision": decision,
+                    "outcome": "success",
+                    "outcome_recorded": True,
+                    "reasoning_effort": "high",
+                }
+                route_evidence = {
+                    "schema_version": "1",
+                    "classification": classification,
+                    "attempts": [*attempts, success_attempt],
+                }
+                errors = validate_route_evidence(route_evidence, "authoritative_qa")
+                if errors:
+                    raise ModelRoutingError(f"protected Pi route evidence is invalid: {errors[0]}")
+            except Exception as error:
+                _report_outcome(
+                    service,
+                    decision["decision_id"],
+                    "failure",
+                    f"{type(error).__name__}: routed Pi {operation} failed",
+                )
+                attempts.append({
+                    "decision": decision,
+                    "outcome": "failure",
+                    "outcome_recorded": True,
+                    "reasoning_effort": "high",
+                })
+                excluded.append(decision["model"])
+                continue
+
+            _report_outcome(service, decision["decision_id"], "success", f"Routed Pi {operation} passed its contract")
+            return _RoutedRunResult(
+                process=result,
+                inner_argv=inner_argv,
+                route_evidence=route_evidence,
+                invoked_model_ref=model_ref,
+                invoked_model_name=model_name,
+                final_assistant_text=final_text,
+                model_config_sha256=sha256_text(config_text),
+            )
+        raise ModelRoutingError(f"all routed Pi {operation} candidates failed")
+
+    def lifecycle(
+        *,
+        role: str,
+        run_id: str,
+        role_run_id: str,
+        tools: List[str],
+        prompt_file: Path,
+        candidate_dir: Optional[Path],
+        qa_for_pass_id: Optional[str],
+        candidate_sha: str,
+        base_sha: str,
+        candidate_tree_oid: str,
+        timeout: int,
+        perform_probe: bool = False,
+        decision_claim_dir: Optional[Path] = None,
+    ) -> _RoutedPiLifecycleResult:
+        _require_validated_tools(role, tools)
+        if decision_claim_dir is None:
+            raise RuntimeError("a protected cross-process decision claim directory is required")
+        try:
+            prompt_text = prompt_file.read_text(encoding="utf-8", errors="strict")
+        except (OSError, UnicodeError) as error:
+            raise RuntimeError("Pi execution prompt is unavailable or not UTF-8") from error
+        if not prompt_text:
+            raise RuntimeError("Pi execution prompt must not be empty")
+
+        probe_record: Optional[Dict[str, Any]] = None
+        if perform_probe or role == "qa":
+            nonce = uuid.uuid4().hex[:16]
+            probe_prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
+            expected = f"READY {nonce}"
+            probe_start = _now()
+            probe = route_operation(
+                operation="READY probe",
+                name=f"probe-{role_run_id}",
+                tools=tools,
+                candidate_dir=candidate_dir,
+                prompt_text=probe_prompt,
+                cwd=candidate_dir,
+                timeout=min(timeout, 120),
+                expected_response=expected,
+                decision_claim_dir=decision_claim_dir,
+            )
+            probe_finish = _now()
+            probe_record = {
+                "schema_version": "2",
+                "probe_id": f"probe-{uuid.uuid4().hex[:12]}",
+                "run_id": run_id,
+                "role_run_id": role_run_id,
+                "authority_process": "fresh-isolated-worker",
+                "authority_worker_pid": os.getpid(),
+                **_base_invocation_fields(
+                    routed=probe,
+                    tools=tools,
+                    candidate_sha=candidate_sha,
+                    base_sha=base_sha,
+                    candidate_tree_oid=candidate_tree_oid,
+                ),
+                "context_files_disabled": True,
+                "extensions_disabled": True,
+                "skills_disabled": True,
+                "themes_disabled": True,
+                "probe_argv": probe.inner_argv,
+                "probe_argv_sha256": sha256_text(canonical_json(probe.inner_argv)),
+                "probe_prompt_hash": sha256_text(probe_prompt),
+                "probe_event_log_sha256": sha256_text(probe.process.stdout),
+                "final_assistant_text_sha256": sha256_text(probe.final_assistant_text),
+                "model_config_sha256": probe.model_config_sha256,
+                "model_config_delivery": "inherited-fd-copy",
+                "nonce": nonce,
+                "expected_response": expected,
+                "observed_response": probe.final_assistant_text,
+                "exit_code": probe.process.returncode,
+                "stdout_sha256": sha256_text(probe.process.stdout),
+                "stderr_sha256": sha256_text(probe.process.stderr),
+                "started_at": probe_start,
+                "finished_at": probe_finish,
+            }
+
+        if role == "qa" and candidate_dir is not None:
+            mount_ok, mount_error, mount_tree = validate_candidate_checkout(candidate_dir, candidate_sha)
+            if not mount_ok or mount_tree != candidate_tree_oid:
+                raise RuntimeError(f"private candidate changed between probe and execution: {mount_error or mount_tree}")
+
+        candidate_tree_before = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
+        start = _now()
+        routed = route_operation(
+            operation="execution",
+            name=f"{role}-{role_run_id}",
+            tools=tools,
+            candidate_dir=candidate_dir,
+            prompt_text=prompt_text,
+            cwd=candidate_dir,
+            timeout=timeout,
+            expected_response=None,
+            decision_claim_dir=decision_claim_dir,
+        )
+        finish = _now()
+        candidate_tree_after = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
+        base_fields = _base_invocation_fields(
+            routed=routed,
+            tools=tools,
+            candidate_sha=candidate_sha,
+            base_sha=base_sha,
+            candidate_tree_oid=candidate_tree_before,
+        )
+        isolation = {
+            "source_mount_read_only": candidate_dir is not None,
+            "scratch_separate_from_source": True,
+            "host_home_mounted": False,
+            "ssh_config_mounted": False,
+            "gh_config_mounted": False,
+            "ambient_credentials_available": False,
+            "host_proc_mounted": False,
+            "procfs_scope": "private_pid_namespace",
+            "context_files_disabled": True,
+            "extensions_disabled": True,
+            "skills_disabled": True,
+            "themes_disabled": True,
+            "candidate_tree_before": candidate_tree_before,
+            "candidate_tree_after": candidate_tree_after,
+            "write_tools_observed": _write_tools_observed(routed.process.stdout),
+        }
+        execution_record = {
+            "schema_version": "2",
+            "record_id": str(uuid.uuid4()),
+            "run_id": run_id,
+            "role": role,
+            "role_run_id": role_run_id,
+            "qa_for_pass_id": qa_for_pass_id or "",
+            "evidence_class": "authoritative" if role == "qa" else "execution",
+            "record_only": False,
+            "generated_by": {
+                "policy_commit_sha": get_policy_sha(),
+                "dispatcher_path": "scripts/governance/run_isolated_pi.py",
+                "dispatcher_sha256": sha256_file(Path(__file__).resolve()),
+            },
+            "actual_invocation": {
+                **base_fields,
+                "authority_process": "fresh-isolated-worker",
+                "authority_worker_pid": os.getpid(),
+                "argv": routed.inner_argv,
+                "argv_sha256": sha256_text(canonical_json(routed.inner_argv)),
+                "prompt_sha256": sha256_text(prompt_text),
+                "final_assistant_text_sha256": sha256_text(routed.final_assistant_text),
+                "model_config_sha256": routed.model_config_sha256,
+                "model_config_delivery": "inherited-fd-copy",
+                "environment_values_recorded": False,
+                "credential_interface": _credential_interface({"LITELLM_API_KEY": ""}, tools, role),
+                "started_at": start,
+                "finished_at": finish,
+                "exit_code": routed.process.returncode,
+                "stdout_sha256": sha256_text(routed.process.stdout),
+                "stderr_sha256": sha256_text(routed.process.stderr),
+                "qa_event_log_sha256": sha256_text(routed.process.stdout),
+                "isolation": isolation,
+            },
+        }
+        return _RoutedPiLifecycleResult(
+            probe_record=probe_record,
+            execution_record=execution_record,
+            stdout=routed.process.stdout,
+            stderr=routed.process.stderr,
+        )
+
+    return lifecycle
+
+
+_WORKER_MODE = __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--routed-worker"
+if _WORKER_MODE:
+    _worker_lifecycle = _make_routed_pi_lifecycle()
+del _make_routed_pi_lifecycle
+
+
+def _worker_env() -> Dict[str, str]:
+    env = _clean_env()
+    for name in ("GENUS_ROUTER_CONFIG", "LITELLM_API_KEY", "LITELLM_API_KEY_FILE", "CREDENTIALS_DIRECTORY"):
+        value = os.environ.get(name)
+        if value:
+            env[name] = value
+    return env
+
+
+def run_routed_pi_lifecycle(
     *,
-    candidate_dir: Optional[Path],
+    role: str,
+    run_id: str,
+    role_run_id: str,
+    tools: List[str],
     prompt_file: Path,
-    cwd: Optional[Path],
+    candidate_dir: Optional[Path],
+    qa_for_pass_id: Optional[str],
+    candidate_sha: str,
+    base_sha: str,
+    candidate_tree_oid: str,
     timeout: int,
-    scoped_credentials: Optional[Dict[str, str]] = None,
-) -> subprocess.CompletedProcess[str]:
-    _require_routed_pi_adapter()
-    bwrap_argv = build_bwrap_command(inner_argv, candidate_dir=candidate_dir, prompt_file=prompt_file, cwd=cwd)
-    return subprocess.run(
-        bwrap_argv,
-        capture_output=True,
-        text=True,
-        env=_clean_env(scoped_credentials),
-        timeout=timeout,
+    perform_probe: bool = False,
+    decision_claim_dir: Optional[Path] = None,
+) -> _RoutedPiLifecycleResult:
+    """Run the authority-bearing lifecycle in a fresh isolated interpreter."""
+    if decision_claim_dir is None:
+        raise RuntimeError("a protected cross-process decision claim directory is required")
+    request = {
+        "role": role,
+        "run_id": run_id,
+        "role_run_id": role_run_id,
+        "tools": tools,
+        "prompt_file": str(prompt_file.resolve()),
+        "candidate_dir": str(candidate_dir.resolve()) if candidate_dir else None,
+        "qa_for_pass_id": qa_for_pass_id,
+        "candidate_sha": candidate_sha,
+        "base_sha": base_sha,
+        "candidate_tree_oid": candidate_tree_oid,
+        "timeout": timeout,
+        "perform_probe": perform_probe,
+        "decision_claim_dir": str(decision_claim_dir.resolve()),
+    }
+    with tempfile.TemporaryDirectory(prefix="pi-authority-worker-") as directory:
+        root = Path(directory)
+        request_path = root / "request.json"
+        response_path = root / "response.json"
+        request_path.write_text(canonical_json(request), encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, "-I", str(Path(__file__).resolve()), "--routed-worker", str(request_path), str(response_path)],
+            capture_output=True,
+            text=True,
+            env=_worker_env(),
+            timeout=max(timeout, 120) + 30,
+        )
+        if result.returncode != 0 or not response_path.is_file():
+            raise ModelRoutingError("fresh routed Pi authority worker failed")
+        response = load_json_strict(response_path)
+    if not isinstance(response, dict) or set(response) != {"probe_record", "execution_record", "stdout", "stderr"}:
+        raise ModelRoutingError("fresh routed Pi authority worker returned an invalid response")
+    if response["probe_record"] is not None and not isinstance(response["probe_record"], dict):
+        raise ModelRoutingError("fresh routed Pi authority worker returned an invalid probe record")
+    if not isinstance(response["execution_record"], dict) or not isinstance(response["stdout"], str) or not isinstance(response["stderr"], str):
+        raise ModelRoutingError("fresh routed Pi authority worker returned invalid execution evidence")
+    return _RoutedPiLifecycleResult(
+        probe_record=response["probe_record"],
+        execution_record=response["execution_record"],
+        stdout=response["stdout"],
+        stderr=response["stderr"],
     )
 
 
 def _base_invocation_fields(
     *,
-    model_id: str,
-    profile_key: str,
+    routed: _RoutedRunResult,
     tools: List[str],
     candidate_sha: str,
     base_sha: str,
     candidate_tree_oid: str,
 ) -> Dict[str, Any]:
-    profile = load_profiles().get("profiles", {}).get(profile_key, {})
     return {
-        "resolved_model": model_id,
-        "profile_id": profile_key,
-        "profile_hash": canonical_json_sha256(profile),
+        "route_evidence": routed.route_evidence,
+        "invoked_model_ref": routed.invoked_model_ref,
+        "reasoning_effort": "high",
+        "resolved_model": routed.invoked_model_name,
         "pi_version": get_pi_version(),
         "tools": tools,
         "environment_name_allowlist": ENV_ALLOWLIST,
@@ -604,96 +1137,8 @@ def _base_invocation_fields(
         "base_sha": base_sha,
         "candidate_tree_oid": candidate_tree_oid,
         "policy_commit_sha": get_policy_sha(),
+        "model_config_sha256": routed.model_config_sha256,
     }
-
-
-def run_ready_probe(
-    *,
-    model_id: str,
-    profile_key: str,
-    run_id: str,
-    role_run_id: str,
-    candidate_dir: Optional[Path],
-    tools: List[str],
-    candidate_sha: str,
-    base_sha: str,
-    candidate_tree_oid: str,
-    timeout: int,
-    scoped_credentials: Optional[Dict[str, str]] = None,
-) -> Tuple[bool, Dict[str, Any], str]:
-    _require_routed_pi_adapter()
-    nonce = uuid.uuid4().hex[:16]
-    prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
-    with tempfile.NamedTemporaryFile("w", suffix=".md", prefix="pi-probe-", delete=False) as handle:
-        handle.write(prompt)
-        prompt_path = Path(handle.name)
-    inner_argv = [
-        str(_pi_binary()),
-        "--mode", "json",
-        "--no-session",
-        "--no-context-files",
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--no-approve",
-        "--name", f"probe-{role_run_id}",
-        "--model", model_id,
-        "--thinking", "high",
-    ]
-    if tools:
-        inner_argv.extend(["--tools", ",".join(tools)])
-    inner_argv.extend(["@", "/tmp/prompt.md"])
-
-    start = _now()
-    try:
-        result = _run_isolated(
-            inner_argv,
-            candidate_dir=candidate_dir,
-            prompt_file=prompt_path,
-            cwd=candidate_dir,
-            timeout=timeout,
-            scoped_credentials=scoped_credentials,
-        )
-    finally:
-        prompt_path.unlink(missing_ok=True)
-    finish = _now()
-
-    expected = f"READY {nonce}"
-    observed = result.stdout.strip()
-    probe_passed = result.returncode == 0 and observed == expected
-    base_fields = _base_invocation_fields(
-        model_id=model_id,
-        profile_key=profile_key,
-        tools=tools,
-        candidate_sha=candidate_sha,
-        base_sha=base_sha,
-        candidate_tree_oid=candidate_tree_oid,
-    )
-    record = {
-        "schema_version": "1",
-        "probe_id": f"probe-{uuid.uuid4().hex[:12]}",
-        "run_id": run_id,
-        "role_run_id": role_run_id,
-        **base_fields,
-        "context_files_disabled": True,
-        "extensions_disabled": True,
-        "skills_disabled": True,
-        "themes_disabled": True,
-        "probe_argv": inner_argv,
-        "probe_argv_sha256": sha256_text(canonical_json(inner_argv)),
-        "probe_prompt_hash": sha256_text(prompt),
-        "probe_event_log_sha256": sha256_text(result.stdout),
-        "nonce": nonce,
-        "expected_response": expected,
-        "observed_response": observed,
-        "exit_code": result.returncode,
-        "stdout_sha256": sha256_text(result.stdout),
-        "stderr_sha256": sha256_text(result.stderr),
-        "started_at": start,
-        "finished_at": finish,
-    }
-    return probe_passed, record, nonce
 
 
 def _observed_tool_names(stdout: str) -> List[str]:
@@ -730,111 +1175,6 @@ def _credential_interface(scoped_credentials: Optional[Dict[str, str]], tools: L
     }
 
 
-def dispatch_pi(
-    *,
-    role: str,
-    model_id: str,
-    profile_key: str,
-    run_id: str,
-    role_run_id: str,
-    tools: List[str],
-    prompt_file: Path,
-    candidate_dir: Optional[Path],
-    qa_for_pass_id: Optional[str],
-    candidate_sha: str,
-    base_sha: str,
-    timeout: int,
-    scoped_credentials: Optional[Dict[str, str]] = None,
-) -> Tuple[int, Dict[str, Any], str, str]:
-    _require_routed_pi_adapter()
-    candidate_tree_before = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
-    inner_argv = [
-        str(_pi_binary()),
-        "--mode", "json",
-        "--no-session",
-        "--no-context-files",
-        "--no-extensions",
-        "--no-skills",
-        "--no-prompt-templates",
-        "--no-themes",
-        "--no-approve",
-        "--name", f"{role}-{role_run_id}",
-        "--model", model_id,
-        "--thinking", "high",
-    ]
-    if tools:
-        inner_argv.extend(["--tools", ",".join(tools)])
-    inner_argv.extend(["@", "/tmp/prompt.md"])
-
-    start = _now()
-    result = _run_isolated(
-        inner_argv,
-        candidate_dir=candidate_dir,
-        prompt_file=prompt_file,
-        cwd=candidate_dir,
-        timeout=timeout,
-        scoped_credentials=scoped_credentials,
-    )
-    finish = _now()
-    candidate_tree_after = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
-
-    base_fields = _base_invocation_fields(
-        model_id=model_id,
-        profile_key=profile_key,
-        tools=tools,
-        candidate_sha=candidate_sha,
-        base_sha=base_sha,
-        candidate_tree_oid=candidate_tree_before,
-    )
-    isolation = {
-        "source_mount_read_only": candidate_dir is not None,
-        "scratch_separate_from_source": True,
-        "host_home_mounted": False,
-        "ssh_config_mounted": False,
-        "gh_config_mounted": False,
-        "ambient_credentials_available": False,
-        "host_proc_mounted": False,
-        "procfs_scope": "private_pid_namespace",
-        "context_files_disabled": True,
-        "extensions_disabled": True,
-        "skills_disabled": True,
-        "themes_disabled": True,
-        "candidate_tree_before": candidate_tree_before,
-        "candidate_tree_after": candidate_tree_after,
-        "write_tools_observed": _write_tools_observed(result.stdout),
-    }
-    record = {
-        "schema_version": "1",
-        "record_id": str(uuid.uuid4()),
-        "run_id": run_id,
-        "role": role,
-        "role_run_id": role_run_id,
-        "qa_for_pass_id": qa_for_pass_id or "",
-        "evidence_class": "authoritative" if role == "qa" else "execution",
-        "record_only": False,
-        "generated_by": {
-            "policy_commit_sha": get_policy_sha(),
-            "dispatcher_path": "scripts/governance/run_isolated_pi.py",
-            "dispatcher_sha256": sha256_file(Path(__file__).resolve()),
-        },
-        "actual_invocation": {
-            **base_fields,
-            "argv": inner_argv,
-            "argv_sha256": sha256_text(canonical_json(inner_argv)),
-            "environment_values_recorded": False,
-            "credential_interface": _credential_interface(scoped_credentials, tools, role),
-            "started_at": start,
-            "finished_at": finish,
-            "exit_code": result.returncode,
-            "stdout_sha256": sha256_text(result.stdout),
-            "stderr_sha256": sha256_text(result.stderr),
-            "qa_event_log_sha256": sha256_text(result.stdout),
-            "isolation": isolation,
-        },
-    }
-    return result.returncode, record, result.stdout, result.stderr
-
-
 def write_json(path: Path, data: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(canonical_json(data), encoding="utf-8")
@@ -869,6 +1209,7 @@ def resolve_scoped_credentials(names: Iterable[str]) -> Tuple[bool, str, Dict[st
 
 
 def _non_evidence_record(args: argparse.Namespace, profile_key: str, tools: List[str]) -> Dict[str, Any]:
+    profile = load_profiles().get("profiles", {}).get(profile_key, {}) if profile_key else {}
     return {
         "schema_version": "1",
         "record_id": str(uuid.uuid4()),
@@ -884,14 +1225,16 @@ def _non_evidence_record(args: argparse.Namespace, profile_key: str, tools: List
             "dispatcher_sha256": sha256_file(Path(__file__).resolve()),
         },
         "actual_invocation": {
-            **_base_invocation_fields(
-                model_id=args.model,
-                profile_key=profile_key,
-                tools=tools,
-                candidate_sha=args.candidate_sha,
-                base_sha=args.base_sha,
-                candidate_tree_oid="",
-            ),
+            "resolved_model": args.model or "",
+            "profile_id": profile_key,
+            "profile_hash": canonical_json_sha256(profile),
+            "pi_version": get_pi_version(),
+            "tools": tools,
+            "environment_name_allowlist": ENV_ALLOWLIST,
+            "candidate_sha": args.candidate_sha,
+            "base_sha": args.base_sha,
+            "candidate_tree_oid": "",
+            "policy_commit_sha": get_policy_sha(),
             "argv": [],
             "argv_sha256": "",
             "environment_values_recorded": False,
@@ -927,7 +1270,7 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--role", required=True, choices=sorted(ROLE_TOOL_ALLOWLISTS))
     parser.add_argument("--role-run-id", required=True)
-    parser.add_argument("--model", required=True)
+    parser.add_argument("--model", help="Deprecated historical model label for --record-only output")
     parser.add_argument("--tools", default="")
     parser.add_argument("--prompt", required=True, type=Path)
     parser.add_argument("--candidate-dir", type=Path)
@@ -936,20 +1279,25 @@ def main() -> int:
     parser.add_argument("--base-sha", default="")
     parser.add_argument("--record-only", action="store_true")
     parser.add_argument("--probe", action="store_true")
-    parser.add_argument("--credential-env", action="append", default=[], help="Scoped provider credential env name for Pi process")
+    parser.add_argument("--credential-env", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--output-dir", type=Path, default=Path(".governance/runs"))
     args = parser.parse_args()
 
-    if not args.record_only:
-        print(ROUTED_PI_MIGRATION_REQUIRED, file=sys.stderr)
-        return 2
-
-    valid, profile_key_or_error = validate_model(args.model, args.role)
-    if not valid:
-        print(f"Model validation failed: {profile_key_or_error}", file=sys.stderr)
+    if not args.record_only and args.model:
+        print("--model cannot authorize routed Pi execution; genus-router selects every real invocation", file=sys.stderr)
         return 1
-    profile_key = profile_key_or_error
+    if args.credential_env:
+        print("--credential-env is deprecated; routed Pi accepts only the policy-bound LiteLLM credential", file=sys.stderr)
+        return 1
+
+    profile_key = ""
+    if args.record_only and args.model:
+        valid, profile_key_or_error = validate_model(args.model, args.role)
+        if not valid:
+            print(f"Historical model validation failed: {profile_key_or_error}", file=sys.stderr)
+            return 1
+        profile_key = profile_key_or_error
 
     tools_ok, tool_error, tools = validate_tools(args.role, args.tools)
     if not tools_ok:
@@ -977,11 +1325,6 @@ def main() -> int:
         print(f"Prompt file not found: {args.prompt}", file=sys.stderr)
         return 1
 
-    creds_ok, creds_error, scoped_credentials = resolve_scoped_credentials(args.credential_env)
-    if not creds_ok:
-        print(creds_error, file=sys.stderr)
-        return 1
-
     run_dir = args.output_dir / args.run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1005,48 +1348,17 @@ def main() -> int:
         else:
             candidate_tree = get_candidate_tree_oid(candidate_mount_dir) if candidate_mount_dir else ""
 
-        if args.probe or args.role == "qa":
-            if args.role == "qa":
-                mount_ok, mount_error, mount_tree = validate_candidate_checkout(candidate_mount_dir, args.candidate_sha)
-                if not mount_ok:
-                    print(f"private candidate checkout changed before probe isolation: {mount_error}", file=sys.stderr)
-                    return 1
-                if mount_tree != candidate_tree:
-                    print(f"private candidate tree {mount_tree} does not match expected tree {candidate_tree} before probe isolation", file=sys.stderr)
-                    return 1
-            probe_passed, probe_record, nonce = run_ready_probe(
-                model_id=args.model,
-                profile_key=profile_key,
-                run_id=args.run_id,
-                role_run_id=args.role_run_id,
-                candidate_dir=candidate_mount_dir,
-                tools=tools,
-                candidate_sha=args.candidate_sha,
-                base_sha=args.base_sha,
-                candidate_tree_oid=candidate_tree,
-                timeout=min(args.timeout, 120),
-                scoped_credentials=scoped_credentials,
-            )
-            probe_path = run_dir / "protected" / "qa-probe-record.json" if args.role == "qa" else run_dir / "execution" / f"{args.role}-probe-record.json"
-            write_json(probe_path, probe_record)
-            print(f"Probe record written to {probe_path}", file=sys.stderr)
-            if not probe_passed:
-                print(f"READY probe failed; expected exact 'READY {nonce}'", file=sys.stderr)
-                return 1
-
         if args.role == "qa":
             mount_ok, mount_error, mount_tree = validate_candidate_checkout(candidate_mount_dir, args.candidate_sha)
             if not mount_ok:
-                print(f"private candidate checkout changed before execution isolation: {mount_error}", file=sys.stderr)
+                print(f"private candidate checkout changed before routed lifecycle: {mount_error}", file=sys.stderr)
                 return 1
             if mount_tree != candidate_tree:
-                print(f"private candidate tree {mount_tree} does not match expected tree {candidate_tree} before execution isolation", file=sys.stderr)
+                print(f"private candidate tree {mount_tree} does not match expected tree {candidate_tree}", file=sys.stderr)
                 return 1
 
-        exit_code, execution_record, stdout, stderr = dispatch_pi(
+        lifecycle = run_routed_pi_lifecycle(
             role=args.role,
-            model_id=args.model,
-            profile_key=profile_key,
             run_id=args.run_id,
             role_run_id=args.role_run_id,
             tools=tools,
@@ -1055,9 +1367,23 @@ def main() -> int:
             qa_for_pass_id=args.qa_for_pass_id,
             candidate_sha=args.candidate_sha,
             base_sha=args.base_sha,
+            candidate_tree_oid=candidate_tree,
             timeout=args.timeout,
-            scoped_credentials=scoped_credentials,
+            perform_probe=args.probe,
+            decision_claim_dir=args.output_dir / ".decision-claims",
         )
+        probe_record = lifecycle.probe_record
+        if probe_record is not None:
+            probe_path = run_dir / "protected" / "qa-probe-record.json" if args.role == "qa" else run_dir / "execution" / f"{args.role}-probe-record.json"
+            write_json(probe_path, probe_record)
+            print(f"Probe record written to {probe_path}", file=sys.stderr)
+        execution_record = lifecycle.execution_record
+        stdout = lifecycle.stdout
+        stderr = lifecycle.stderr
+        exit_code = execution_record["actual_invocation"]["exit_code"]
+    except (ModelRoutingError, RuntimeError) as error:
+        print(str(error), file=sys.stderr)
+        return 1
     finally:
         if private_candidate_tmp is not None:
             private_candidate_tmp.cleanup()
@@ -1085,4 +1411,40 @@ def re_full_sha(value: str) -> bool:
 
 
 if __name__ == "__main__":
+    if _WORKER_MODE:
+        if len(sys.argv) != 4:
+            raise SystemExit(2)
+        try:
+            worker_request = load_json_strict(Path(sys.argv[2]))
+            required = {
+                "role", "run_id", "role_run_id", "tools", "prompt_file", "candidate_dir",
+                "qa_for_pass_id", "candidate_sha", "base_sha", "candidate_tree_oid", "timeout",
+                "perform_probe", "decision_claim_dir",
+            }
+            if not isinstance(worker_request, dict) or set(worker_request) != required:
+                raise RuntimeError("invalid authority worker request")
+            worker_result = _worker_lifecycle(
+                role=worker_request["role"],
+                run_id=worker_request["run_id"],
+                role_run_id=worker_request["role_run_id"],
+                tools=worker_request["tools"],
+                prompt_file=Path(worker_request["prompt_file"]),
+                candidate_dir=Path(worker_request["candidate_dir"]) if worker_request["candidate_dir"] else None,
+                qa_for_pass_id=worker_request["qa_for_pass_id"],
+                candidate_sha=worker_request["candidate_sha"],
+                base_sha=worker_request["base_sha"],
+                candidate_tree_oid=worker_request["candidate_tree_oid"],
+                timeout=worker_request["timeout"],
+                perform_probe=worker_request["perform_probe"],
+                decision_claim_dir=Path(worker_request["decision_claim_dir"]),
+            )
+            write_json(Path(sys.argv[3]), {
+                "probe_record": worker_result.probe_record,
+                "execution_record": worker_result.execution_record,
+                "stdout": worker_result.stdout,
+                "stderr": worker_result.stderr,
+            })
+        except Exception:
+            raise SystemExit(1) from None
+        raise SystemExit(0)
     raise SystemExit(main())

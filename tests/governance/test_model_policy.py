@@ -85,8 +85,8 @@ class TestModelPolicy(unittest.TestCase):
         profiles = json.loads((ROOT / "governance" / "model-profiles.json").read_text())
         self.assertEqual(profiles["runtime_selection"], "forbidden")
         pi_source = (ROOT / "scripts" / "governance" / "run_isolated_pi.py").read_text()
-        self.assertIn("ROUTED_PI_MIGRATION_REQUIRED", pi_source)
-        self.assertIn("if not args.record_only", pi_source)
+        self.assertIn("--model cannot authorize routed Pi execution", pi_source)
+        self.assertIn('policy["tasks"]["authoritative_qa"]', pi_source)
 
 
 if __name__ == "__main__":

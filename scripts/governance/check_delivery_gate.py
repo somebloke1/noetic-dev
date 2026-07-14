@@ -16,7 +16,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:  # Optional; the fallback scanner keeps the checker dependency-light.
     import yaml as _yaml  # type: ignore
@@ -34,7 +34,7 @@ from check_evidence_manifest import (  # noqa: E402
     normalize_qa_records,
     pass_records_by_id,
 )
-from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
+from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
 from route_evidence import validate_route_evidence  # noqa: E402
 
@@ -44,6 +44,9 @@ IMAGE_DIGEST_RE = re.compile(r"@sha256:[a-f0-9]{64}$")
 WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
 REPO_FULL_NAME = "somebloke1/noetic-dev"
 QA_TOOL_ALLOWLIST: set[str] = set()
+PI_ENVIRONMENT_ALLOWLIST = [
+    "HOME", "PI_CODING_AGENT_DIR", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK", "LITELLM_API_KEY",
+]
 ALLOWED_MERGE_METHODS = {"squash", "rebase"}
 LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE = False
 BOOTSTRAP_AUTHORITY_FIELDS = [
@@ -387,6 +390,78 @@ def _check_invocation_route_binding(record: Dict[str, Any], label: str, errors: 
         errors.append(f"{label} did not enact high reasoning")
 
 
+def _expected_pi_config(model_ref: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "providers": {
+            model_ref.get("endpoint_id"): {
+                "api": "openai-responses",
+                "apiKey": "$LITELLM_API_KEY",
+                "authHeader": True,
+                "baseUrl": f"{str(model_ref.get('base_url', '')).rstrip('/')}/v1",
+                "models": [{
+                    "id": model_ref.get("upstream_model_id"),
+                    "name": model_ref.get("model_id"),
+                    "reasoning": True,
+                    "thinkingLevelMap": {
+                        "off": None,
+                        "minimal": None,
+                        "low": None,
+                        "medium": None,
+                        "high": "high",
+                        "xhigh": None,
+                    },
+                }],
+            },
+        },
+    }
+
+
+def _check_pi_argv_binding(
+    record: Dict[str, Any],
+    *,
+    argv_key: str,
+    argv_hash_key: str,
+    expected_name: str,
+    label: str,
+    errors: List[str],
+) -> None:
+    argv = record.get(argv_key)
+    if not isinstance(argv, list) or not argv or not all(isinstance(item, str) for item in argv):
+        errors.append(f"{label} argv is not a non-empty string list")
+        return
+    if record.get(argv_hash_key) != canonical_json_sha256(argv):
+        errors.append(f"{label} argv SHA256 does not match the canonical argv")
+    model_ref = record.get("invoked_model_ref", {})
+    expected_model = ""
+    if isinstance(model_ref, dict):
+        expected_model = f"{model_ref.get('endpoint_id', '')}/{model_ref.get('upstream_model_id', '')}"
+    expected = [
+        argv[0],
+        "--mode", "json",
+        "--no-session",
+        "--no-context-files",
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-approve",
+        "--name", expected_name,
+        "--model", expected_model,
+        "--thinking", "high",
+        "--no-tools",
+        "@/tmp/prompt.md",
+    ]
+    if Path(argv[0]).name != "pi" or argv != expected:
+        errors.append(
+            f"{label} argv does not bind the routed model, high thinking, explicit no-tools, "
+            "disabled context surfaces, and one-file prompt invocation"
+        )
+    if record.get("model_config_delivery") != "inherited-fd-copy":
+        errors.append(f"{label} model config was not delivered from a held inherited descriptor")
+    if not isinstance(model_ref, dict) or record.get("model_config_sha256") != canonical_json_sha256(_expected_pi_config(model_ref)):
+        errors.append(f"{label} model config hash does not bind the exact routed one-model registry")
+
+
 def _resolve_embedded_or_path(record: Dict[str, Any], embedded_key: str, path_key: str, manifest_path: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     embedded = record.get(embedded_key)
     if isinstance(embedded, dict):
@@ -427,6 +502,14 @@ def _check_probe_execution_binding(
     iso = actual.get("isolation", {})
     qa_run_id = qa_record.get("qa_run_id", "<unknown>")
 
+    if actual.get("authority_process") != "fresh-isolated-worker" or not isinstance(actual.get("authority_worker_pid"), int):
+        errors.append(f"qa {qa_run_id} execution did not cross the fresh-process authority boundary")
+    if (
+        probe_record.get("authority_process") != "fresh-isolated-worker"
+        or probe_record.get("authority_worker_pid") != actual.get("authority_worker_pid")
+    ):
+        errors.append(f"qa {qa_run_id} probe/execution did not share one fresh authority worker")
+
     _validate_record_schema(exec_record, "governance/schemas/qa-execution-record.schema.json", f"qa {qa_run_id} execution", errors)
     _validate_record_schema(probe_record, "governance/schemas/qa-probe-record.schema.json", f"qa {qa_run_id} probe", errors)
 
@@ -461,6 +544,22 @@ def _check_probe_execution_binding(
     )
     _check_invocation_route_binding(actual, f"qa {qa_run_id} execution", errors)
     _check_invocation_route_binding(probe_record, f"qa {qa_run_id} probe", errors)
+    _check_pi_argv_binding(
+        actual,
+        argv_key="argv",
+        argv_hash_key="argv_sha256",
+        expected_name=f"qa-{qa_record.get('role_run_id', '')}",
+        label=f"qa {qa_run_id} execution",
+        errors=errors,
+    )
+    _check_pi_argv_binding(
+        probe_record,
+        argv_key="probe_argv",
+        argv_hash_key="probe_argv_sha256",
+        expected_name=f"probe-{qa_record.get('role_run_id', '')}",
+        label=f"qa {qa_run_id} probe",
+        errors=errors,
+    )
 
     generated_by = exec_record.get("generated_by", {})
     if generated_by.get("policy_commit_sha") != policy.get("sha"):
@@ -497,6 +596,8 @@ def _check_probe_execution_binding(
         errors.append(f"qa {qa_run_id} authoritative QA dispatch must use no tools until a credential broker exists")
     if not _same_list(actual.get("environment_name_allowlist"), probe_record.get("environment_name_allowlist")):
         errors.append(f"qa {qa_run_id} probe/execution environment allowlist mismatch")
+    if actual.get("environment_name_allowlist") != PI_ENVIRONMENT_ALLOWLIST:
+        errors.append(f"qa {qa_run_id} environment allowlist does not match the isolated Pi contract")
 
     disabled_pairs = [
         ("context_files_disabled", iso.get("context_files_disabled"), probe_record.get("context_files_disabled")),
@@ -540,6 +641,19 @@ def _check_probe_execution_binding(
         errors.append(f"qa {qa_run_id} probe nonce must be 16 lowercase hexadecimal characters")
     if probe_record.get("expected_response") != expected or probe_record.get("observed_response") != expected:
         errors.append(f"qa {qa_run_id} probe did not observe exact READY nonce response")
+    expected_probe_prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
+    if probe_record.get("probe_prompt_hash") != sha256_text(expected_probe_prompt):
+        errors.append(f"qa {qa_run_id} probe prompt hash does not match the exact READY prompt")
+    if probe_record.get("final_assistant_text_sha256") != sha256_text(expected):
+        errors.append(f"qa {qa_run_id} probe final assistant hash does not match the READY response")
+    execution_prompt_hash = actual.get("prompt_sha256")
+    if not isinstance(execution_prompt_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", execution_prompt_hash):
+        errors.append(f"qa {qa_run_id} execution prompt hash is missing or invalid")
+    elif execution_prompt_hash == probe_record.get("probe_prompt_hash"):
+        errors.append(f"qa {qa_run_id} execution prompt reused the READY probe prompt")
+    final_text_hash = actual.get("final_assistant_text_sha256")
+    if not isinstance(final_text_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", final_text_hash):
+        errors.append(f"qa {qa_run_id} execution final assistant hash is missing or invalid")
     if probe_record.get("exit_code") != 0:
         errors.append(f"qa {qa_run_id} probe exit code was not 0")
     if actual.get("exit_code") != 0:
@@ -587,7 +701,6 @@ def _check_probe_execution_binding(
 
 def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path: Optional[str]) -> None:
     repo = manifest.get("repo", {})
-    policy = manifest.get("policy", {})
     pass_ids = all_pass_ids(manifest)
     records_by_pass = pass_records_by_id(manifest)
     qa_records = normalize_qa_records(manifest)

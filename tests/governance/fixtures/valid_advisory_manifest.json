@@ -157,7 +157,7 @@
     "ref": "refs/heads/main",
     "runner_attestation": {
       "artifact": {
-        "manifest_sha256": "51eb0d3bbb2ba8e1b2c0a1d59df2ca465b0c6a2a635385f3cdf80e56f8e3fa65"
+        "manifest_sha256": "63e28166cc3127b6a34ca1785e5d2a698d564ad5c49f587655bfedf9865cccf7"
       }
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -218,20 +218,38 @@
               "pi",
               "--mode",
               "json",
-              "@",
-              "/tmp/prompt.md"
+              "--no-session",
+              "--no-context-files",
+              "--no-extensions",
+              "--no-skills",
+              "--no-prompt-templates",
+              "--no-themes",
+              "--no-approve",
+              "--name",
+              "qa-qa-role-g1-0001",
+              "--model",
+              "local-litellm/codex/gpt-5.6-terra",
+              "--thinking",
+              "high",
+              "--no-tools",
+              "@/tmp/prompt.md"
             ],
-            "argv_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "argv_sha256": "3429f30c86fff5e14de0611481aebd61cc8ebfed9666e9c065423393a10a1074",
+            "authority_process": "fresh-isolated-worker",
+            "authority_worker_pid": 4242,
             "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
             "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
             "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
             "environment_name_allowlist": [
               "HOME",
+              "PI_CODING_AGENT_DIR",
               "PI_TELEMETRY",
-              "PI_SKIP_VERSION_CHECK"
+              "PI_SKIP_VERSION_CHECK",
+              "LITELLM_API_KEY"
             ],
             "environment_values_recorded": false,
             "exit_code": 0,
+            "final_assistant_text_sha256": "4afd6d3d2b27704bbfe24631682f2dbdc454a52093de82a18254036374675e4a",
             "finished_at": "2026-07-11T12:20:00+00:00",
             "invoked_model_ref": {
               "base_url": "http://172.22.10.160:3333",
@@ -258,10 +276,13 @@
               "themes_disabled": true,
               "write_tools_observed": false
             },
+            "model_config_delivery": "inherited-fd-copy",
+            "model_config_sha256": "8475be64b7f2ff719bedaafd566f3b0e9bb6659705f1d22b716829813166c01d",
             "pi_version": "pi 1.0.0",
             "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
             "profile_id": "qa_primary",
+            "prompt_sha256": "bb4dd4d30d2676b24deb39e6ecb6a44e3e02f42467450157420290566c15b800",
             "qa_event_log_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
             "reasoning_effort": "high",
             "resolved_model": "openai-codex/gpt-5.6-terra",
@@ -350,20 +371,25 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "2"
         },
-        "protected_execution_record_sha256": "b62ecfb6b37db7747eb6eaf7661713962648e67f0f56aa981de30d2197c97b25",
+        "protected_execution_record_sha256": "95c0359cac1d37678828303501bd1d7e5a11869667fad8db24a3008f5b82bddc",
         "protected_probe_record": {
+          "authority_process": "fresh-isolated-worker",
+          "authority_worker_pid": 4242,
           "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
           "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
           "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
           "context_files_disabled": true,
           "environment_name_allowlist": [
             "HOME",
+            "PI_CODING_AGENT_DIR",
             "PI_TELEMETRY",
-            "PI_SKIP_VERSION_CHECK"
+            "PI_SKIP_VERSION_CHECK",
+            "LITELLM_API_KEY"
           ],
           "exit_code": 0,
           "expected_response": "READY abc123def4567890",
           "extensions_disabled": true,
+          "final_assistant_text_sha256": "bbef266a9bb506a9993503927f14a40c65c18a997d195dc9f8fc332743a80e3a",
           "finished_at": "2026-07-11T12:06:00+00:00",
           "invoked_model_ref": {
             "base_url": "http://172.22.10.160:3333",
@@ -375,6 +401,8 @@
             "token_env": "LITELLM_API_KEY",
             "upstream_model_id": "codex/gpt-5.6-terra"
           },
+          "model_config_delivery": "inherited-fd-copy",
+          "model_config_sha256": "8475be64b7f2ff719bedaafd566f3b0e9bb6659705f1d22b716829813166c01d",
           "nonce": "abc123def4567890",
           "observed_response": "READY abc123def4567890",
           "pi_version": "pi 1.0.0",
@@ -383,13 +411,26 @@
             "pi",
             "--mode",
             "json",
-            "@",
-            "/tmp/prompt.md"
+            "--no-session",
+            "--no-context-files",
+            "--no-extensions",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-approve",
+            "--name",
+            "probe-qa-role-g1-0001",
+            "--model",
+            "local-litellm/codex/gpt-5.6-terra",
+            "--thinking",
+            "high",
+            "--no-tools",
+            "@/tmp/prompt.md"
           ],
-          "probe_argv_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
+          "probe_argv_sha256": "6a1ec4abcbb45260ef7ca3aa417544fcb740276d29328b4afc141ce54ec11bcc",
           "probe_event_log_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
           "probe_id": "probe-valid-0001",
-          "probe_prompt_hash": "6666666666666666666666666666666666666666666666666666666666666666",
+          "probe_prompt_hash": "64a74da21f750e47684a3935095b810f772cc77de892ce56f5d1db11e8f80266",
           "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
           "profile_id": "qa_primary",
           "reasoning_effort": "high",
@@ -470,7 +511,7 @@
           "themes_disabled": true,
           "tools": []
         },
-        "protected_probe_record_sha256": "b19ce4110e1a9dd1a5025d27e672542be350113a464e53b083fb364d4f516956",
+        "protected_probe_record_sha256": "2754462c82ddc908199303f7d234a836f1c25c3363244a2e771ddb1f08770b18",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",
