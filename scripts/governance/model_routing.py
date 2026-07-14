@@ -18,7 +18,7 @@ from route_evidence import validate_route_evidence
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_POLICY_PATH = ROOT / "config" / "model-policy.json"
 MAX_GATEWAY_RESPONSE_BYTES = 1_048_576
-MAX_MODEL_INPUT_BYTES = 300_000
+MAX_MODEL_INPUT_BYTES = 750_000
 DECISION_ID = re.compile(r"^d-\d{8}-\d{6}$")
 CANONICAL_LITELLM_BASE_URL = "http://172.22.10.160:3333"
 STANDARD_MODELS = [

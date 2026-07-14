@@ -130,6 +130,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         cls._decision_counter += 1
         return decision(model, cls._decision_counter)
 
+    @unittest.skipUnless(shutil.which("pi"), "Pi 0.80.3 is required")
     def test_installed_pi_0803_contract_explicitly_disables_tools_and_parses_file_arg(self):
         pi = shutil.which("pi")
         self.assertIsNotNone(pi)

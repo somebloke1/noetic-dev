@@ -16,6 +16,7 @@ if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
 from model_routing import (  # noqa: E402
+    MAX_MODEL_INPUT_BYTES,
     ModelRoutingError,
     _invoke_litellm,
     load_litellm_key,
@@ -291,9 +292,17 @@ class TestModelRouting(unittest.TestCase):
 
     @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
     def test_review_prompt_size_is_bounded(self):
+        accepted, _ = route_and_invoke_review(
+            "x" * 650_000,
+            json.loads,
+            service=FakeService([decision(TERRA)]),
+            policy=self.policy,
+            http_post=lambda *_args: json.dumps({"output_text": '{"verdict":"pass"}'}).encode(),
+        )
+        self.assertEqual(accepted, {"verdict": "pass"})
         with self.assertRaisesRegex(ModelRoutingError, "prompt exceeded"):
             route_and_invoke_review(
-                "x" * 300_001,
+                "x" * (MAX_MODEL_INPUT_BYTES + 1),
                 json.loads,
                 service=FakeService([decision(TERRA)]),
                 policy=self.policy,
