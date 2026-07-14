@@ -245,6 +245,11 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(service.inputs[0]["exclude_models"], [])
         self.assertEqual(len(bodies), 2)
         probe = evidence["readiness_probes"][0]
+        self.assertEqual(evidence["attempt_contract"], {
+            "readiness_probe_is_phase": True,
+            "maximum_substantive_invocations": 1,
+            "report_outcome_scope": "aggregate_attempt",
+        })
         self.assertEqual(probe["outcome"], "success")
         self.assertEqual(probe["route_decision_id"], "d-20260713-000001")
         self.assertEqual(probe["work_unit_sha256"], sha256_text("prompt"))

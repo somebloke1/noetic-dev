@@ -241,3 +241,18 @@ User decision: ALL model access goes through LiteLLM, whether invoked directly o
 
 This supersedes dec-20260711-0005's endpoint-pluralism escape hatch, direct llama.cpp/Ollama caller access, and any hardcoded/direct provider profile. genus-router selects; LiteLLM is the universal access boundary; harnesses only enact routed decisions. The mandatory lifecycle is `classify -> route_task -> invoke through LiteLLM -> report_outcome`, with failure rerouting through `prior_failure` and exclusions. Canonical contract: `docs/model-routing-policy.md`.
 <!-- governance-crud:end id=dec-20260713-0010 -->
+
+<!-- governance-crud:start id=dec-20260714-0001 -->
+## dec-20260714-0001: A READY probe is a phase of one routed task attempt
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,model-routing,readiness,governance
+- Source: docs/model-routing-policy.md;docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4967702974
+- Confidence: high
+
+Treat the deterministic READY probe and the at-most-one substantive model call as phases of the same genus-router task attempt. The route decision selects the candidate before both calls; both use the validated LiteLLM reference; the readiness phase has explicit bound evidence; report_outcome records the aggregate attempt after probe and substantive result. A separate route/outcome for the probe would make the rule that every governed substantive invocation requires a probe recursively unsatisfiable and would not improve the listed AR-01 through AR-10 threat controls. Clarify this finite attempt contract in machine-checked policy/docs rather than accepting the review finding's unstated one-decision-per-HTTP-call premise.
+<!-- governance-crud:end id=dec-20260714-0001 -->

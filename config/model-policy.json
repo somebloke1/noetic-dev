@@ -6,6 +6,11 @@
     "selection_varies_with_sophistication": true,
     "lifecycle": ["classify", "route_task", "invoke", "report_outcome"]
   },
+  "attempt_contract": {
+    "readiness_probe_is_phase": true,
+    "maximum_substantive_invocations": 1,
+    "report_outcome_scope": "aggregate_attempt"
+  },
   "access": {
     "endpoint_id": "local-litellm",
     "base_url": "http://172.22.10.160:3333",

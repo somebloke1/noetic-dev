@@ -50,6 +50,11 @@ AGENT_REVIEW_TASK = {
     "high_value": False,
     "awaited": True,
 }
+ATTEMPT_CONTRACT = {
+    "readiness_probe_is_phase": True,
+    "maximum_substantive_invocations": 1,
+    "report_outcome_scope": "aggregate_attempt",
+}
 EXPECTED_MODEL_POLICY = {
     "schema_version": "1",
     "selection": {
@@ -58,6 +63,7 @@ EXPECTED_MODEL_POLICY = {
         "selection_varies_with_sophistication": True,
         "lifecycle": ["classify", "route_task", "invoke", "report_outcome"],
     },
+    "attempt_contract": ATTEMPT_CONTRACT,
     "access": {
         "endpoint_id": "local-litellm",
         "base_url": CANONICAL_LITELLM_BASE_URL,
@@ -424,6 +430,7 @@ def route_and_invoke_review(
     active_policy = policy if policy is not None else load_policy()
     validate_policy_invariants(active_policy)
     task = dict(AGENT_REVIEW_TASK)
+    attempt_contract = dict(ATTEMPT_CONTRACT)
     excluded: list[str] = []
     attempts: list[dict[str, str]] = []
     routed_attempts: list[dict[str, Any]] = []
@@ -448,6 +455,7 @@ def route_and_invoke_review(
         return {
             "schema_version": "1",
             "classification": task,
+            "attempt_contract": attempt_contract,
             "attempts": attempts,
             "readiness_probes": readiness_probes,
             "route_evidence": {
@@ -554,6 +562,7 @@ def route_and_invoke_review(
         evidence = {
             "decision_id": decision_id,
             "classification": task,
+            "attempt_contract": attempt_contract,
             "attempts": attempts,
             "model": model,
             "endpoint_id": decision["model_ref"]["endpoint_id"],

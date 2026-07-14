@@ -10,11 +10,13 @@
 
 ## Mandatory lifecycle
 
-Every generative task follows one auditable loop:
+Every generative task follows one finite auditable loop:
 
 ```text
 classify -> route_task -> invoke through LiteLLM -> report_outcome
 ```
+
+A routed task attempt has two bounded phases under one decision: exactly one deterministic READY probe, then at most one substantive invocation. Both calls use the selected, validated LiteLLM reference. The probe is evidence that the selected route can serve the bound work unit, not a separate generative task requiring another probe. `report_outcome` records the aggregate attempt after the probe and substantive phase; a failed phase records failure and causes a new decision with the failed model excluded. This finite attempt contract prevents decision replay without creating an infinite probe-of-probe regress.
 
 On failure, the caller reports the failed outcome and calls `route_task` again with the same task kind, complexity, and blast radius, `prior_failure=true`, and the failed model in `exclude_models`. Callers do not manually choose an escalation model.
 
@@ -69,7 +71,7 @@ OpenCode-facing execution and goalchain semantic curation are not yet accepted r
 
 ## Governance
 
-Model prose is never evidence by itself. Every governed invocation requires a fresh readiness probe and captured execution evidence bound to the candidate/work-unit identity, policy commit, route decision, resolved LiteLLM reference, harness configuration, and outcome.
+Model prose is never evidence by itself. Every governed substantive invocation requires a fresh readiness-probe phase and captured execution evidence bound to the candidate/work-unit identity, policy commit, route decision, resolved LiteLLM reference, harness configuration, and aggregate attempt outcome.
 
 Delivery evidence schema v2 rejects static model-profile authorization. Each protected invocation carries `route_evidence` with the exact classification and ordered attempts; every attempt binds the complete genus-router decision, canonical LiteLLM reference, enacted high reasoning, outcome, and confirmation that `report_outcome` succeeded. Authoritative QA uses the non-high-value complex-review contract. Independent approval uses a distinct high-value complex-review contract, making Fable eligible without making it a general fallback.
 

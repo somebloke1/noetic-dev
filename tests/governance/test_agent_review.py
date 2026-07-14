@@ -385,6 +385,11 @@ class TestAgentReview(unittest.TestCase):
                     "outcome": "success",
                     "route_decision_id": "d-20260713-000001",
                 }],
+                "attempt_contract": {
+                    "readiness_probe_is_phase": True,
+                    "maximum_substantive_invocations": 1,
+                    "report_outcome_scope": "aggregate_attempt",
+                },
                 "work_unit_sha256": "d" * 64,
                 "policy_commit_sha": "e" * 40,
                 "policy_commit_source": "verified-git-worktree",
@@ -409,6 +414,7 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
         self.assertEqual(result["readiness_probes"][0]["outcome"], "success")
+        self.assertEqual(result["attempt_contract"]["report_outcome_scope"], "aggregate_attempt")
         self.assertEqual(result["work_unit_sha256"], "d" * 64)
         self.assertEqual(result["policy_commit_sha"], "e" * 40)
         self.assertEqual(result["policy_commit_source"], "verified-git-worktree")

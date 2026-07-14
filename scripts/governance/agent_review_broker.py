@@ -416,6 +416,7 @@ def review(payload: Any) -> dict[str, Any]:
         "route_decision_id": route["decision_id"],
         "route_evidence": route["route_evidence"],
         "route_classification": route["classification"],
+        "attempt_contract": route["attempt_contract"],
         "route_attempts": route["attempts"],
         "route_genus": route["genus"],
         "route_genus_code": route["genus_code"],
