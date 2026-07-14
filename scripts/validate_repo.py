@@ -36,6 +36,7 @@ REQUIRED = [
     "governance/schemas/state-machine.schema.json",
     "governance/schemas/qa-execution-record.schema.json",
     "governance/schemas/qa-probe-record.schema.json",
+    "governance/schemas/pi-terminal-failure-record.schema.json",
     "governance/schemas/existing-work-freeze.schema.json",
     "governance/audits/README.md",
     "governance/audits/existing-work-freeze.json",

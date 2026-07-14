@@ -30,7 +30,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from hash_tree import canonical_json, canonical_json_sha256, sha256_file, sha256_text  # noqa: E402
-from json_schema import load_json_strict  # noqa: E402
+from json_schema import load_json_strict, validate_schema  # noqa: E402
 from model_routing import (  # noqa: E402
     AUTHORITATIVE_QA_PI_CONTRACT,
     ModelRoutingError,
@@ -657,6 +657,18 @@ class _RoutedPiLifecycleResult:
     stderr: str
 
 
+class _RoutedOperationFailure(ModelRoutingError):
+    def __init__(self, message: str, evidence: Dict[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = evidence
+
+
+class _RoutedPiTerminalFailure(ModelRoutingError):
+    def __init__(self, message: str, record: Dict[str, Any]) -> None:
+        super().__init__(message)
+        self.record = record
+
+
 @dataclass
 class _OperationAttemptAccounting:
     operation: str
@@ -685,6 +697,16 @@ class _OperationAttemptAccounting:
             "outcome_count": self.outcome_count,
         }
 
+    def terminal_evidence(self) -> Dict[str, Any]:
+        if self.invocation_count > self.maximum_invocations or self.outcome_count > 1:
+            raise ModelRoutingError("routed Pi terminal attempt accounting is invalid")
+        return {
+            "operation": self.operation,
+            "decision_id": self.decision_id,
+            "invocation_count": self.invocation_count,
+            "outcome_count": self.outcome_count,
+        }
+
 
 def _authoritative_qa_pi_contract(policy: Dict[str, Any]) -> Dict[str, Any]:
     contracts = policy.get("execution_contracts")
@@ -692,6 +714,125 @@ def _authoritative_qa_pi_contract(policy: Dict[str, Any]) -> Dict[str, Any]:
     if not _strict_json_equal(contract, AUTHORITATIVE_QA_PI_CONTRACT):
         raise ModelRoutingError("authoritative QA Pi execution contract is invalid")
     return {**contract, "operations": list(contract["operations"])}
+
+
+def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
+    schema = load_json_strict(GOVERNANCE_DIR / "schemas" / "pi-terminal-failure-record.schema.json")
+    errors = validate_schema(record, schema)
+    if errors:
+        raise ModelRoutingError(f"protected Pi terminal failure record is invalid: {errors[0]}")
+
+    attempts = record["route_attempts"]
+    accounting = record["attempt_accounting"]
+    policy = load_policy()
+    if len(attempts) != len(accounting):
+        raise ModelRoutingError("protected Pi terminal failure attempts and accounting disagree")
+    if [attempt["order"] for attempt in attempts] != list(range(1, len(attempts) + 1)):
+        raise ModelRoutingError("protected Pi terminal failure route order is invalid")
+    decision_ids: set[str] = set()
+    excluded_models: set[str] = set()
+    for attempt, counted in zip(attempts, accounting):
+        decision = attempt["decision"]
+        try:
+            decision = validate_decision(decision, policy, excluded_models)
+        except Exception as error:
+            raise ModelRoutingError("protected Pi terminal failure route decision is invalid") from error
+        decision_id = decision["decision_id"]
+        if not isinstance(decision_id, str) or decision_id in decision_ids:
+            raise ModelRoutingError("protected Pi terminal failure decision identity is invalid")
+        decision_ids.add(decision_id)
+        if (
+            counted["operation"] != record["failed_operation"]
+            or counted["decision_id"] != decision_id
+            or counted["invocation_count"] != attempt["invocation_count"]
+            or counted["outcome_count"] != (1 if attempt["outcome_report_state"] == "recorded" else 0)
+        ):
+            raise ModelRoutingError("protected Pi terminal failure attempt accounting is inconsistent")
+        excluded_models.add(decision["model"])
+    final_attempt = attempts[-1]
+    if record["failure_kind"] == "all-candidates-failed":
+        if len(attempts) != len(STANDARD_MODELS) or any(
+            attempt["invocation_outcome"] != "failure" or attempt["outcome_report_state"] != "recorded"
+            for attempt in attempts
+        ):
+            raise ModelRoutingError("protected Pi exhausted-candidate evidence is inconsistent")
+    elif final_attempt["outcome_report_state"] != "failed":
+        raise ModelRoutingError("protected Pi outcome-reporting failure evidence is inconsistent")
+    elif any(
+        attempt["invocation_outcome"] != "failure" or attempt["outcome_report_state"] != "recorded"
+        for attempt in attempts[:-1]
+    ):
+        raise ModelRoutingError("protected Pi pre-terminal route evidence is inconsistent")
+
+    probe = record["successful_probe_record"]
+    probe_hash = record["successful_probe_record_sha256"]
+    if probe is None:
+        if probe_hash != "" or record["failed_operation"] != "readiness_probe":
+            raise ModelRoutingError("protected Pi terminal failure probe binding is inconsistent")
+    elif (
+        record["failed_operation"] != "execution"
+        or probe.get("operation") != "readiness_probe"
+        or probe_hash != canonical_json_sha256(probe)
+    ):
+        raise ModelRoutingError("protected Pi successful probe evidence is inconsistent")
+    else:
+        probe_schema = load_json_strict(GOVERNANCE_DIR / "schemas" / "qa-probe-record.schema.json")
+        probe_errors = validate_schema(probe, probe_schema)
+        if probe_errors:
+            raise ModelRoutingError(f"protected Pi successful probe record is invalid: {probe_errors[0]}")
+        binding = record["candidate_binding"]
+        if (
+            probe["run_id"] != record["run_id"]
+            or probe["role_run_id"] != record["role_run_id"]
+            or probe["candidate_sha"] != binding["candidate_sha"]
+            or probe["base_sha"] != binding["base_sha"]
+            or probe["candidate_tree_oid"] != binding["candidate_tree_oid"]
+        ):
+            raise ModelRoutingError("protected Pi successful probe candidate binding is inconsistent")
+        route_errors = validate_route_evidence(probe["route_evidence"], "authoritative_qa")
+        if route_errors:
+            raise ModelRoutingError(f"protected Pi successful probe route evidence is invalid: {route_errors[0]}")
+
+
+def _terminal_failure_record(
+    *,
+    failure: _RoutedOperationFailure,
+    role: str,
+    run_id: str,
+    role_run_id: str,
+    qa_for_pass_id: Optional[str],
+    candidate_sha: str,
+    base_sha: str,
+    candidate_tree_oid: str,
+    successful_probe_record: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    record = {
+        "schema_version": "1",
+        "record_id": str(uuid.uuid4()),
+        "run_id": run_id,
+        "role": role,
+        "role_run_id": role_run_id,
+        "qa_for_pass_id": qa_for_pass_id or "",
+        "evidence_class": "terminal-failure",
+        "generated_by": {
+            "policy_commit_sha": get_policy_sha(),
+            "dispatcher_path": "scripts/governance/run_isolated_pi.py",
+            "dispatcher_sha256": sha256_file(Path(__file__).resolve()),
+        },
+        "candidate_binding": {
+            "candidate_sha": candidate_sha,
+            "base_sha": base_sha,
+            "candidate_tree_oid": candidate_tree_oid,
+        },
+        **failure.evidence,
+        "successful_probe_record": successful_probe_record,
+        "successful_probe_record_sha256": (
+            canonical_json_sha256(successful_probe_record) if successful_probe_record is not None else ""
+        ),
+        "finished_at": _now(),
+    }
+    _validate_terminal_failure_record(record)
+    return record
 
 
 def parse_pi_jsonl_final_assistant(stdout: str) -> str:
@@ -805,7 +946,19 @@ def _make_routed_pi_lifecycle():
         api_key = load_litellm_key(policy)
         excluded: List[str] = []
         attempts: List[Dict[str, Any]] = []
+        terminal_attempts: List[Dict[str, Any]] = []
         attempt_accounting: List[Dict[str, Any]] = []
+        operation_started_at = _now()
+
+        def terminal_failure(kind: str, message: str) -> _RoutedOperationFailure:
+            return _RoutedOperationFailure(message, {
+                "failed_operation": operation,
+                "failure_kind": kind,
+                "operation_contract": operation_contract,
+                "attempt_accounting": list(attempt_accounting),
+                "route_attempts": list(terminal_attempts),
+                "started_at": operation_started_at,
+            })
 
         for _ in range(3):
             route_input = {
@@ -907,25 +1060,59 @@ def _make_routed_pi_lifecycle():
                 if errors:
                     raise ModelRoutingError(f"protected Pi route evidence is invalid: {errors[0]}")
             except Exception as error:
-                accounting.record_outcome()
-                _report_outcome(
-                    service,
-                    decision["decision_id"],
-                    "failure",
-                    f"{type(error).__name__}: routed Pi {operation} failed",
-                )
-                attempts.append({
+                failed_attempt = {
                     "decision": decision,
                     "outcome": "failure",
                     "outcome_recorded": True,
                     "reasoning_effort": "high",
-                })
+                }
+                terminal_attempt = {
+                    "order": len(terminal_attempts) + 1,
+                    "decision": decision,
+                    "invocation_count": accounting.invocation_count,
+                    "invocation_outcome": "failure",
+                    "outcome_report_state": "recorded",
+                    "failure_type": type(error).__name__,
+                }
+                try:
+                    _report_outcome(
+                        service,
+                        decision["decision_id"],
+                        "failure",
+                        f"{type(error).__name__}: routed Pi {operation} failed",
+                    )
+                except Exception as report_error:
+                    terminal_attempt["outcome_report_state"] = "failed"
+                    terminal_attempts.append(terminal_attempt)
+                    attempt_accounting.append(accounting.terminal_evidence())
+                    raise terminal_failure(
+                        "outcome-reporting-failed",
+                        f"routed Pi {operation} outcome reporting failed",
+                    ) from report_error
+                accounting.record_outcome()
+                attempts.append(failed_attempt)
+                terminal_attempts.append(terminal_attempt)
                 attempt_accounting.append(accounting.evidence())
                 excluded.append(decision["model"])
                 continue
 
+            try:
+                _report_outcome(service, decision["decision_id"], "success", f"Routed Pi {operation} passed its contract")
+            except Exception as report_error:
+                terminal_attempts.append({
+                    "order": len(terminal_attempts) + 1,
+                    "decision": decision,
+                    "invocation_count": accounting.invocation_count,
+                    "invocation_outcome": "success",
+                    "outcome_report_state": "failed",
+                    "failure_type": type(report_error).__name__,
+                })
+                attempt_accounting.append(accounting.terminal_evidence())
+                raise terminal_failure(
+                    "outcome-reporting-failed",
+                    f"routed Pi {operation} outcome reporting failed",
+                ) from report_error
             accounting.record_outcome()
-            _report_outcome(service, decision["decision_id"], "success", f"Routed Pi {operation} passed its contract")
             attempt_accounting.append(accounting.evidence())
             return _RoutedRunResult(
                 process=result,
@@ -939,7 +1126,10 @@ def _make_routed_pi_lifecycle():
                 operation_contract=operation_contract,
                 attempt_accounting=attempt_accounting,
             )
-        raise ModelRoutingError(f"all routed Pi {operation} candidates failed")
+        raise terminal_failure(
+            "all-candidates-failed",
+            f"all routed Pi {operation} candidates failed",
+        )
 
     def lifecycle(
         *,
@@ -973,17 +1163,31 @@ def _make_routed_pi_lifecycle():
             probe_prompt = f"Respond with exactly 'READY {nonce}' and nothing else."
             expected = f"READY {nonce}"
             probe_start = _now()
-            probe = route_operation(
-                operation="readiness_probe",
-                name=f"probe-{role_run_id}",
-                tools=tools,
-                candidate_dir=candidate_dir,
-                prompt_text=probe_prompt,
-                cwd=candidate_dir,
-                timeout=min(timeout, 120),
-                expected_response=expected,
-                decision_claim_dir=decision_claim_dir,
-            )
+            try:
+                probe = route_operation(
+                    operation="readiness_probe",
+                    name=f"probe-{role_run_id}",
+                    tools=tools,
+                    candidate_dir=candidate_dir,
+                    prompt_text=probe_prompt,
+                    cwd=candidate_dir,
+                    timeout=min(timeout, 120),
+                    expected_response=expected,
+                    decision_claim_dir=decision_claim_dir,
+                )
+            except _RoutedOperationFailure as failure:
+                record = _terminal_failure_record(
+                    failure=failure,
+                    role=role,
+                    run_id=run_id,
+                    role_run_id=role_run_id,
+                    qa_for_pass_id=qa_for_pass_id,
+                    candidate_sha=candidate_sha,
+                    base_sha=base_sha,
+                    candidate_tree_oid=candidate_tree_oid,
+                    successful_probe_record=None,
+                )
+                raise _RoutedPiTerminalFailure(str(failure), record) from failure
             probe_finish = _now()
             probe_record = {
                 "schema_version": "2",
@@ -1027,17 +1231,31 @@ def _make_routed_pi_lifecycle():
 
         candidate_tree_before = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
         start = _now()
-        routed = route_operation(
-            operation="execution",
-            name=f"{role}-{role_run_id}",
-            tools=tools,
-            candidate_dir=candidate_dir,
-            prompt_text=prompt_text,
-            cwd=candidate_dir,
-            timeout=timeout,
-            expected_response=None,
-            decision_claim_dir=decision_claim_dir,
-        )
+        try:
+            routed = route_operation(
+                operation="execution",
+                name=f"{role}-{role_run_id}",
+                tools=tools,
+                candidate_dir=candidate_dir,
+                prompt_text=prompt_text,
+                cwd=candidate_dir,
+                timeout=timeout,
+                expected_response=None,
+                decision_claim_dir=decision_claim_dir,
+            )
+        except _RoutedOperationFailure as failure:
+            record = _terminal_failure_record(
+                failure=failure,
+                role=role,
+                run_id=run_id,
+                role_run_id=role_run_id,
+                qa_for_pass_id=qa_for_pass_id,
+                candidate_sha=candidate_sha,
+                base_sha=base_sha,
+                candidate_tree_oid=candidate_tree_oid,
+                successful_probe_record=probe_record,
+            )
+            raise _RoutedPiTerminalFailure(str(failure), record) from failure
         finish = _now()
         candidate_tree_after = get_candidate_tree_oid(candidate_dir) if candidate_dir else ""
         base_fields = _base_invocation_fields(
@@ -1184,8 +1402,29 @@ def run_routed_pi_lifecycle(
         if result.returncode != 0 or not response_path.is_file():
             raise ModelRoutingError("fresh routed Pi authority worker failed")
         response = load_json_strict(response_path)
-    if not isinstance(response, dict) or set(response) != {"probe_record", "execution_record", "stdout", "stderr"}:
+    if not isinstance(response, dict) or response.get("status") not in {"success", "failure"}:
         raise ModelRoutingError("fresh routed Pi authority worker returned an invalid response")
+    if response["status"] == "failure":
+        if set(response) != {"status", "message", "terminal_failure_record"} or not isinstance(response["message"], str):
+            raise ModelRoutingError("fresh routed Pi authority worker returned invalid terminal failure evidence")
+        record = response["terminal_failure_record"]
+        if not isinstance(record, dict):
+            raise ModelRoutingError("fresh routed Pi authority worker returned invalid terminal failure evidence")
+        _validate_terminal_failure_record(record)
+        binding = record["candidate_binding"]
+        if (
+            record["run_id"] != run_id
+            or record["role"] != role
+            or record["role_run_id"] != role_run_id
+            or record["qa_for_pass_id"] != (qa_for_pass_id or "")
+            or binding["candidate_sha"] != candidate_sha
+            or binding["base_sha"] != base_sha
+            or binding["candidate_tree_oid"] != candidate_tree_oid
+        ):
+            raise ModelRoutingError("fresh routed Pi authority worker returned mismatched terminal failure evidence")
+        raise _RoutedPiTerminalFailure(response["message"], record)
+    if set(response) != {"status", "probe_record", "execution_record", "stdout", "stderr"}:
+        raise ModelRoutingError("fresh routed Pi authority worker returned an invalid success response")
     if response["probe_record"] is not None and not isinstance(response["probe_record"], dict):
         raise ModelRoutingError("fresh routed Pi authority worker returned an invalid probe record")
     if not isinstance(response["execution_record"], dict) or not isinstance(response["stdout"], str) or not isinstance(response["stderr"], str):
@@ -1269,6 +1508,20 @@ def write_protected_record(record: Dict[str, Any], run_dir: Path) -> Path:
     record_dir.mkdir(parents=True, exist_ok=True)
     record_path = record_dir / "qa-execution-record.json"
     write_json(record_path, record)
+    return record_path
+
+
+def write_terminal_failure_record(record: Dict[str, Any], run_dir: Path) -> Path:
+    _validate_terminal_failure_record(record)
+    record_dir = run_dir / "protected"
+    record_dir.mkdir(parents=True, exist_ok=True)
+    record_path = record_dir / "pi-terminal-failure-record.json"
+    write_json(record_path, record)
+    sha_path = record_dir / "pi-terminal-failure-record.sha256"
+    sha_path.write_text(sha256_file(record_path), encoding="utf-8")
+    probe = record["successful_probe_record"]
+    if probe is not None:
+        write_json(record_dir / "qa-probe-record.json", probe)
     return record_path
 
 
@@ -1465,6 +1718,11 @@ def main() -> int:
         stdout = lifecycle.stdout
         stderr = lifecycle.stderr
         exit_code = execution_record["actual_invocation"]["exit_code"]
+    except _RoutedPiTerminalFailure as error:
+        record_path = write_terminal_failure_record(error.record, run_dir)
+        print(str(error), file=sys.stderr)
+        print(f"Protected Pi terminal failure record written to {record_path}", file=sys.stderr)
+        return 1
     except (ModelRoutingError, RuntimeError) as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -1523,10 +1781,17 @@ if __name__ == "__main__":
                 decision_claim_dir=Path(worker_request["decision_claim_dir"]),
             )
             write_json(Path(sys.argv[3]), {
+                "status": "success",
                 "probe_record": worker_result.probe_record,
                 "execution_record": worker_result.execution_record,
                 "stdout": worker_result.stdout,
                 "stderr": worker_result.stderr,
+            })
+        except _RoutedPiTerminalFailure as error:
+            write_json(Path(sys.argv[3]), {
+                "status": "failure",
+                "message": str(error),
+                "terminal_failure_record": error.record,
             })
         except Exception:
             raise SystemExit(1) from None

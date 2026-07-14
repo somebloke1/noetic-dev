@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Protected Pi Terminal Failure Record Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "run_id",
+    "role",
+    "role_run_id",
+    "qa_for_pass_id",
+    "evidence_class",
+    "generated_by",
+    "candidate_binding",
+    "failed_operation",
+    "failure_kind",
+    "operation_contract",
+    "attempt_accounting",
+    "route_attempts",
+    "successful_probe_record",
+    "successful_probe_record_sha256",
+    "started_at",
+    "finished_at"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "const": "1"},
+    "record_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "role": {"type": "string", "minLength": 1},
+    "role_run_id": {"type": "string", "minLength": 1},
+    "qa_for_pass_id": {"type": "string"},
+    "evidence_class": {"type": "string", "const": "terminal-failure"},
+    "generated_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy_commit_sha", "dispatcher_path", "dispatcher_sha256"],
+      "properties": {
+        "policy_commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "dispatcher_path": {"type": "string", "const": "scripts/governance/run_isolated_pi.py"},
+        "dispatcher_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "candidate_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_sha", "base_sha", "candidate_tree_oid"],
+      "properties": {
+        "candidate_sha": {"type": "string", "pattern": "^([a-f0-9]{40})?$"},
+        "base_sha": {"type": "string", "pattern": "^([a-f0-9]{40})?$"},
+        "candidate_tree_oid": {"type": "string", "pattern": "^([a-f0-9]{40})?$"}
+      }
+    },
+    "failed_operation": {"type": "string", "enum": ["readiness_probe", "execution"]},
+    "failure_kind": {"type": "string", "enum": ["all-candidates-failed", "outcome-reporting-failed"]},
+    "operation_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operations", "decision_scope", "maximum_invocations_per_decision", "report_outcome_scope"],
+      "properties": {
+        "operations": {"type": "array", "const": ["readiness_probe", "execution"]},
+        "decision_scope": {"type": "string", "const": "per_operation"},
+        "maximum_invocations_per_decision": {"type": "integer", "const": 1},
+        "report_outcome_scope": {"type": "string", "const": "per_operation"}
+      }
+    },
+    "attempt_accounting": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation", "decision_id", "invocation_count", "outcome_count"],
+        "properties": {
+          "operation": {"type": "string", "enum": ["readiness_probe", "execution"]},
+          "decision_id": {"type": "string", "pattern": "^d-[0-9]{8}-[0-9]{6}$"},
+          "invocation_count": {"type": "integer", "enum": [0, 1]},
+          "outcome_count": {"type": "integer", "enum": [0, 1]}
+        }
+      }
+    },
+    "route_attempts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order", "decision", "invocation_count", "invocation_outcome", "outcome_report_state", "failure_type"],
+        "properties": {
+          "order": {"type": "integer", "enum": [1, 2, 3]},
+          "decision": {"type": "object"},
+          "invocation_count": {"type": "integer", "enum": [0, 1]},
+          "invocation_outcome": {"type": "string", "enum": ["success", "failure"]},
+          "outcome_report_state": {"type": "string", "enum": ["recorded", "failed"]},
+          "failure_type": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "successful_probe_record": {"anyOf": [{"type": "object"}, {"type": "null"}]},
+    "successful_probe_record_sha256": {"type": "string", "pattern": "^$|^[a-f0-9]{64}$"},
+    "started_at": {"type": "string", "minLength": 1},
+    "finished_at": {"type": "string", "minLength": 1}
+  }
+}

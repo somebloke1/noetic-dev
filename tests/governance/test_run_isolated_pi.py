@@ -27,6 +27,8 @@ from run_isolated_pi import (  # noqa: E402
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
     _OperationAttemptAccounting,
+    _RoutedOperationFailure,
+    _RoutedPiTerminalFailure,
     _authoritative_qa_pi_contract,
     _candidate_git_metadata_ro_mounts,
     _claim_decision_id,
@@ -34,6 +36,8 @@ from run_isolated_pi import (  # noqa: E402
     _credential_interface,
     _non_evidence_record,
     _pi_models_config,
+    _terminal_failure_record,
+    _validate_terminal_failure_record,
     _write_tools_observed,
     build_bwrap_command,
     main,
@@ -44,6 +48,7 @@ from run_isolated_pi import (  # noqa: E402
     validate_candidate_checkout,
     validate_model,
     validate_tools,
+    write_terminal_failure_record,
 )
 
 SOL = "codex/gpt-5.6-sol"
@@ -133,6 +138,48 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         cls._decision_counter += 1
         return decision(model, cls._decision_counter)
 
+    def terminal_failure_record(self, *, successful_probe=None, outcome_reporting_failed=False):
+        models = [TERRA] if outcome_reporting_failed else [TERRA, SOL, LUNA]
+        attempts = []
+        accounting = []
+        for order, model in enumerate(models, 1):
+            selected = self.next_decision(model)
+            report_state = "failed" if outcome_reporting_failed and order == len(models) else "recorded"
+            attempts.append({
+                "order": order,
+                "decision": selected,
+                "invocation_count": 1,
+                "invocation_outcome": "failure",
+                "outcome_report_state": report_state,
+                "failure_type": "RuntimeError",
+            })
+            accounting.append({
+                "operation": "execution" if successful_probe is not None else "readiness_probe",
+                "decision_id": selected["decision_id"],
+                "invocation_count": 1,
+                "outcome_count": 0 if report_state == "failed" else 1,
+            })
+        operation = "execution" if successful_probe is not None else "readiness_probe"
+        failure = _RoutedOperationFailure("forced terminal failure", {
+            "failed_operation": operation,
+            "failure_kind": "outcome-reporting-failed" if outcome_reporting_failed else "all-candidates-failed",
+            "operation_contract": _authoritative_qa_pi_contract(json.loads((ROOT / "config/model-policy.json").read_text())),
+            "attempt_accounting": accounting,
+            "route_attempts": attempts,
+            "started_at": "2026-07-14T00:00:00+00:00",
+        })
+        return _terminal_failure_record(
+            failure=failure,
+            role="qa",
+            run_id="run-terminal",
+            role_run_id="qa-terminal",
+            qa_for_pass_id="implementation-terminal",
+            candidate_sha="d" * 40,
+            base_sha="c" * 40,
+            candidate_tree_oid="e" * 40,
+            successful_probe_record=successful_probe,
+        )
+
     @unittest.skipUnless(shutil.which("pi"), "Pi 0.80.3 is required")
     def test_installed_pi_0803_contract_explicitly_disables_tools_and_parses_file_arg(self):
         pi = shutil.which("pi")
@@ -176,6 +223,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             captured["env"] = kwargs["env"]
             captured["timeout"] = kwargs["timeout"]
             Path(command[-1]).write_text(json.dumps({
+                "status": "success",
                 "probe_record": None,
                 "execution_record": {"actual_invocation": {"authority_process": "fresh-isolated-worker"}},
                 "stdout": "events",
@@ -199,6 +247,110 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         self.assertEqual(captured["timeout"], 63)
         self.assertEqual(result.execution_record["actual_invocation"]["authority_process"], "fresh-isolated-worker")
         self.assertNotIn("UNRELATED_SECRET", captured["env"])
+
+    def test_parent_returns_validated_terminal_failure_evidence_from_worker(self):
+        record = self.terminal_failure_record()
+
+        def run(command, **_kwargs):
+            Path(command[-1]).write_text(json.dumps({
+                "status": "failure",
+                "message": "all routed Pi readiness_probe candidates failed",
+                "terminal_failure_record": record,
+            }), encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prompt = root / "prompt.md"
+            prompt.write_text("Review", encoding="utf-8")
+            with mock.patch("run_isolated_pi.subprocess.run", side_effect=run), self.assertRaises(
+                _RoutedPiTerminalFailure
+            ) as raised:
+                run_routed_pi_lifecycle(
+                    role="qa", run_id="run-terminal", role_run_id="qa-terminal", tools=[],
+                    prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-terminal",
+                    candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
+                    timeout=1, decision_claim_dir=root / "claims",
+                )
+        self.assertEqual(raised.exception.record, record)
+
+    def test_parent_rejects_type_confused_terminal_failure_accounting(self):
+        record = self.terminal_failure_record()
+        record["attempt_accounting"][0]["outcome_count"] = True
+
+        def run(command, **_kwargs):
+            Path(command[-1]).write_text(json.dumps({
+                "status": "failure",
+                "message": "forced",
+                "terminal_failure_record": record,
+            }), encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prompt = root / "prompt.md"
+            prompt.write_text("Review", encoding="utf-8")
+            with mock.patch("run_isolated_pi.subprocess.run", side_effect=run), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "terminal failure record is invalid"
+            ):
+                run_routed_pi_lifecycle(
+                    role="qa", run_id="run-terminal", role_run_id="qa-terminal", tools=[],
+                    prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-terminal",
+                    candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
+                    timeout=1, decision_claim_dir=root / "claims",
+                )
+
+    def test_terminal_failure_writer_persists_record_and_digest_before_failure_return(self):
+        record = self.terminal_failure_record(outcome_reporting_failed=True)
+        _validate_terminal_failure_record(record)
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory) / "run-terminal"
+            record_path = write_terminal_failure_record(record, run_dir)
+            persisted = json.loads(record_path.read_text(encoding="utf-8"))
+            digest = (record_path.parent / "pi-terminal-failure-record.sha256").read_text(encoding="utf-8")
+        self.assertEqual(persisted, record)
+        self.assertEqual(len(digest), 64)
+
+    def test_execution_failure_retains_and_validates_successful_probe(self):
+        manifest = json.loads((ROOT / "tests/governance/fixtures/valid_advisory_manifest.json").read_text())
+        probe = manifest["qa"]["records"][0]["protected_probe_record"]
+        probe["run_id"] = "run-terminal"
+        probe["role_run_id"] = "qa-terminal"
+        record = self.terminal_failure_record(successful_probe=probe)
+        _validate_terminal_failure_record(record)
+        with tempfile.TemporaryDirectory() as directory:
+            record_path = write_terminal_failure_record(record, Path(directory))
+            persisted_probe = json.loads((record_path.parent / "qa-probe-record.json").read_text(encoding="utf-8"))
+        self.assertEqual(persisted_probe, probe)
+
+    def test_cli_persists_worker_terminal_failure_before_returning_nonzero(self):
+        record = self.terminal_failure_record()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate"
+            candidate.mkdir()
+            prompt = root / "prompt.md"
+            prompt.write_text("Review", encoding="utf-8")
+            output = root / "evidence"
+            argv = [
+                "run_isolated_pi.py", "--run-id", "run-terminal", "--role", "qa",
+                "--role-run-id", "qa-terminal", "--qa-for-pass-id", "implementation-terminal",
+                "--prompt", str(prompt), "--candidate-dir", str(candidate),
+                "--candidate-sha", "d" * 40, "--base-sha", "c" * 40,
+                "--output-dir", str(output),
+            ]
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch("run_isolated_pi.materialize_candidate_checkout", return_value=(candidate, "e" * 40)), \
+                    mock.patch("run_isolated_pi.validate_candidate_checkout", return_value=(True, "", "e" * 40)), \
+                    mock.patch("run_isolated_pi.run_routed_pi_lifecycle", side_effect=_RoutedPiTerminalFailure("forced", record)), \
+                    mock.patch("sys.stderr", io.StringIO()):
+                result = main()
+            record_path = output / "run-terminal" / "protected" / "pi-terminal-failure-record.json"
+            digest_path = output / "run-terminal" / "protected" / "pi-terminal-failure-record.sha256"
+            self.assertEqual(result, 1)
+            self.assertTrue(record_path.is_file())
+            self.assertTrue(digest_path.is_file())
+            self.assertEqual(json.loads(record_path.read_text(encoding="utf-8")), record)
 
     def test_outer_worker_timeout_covers_qa_reroute_envelope_and_fails_controlled(self):
         captured = {}
