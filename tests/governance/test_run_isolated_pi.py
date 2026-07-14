@@ -623,6 +623,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             claim_dir = Path(directory) / "claims"
             creator_at_fchmod = threading.Event()
+            observer_at_fchmod = threading.Event()
             release_creator = threading.Event()
             results = []
             original_fchmod = os.fchmod
@@ -632,6 +633,8 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     creator_at_fchmod.set()
                     if not release_creator.wait(5):
                         raise TimeoutError("concurrent claim test timed out")
+                else:
+                    observer_at_fchmod.set()
                 return original_fchmod(fd, mode)
 
             def claim(label):
@@ -652,7 +655,9 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     creator.start()
                     self.assertTrue(creator_at_fchmod.wait(5))
                     observer.start()
+                    self.assertTrue(observer_at_fchmod.wait(5))
                     observer.join(5)
+                    self.assertFalse(observer.is_alive())
                     release_creator.set()
                     creator.join(5)
             finally:
