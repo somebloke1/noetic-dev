@@ -556,13 +556,19 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
 
     def test_routed_identity_rejects_empty_qa_generation_and_nonqa_claims(self):
         _require_validated_identity("qa", "implementation-1")
+        _require_validated_identity("qa", "A")
+        _require_validated_identity("qa", "x" * 128)
         _require_validated_identity("validator", None)
         _require_validated_identity("validator", "")
         for role, qa_for, expected in [
-            ("qa", None, "non-whitespace"),
-            ("qa", "", "non-whitespace"),
-            ("qa", "   ", "non-whitespace"),
-            ("qa", "implementation 1", "non-whitespace"),
+            ("qa", None, "bounded ASCII"),
+            ("qa", "", "bounded ASCII"),
+            ("qa", "   ", "bounded ASCII"),
+            ("qa", "implementation 1", "bounded ASCII"),
+            ("qa", "\u001c", "bounded ASCII"),
+            ("qa", "\u200b", "bounded ASCII"),
+            ("qa", "../implementation", "bounded ASCII"),
+            ("qa", "x" * 129, "bounded ASCII"),
             ("future-role", "implementation-1", "role is invalid"),
             ("validator", "implementation-1", "cannot claim"),
         ]:
@@ -580,6 +586,10 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ("qa_for_pass_id", ""),
             ("qa_for_pass_id", "   "),
             ("qa_for_pass_id", "implementation 1"),
+            ("qa_for_pass_id", "\u001c"),
+            ("qa_for_pass_id", "\u200b"),
+            ("qa_for_pass_id", "../implementation"),
+            ("qa_for_pass_id", "x" * 129),
         ]
         for field, value in mutations:
             mutated = json.loads(json.dumps(probe))

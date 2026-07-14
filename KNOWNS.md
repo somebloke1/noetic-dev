@@ -346,3 +346,18 @@ Exactly one adversarial QA execution reviewed immutable candidate a7da93da9e0535
 
 Exactly one adversarial QA pass reviewed immutable candidate 081d386e5ede54648027edefb262ca38cbe56cb2 through Pi using LiteLLM-served Terra/high. READY decision d-20260714-000047 and execution decision d-20260714-000048 completed with recorded success. QA returned changes-needed because schema minLength 1 and runtime truthiness accepted whitespace-only qa_for_pass_id values, allowing semantically absent generation identity. The role enum, conditional shape, wrong-type checks, and non-QA generation rejection survived the requested attacks. Protected probe SHA-256 d5c9c0d643cabbb486b25bce71a8403a93d1f5bafd643d0cef458a7e79e8ffa1; execution SHA-256 75ac5f4ed09c8d395fbda6fd826b7c3107d3d1d248dbf5437e8150bb0ac733b7.
 <!-- governance-crud:end id=k-20260714-0010 -->
+
+<!-- governance-crud:start id=k-20260714-0011 -->
+## k-20260714-0011: PR #31 QA exposed Python versus Draft-07 whitespace divergence
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,identity,draft-07,unicode
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4973552108
+- Confidence: high
+
+Exactly one adversarial QA pass reviewed immutable candidate ad06871eba0d78823db9286027b67ad3627bc2d9 through Pi using LiteLLM-served Terra/high. READY decision d-20260714-000049 and execution decision d-20260714-000050 completed with recorded success. QA returned changes-needed because Python str.isspace rejects C0 U+001C while standards-compliant Draft-07/ECMAScript ^\S+$ accepts it, producing runtime/schema divergence and a schema-valid visually absent generation identity. Protected probe SHA-256 f2e3de9a5bf8d584f4a4b21d59d1e7cee83e87dc1b7ef3d8a511fe72bfc1e209; execution SHA-256 6cbc8a2e888d9b7f33b525e53b7c86f5a172bf9c70d49ffd626b572cde412257.
+<!-- governance-crud:end id=k-20260714-0011 -->

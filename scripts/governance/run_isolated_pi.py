@@ -69,6 +69,7 @@ CREDENTIAL_ENV_NAMES = {
 ENV_ALLOWLIST = ["HOME", "PI_CODING_AGENT_DIR", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK", "LITELLM_API_KEY"]
 PI_CONFIG_MOUNT = Path("/tmp/pi-agent")
 MAX_ROUTED_PI_TIMEOUT = 900
+QA_FOR_PASS_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 PI_JSONL_EVENT_TYPES = {
     "session",
     "agent_start", "agent_end", "turn_start", "turn_end",
@@ -133,12 +134,8 @@ def _require_validated_identity(role: str, qa_for_pass_id: Optional[str]) -> Non
     if role not in ROLE_TOOL_ALLOWLISTS:
         raise RuntimeError("routed Pi role is invalid")
     if role == "qa":
-        if (
-            not isinstance(qa_for_pass_id, str)
-            or not qa_for_pass_id
-            or any(char.isspace() for char in qa_for_pass_id)
-        ):
-            raise RuntimeError("routed QA requires a non-whitespace qa_for_pass_id")
+        if not isinstance(qa_for_pass_id, str) or not QA_FOR_PASS_ID.fullmatch(qa_for_pass_id):
+            raise RuntimeError("routed QA requires a bounded ASCII qa_for_pass_id")
     elif qa_for_pass_id not in (None, ""):
         raise RuntimeError("non-QA routed Pi cannot claim a QA generation")
 
