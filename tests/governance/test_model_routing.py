@@ -250,6 +250,11 @@ class TestModelRouting(unittest.TestCase):
             "maximum_substantive_invocations": 1,
             "report_outcome_scope": "aggregate_attempt",
         })
+        self.assertEqual(self.policy["execution_contracts"]["authoritative_qa_pi"], {
+            "operations": ["readiness_probe", "execution"],
+            "decision_scope": "per_operation",
+            "report_outcome_scope": "per_operation",
+        })
         self.assertEqual(probe["outcome"], "success")
         self.assertEqual(probe["route_decision_id"], "d-20260713-000001")
         self.assertEqual(probe["work_unit_sha256"], sha256_text("prompt"))

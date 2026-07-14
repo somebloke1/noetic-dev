@@ -243,7 +243,7 @@ This supersedes dec-20260711-0005's endpoint-pluralism escape hatch, direct llam
 <!-- governance-crud:end id=dec-20260713-0010 -->
 
 <!-- governance-crud:start id=dec-20260714-0001 -->
-## dec-20260714-0001: A READY probe is a phase of one routed task attempt
+## dec-20260714-0001: A broker READY probe is a phase of one routed task attempt
 
 - Ledger: decisions
 - Status: accepted
@@ -251,8 +251,8 @@ This supersedes dec-20260711-0005's endpoint-pluralism escape hatch, direct llam
 - Created: 2026-07-14
 - Updated: 2026-07-14
 - Tags: issue-29,model-routing,readiness,governance
-- Source: docs/model-routing-policy.md;docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4967702974
+- Source: docs/model-routing-policy.md;docs/governance/local-agent-review-requirements.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968172876
 - Confidence: high
 
-Treat the deterministic READY probe and the at-most-one substantive model call as phases of the same genus-router task attempt. The route decision selects the candidate before both calls; both use the validated LiteLLM reference; the readiness phase has explicit bound evidence; report_outcome records the aggregate attempt after probe and substantive result. A separate route/outcome for the probe would make the rule that every governed substantive invocation requires a probe recursively unsatisfiable and would not improve the listed AR-01 through AR-10 threat controls. Clarify this finite attempt contract in machine-checked policy/docs rather than accepting the review finding's unstated one-decision-per-HTTP-call premise.
+For the one-shot local agent-review broker, treat the deterministic READY probe and at-most-one substantive review call as phases of the same genus-router task attempt. The route decision selects the candidate before both calls; both use the validated LiteLLM reference; readiness has explicit bound evidence; report_outcome records the aggregate attempt. This contract does not govern protected Pi QA, whose READY and execution are separate routed operations with distinct decision IDs and outcomes under its anti-replay evidence contract. Scoping avoids recursive probe-of-probe behavior without misrepresenting a separate-operation harness.
 <!-- governance-crud:end id=dec-20260714-0001 -->

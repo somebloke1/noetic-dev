@@ -107,7 +107,7 @@ Authoritative mode requires:
 4. Runner provenance verified through GitHub API and/or signed artifact attestations.
 5. Artifact digest and canonical manifest digest verified.
 6. Protected QA execution record generated outside QA/model control.
-7. Probe and QA execution records match, with no QA tools until a credential broker exists.
+7. Probe and QA execution records share one fresh authority worker and immutable candidate binding but carry distinct routed decisions and per-operation outcomes, with no QA tools until a credential broker exists.
 8. Branch protection requires the governance checks.
 9. Independent high-reasoning Fable or Sol reviewer approval exists after candidate SHA and is bound to the final candidate SHA.
 10. Provider credentials cross a broker/capability boundary before tools are re-enabled for authoritative QA.

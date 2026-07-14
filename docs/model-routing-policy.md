@@ -10,13 +10,15 @@
 
 ## Mandatory lifecycle
 
-Every generative task follows one finite auditable loop:
+Every routed generative operation follows one finite auditable loop:
 
 ```text
 classify -> route_task -> invoke through LiteLLM -> report_outcome
 ```
 
-A routed task attempt has two bounded phases under one decision: exactly one deterministic READY probe, then at most one substantive invocation. Both calls use the selected, validated LiteLLM reference. The probe is evidence that the selected route can serve the bound work unit, not a separate generative task requiring another probe. `report_outcome` records the aggregate attempt after the probe and substantive phase; a failed phase records failure and causes a new decision with the failed model excluded. This finite attempt contract prevents decision replay without creating an infinite probe-of-probe regress.
+The one-shot `agent-review` broker has a two-phase attempt under one decision: exactly one deterministic READY probe, then at most one substantive review invocation. Both calls use the selected, validated LiteLLM reference. The probe is evidence that the selected route can serve the bound work unit, not a separate generative task requiring another probe. `report_outcome` records the aggregate broker attempt; a failed phase records failure and causes a new decision with the failed model excluded.
+
+Protected Pi QA has a different finite contract. Its READY probe and QA execution are separate routed operations in one fresh authority worker. Each operation obtains and durably claims its own decision, invokes that decision once, and reports its own outcome; the delivery gate rejects decision reuse. The READY operation proves that the isolated harness path can complete a routed inference before QA execution. It does not authorize or claim readiness for the separately selected execution route, whose own failure lifecycle remains fail-closed. The exact broker and Pi contracts are machine-bound in `config/model-policy.json`.
 
 On failure, the caller reports the failed outcome and calls `route_task` again with the same task kind, complexity, and blast radius, `prior_failure=true`, and the failed model in `exclude_models`. Callers do not manually choose an escalation model.
 
@@ -71,7 +73,7 @@ OpenCode-facing execution and goalchain semantic curation are not yet accepted r
 
 ## Governance
 
-Model prose is never evidence by itself. Every governed substantive invocation requires a fresh readiness-probe phase and captured execution evidence bound to the candidate/work-unit identity, policy commit, route decision, resolved LiteLLM reference, harness configuration, and aggregate attempt outcome.
+Model prose is never evidence by itself. Every broker review requires its bound readiness phase and aggregate attempt evidence. Every protected Pi READY or execution operation requires separate captured evidence bound to the candidate/work-unit identity, policy commit, distinct route decision, resolved LiteLLM reference, harness configuration, and per-operation outcome.
 
 Delivery evidence schema v2 rejects static model-profile authorization. Each protected invocation carries `route_evidence` with the exact classification and ordered attempts; every attempt binds the complete genus-router decision, canonical LiteLLM reference, enacted high reasoning, outcome, and confirmation that `report_outcome` succeeded. Authoritative QA uses the non-high-value complex-review contract. Independent approval uses a distinct high-value complex-review contract, making Fable eligible without making it a general fallback.
 

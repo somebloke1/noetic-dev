@@ -52,10 +52,17 @@ class TestModelPolicy(unittest.TestCase):
         self.assertTrue(failure["reroute_with_prior_failure"])
         self.assertTrue(failure["exclude_failed_models"])
         self.assertFalse(failure["manual_model_escalation"])
-        self.assertEqual(self.policy["attempt_contract"], {
-            "readiness_probe_is_phase": True,
-            "maximum_substantive_invocations": 1,
-            "report_outcome_scope": "aggregate_attempt",
+        self.assertEqual(self.policy["execution_contracts"], {
+            "agent_review_broker": {
+                "readiness_probe_is_phase": True,
+                "maximum_substantive_invocations": 1,
+                "report_outcome_scope": "aggregate_attempt",
+            },
+            "authoritative_qa_pi": {
+                "operations": ["readiness_probe", "execution"],
+                "decision_scope": "per_operation",
+                "report_outcome_scope": "per_operation",
+            },
         })
         self.assertEqual(self.policy["tasks"]["agent_review"], {
             "task_kind": "review",

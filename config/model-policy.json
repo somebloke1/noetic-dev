@@ -6,10 +6,17 @@
     "selection_varies_with_sophistication": true,
     "lifecycle": ["classify", "route_task", "invoke", "report_outcome"]
   },
-  "attempt_contract": {
-    "readiness_probe_is_phase": true,
-    "maximum_substantive_invocations": 1,
-    "report_outcome_scope": "aggregate_attempt"
+  "execution_contracts": {
+    "agent_review_broker": {
+      "readiness_probe_is_phase": true,
+      "maximum_substantive_invocations": 1,
+      "report_outcome_scope": "aggregate_attempt"
+    },
+    "authoritative_qa_pi": {
+      "operations": ["readiness_probe", "execution"],
+      "decision_scope": "per_operation",
+      "report_outcome_scope": "per_operation"
+    }
   },
   "access": {
     "endpoint_id": "local-litellm",

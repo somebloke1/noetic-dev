@@ -628,6 +628,14 @@ class TestQaBindingFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("reused a route decision_id", "\n".join(errors))
 
+    def test_policy_binds_pi_probe_and_execution_as_separate_operations(self):
+        policy = json.loads((REPO_ROOT / "config" / "model-policy.json").read_text())
+        self.assertEqual(policy["execution_contracts"]["authoritative_qa_pi"], {
+            "operations": ["readiness_probe", "execution"],
+            "decision_scope": "per_operation",
+            "report_outcome_scope": "per_operation",
+        })
+
     def test_probe_and_execution_timestamps_must_be_valid_and_ordered(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]

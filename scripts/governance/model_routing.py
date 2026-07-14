@@ -50,10 +50,19 @@ AGENT_REVIEW_TASK = {
     "high_value": False,
     "awaited": True,
 }
-ATTEMPT_CONTRACT = {
+BROKER_ATTEMPT_CONTRACT = {
     "readiness_probe_is_phase": True,
     "maximum_substantive_invocations": 1,
     "report_outcome_scope": "aggregate_attempt",
+}
+AUTHORITATIVE_QA_PI_CONTRACT = {
+    "operations": ["readiness_probe", "execution"],
+    "decision_scope": "per_operation",
+    "report_outcome_scope": "per_operation",
+}
+EXECUTION_CONTRACTS = {
+    "agent_review_broker": BROKER_ATTEMPT_CONTRACT,
+    "authoritative_qa_pi": AUTHORITATIVE_QA_PI_CONTRACT,
 }
 EXPECTED_MODEL_POLICY = {
     "schema_version": "1",
@@ -63,7 +72,7 @@ EXPECTED_MODEL_POLICY = {
         "selection_varies_with_sophistication": True,
         "lifecycle": ["classify", "route_task", "invoke", "report_outcome"],
     },
-    "attempt_contract": ATTEMPT_CONTRACT,
+    "execution_contracts": EXECUTION_CONTRACTS,
     "access": {
         "endpoint_id": "local-litellm",
         "base_url": CANONICAL_LITELLM_BASE_URL,
@@ -430,7 +439,7 @@ def route_and_invoke_review(
     active_policy = policy if policy is not None else load_policy()
     validate_policy_invariants(active_policy)
     task = dict(AGENT_REVIEW_TASK)
-    attempt_contract = dict(ATTEMPT_CONTRACT)
+    attempt_contract = dict(BROKER_ATTEMPT_CONTRACT)
     excluded: list[str] = []
     attempts: list[dict[str, str]] = []
     routed_attempts: list[dict[str, Any]] = []

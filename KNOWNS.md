@@ -211,3 +211,18 @@ Verified during `compact_goal_chain` on 2026-07-13 and against the resolved Open
 
 An unprotected local invocation of the PR #31 broker at head 6e381b76289651dd4945563f04ffe7894224c6cf and base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router to codex/gpt-5.6-terra at high reasoning. It produced diff digest a0daf88338256905477085f593b888caebffe89efc252719e5f6251a6636125e, prompt digest c1ea102d3a38742a07cd5bad3a22ea0e38b2075b919763b028043bf51188e320, and changes-needed with one P1 finding about READY-probe outcome semantics. The local result SHA-256 is 084cb1289f31c5e9741fc7e2f5431935641226d71fa2a368d7bb1a4e71af276d; its verified evidence and finding are durably recorded in PR #31 comment 4967702974.
 <!-- governance-crud:end id=k-20260714-0001 -->
+
+<!-- governance-crud:start id=k-20260714-0002 -->
+## k-20260714-0002: Exact-head review exposed broker and Pi contract scope conflict
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,agent-review,pi,contract-scope
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968172876
+- Confidence: high
+
+An unprotected local PR #31 review at head 1033d24465a8b2a77cdfd5277c5e40e7f571faf8 routed through genus-router to Terra/high and returned changes-needed. Its sole finding is verified against source: the new top-level attempt_contract says one READY phase plus one substantive invocation share a decision, while protected Pi QA intentionally uses separately routed READY and execution operations and the delivery gate rejects shared decision IDs. The result is durable in PR comment 4968172876; result SHA-256 436bdc2513d404eed70e6f09b5df50b85ae36678db8b3da7e68487e2eb6b9a97.
+<!-- governance-crud:end id=k-20260714-0002 -->
