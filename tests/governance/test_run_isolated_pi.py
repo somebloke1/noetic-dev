@@ -392,7 +392,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         ):
             _validate_terminal_failure_record(record)
 
-    def test_runtime_rejects_boolean_or_float_terminal_counts_if_schema_is_bypassed(self):
+    def test_runtime_rejects_internally_agreed_boolean_or_float_counts_if_schema_is_bypassed(self):
         for malformed in [False, 0.0]:
             record = self.terminal_failure_record(outcome_reporting_failed=True)
             raw = record["route_attempts"][0].pop("decision")
@@ -406,7 +406,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             record["route_attempts"][0]["outcome_report_state"] = "not-attempted"
             record["attempt_accounting"][0]["invocation_count"] = malformed
             record["terminal_accounting"] = {
-                "invocation_count": "0",
+                "invocation_count": str(malformed),
                 "outcome_count": "0",
                 "outcome_report_state": "not-attempted",
             }

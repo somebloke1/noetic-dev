@@ -451,3 +451,18 @@ Exactly one protected Pi QA lifecycle reviewed immutable candidate d83982e3d29e1
 
 Exactly one protected Pi QA lifecycle reviewed immutable candidate 20474911bbc2b8aceb28b21ece2469685ea01e7a through LiteLLM-served Terra/high. READY decision d-20260714-000063 and execution decision d-20260714-000064 completed with one invocation and one recorded outcome each; QA returned CHANGES_NEEDED. Standards-compliant Draft-07 treats integral JSON numbers such as 0.0 and 1.0 as integers and as numerically equal to integer const/enum values. Therefore the numeric terminal_accounting schema accepts integral-float summary counts even though runtime type-strict recomputation rejects them. Probe SHA-256 4a7bfb1493e10d946d3521fc6797f27ef7da2c5f5f0858fc84f4d45fc9dc6aa5; execution SHA-256 74808007d3c83d4ab5d8a6433173d6e2fdcdf2eabe6fc670a5fe63271cdcf4c4.
 <!-- governance-crud:end id=k-20260714-0017 -->
+
+<!-- governance-crud:start id=k-20260714-0018 -->
+## k-20260714-0018: PR #31 canonical-count QA counterexample was refuted by exact source-type checks
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,adjudication,type-strict,terminal-evidence
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974209500
+- Confidence: high
+
+Exactly one protected Pi QA lifecycle reviewed immutable candidate 6bf2d0977deccb55144cd972f20231086cdf27be through LiteLLM-served Terra/high. READY decision d-20260714-000065 and execution decision d-20260714-000066 completed with one invocation and one recorded outcome each; QA returned CHANGES_NEEDED. Its sole proposed counterexample claimed internally agreeing False/0.0 source counts and "False"/"0.0" summary strings would survive a schema bypass. Direct reproduction refuted the claim: _validate_terminal_failure_record executes exact type(value) is int checks for route-attempt invocation counts and attempt-accounting invocation/outcome counts before deriving summary strings, and both mutations failed with `protected Pi terminal failure accounting types are invalid`. Probe SHA-256 fa60a8bee5c336b24fa9f43c0905720403173349b067949fa6c1cf4fe7ccae9f; execution SHA-256 5052cd7de0eeb01ac6a43db02bc24b350eb7e5395b29c8a8b3db4cf8fa34f6db.
+<!-- governance-crud:end id=k-20260714-0018 -->

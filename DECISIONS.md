@@ -391,3 +391,18 @@ Every protected Pi terminal record SHALL include a required `terminal_accounting
 
 The redundant terminal_accounting summary SHALL encode invocation_count and outcome_count as canonical decimal strings "0" or "1", while route_attempts and attempt_accounting retain numeric counts. Draft-07 SHALL constrain those summary strings with string const/enum values, so booleans and numeric 0, 0.0, 1, and 1.0 are rejected independently of implementation-language numeric semantics. Runtime SHALL first require exact integer types for source attempt/accounting counts, derive canonical summary strings from those validated integers, and compare the complete summary type-strictly. This is narrowly scoped to the redundant schema-bound summary and does not change successful protected evidence or delivery accounting.
 <!-- governance-crud:end id=dec-20260714-0010 -->
+
+<!-- governance-crud:start id=dec-20260714-0011 -->
+## dec-20260714-0011: Retain pre-derivation exact source-type checks and add the refuted mutation as coverage
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,qa-adjudication,type-strict,regression-test,least-complexity
+- Source: k-20260714-0018;scripts/governance/run_isolated_pi.py;tests/governance/test_run_isolated_pi.py
+- Confidence: high
+
+The 6bf2d09 QA verdict SHALL be retained as returned but its sole finding is rejected because the cited bypass is contradicted by direct execution and existing pre-derivation exact source-type checks. The next generation SHALL not add redundant production checks. It SHALL add an explicit schema-bypass regression test in which False and 0.0 source invocation counts agree with correspondingly malformed summary strings, proving rejection occurs at source-type validation before summary derivation. This preserves the smallest requirement-mapped remediation, avoids complexity added to answer a false counterexample, and gives the next immutable QA complete evidence rather than diff-only ambiguity.
+<!-- governance-crud:end id=dec-20260714-0011 -->
