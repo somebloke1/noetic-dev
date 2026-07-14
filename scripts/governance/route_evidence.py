@@ -46,6 +46,7 @@ CONTRACTS = {
         },
         "candidates": [FABLE, STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]],
         "fable_eligible": True,
+        "successful_models": [FABLE, STANDARD_MODELS[0]],
     },
 }
 DECISION_ID = re.compile(r"^d-\d{8}-\d{6}$")
@@ -100,6 +101,12 @@ def validate_route_evidence(evidence: Any, contract_name: str) -> list[str]:
         )
         if isinstance(decision, dict) and decision.get("model") in remaining:
             failed_models.append(decision["model"])
+    successful_models = contract.get("successful_models")
+    final_attempt = attempts[-1] if isinstance(attempts[-1], dict) else {}
+    final_decision = final_attempt.get("decision") if isinstance(final_attempt, dict) else None
+    final_model = final_decision.get("model") if isinstance(final_decision, dict) else None
+    if isinstance(successful_models, list) and final_model not in successful_models:
+        errors.append(f"{contract_name} successful model must be Fable or Sol")
     return errors
 
 

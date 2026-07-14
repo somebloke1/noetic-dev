@@ -77,6 +77,11 @@ class TestRouteEvidence(unittest.TestCase):
         rerouted = route_evidence("independent_approval", [FABLE, TERRA, SOL])
         self.assertEqual(validate_route_evidence(rerouted, "independent_approval"), [])
 
+    def test_independent_approval_rejects_terra_as_final_model(self):
+        rerouted = route_evidence("independent_approval", [FABLE, TERRA])
+        errors = validate_route_evidence(rerouted, "independent_approval")
+        self.assertIn("independent_approval successful model must be Fable or Sol", errors)
+
     def test_static_or_wrong_contract_evidence_fails_closed(self):
         self.assertTrue(validate_route_evidence({"model_profile": "qa_primary"}, "authoritative_qa"))
         evidence = route_evidence("independent_approval")

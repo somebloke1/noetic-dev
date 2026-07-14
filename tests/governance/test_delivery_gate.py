@@ -287,6 +287,29 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("did not enact high reasoning", "\n".join(errors))
 
+    def test_terra_cannot_be_final_independent_approval_model(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        route = external["approvals"][0]["route_evidence"]
+        fable_attempt = route["attempts"][0]
+        fable_attempt["outcome"] = "failure"
+        fable_decision = fable_attempt["decision"]
+        terra_decision = copy.deepcopy(fable_decision)
+        terra_decision["decision_id"] = "d-20260713-400002"
+        terra_decision["model"] = fable_decision["fallbacks"][0]
+        terra_decision["model_ref"] = copy.deepcopy(fable_decision["fallback_refs"][0])
+        terra_decision["fallbacks"] = fable_decision["fallbacks"][1:]
+        terra_decision["fallback_refs"] = copy.deepcopy(fable_decision["fallback_refs"][1:])
+        route["attempts"].append({
+            "decision": terra_decision,
+            "outcome": "success",
+            "outcome_recorded": True,
+            "reasoning_effort": "high",
+        })
+        passed, errors, _ = check_delivery(manifest, external_evidence=external)
+        self.assertFalse(passed)
+        self.assertIn("successful model must be Fable or Sol", "\n".join(errors))
+
     def test_reviewer_alias_is_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()

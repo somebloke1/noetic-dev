@@ -286,3 +286,18 @@ Keep the 700,000-byte Git diff capture bound needed by the current PR, but treat
 
 When changed code defines an explicit repository threat model or acceptance boundary, the semantic reviewer must cite a violated requirement or reproducible gap in a named threat before returning a blocking finding. Adjacent hardening and risks assigned outside the boundary remain residual in the summary. This does not suppress counterexamples showing that a listed requirement is insufficient; it prevents a model from silently expanding accepted scope and turning every possible hardening idea into a blocker.
 <!-- governance-crud:end id=dec-20260714-0003 -->
+
+<!-- governance-crud:start id=dec-20260714-0004 -->
+## dec-20260714-0004: Independent approval succeeds only on Fable or Sol
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,delivery,independent-approval,model-eligibility
+- Source: docs/governance/delivery-governance.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4969015742
+- Confidence: high
+
+Retain the complete genus-router attempt sequence for independent approval, including failed Terra or Luna attempts, but accept a successful independent approval only when its final model is Claude Fable 5 or GPT-5.6 Sol at high reasoning. This directly enforces delivery-governance requirement 9 without pretending that ineligible attempts did not occur.
+<!-- governance-crud:end id=dec-20260714-0004 -->

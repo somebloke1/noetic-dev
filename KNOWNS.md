@@ -286,3 +286,18 @@ An exact-head local broker review at 89c1aac05f7e569ce50b4ac09b215ca91bf3a955 ro
 
 An exact-head candidate-broker review at 097f81ca8719edb2de475f970bd637df52bbe028 routed through genus-router to Terra/high and returned changes-needed because the configured LiteLLM endpoint uses plaintext HTTP. The transport observation is true but not an admissible blocker under the accepted local-review threat model: the configured gateway is a trusted dependency, network confinement is explicitly outside the control boundary, and blocking findings must falsify AR-01 through AR-10 or a named threat. The result exposed that the generic broker prompt did not tell the semantic reviewer to honor an explicit repository threat/acceptance boundary. Result SHA-256 818b2de7122e1778a45ea2128de70c26356dabb10065f1ed402d36eb78c7fe96.
 <!-- governance-crud:end id=k-20260714-0006 -->
+
+<!-- governance-crud:start id=k-20260714-0007 -->
+## k-20260714-0007: Exact-head review exposed ineligible Terra approval and stale PR evidence
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,agent-review,independent-approval,pr-metadata
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4969015742
+- Confidence: high
+
+An exact-head candidate-broker review at 3e7331fa2d6bd4a322d1be8aa995921cde88b07b routed through genus-router to Terra/high and returned changes-needed with two verified findings. First, independent_approval route evidence accepted Fable failure followed by Terra success even though delivery governance requires a final Fable or Sol reviewer. Second, PR #31's body still claimed independent QA only for old head 4a6496be24edf0c5fd057930df9162efe4e4d749 rather than the current candidate, despite newer immutable QA evidence being durable in comments. Result SHA-256 7c30936bea0e130c010587540e51d57746a52c611fddf68c9751bd06ba57541b.
+<!-- governance-crud:end id=k-20260714-0007 -->
