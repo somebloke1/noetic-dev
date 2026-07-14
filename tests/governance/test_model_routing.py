@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,7 @@ from model_routing import (  # noqa: E402
     validate_decision,
     validate_policy_invariants,
 )
+from hash_tree import canonical_json_sha256, sha256_text  # noqa: E402
 from route_evidence import validate_route_evidence  # noqa: E402
 
 SOL = "codex/gpt-5.6-sol"
@@ -67,6 +69,21 @@ def decision(model: str, number: int = 1) -> dict[str, object]:
         "rationale": ["fixed protected review classification"],
         "decision_id": f"d-20260713-{number:06d}",
     }
+
+
+def request_prompt(body: bytes) -> str:
+    request = json.loads(body)
+    return request["input"][0]["content"][0]["text"]
+
+
+def routed_response(body: bytes, review_output: str = '{"verdict":"pass"}') -> bytes:
+    prompt = request_prompt(body)
+    match = re.fullmatch(
+        r"Respond with exactly '(READY [a-f0-9]{16} [a-f0-9]{64})' and nothing else\.",
+        prompt,
+    )
+    output = match.group(1) if match else review_output
+    return json.dumps({"output_text": output}).encode()
 
 
 class FakeService:
@@ -199,8 +216,11 @@ class TestModelRouting(unittest.TestCase):
     def test_route_success_reports_outcome_and_returns_evidence(self):
         service = FakeService([decision(TERRA)])
 
-        def post(_url, _headers, _body, _timeout):
-            return json.dumps({"output_text": '{"verdict":"pass"}'}).encode()
+        bodies = []
+
+        def post(_url, _headers, body, _timeout):
+            bodies.append(body)
+            return routed_response(body)
 
         result, evidence = route_and_invoke_review(
             "prompt",
@@ -217,6 +237,32 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(service.outcomes[0]["outcome"], "success")
         self.assertEqual(service.inputs[0]["prior_failure"], False)
         self.assertEqual(service.inputs[0]["exclude_models"], [])
+        self.assertEqual(len(bodies), 2)
+        probe = evidence["readiness_probes"][0]
+        self.assertEqual(probe["outcome"], "success")
+        self.assertEqual(probe["route_decision_id"], "d-20260713-000001")
+        self.assertEqual(probe["work_unit_sha256"], sha256_text("prompt"))
+        self.assertRegex(probe["policy_commit_sha"], r"^[a-f0-9]{40}$")
+        self.assertEqual(probe["policy_sha256"], canonical_json_sha256(self.policy))
+        self.assertEqual(
+            probe["harness_configuration_sha256"],
+            canonical_json_sha256(probe["harness_configuration"]),
+        )
+        nonce = probe["probe_id"].removeprefix("ready-")
+        binding = {
+            "nonce": nonce,
+            "work_unit_sha256": probe["work_unit_sha256"],
+            "policy_commit_sha": probe["policy_commit_sha"],
+            "policy_sha256": probe["policy_sha256"],
+            "route_decision_id": probe["route_decision_id"],
+            "model_ref_sha256": probe["model_ref_sha256"],
+            "harness_configuration_sha256": probe["harness_configuration_sha256"],
+        }
+        self.assertEqual(probe["binding_sha256"], canonical_json_sha256(binding))
+        self.assertEqual(
+            probe["expected_response"],
+            f"READY {nonce} {probe['binding_sha256']}",
+        )
 
     @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
     def test_failure_is_reported_then_rerouted_with_exclusion(self):
@@ -224,9 +270,9 @@ class TestModelRouting(unittest.TestCase):
 
         def post(_url, _headers, body, _timeout):
             model = json.loads(body)["model"]
-            if model == TERRA:
+            if model == TERRA and not request_prompt(body).startswith("Respond with exactly 'READY "):
                 raise ModelRoutingError("first invocation failed")
-            return json.dumps({"output_text": '{"verdict":"pass"}'}).encode()
+            return routed_response(body)
 
         _, evidence = route_and_invoke_review(
             "prompt",
@@ -240,6 +286,34 @@ class TestModelRouting(unittest.TestCase):
         self.assertEqual(service.inputs[1]["exclude_models"], [TERRA])
         self.assertEqual(evidence["model"], SOL)
         self.assertEqual([item["model"] for item in evidence["attempts"]], [TERRA, SOL])
+        self.assertEqual([item["outcome"] for item in evidence["readiness_probes"]], ["success", "success"])
+        self.assertNotEqual(
+            evidence["readiness_probes"][0]["probe_id"],
+            evidence["readiness_probes"][1]["probe_id"],
+        )
+
+    @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
+    def test_readiness_mismatch_is_reported_then_rerouted(self):
+        service = FakeService([decision(TERRA, 1), decision(SOL, 2)])
+
+        def post(_url, _headers, body, _timeout):
+            model = json.loads(body)["model"]
+            prompt = request_prompt(body)
+            if model == TERRA and prompt.startswith("Respond with exactly 'READY "):
+                return json.dumps({"output_text": "READY forged"}).encode()
+            return routed_response(body)
+
+        _, evidence = route_and_invoke_review(
+            "prompt",
+            json.loads,
+            service=service,
+            policy=self.policy,
+            http_post=post,
+        )
+        self.assertEqual([item["outcome"] for item in service.outcomes], ["failure", "success"])
+        self.assertEqual([item["outcome"] for item in evidence["readiness_probes"]], ["failure", "success"])
+        self.assertEqual(evidence["readiness_probes"][0]["error_type"], "ModelRoutingError")
+        self.assertEqual(service.inputs[1]["exclude_models"], [TERRA])
 
     @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
     def test_review_stops_after_three_standard_candidates_fail(self):
@@ -297,7 +371,7 @@ class TestModelRouting(unittest.TestCase):
             json.loads,
             service=FakeService([decision(TERRA)]),
             policy=self.policy,
-            http_post=lambda *_args: json.dumps({"output_text": '{"verdict":"pass"}'}).encode(),
+            http_post=lambda _url, _headers, body, _timeout: routed_response(body),
         )
         self.assertEqual(accepted, {"verdict": "pass"})
         with self.assertRaisesRegex(ModelRoutingError, "prompt exceeded"):

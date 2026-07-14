@@ -330,6 +330,16 @@ class TestAgentReview(unittest.TestCase):
                 "fallbacks": ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"],
                 "endpoint_id": "local-litellm",
                 "endpoint_path": "/v1/responses",
+                "readiness_probes": [{
+                    "schema_version": "1",
+                    "outcome": "success",
+                    "route_decision_id": "d-20260713-000001",
+                }],
+                "work_unit_sha256": "d" * 64,
+                "policy_commit_sha": "e" * 40,
+                "policy_sha256": "f" * 64,
+                "harness_configuration": {"harness": "agent-review-broker"},
+                "harness_configuration_sha256": "0" * 64,
             },
         )
         result = review(self.REQUEST)
@@ -347,6 +357,10 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["route_fallbacks"], ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"])
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
+        self.assertEqual(result["readiness_probes"][0]["outcome"], "success")
+        self.assertEqual(result["work_unit_sha256"], "d" * 64)
+        self.assertEqual(result["policy_commit_sha"], "e" * 40)
+        self.assertEqual(result["model_policy_sha256"], "f" * 64)
 
 
 if __name__ == "__main__":

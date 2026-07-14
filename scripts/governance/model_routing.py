@@ -4,15 +4,19 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import json
 import math
 import os
 import re
+import secrets
+import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from hash_tree import canonical_json_sha256, sha256_file, sha256_text
 from route_evidence import validate_route_evidence
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +24,7 @@ DEFAULT_POLICY_PATH = ROOT / "config" / "model-policy.json"
 MAX_GATEWAY_RESPONSE_BYTES = 1_048_576
 MAX_MODEL_INPUT_BYTES = 750_000
 DECISION_ID = re.compile(r"^d-\d{8}-\d{6}$")
+COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
 CANONICAL_LITELLM_BASE_URL = "http://172.22.10.160:3333"
 STANDARD_MODELS = [
     "codex/gpt-5.6-sol",
@@ -392,6 +397,18 @@ def route_and_invoke_review(
     excluded: list[str] = []
     attempts: list[dict[str, str]] = []
     routed_attempts: list[dict[str, Any]] = []
+    readiness_probes: list[dict[str, Any]] = []
+    work_unit_sha256 = sha256_text(prompt)
+    policy_commit_sha = _policy_commit_sha()
+    policy_sha256 = canonical_json_sha256(active_policy)
+    harness_configuration = {
+        "harness": "agent-review-broker",
+        "broker_sha256": sha256_file(ROOT / "scripts" / "governance" / "agent_review_broker.py"),
+        "routing_adapter_sha256": sha256_file(Path(__file__).resolve()),
+        "max_gateway_response_bytes": MAX_GATEWAY_RESPONSE_BYTES,
+        "max_model_input_bytes": MAX_MODEL_INPUT_BYTES,
+    }
+    harness_configuration_sha256 = canonical_json_sha256(harness_configuration)
 
     for _ in STANDARD_MODELS:
         route_input = {
@@ -408,6 +425,19 @@ def route_and_invoke_review(
         decision_id = decision["decision_id"]
         model = decision["model"]
         try:
+            _run_readiness_probe(
+                decision,
+                active_policy,
+                api_key,
+                excluded_models=set(excluded),
+                work_unit_sha256=work_unit_sha256,
+                policy_commit_sha=policy_commit_sha,
+                policy_sha256=policy_sha256,
+                harness_configuration=harness_configuration,
+                harness_configuration_sha256=harness_configuration_sha256,
+                evidence_sink=readiness_probes,
+                http_post=http_post,
+            )
             output = _invoke_litellm(
                 decision,
                 prompt,
@@ -466,6 +496,12 @@ def route_and_invoke_review(
             "fable_eligible": decision["fable_eligible"],
             "fallbacks": decision["fallbacks"],
             "route_evidence": route_evidence,
+            "readiness_probes": readiness_probes,
+            "work_unit_sha256": work_unit_sha256,
+            "policy_commit_sha": policy_commit_sha,
+            "policy_sha256": policy_sha256,
+            "harness_configuration": harness_configuration,
+            "harness_configuration_sha256": harness_configuration_sha256,
         }
         return parsed, evidence
     raise ModelRoutingError("all routed review candidates failed")
@@ -480,6 +516,107 @@ def _report_outcome(service: Any, decision_id: str, outcome: str, notes: str) ->
         raise ModelRoutingError("genus-router outcome reporting failed") from error
     if result != {"recorded": True}:
         raise ModelRoutingError("genus-router did not record the outcome")
+
+
+def _policy_commit_sha() -> str:
+    if COMMIT_SHA.fullmatch(ROOT.name):
+        return ROOT.name
+    env = {
+        "HOME": os.environ.get("HOME", "/dev/null"),
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ModelRoutingError("policy commit identity is unavailable") from error
+    policy_commit_sha = result.stdout.strip()
+    if result.returncode != 0 or not COMMIT_SHA.fullmatch(policy_commit_sha):
+        raise ModelRoutingError("policy commit identity is unavailable")
+    return policy_commit_sha
+
+
+def _now() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _run_readiness_probe(
+    decision: dict[str, Any],
+    policy: dict[str, Any],
+    api_key: str,
+    *,
+    excluded_models: set[str],
+    work_unit_sha256: str,
+    policy_commit_sha: str,
+    policy_sha256: str,
+    harness_configuration: dict[str, Any],
+    harness_configuration_sha256: str,
+    evidence_sink: list[dict[str, Any]],
+    http_post: Callable[[str, dict[str, str], bytes, int], bytes] | None = None,
+) -> None:
+    nonce = secrets.token_hex(8)
+    model_ref = decision["model_ref"]
+    binding = {
+        "nonce": nonce,
+        "work_unit_sha256": work_unit_sha256,
+        "policy_commit_sha": policy_commit_sha,
+        "policy_sha256": policy_sha256,
+        "route_decision_id": decision["decision_id"],
+        "model_ref_sha256": canonical_json_sha256(model_ref),
+        "harness_configuration_sha256": harness_configuration_sha256,
+    }
+    binding_sha256 = canonical_json_sha256(binding)
+    expected = f"READY {nonce} {binding_sha256}"
+    prompt = f"Respond with exactly '{expected}' and nothing else."
+    record = {
+        "schema_version": "1",
+        "probe_id": f"ready-{nonce}",
+        "work_unit_sha256": work_unit_sha256,
+        "policy_commit_sha": policy_commit_sha,
+        "policy_sha256": policy_sha256,
+        "route_decision_id": decision["decision_id"],
+        "model_ref": model_ref,
+        "model_ref_sha256": binding["model_ref_sha256"],
+        "harness_configuration": harness_configuration,
+        "harness_configuration_sha256": harness_configuration_sha256,
+        "binding_sha256": binding_sha256,
+        "prompt_sha256": sha256_text(prompt),
+        "expected_response": expected,
+        "started_at": _now(),
+    }
+    try:
+        observed = _invoke_litellm(
+            decision,
+            prompt,
+            policy,
+            api_key,
+            excluded_models=excluded_models,
+            http_post=http_post,
+        )
+        record["observed_response_sha256"] = sha256_text(observed)
+        if observed != expected:
+            raise ModelRoutingError("fresh readiness probe response did not match its binding")
+    except Exception as error:
+        record.update({
+            "finished_at": _now(),
+            "outcome": "failure",
+            "error_type": type(error).__name__,
+        })
+        evidence_sink.append(record)
+        raise
+    record.update({
+        "finished_at": _now(),
+        "outcome": "success",
+    })
+    evidence_sink.append(record)
 
 
 def _invoke_litellm(
