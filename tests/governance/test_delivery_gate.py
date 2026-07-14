@@ -106,7 +106,12 @@ class TestDeliveryGatePositive(unittest.TestCase):
         qa = manifest["qa"]["records"][0]
         actual = qa["protected_execution_record"]["actual_invocation"]
         events = [json.loads(line) for line in actual["qa_event_log"].splitlines()]
-        unknown = {"type": "toolCall", "name": "write"}
+        unknown = {
+            "type": "toolCall",
+            "id": "call-qa-forgery-1",
+            "name": "write",
+            "arguments": {"path": "/tmp/forbidden", "content": "forged"},
+        }
         events[1]["message"]["content"].append(unknown)
         events[2]["messages"][0]["content"].append(unknown)
         event_log = "".join(
