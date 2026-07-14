@@ -565,8 +565,12 @@ def _check_probe_execution_binding(
         errors.append(f"qa {qa_run_id} execution role_run_id mismatch")
     if probe_record.get("role_run_id") != qa_record.get("role_run_id"):
         errors.append(f"qa {qa_run_id} probe role_run_id mismatch")
+    if probe_record.get("role") != "qa":
+        errors.append(f"qa {qa_run_id} probe role mismatch")
     if exec_record.get("qa_for_pass_id") != qa_record.get("qa_for_pass_id"):
         errors.append(f"qa {qa_run_id} execution qa_for_pass_id mismatch")
+    if probe_record.get("qa_for_pass_id") != qa_record.get("qa_for_pass_id"):
+        errors.append(f"qa {qa_run_id} probe qa_for_pass_id mismatch")
 
     _check_route_evidence(
         actual.get("route_evidence"),

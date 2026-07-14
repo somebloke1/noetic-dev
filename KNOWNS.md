@@ -301,3 +301,18 @@ An exact-head candidate-broker review at 097f81ca8719edb2de475f970bd637df52bbe02
 
 An exact-head candidate-broker review at 3e7331fa2d6bd4a322d1be8aa995921cde88b07b routed through genus-router to Terra/high and returned changes-needed with two verified findings. First, independent_approval route evidence accepted Fable failure followed by Terra success even though delivery governance requires a final Fable or Sol reviewer. Second, PR #31's body still claimed independent QA only for old head 4a6496be24edf0c5fd057930df9162efe4e4d749 rather than the current candidate, despite newer immutable QA evidence being durable in comments. Result SHA-256 7c30936bea0e130c010587540e51d57746a52c611fddf68c9751bd06ba57541b.
 <!-- governance-crud:end id=k-20260714-0007 -->
+
+<!-- governance-crud:start id=k-20260714-0008 -->
+## k-20260714-0008: PR #31 terminal-failure remediation QA found identity, count, and setup gaps
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,terminal-failure,identity,accounting
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4969391051
+- Confidence: high
+
+Exactly one model-invoking independent QA lifecycle reviewed immutable candidate b6f6b0c4cae172673754b88327ac10f2c9cbbb4e through protected Pi and Terra/high. READY decision d-20260714-000040 and execution decision d-20260714-000041 completed with recorded success. QA returned changes-needed with reproducible gaps: retained READY evidence did not explicitly bind role and qa_for_pass_id; invocation_outcome=success could be paired with invocation_count=0; and load_litellm_key failed before per-decision terminal evidence collection. QA also requested explicit Terra -> Sol -> Luna validation; source adjudication confirms validate_decision already enforces first-remaining candidate, but making that invariant explicit is prudent. Protected probe SHA-256 ef12a7dc1489e78a70c588bbe9f257ed7557ac707d2d8e9830134c6705076cee; execution SHA-256 b142e4949dd49f2ae4d7e3b815541c4c90da95fcf694192511f6d7a80298826f.
+<!-- governance-crud:end id=k-20260714-0008 -->

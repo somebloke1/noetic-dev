@@ -136,7 +136,7 @@
     "ref": "refs/heads/main",
     "runner_attestation": {
       "artifact": {
-        "manifest_sha256": "0b2604f3c560211e583361dd321d40f2d68a555b6b05f64961519c48086383d9"
+        "manifest_sha256": "a8e2aef52886d9bcb1443c7d1a41fe171fee701da09ac3bcee320be48febe69c"
       }
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -527,9 +527,11 @@
               "invocation_count": 1,
               "outcome_count": 1
             }
-          ]
+          ],
+          "role": "qa",
+          "qa_for_pass_id": "impl-g1-0001"
         },
-        "protected_probe_record_sha256": "aa813bd02387c58293559277531213e3312cf713d42022e68b88015f07a168c4",
+        "protected_probe_record_sha256": "0a421c7d044afd47960331338efa595b49db0e494cd612d317793e800d430553",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",
@@ -895,9 +897,11 @@
               "invocation_count": 1,
               "outcome_count": 1
             }
-          ]
+          ],
+          "role": "qa",
+          "qa_for_pass_id": "rem-g2-0001"
         },
-        "protected_probe_record_sha256": "f059cf28d891590ecd20156f1f87d78485c54ac099f9d307634c9ee76e3da68d",
+        "protected_probe_record_sha256": "248e94d189222834c5f5918669c34d4037c61b9e9975155aa4b660202a64985f",
         "qa_for_pass_id": "rem-g2-0001",
         "qa_run_id": "qa-g2-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",

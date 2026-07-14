@@ -729,6 +729,9 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
         raise ModelRoutingError("protected Pi terminal failure attempts and accounting disagree")
     if [attempt["order"] for attempt in attempts] != list(range(1, len(attempts) + 1)):
         raise ModelRoutingError("protected Pi terminal failure route order is invalid")
+    expected_models = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]][:len(attempts)]
+    if [attempt["decision"].get("model") for attempt in attempts] != expected_models:
+        raise ModelRoutingError("protected Pi terminal failure model order is invalid")
     decision_ids: set[str] = set()
     excluded_models: set[str] = set()
     for attempt, counted in zip(attempts, accounting):
@@ -746,6 +749,7 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
             or counted["decision_id"] != decision_id
             or counted["invocation_count"] != attempt["invocation_count"]
             or counted["outcome_count"] != (1 if attempt["outcome_report_state"] == "recorded" else 0)
+            or (attempt["invocation_outcome"] == "success" and attempt["invocation_count"] != 1)
         ):
             raise ModelRoutingError("protected Pi terminal failure attempt accounting is inconsistent")
         excluded_models.add(decision["model"])
@@ -783,7 +787,9 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
         binding = record["candidate_binding"]
         if (
             probe["run_id"] != record["run_id"]
+            or probe["role"] != record["role"]
             or probe["role_run_id"] != record["role_run_id"]
+            or probe["qa_for_pass_id"] != record["qa_for_pass_id"]
             or probe["candidate_sha"] != binding["candidate_sha"]
             or probe["base_sha"] != binding["base_sha"]
             or probe["candidate_tree_oid"] != binding["candidate_tree_oid"]
@@ -943,7 +949,6 @@ def _make_routed_pi_lifecycle():
             raise ModelRoutingError("routed Pi operation is outside its execution contract")
         classification = dict(policy["tasks"]["authoritative_qa"])
         service = create_router_service()
-        api_key = load_litellm_key(policy)
         excluded: List[str] = []
         attempts: List[Dict[str, Any]] = []
         terminal_attempts: List[Dict[str, Any]] = []
@@ -988,30 +993,30 @@ def _make_routed_pi_lifecycle():
                 maximum_invocations=operation_contract["maximum_invocations_per_decision"],
             )
 
-            model_ref = dict(decision["model_ref"])
-            model_name = f"{model_ref['endpoint_id']}/{model_ref['upstream_model_id']}"
-            config_text = canonical_json(_pi_models_config(model_ref))
-            inner_argv = [
-                str(_pi_binary()),
-                "--mode", "json",
-                "--no-session",
-                "--no-context-files",
-                "--no-extensions",
-                "--no-skills",
-                "--no-prompt-templates",
-                "--no-themes",
-                "--no-approve",
-                "--name", name,
-                "--model", model_name,
-                "--thinking", "high",
-            ]
-            if tools:
-                inner_argv.extend(["--tools", ",".join(tools)])
-            else:
-                inner_argv.append("--no-tools")
-            inner_argv.append("@/tmp/prompt.md")
-
             try:
+                api_key = load_litellm_key(policy)
+                model_ref = dict(decision["model_ref"])
+                model_name = f"{model_ref['endpoint_id']}/{model_ref['upstream_model_id']}"
+                config_text = canonical_json(_pi_models_config(model_ref))
+                inner_argv = [
+                    str(_pi_binary()),
+                    "--mode", "json",
+                    "--no-session",
+                    "--no-context-files",
+                    "--no-extensions",
+                    "--no-skills",
+                    "--no-prompt-templates",
+                    "--no-themes",
+                    "--no-approve",
+                    "--name", name,
+                    "--model", model_name,
+                    "--thinking", "high",
+                ]
+                if tools:
+                    inner_argv.extend(["--tools", ",".join(tools)])
+                else:
+                    inner_argv.append("--no-tools")
+                inner_argv.append("@/tmp/prompt.md")
                 with tempfile.TemporaryFile() as prompt_handle, tempfile.TemporaryFile() as config_handle:
                     prompt_handle.write(prompt_text.encode("utf-8"))
                     prompt_handle.flush()
@@ -1193,7 +1198,9 @@ def _make_routed_pi_lifecycle():
                 "schema_version": "2",
                 "probe_id": f"probe-{uuid.uuid4().hex[:12]}",
                 "run_id": run_id,
+                "role": role,
                 "role_run_id": role_run_id,
+                "qa_for_pass_id": qa_for_pass_id or "",
                 "authority_process": "fresh-isolated-worker",
                 "authority_worker_pid": os.getpid(),
                 **_base_invocation_fields(

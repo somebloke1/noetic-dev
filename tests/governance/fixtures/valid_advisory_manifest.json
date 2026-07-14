@@ -157,7 +157,7 @@
     "ref": "refs/heads/main",
     "runner_attestation": {
       "artifact": {
-        "manifest_sha256": "cbb07d8020cd2de2442d0d9cef7b12d768934efd3809733733388187ad168d46"
+        "manifest_sha256": "bf99b7f82c5ecacf750f78491d53e450b2c3e3be9998757a24471caf70f888c4"
       }
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -548,9 +548,11 @@
               "invocation_count": 1,
               "outcome_count": 1
             }
-          ]
+          ],
+          "role": "qa",
+          "qa_for_pass_id": "impl-g1-0001"
         },
-        "protected_probe_record_sha256": "95d7dde981f5b3920afb6cf08c6f815a1f72986bcf83311a2269a95314ec67d5",
+        "protected_probe_record_sha256": "8f35e06943f7fba9afa12bf228859e534c79406b2d87385594a4cdf7bd03f922",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",

@@ -300,6 +300,24 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     timeout=1, decision_claim_dir=root / "claims",
                 )
 
+    def test_terminal_failure_rejects_reordered_models_and_success_without_invocation(self):
+        reordered = self.terminal_failure_record()
+        pairs = list(zip(reordered["route_attempts"], reordered["attempt_accounting"]))
+        pairs = [pairs[2], pairs[0], pairs[1]]
+        reordered["route_attempts"] = [pair[0] for pair in pairs]
+        reordered["attempt_accounting"] = [pair[1] for pair in pairs]
+        for order, attempt in enumerate(reordered["route_attempts"], 1):
+            attempt["order"] = order
+        with self.assertRaisesRegex(isolated_pi.ModelRoutingError, "model order"):
+            _validate_terminal_failure_record(reordered)
+
+        impossible_success = self.terminal_failure_record(outcome_reporting_failed=True)
+        impossible_success["route_attempts"][-1]["invocation_outcome"] = "success"
+        impossible_success["route_attempts"][-1]["invocation_count"] = 0
+        impossible_success["attempt_accounting"][-1]["invocation_count"] = 0
+        with self.assertRaisesRegex(isolated_pi.ModelRoutingError, "accounting is inconsistent"):
+            _validate_terminal_failure_record(impossible_success)
+
     def test_terminal_failure_writer_persists_record_and_digest_before_failure_return(self):
         record = self.terminal_failure_record(outcome_reporting_failed=True)
         _validate_terminal_failure_record(record)
@@ -316,12 +334,24 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         probe = manifest["qa"]["records"][0]["protected_probe_record"]
         probe["run_id"] = "run-terminal"
         probe["role_run_id"] = "qa-terminal"
+        probe["qa_for_pass_id"] = "implementation-terminal"
         record = self.terminal_failure_record(successful_probe=probe)
         _validate_terminal_failure_record(record)
         with tempfile.TemporaryDirectory() as directory:
             record_path = write_terminal_failure_record(record, Path(directory))
             persisted_probe = json.loads((record_path.parent / "qa-probe-record.json").read_text(encoding="utf-8"))
         self.assertEqual(persisted_probe, probe)
+
+        for field, value in [("role", "validator"), ("qa_for_pass_id", "different-generation")]:
+            mismatched = json.loads(json.dumps(record))
+            mismatched["successful_probe_record"][field] = value
+            mismatched["successful_probe_record_sha256"] = isolated_pi.canonical_json_sha256(
+                mismatched["successful_probe_record"]
+            )
+            with self.subTest(field=field), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "probe candidate binding is inconsistent"
+            ):
+                _validate_terminal_failure_record(mismatched)
 
     def test_cli_persists_worker_terminal_failure_before_returning_nonzero(self):
         record = self.terminal_failure_record()
@@ -451,6 +481,26 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         ]
         self.assertEqual(len(process_calls), 1)
         self.assertEqual(len(guard_calls), 1)
+
+        parents = {child: parent for parent in ast.walk(route) for child in ast.iter_child_nodes(parent)}
+        key_calls = [
+            node for node in ast.walk(route)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "load_litellm_key"
+        ]
+        self.assertEqual(len(key_calls), 1)
+        ancestors = []
+        node = key_calls[0]
+        while node in parents:
+            node = parents[node]
+            ancestors.append(node)
+        self.assertTrue(any(isinstance(ancestor, ast.Try) for ancestor in ancestors))
+        accounting_assignments = [
+            node for node in ast.walk(route)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "accounting" for target in node.targets)
+        ]
+        self.assertEqual(len(accounting_assignments), 1)
+        self.assertLess(accounting_assignments[0].lineno, key_calls[0].lineno)
 
     def test_decision_claim_rejects_pathlike_or_malformed_ids(self):
         with tempfile.TemporaryDirectory() as directory:

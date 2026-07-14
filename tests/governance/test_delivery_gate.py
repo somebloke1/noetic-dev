@@ -528,6 +528,19 @@ class TestQaBindingFailures(unittest.TestCase):
         qa["protected_probe_record_sha256"] = canonical_json_sha256(qa["protected_probe_record"])
         return qa
 
+    def test_probe_role_and_generation_identity_are_bound(self):
+        for field, value, expected in [
+            ("role", "validator", "probe role mismatch"),
+            ("qa_for_pass_id", "different-generation", "probe qa_for_pass_id mismatch"),
+        ]:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            qa = manifest["qa"]["records"][0]
+            qa["protected_probe_record"][field] = value
+            self._first_qa_with_rehashed_records(manifest)
+            passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+            self.assertFalse(passed)
+            self.assertIn(expected, "\n".join(errors))
+
     def test_execution_route_must_match_protected_qa_contract(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
