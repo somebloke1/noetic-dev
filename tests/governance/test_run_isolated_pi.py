@@ -28,6 +28,7 @@ from run_isolated_pi import (  # noqa: E402
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
     _OperationAttemptAccounting,
+    _DecisionReplayError,
     _RoutedOperationFailure,
     _RoutedPiTerminalFailure,
     _authoritative_qa_pi_contract,
@@ -350,6 +351,35 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         record["attempt_accounting"][0]["invocation_count"] = 0
         _validate_terminal_failure_record(record)
 
+    def test_claim_infrastructure_failure_records_one_outcome_without_rerouting(self):
+        record = self.terminal_failure_record(outcome_reporting_failed=True)
+        raw = record["route_attempts"][0].pop("decision")
+        rejection = _rejected_decision_evidence(raw, PermissionError("claim denied"))
+        self.assertIsNotNone(rejection)
+        record["failure_kind"] = "claim-failed"
+        record["route_attempts"][0]["decision_rejection"] = rejection
+        record["route_attempts"][0]["invocation_count"] = 0
+        record["route_attempts"][0]["outcome_report_state"] = "recorded"
+        record["attempt_accounting"][0]["invocation_count"] = 0
+        record["attempt_accounting"][0]["outcome_count"] = 1
+        _validate_terminal_failure_record(record)
+
+    def test_runtime_rejects_malformed_rejection_even_if_schema_is_bypassed(self):
+        record = self.terminal_failure_record(outcome_reporting_failed=True)
+        raw = record["route_attempts"][0].pop("decision")
+        record["route_attempts"][0]["decision_rejection"] = {
+            "decision_id": raw["decision_id"],
+            "model": raw["model"],
+            "raw_decision_sha256": "x",
+            "rejection_type": "",
+        }
+        record["route_attempts"][0]["invocation_count"] = 0
+        record["attempt_accounting"][0]["invocation_count"] = 0
+        with mock.patch("run_isolated_pi.validate_schema", return_value=[]), self.assertRaisesRegex(
+            isolated_pi.ModelRoutingError, "terminal decision rejection is invalid"
+        ):
+            _validate_terminal_failure_record(record)
+
     def test_qa_terminal_failure_requires_complete_candidate_binding(self):
         for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
             record = self.terminal_failure_record()
@@ -466,7 +496,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             claim_dir = Path(directory) / "claims"
             _claim_decision_id(claim_dir, "d-20260713-999991")
-            with self.assertRaisesRegex(RuntimeError, "replayed"):
+            with self.assertRaisesRegex(_DecisionReplayError, "replayed"):
                 _claim_decision_id(claim_dir, "d-20260713-999991")
             script = (
                 "import sys; from pathlib import Path; "
@@ -477,6 +507,15 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             child = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
         self.assertNotEqual(child.returncode, 0)
         self.assertIn("replayed", child.stderr)
+
+    def test_claim_infrastructure_failure_is_not_classified_as_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            with mock.patch("run_isolated_pi.os.open", side_effect=PermissionError("denied")), self.assertRaises(
+                PermissionError
+            ) as raised:
+                _claim_decision_id(claim_dir, "d-20260713-999995")
+        self.assertNotIsInstance(raised.exception, _DecisionReplayError)
 
     def test_authority_decision_claim_namespace_is_independent_of_output_directory(self):
         self.assertEqual(

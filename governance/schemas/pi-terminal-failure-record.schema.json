@@ -52,7 +52,7 @@
       }
     },
     "failed_operation": {"type": "string", "enum": ["readiness_probe", "execution"]},
-    "failure_kind": {"type": "string", "enum": ["all-candidates-failed", "outcome-reporting-failed", "decision-rejected", "decision-replayed"]},
+    "failure_kind": {"type": "string", "enum": ["all-candidates-failed", "outcome-reporting-failed", "decision-rejected", "decision-replayed", "claim-failed"]},
     "operation_contract": {
       "type": "object",
       "additionalProperties": false,

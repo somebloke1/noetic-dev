@@ -406,3 +406,18 @@ A candidate-broker semantic review of immutable head dca92be40c189c1fc6071a3bd83
 
 A candidate-broker semantic review of immutable head 017defc622bf408a5871c54a8350b02c9faf1837 against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000058 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. It reproduced two pre-invocation evidence gaps. First, broker validate_decision runs before its attempt handler, so an identifiable decision with a malformed reference escapes without report_outcome, structured failure evidence, or safe rerouting. Second, protected Pi attempts to report that same decision rejection directly; if report_outcome fails, the reporting error escapes before _RoutedOperationFailure and no terminal-failure record is written. Result SHA-256 9557a6ee71e3f119687dc1c2fc58b7e64c517457436d4961aaf18d2a65f54f55.
 <!-- governance-crud:end id=k-20260714-0014 -->
+
+<!-- governance-crud:start id=k-20260714-0015 -->
+## k-20260714-0015: PR #31 rejected-route QA verified claim-failure misclassification
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,replay,claim-failure,adjudication
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974056550
+- Confidence: high
+
+Exactly one protected Pi QA lifecycle reviewed immutable candidate da5f9fa2a2fba340cfc96518018ff44b609df68c through LiteLLM-served Terra/high. READY decision d-20260714-000059 and execution decision d-20260714-000060 completed with recorded success; QA returned CHANGES_NEEDED. Direct reproduction refuted its first proposed counterexample: the both-fields malformed rejection record is rejected by runtime schema validation with `does not match exactly one schema branch`. Its third claim conflated passing delivery evidence, which correctly requires one outcome, with separately validated non-passing terminal evidence. One blocker was verified: run_isolated_pi classifies every decision-claim exception as replay, so ownership, permission, fsync, or other claim infrastructure failure can be mislabeled decision-replayed. Probe SHA-256 211cb7a0bd2485ee4562502590defcb1df888b9d6916c76876e7050344211f16; execution SHA-256 a77ba373ac90a514e2a5f304e3ceb8d19881afacd33be85f27af6a0f9a0396b0.
+<!-- governance-crud:end id=k-20260714-0015 -->

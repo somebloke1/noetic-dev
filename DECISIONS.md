@@ -346,3 +346,18 @@ Protected Pi decision claims SHALL use one fixed per-UID authority namespace und
 
 When genus-router returns a decision with a syntactically valid decision ID and governed model but full decision validation fails, broker and protected Pi lifecycles SHALL record a zero-invocation rejected-decision attempt identified by decision ID, model, canonical raw-decision digest, and rejection type. They SHALL report exactly one failed outcome before any reroute. A rejection of the currently expected candidate may reroute only after that outcome is recorded and with the rejected model excluded; unsafe candidate-order rejection fails closed after reporting. If outcome reporting fails, broker emits structured routed-failure evidence and protected Pi emits schema/runtime-validated terminal evidence with zero invocation and zero outcomes. A fully validated decision rejected by the protected replay claim is not a new attempt: Pi SHALL emit terminal replay evidence with zero invocations/outcomes, SHALL NOT report a second outcome for the already-claimed ID, and SHALL NOT reroute. Rejected decisions remain distinguishable from validated route authority and can never authorize invocation.
 <!-- governance-crud:end id=dec-20260714-0007 -->
+
+<!-- governance-crud:start id=dec-20260714-0008 -->
+## dec-20260714-0008: Distinguish replay from protected claim infrastructure failure
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,replay,claim-failure,terminal-evidence
+- Source: k-20260714-0015;docs/model-routing-policy.md;docs/governance/delivery-governance.md
+- Confidence: high
+
+The atomic claim primitive SHALL raise a dedicated replay exception only for an existing decision-claim file. Protected Pi SHALL treat that specific exception as `decision-replayed`, emit terminal 0/0 evidence, and neither report another outcome nor reroute. Ownership, permission, no-follow, open, write, fsync, and other claim-infrastructure errors SHALL be classified `claim-failed`; because no prior claim is established by that error class, Pi SHALL attempt one failed outcome report, retain zero-invocation terminal evidence, and stop without rerouting. If that report fails, the terminal kind remains `outcome-reporting-failed` with zero outcomes. Runtime terminal validation SHALL independently enforce rejection field shape in addition to Draft-07 schema validation.
+<!-- governance-crud:end id=dec-20260714-0008 -->
