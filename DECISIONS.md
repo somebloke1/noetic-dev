@@ -361,3 +361,18 @@ When genus-router returns a decision with a syntactically valid decision ID and 
 
 The atomic claim primitive SHALL raise a dedicated replay exception only for an existing decision-claim file. Protected Pi SHALL treat that specific exception as `decision-replayed`, emit terminal 0/0 evidence, and neither report another outcome nor reroute. Ownership, permission, no-follow, open, write, fsync, and other claim-infrastructure errors SHALL be classified `claim-failed`; because no prior claim is established by that error class, Pi SHALL attempt one failed outcome report, retain zero-invocation terminal evidence, and stop without rerouting. If that report fails, the terminal kind remains `outcome-reporting-failed` with zero outcomes. Runtime terminal validation SHALL independently enforce rejection field shape in addition to Draft-07 schema validation.
 <!-- governance-crud:end id=dec-20260714-0008 -->
+
+<!-- governance-crud:start id=dec-20260714-0009 -->
+## dec-20260714-0009: Bind terminal kind through a type-strict final accounting summary
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,terminal-evidence,type-strict,draft-07,accounting
+- Source: k-20260714-0016;docs/model-routing-policy.md;docs/governance/delivery-governance.md
+- Confidence: high
+
+Every protected Pi terminal record SHALL include a required `terminal_accounting` object containing final invocation_count, outcome_count, and outcome_report_state. Runtime validation SHALL type-strictly derive and compare that object against the final route-attempt and attempt-accounting entries, and SHALL independently type-check every order/count before equality. Draft-07 conditionals SHALL bind each failure kind: decision-replayed=0/0/not-attempted; claim-failed=0/1/recorded; decision-rejected=0/1/recorded; outcome-reporting-failed=outcome 0/failed with invocation 0 or 1; all-candidates-failed=outcome 1/recorded with invocation 0 or 1. This summary is redundant intentionally so schema validation and runtime semantic validation each enforce final-state relations without relying on Python numeric coercion.
+<!-- governance-crud:end id=dec-20260714-0009 -->

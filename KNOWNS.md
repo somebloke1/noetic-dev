@@ -421,3 +421,18 @@ A candidate-broker semantic review of immutable head 017defc622bf408a5871c54a835
 
 Exactly one protected Pi QA lifecycle reviewed immutable candidate da5f9fa2a2fba340cfc96518018ff44b609df68c through LiteLLM-served Terra/high. READY decision d-20260714-000059 and execution decision d-20260714-000060 completed with recorded success; QA returned CHANGES_NEEDED. Direct reproduction refuted its first proposed counterexample: the both-fields malformed rejection record is rejected by runtime schema validation with `does not match exactly one schema branch`. Its third claim conflated passing delivery evidence, which correctly requires one outcome, with separately validated non-passing terminal evidence. One blocker was verified: run_isolated_pi classifies every decision-claim exception as replay, so ownership, permission, fsync, or other claim infrastructure failure can be mislabeled decision-replayed. Probe SHA-256 211cb7a0bd2485ee4562502590defcb1df888b9d6916c76876e7050344211f16; execution SHA-256 a77ba373ac90a514e2a5f304e3ceb8d19881afacd33be85f27af6a0f9a0396b0.
 <!-- governance-crud:end id=k-20260714-0015 -->
+
+<!-- governance-crud:start id=k-20260714-0016 -->
+## k-20260714-0016: PR #31 claim-failure QA exposed numeric and Draft-07 terminal-state gaps
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,type-strict,draft-07,terminal-evidence
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974104585
+- Confidence: high
+
+Exactly one protected Pi QA lifecycle reviewed immutable candidate d83982e3d29e1394f2ab0667448f11496153ebd8 through LiteLLM-served Terra/high. READY decision d-20260714-000061 and execution decision d-20260714-000062 completed with recorded success; QA returned CHANGES_NEEDED with two verified gaps. If schema validation is bypassed, Python equality lets False or 0.0 satisfy zero-invocation rejected-attempt and matching-accounting checks, so runtime defense is not type-strict. Separately, Draft-07 enumerates terminal kinds but does not independently relate claim-failed, decision-replayed, or outcome-reporting-failed to the required final invocation/outcome/report state. Probe SHA-256 fc71e0dec1f5b711ccdfacb41445706bf5b16d97b139b07261a087548f9cad9d; execution SHA-256 10f7256e176275992988d7d08cae9968e26aa5a3ca4291282dc6e98e0ae39853.
+<!-- governance-crud:end id=k-20260714-0016 -->

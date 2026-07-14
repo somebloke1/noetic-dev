@@ -18,6 +18,7 @@
     "operation_contract",
     "attempt_accounting",
     "route_attempts",
+    "terminal_accounting",
     "successful_probe_record",
     "successful_probe_record_sha256",
     "started_at",
@@ -110,6 +111,16 @@
         "allOf": [{"oneOf": [{"required": ["decision"]}, {"required": ["decision_rejection"]}]}]
       }
     },
+    "terminal_accounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocation_count", "outcome_count", "outcome_report_state"],
+      "properties": {
+        "invocation_count": {"type": "integer", "enum": [0, 1]},
+        "outcome_count": {"type": "integer", "enum": [0, 1]},
+        "outcome_report_state": {"type": "string", "enum": ["recorded", "failed", "not-attempted"]}
+      }
+    },
     "successful_probe_record": {"anyOf": [{"type": "object"}, {"type": "null"}]},
     "successful_probe_record_sha256": {"type": "string", "pattern": "^$|^[a-f0-9]{64}$"},
     "started_at": {"type": "string", "minLength": 1},
@@ -132,6 +143,36 @@
           }
         }
       }
+    },
+    {
+      "if": {"properties": {"failure_kind": {"const": "decision-replayed"}}, "required": ["failure_kind"]},
+      "then": {"properties": {"terminal_accounting": {"properties": {
+        "invocation_count": {"const": 0}, "outcome_count": {"const": 0}, "outcome_report_state": {"const": "not-attempted"}
+      }}}}
+    },
+    {
+      "if": {"properties": {"failure_kind": {"const": "claim-failed"}}, "required": ["failure_kind"]},
+      "then": {"properties": {"terminal_accounting": {"properties": {
+        "invocation_count": {"const": 0}, "outcome_count": {"const": 1}, "outcome_report_state": {"const": "recorded"}
+      }}}}
+    },
+    {
+      "if": {"properties": {"failure_kind": {"const": "decision-rejected"}}, "required": ["failure_kind"]},
+      "then": {"properties": {"terminal_accounting": {"properties": {
+        "invocation_count": {"const": 0}, "outcome_count": {"const": 1}, "outcome_report_state": {"const": "recorded"}
+      }}}}
+    },
+    {
+      "if": {"properties": {"failure_kind": {"const": "outcome-reporting-failed"}}, "required": ["failure_kind"]},
+      "then": {"properties": {"terminal_accounting": {"properties": {
+        "invocation_count": {"enum": [0, 1]}, "outcome_count": {"const": 0}, "outcome_report_state": {"const": "failed"}
+      }}}}
+    },
+    {
+      "if": {"properties": {"failure_kind": {"const": "all-candidates-failed"}}, "required": ["failure_kind"]},
+      "then": {"properties": {"terminal_accounting": {"properties": {
+        "invocation_count": {"enum": [0, 1]}, "outcome_count": {"const": 1}, "outcome_report_state": {"const": "recorded"}
+      }}}}
     }
   ]
 }

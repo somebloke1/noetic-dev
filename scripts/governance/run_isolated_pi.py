@@ -747,7 +747,9 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
     policy = load_policy()
     if len(attempts) != len(accounting):
         raise ModelRoutingError("protected Pi terminal failure attempts and accounting disagree")
-    if [attempt["order"] for attempt in attempts] != list(range(1, len(attempts) + 1)):
+    if any(type(attempt.get("order")) is not int for attempt in attempts) or [
+        attempt["order"] for attempt in attempts
+    ] != list(range(1, len(attempts) + 1)):
         raise ModelRoutingError("protected Pi terminal failure route order is invalid")
     expected_models = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]][:len(attempts)]
     attempt_models = [
@@ -763,6 +765,12 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
     decision_ids: set[str] = set()
     excluded_models: set[str] = set()
     for attempt, counted in zip(attempts, accounting):
+        if (
+            type(attempt.get("invocation_count")) is not int
+            or type(counted.get("invocation_count")) is not int
+            or type(counted.get("outcome_count")) is not int
+        ):
+            raise ModelRoutingError("protected Pi terminal failure accounting types are invalid")
         rejection = attempt.get("decision_rejection")
         if rejection is not None:
             if (
@@ -803,6 +811,14 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
             raise ModelRoutingError("protected Pi terminal failure attempt accounting is inconsistent")
         excluded_models.add(decision_model)
     final_attempt = attempts[-1]
+    final_accounting = accounting[-1]
+    derived_terminal_accounting = {
+        "invocation_count": final_attempt["invocation_count"],
+        "outcome_count": final_accounting["outcome_count"],
+        "outcome_report_state": final_attempt["outcome_report_state"],
+    }
+    if not _strict_json_equal(record["terminal_accounting"], derived_terminal_accounting):
+        raise ModelRoutingError("protected Pi terminal accounting summary is inconsistent")
     if record["failure_kind"] == "all-candidates-failed":
         if len(attempts) != len(STANDARD_MODELS) or any(
             attempt["invocation_outcome"] != "failure" or attempt["outcome_report_state"] != "recorded"
@@ -870,6 +886,8 @@ def _terminal_failure_record(
     candidate_tree_oid: str,
     successful_probe_record: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    final_attempt = failure.evidence["route_attempts"][-1]
+    final_accounting = failure.evidence["attempt_accounting"][-1]
     record = {
         "schema_version": "1",
         "record_id": str(uuid.uuid4()),
@@ -889,6 +907,11 @@ def _terminal_failure_record(
             "candidate_tree_oid": candidate_tree_oid,
         },
         **failure.evidence,
+        "terminal_accounting": {
+            "invocation_count": final_attempt["invocation_count"],
+            "outcome_count": final_accounting["outcome_count"],
+            "outcome_report_state": final_attempt["outcome_report_state"],
+        },
         "successful_probe_record": successful_probe_record,
         "successful_probe_record_sha256": (
             canonical_json_sha256(successful_probe_record) if successful_probe_record is not None else ""
