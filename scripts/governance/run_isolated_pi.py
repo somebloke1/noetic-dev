@@ -66,6 +66,7 @@ CREDENTIAL_ENV_NAMES = {
 }
 ENV_ALLOWLIST = ["HOME", "PI_CODING_AGENT_DIR", "PI_TELEMETRY", "PI_SKIP_VERSION_CHECK", "LITELLM_API_KEY"]
 PI_CONFIG_MOUNT = Path("/tmp/pi-agent")
+MAX_ROUTED_PI_TIMEOUT = 900
 PI_JSONL_EVENT_TYPES = {
     "session",
     "agent_start", "agent_end", "turn_start", "turn_end",
@@ -1085,8 +1086,8 @@ def run_routed_pi_lifecycle(
     """Run the authority-bearing lifecycle in a fresh isolated interpreter."""
     if decision_claim_dir is None:
         raise RuntimeError("a protected cross-process decision claim directory is required")
-    if timeout < 1:
-        raise RuntimeError("routed Pi timeout must be positive")
+    if type(timeout) is not int or not 1 <= timeout <= MAX_ROUTED_PI_TIMEOUT:
+        raise RuntimeError(f"routed Pi timeout must be an integer from 1 to {MAX_ROUTED_PI_TIMEOUT}")
     request = {
         "role": role,
         "run_id": run_id,

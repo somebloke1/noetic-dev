@@ -219,6 +219,23 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                 )
         self.assertEqual(captured["timeout"], 1_320)
 
+    def test_outer_worker_timeout_rejects_non_integer_and_unbounded_values(self):
+        invalid = [True, False, 0, 901, 1.0, float("nan"), float("inf")]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prompt = root / "prompt.md"
+            prompt.write_text("Review", encoding="utf-8")
+            for timeout in invalid:
+                with self.subTest(timeout=timeout), self.assertRaisesRegex(
+                    RuntimeError, "integer from 1 to 900"
+                ):
+                    run_routed_pi_lifecycle(
+                        role="qa", run_id="run", role_run_id="qa-1", tools=[],
+                        prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-1",
+                        candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
+                        timeout=timeout, decision_claim_dir=root / "claims",
+                    )
+
     def test_cross_process_decision_claim_is_atomic_and_durable(self):
         with tempfile.TemporaryDirectory() as directory:
             claim_dir = Path(directory) / "claims"
