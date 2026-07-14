@@ -436,3 +436,18 @@ Exactly one protected Pi QA lifecycle reviewed immutable candidate da5f9fa2a2fba
 
 Exactly one protected Pi QA lifecycle reviewed immutable candidate d83982e3d29e1394f2ab0667448f11496153ebd8 through LiteLLM-served Terra/high. READY decision d-20260714-000061 and execution decision d-20260714-000062 completed with recorded success; QA returned CHANGES_NEEDED with two verified gaps. If schema validation is bypassed, Python equality lets False or 0.0 satisfy zero-invocation rejected-attempt and matching-accounting checks, so runtime defense is not type-strict. Separately, Draft-07 enumerates terminal kinds but does not independently relate claim-failed, decision-replayed, or outcome-reporting-failed to the required final invocation/outcome/report state. Probe SHA-256 fc71e0dec1f5b711ccdfacb41445706bf5b16d97b139b07261a087548f9cad9d; execution SHA-256 10f7256e176275992988d7d08cae9968e26aa5a3ca4291282dc6e98e0ae39853.
 <!-- governance-crud:end id=k-20260714-0016 -->
+
+<!-- governance-crud:start id=k-20260714-0017 -->
+## k-20260714-0017: PR #31 terminal-accounting QA exposed Draft-07 integral-float semantics
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,draft-07,integral-float,terminal-evidence
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974166847
+- Confidence: high
+
+Exactly one protected Pi QA lifecycle reviewed immutable candidate 20474911bbc2b8aceb28b21ece2469685ea01e7a through LiteLLM-served Terra/high. READY decision d-20260714-000063 and execution decision d-20260714-000064 completed with one invocation and one recorded outcome each; QA returned CHANGES_NEEDED. Standards-compliant Draft-07 treats integral JSON numbers such as 0.0 and 1.0 as integers and as numerically equal to integer const/enum values. Therefore the numeric terminal_accounting schema accepts integral-float summary counts even though runtime type-strict recomputation rejects them. Probe SHA-256 4a7bfb1493e10d946d3521fc6797f27ef7da2c5f5f0858fc84f4d45fc9dc6aa5; execution SHA-256 74808007d3c83d4ab5d8a6433173d6e2fdcdf2eabe6fc670a5fe63271cdcf4c4.
+<!-- governance-crud:end id=k-20260714-0017 -->

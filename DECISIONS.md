@@ -376,3 +376,18 @@ The atomic claim primitive SHALL raise a dedicated replay exception only for an 
 
 Every protected Pi terminal record SHALL include a required `terminal_accounting` object containing final invocation_count, outcome_count, and outcome_report_state. Runtime validation SHALL type-strictly derive and compare that object against the final route-attempt and attempt-accounting entries, and SHALL independently type-check every order/count before equality. Draft-07 conditionals SHALL bind each failure kind: decision-replayed=0/0/not-attempted; claim-failed=0/1/recorded; decision-rejected=0/1/recorded; outcome-reporting-failed=outcome 0/failed with invocation 0 or 1; all-candidates-failed=outcome 1/recorded with invocation 0 or 1. This summary is redundant intentionally so schema validation and runtime semantic validation each enforce final-state relations without relying on Python numeric coercion.
 <!-- governance-crud:end id=dec-20260714-0009 -->
+
+<!-- governance-crud:start id=dec-20260714-0010 -->
+## dec-20260714-0010: Encode terminal summary counts as canonical decimal strings
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,terminal-evidence,draft-07,canonical-decimal,type-strict
+- Source: k-20260714-0017;DECISIONS.md#dec-20260714-0009;docs/governance/delivery-governance.md
+- Confidence: high
+
+The redundant terminal_accounting summary SHALL encode invocation_count and outcome_count as canonical decimal strings "0" or "1", while route_attempts and attempt_accounting retain numeric counts. Draft-07 SHALL constrain those summary strings with string const/enum values, so booleans and numeric 0, 0.0, 1, and 1.0 are rejected independently of implementation-language numeric semantics. Runtime SHALL first require exact integer types for source attempt/accounting counts, derive canonical summary strings from those validated integers, and compare the complete summary type-strictly. This is narrowly scoped to the redundant schema-bound summary and does not change successful protected evidence or delivery accounting.
+<!-- governance-crud:end id=dec-20260714-0010 -->

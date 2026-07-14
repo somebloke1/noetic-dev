@@ -813,8 +813,8 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
     final_attempt = attempts[-1]
     final_accounting = accounting[-1]
     derived_terminal_accounting = {
-        "invocation_count": final_attempt["invocation_count"],
-        "outcome_count": final_accounting["outcome_count"],
+        "invocation_count": str(final_attempt["invocation_count"]),
+        "outcome_count": str(final_accounting["outcome_count"]),
         "outcome_report_state": final_attempt["outcome_report_state"],
     }
     if not _strict_json_equal(record["terminal_accounting"], derived_terminal_accounting):
@@ -908,8 +908,8 @@ def _terminal_failure_record(
         },
         **failure.evidence,
         "terminal_accounting": {
-            "invocation_count": final_attempt["invocation_count"],
-            "outcome_count": final_accounting["outcome_count"],
+            "invocation_count": str(final_attempt["invocation_count"]),
+            "outcome_count": str(final_accounting["outcome_count"]),
             "outcome_report_state": final_attempt["outcome_report_state"],
         },
         "successful_probe_record": successful_probe_record,

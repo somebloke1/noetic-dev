@@ -335,7 +335,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         record["route_attempts"][0]["decision_rejection"] = rejection
         record["route_attempts"][0]["invocation_count"] = 0
         record["attempt_accounting"][0]["invocation_count"] = 0
-        record["terminal_accounting"]["invocation_count"] = 0
+        record["terminal_accounting"]["invocation_count"] = "0"
         _validate_terminal_failure_record(record)
 
     def test_replayed_decision_does_not_report_a_second_outcome(self):
@@ -351,8 +351,8 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         record["route_attempts"][0]["outcome_report_state"] = "not-attempted"
         record["attempt_accounting"][0]["invocation_count"] = 0
         record["terminal_accounting"] = {
-            "invocation_count": 0,
-            "outcome_count": 0,
+            "invocation_count": "0",
+            "outcome_count": "0",
             "outcome_report_state": "not-attempted",
         }
         _validate_terminal_failure_record(record)
@@ -369,8 +369,8 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         record["attempt_accounting"][0]["invocation_count"] = 0
         record["attempt_accounting"][0]["outcome_count"] = 1
         record["terminal_accounting"] = {
-            "invocation_count": 0,
-            "outcome_count": 1,
+            "invocation_count": "0",
+            "outcome_count": "1",
             "outcome_report_state": "recorded",
         }
         _validate_terminal_failure_record(record)
@@ -386,7 +386,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         }
         record["route_attempts"][0]["invocation_count"] = 0
         record["attempt_accounting"][0]["invocation_count"] = 0
-        record["terminal_accounting"]["invocation_count"] = 0
+        record["terminal_accounting"]["invocation_count"] = "0"
         with mock.patch("run_isolated_pi.validate_schema", return_value=[]), self.assertRaisesRegex(
             isolated_pi.ModelRoutingError, "terminal decision rejection is invalid"
         ):
@@ -406,8 +406,8 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             record["route_attempts"][0]["outcome_report_state"] = "not-attempted"
             record["attempt_accounting"][0]["invocation_count"] = malformed
             record["terminal_accounting"] = {
-                "invocation_count": 0,
-                "outcome_count": 0,
+                "invocation_count": "0",
+                "outcome_count": "0",
                 "outcome_report_state": "not-attempted",
             }
             with self.subTest(malformed=malformed), mock.patch(
@@ -419,11 +419,11 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
 
     def test_terminal_kind_schema_binds_final_accounting_state(self):
         mutations = [
-            ("decision-replayed", {"invocation_count": 0, "outcome_count": 1, "outcome_report_state": "not-attempted"}),
-            ("claim-failed", {"invocation_count": 0, "outcome_count": 0, "outcome_report_state": "recorded"}),
-            ("decision-rejected", {"invocation_count": 0, "outcome_count": 1, "outcome_report_state": "failed"}),
-            ("outcome-reporting-failed", {"invocation_count": 0, "outcome_count": 1, "outcome_report_state": "failed"}),
-            ("all-candidates-failed", {"invocation_count": 1, "outcome_count": 0, "outcome_report_state": "recorded"}),
+            ("decision-replayed", {"invocation_count": "0", "outcome_count": "1", "outcome_report_state": "not-attempted"}),
+            ("claim-failed", {"invocation_count": "0", "outcome_count": "0", "outcome_report_state": "recorded"}),
+            ("decision-rejected", {"invocation_count": "0", "outcome_count": "1", "outcome_report_state": "failed"}),
+            ("outcome-reporting-failed", {"invocation_count": "0", "outcome_count": "1", "outcome_report_state": "failed"}),
+            ("all-candidates-failed", {"invocation_count": "1", "outcome_count": "0", "outcome_report_state": "recorded"}),
         ]
         for kind, terminal_accounting in mutations:
             record = self.terminal_failure_record(outcome_reporting_failed=True)
@@ -431,6 +431,27 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             record["terminal_accounting"] = terminal_accounting
             with self.subTest(kind=kind), self.assertRaisesRegex(
                 isolated_pi.ModelRoutingError, "terminal failure record is invalid"
+            ):
+                _validate_terminal_failure_record(record)
+
+    def test_terminal_summary_schema_rejects_numeric_and_noncanonical_counts(self):
+        for field in ["invocation_count", "outcome_count"]:
+            for malformed in [False, True, 0, 1, 0.0, 1.0, None, -1, 2, "00"]:
+                record = self.terminal_failure_record()
+                record["terminal_accounting"][field] = malformed
+                with self.subTest(field=field, malformed=malformed), self.assertRaisesRegex(
+                    isolated_pi.ModelRoutingError, "terminal failure record is invalid"
+                ):
+                    _validate_terminal_failure_record(record)
+
+    def test_runtime_rejects_numeric_terminal_summary_if_schema_is_bypassed(self):
+        for malformed in [False, 1, 1.0]:
+            record = self.terminal_failure_record()
+            record["terminal_accounting"]["invocation_count"] = malformed
+            with self.subTest(malformed=malformed), mock.patch(
+                "run_isolated_pi.validate_schema", return_value=[]
+            ), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "terminal accounting summary is inconsistent"
             ):
                 _validate_terminal_failure_record(record)
 

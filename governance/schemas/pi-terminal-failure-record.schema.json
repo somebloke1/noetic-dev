@@ -116,8 +116,8 @@
       "additionalProperties": false,
       "required": ["invocation_count", "outcome_count", "outcome_report_state"],
       "properties": {
-        "invocation_count": {"type": "integer", "enum": [0, 1]},
-        "outcome_count": {"type": "integer", "enum": [0, 1]},
+        "invocation_count": {"type": "string", "enum": ["0", "1"]},
+        "outcome_count": {"type": "string", "enum": ["0", "1"]},
         "outcome_report_state": {"type": "string", "enum": ["recorded", "failed", "not-attempted"]}
       }
     },
@@ -147,31 +147,31 @@
     {
       "if": {"properties": {"failure_kind": {"const": "decision-replayed"}}, "required": ["failure_kind"]},
       "then": {"properties": {"terminal_accounting": {"properties": {
-        "invocation_count": {"const": 0}, "outcome_count": {"const": 0}, "outcome_report_state": {"const": "not-attempted"}
+        "invocation_count": {"const": "0"}, "outcome_count": {"const": "0"}, "outcome_report_state": {"const": "not-attempted"}
       }}}}
     },
     {
       "if": {"properties": {"failure_kind": {"const": "claim-failed"}}, "required": ["failure_kind"]},
       "then": {"properties": {"terminal_accounting": {"properties": {
-        "invocation_count": {"const": 0}, "outcome_count": {"const": 1}, "outcome_report_state": {"const": "recorded"}
+        "invocation_count": {"const": "0"}, "outcome_count": {"const": "1"}, "outcome_report_state": {"const": "recorded"}
       }}}}
     },
     {
       "if": {"properties": {"failure_kind": {"const": "decision-rejected"}}, "required": ["failure_kind"]},
       "then": {"properties": {"terminal_accounting": {"properties": {
-        "invocation_count": {"const": 0}, "outcome_count": {"const": 1}, "outcome_report_state": {"const": "recorded"}
+        "invocation_count": {"const": "0"}, "outcome_count": {"const": "1"}, "outcome_report_state": {"const": "recorded"}
       }}}}
     },
     {
       "if": {"properties": {"failure_kind": {"const": "outcome-reporting-failed"}}, "required": ["failure_kind"]},
       "then": {"properties": {"terminal_accounting": {"properties": {
-        "invocation_count": {"enum": [0, 1]}, "outcome_count": {"const": 0}, "outcome_report_state": {"const": "failed"}
+        "invocation_count": {"enum": ["0", "1"]}, "outcome_count": {"const": "0"}, "outcome_report_state": {"const": "failed"}
       }}}}
     },
     {
       "if": {"properties": {"failure_kind": {"const": "all-candidates-failed"}}, "required": ["failure_kind"]},
       "then": {"properties": {"terminal_accounting": {"properties": {
-        "invocation_count": {"enum": [0, 1]}, "outcome_count": {"const": 1}, "outcome_report_state": {"const": "recorded"}
+        "invocation_count": {"enum": ["0", "1"]}, "outcome_count": {"const": "1"}, "outcome_report_state": {"const": "recorded"}
       }}}}
     }
   ]
