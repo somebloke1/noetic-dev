@@ -331,3 +331,18 @@ Exactly one model-invoking independent QA lifecycle reviewed immutable candidate
 
 Exactly one adversarial QA execution reviewed immutable candidate a7da93da9e053579ddf7a521f126c77cd9b5819f through protected Pi and Terra/high after a separately adjudicated READY-only availability failure. READY decision d-20260714-000045 and execution decision d-20260714-000046 completed with recorded success. QA returned changes-needed because qa-probe-record schema role and qa_for_pass_id accepted empty or arbitrary strings, while generation used qa_for_pass_id or empty string. Thus a rehashed schema-valid READY record could lack semantic role/generation identity. The QA confirmed the explicit route-order and success-with-zero-invocation checks addressed the prior mutations. Protected probe SHA-256 4e490f656f2877a4769fc794bbf48616ac6c4dc98d015f70f3547f3ae0cc1a61; execution SHA-256 d0a67151bb693231d692607444cd4f498e79d777df7a2ce2d63c278685eb6d11.
 <!-- governance-crud:end id=k-20260714-0009 -->
+
+<!-- governance-crud:start id=k-20260714-0010 -->
+## k-20260714-0010: PR #31 QA exposed whitespace-only READY generation identity
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,readiness,identity,whitespace
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4973506915
+- Confidence: high
+
+Exactly one adversarial QA pass reviewed immutable candidate 081d386e5ede54648027edefb262ca38cbe56cb2 through Pi using LiteLLM-served Terra/high. READY decision d-20260714-000047 and execution decision d-20260714-000048 completed with recorded success. QA returned changes-needed because schema minLength 1 and runtime truthiness accepted whitespace-only qa_for_pass_id values, allowing semantically absent generation identity. The role enum, conditional shape, wrong-type checks, and non-QA generation rejection survived the requested attacks. Protected probe SHA-256 d5c9c0d643cabbb486b25bce71a8403a93d1f5bafd643d0cef458a7e79e8ffa1; execution SHA-256 75ac5f4ed09c8d395fbda6fd826b7c3107d3d1d248dbf5437e8150bb0ac733b7.
+<!-- governance-crud:end id=k-20260714-0010 -->

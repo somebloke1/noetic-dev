@@ -106,7 +106,7 @@
         "properties": {"role": {"const": "qa"}}
       },
       "then": {
-        "properties": {"qa_for_pass_id": {"type": "string", "minLength": 1}}
+        "properties": {"qa_for_pass_id": {"type": "string", "pattern": "^\\S+$"}}
       },
       "else": {
         "properties": {"qa_for_pass_id": {"type": "string", "const": ""}}

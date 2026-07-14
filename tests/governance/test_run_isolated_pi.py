@@ -559,8 +559,10 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         _require_validated_identity("validator", None)
         _require_validated_identity("validator", "")
         for role, qa_for, expected in [
-            ("qa", None, "non-empty"),
-            ("qa", "", "non-empty"),
+            ("qa", None, "non-whitespace"),
+            ("qa", "", "non-whitespace"),
+            ("qa", "   ", "non-whitespace"),
+            ("qa", "implementation 1", "non-whitespace"),
             ("future-role", "implementation-1", "role is invalid"),
             ("validator", "implementation-1", "cannot claim"),
         ]:
@@ -572,7 +574,13 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         manifest = json.loads((ROOT / "tests/governance/fixtures/valid_advisory_manifest.json").read_text())
         probe = manifest["qa"]["records"][0]["protected_probe_record"]
         self.assertEqual(isolated_pi.validate_schema(probe, schema), [])
-        mutations = [("role", ""), ("role", "future-role"), ("qa_for_pass_id", "")]
+        mutations = [
+            ("role", ""),
+            ("role", "future-role"),
+            ("qa_for_pass_id", ""),
+            ("qa_for_pass_id", "   "),
+            ("qa_for_pass_id", "implementation 1"),
+        ]
         for field, value in mutations:
             mutated = json.loads(json.dumps(probe))
             mutated[field] = value

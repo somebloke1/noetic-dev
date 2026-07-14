@@ -133,8 +133,12 @@ def _require_validated_identity(role: str, qa_for_pass_id: Optional[str]) -> Non
     if role not in ROLE_TOOL_ALLOWLISTS:
         raise RuntimeError("routed Pi role is invalid")
     if role == "qa":
-        if not isinstance(qa_for_pass_id, str) or not qa_for_pass_id:
-            raise RuntimeError("routed QA requires a non-empty qa_for_pass_id")
+        if (
+            not isinstance(qa_for_pass_id, str)
+            or not qa_for_pass_id
+            or any(char.isspace() for char in qa_for_pass_id)
+        ):
+            raise RuntimeError("routed QA requires a non-whitespace qa_for_pass_id")
     elif qa_for_pass_id not in (None, ""):
         raise RuntimeError("non-QA routed Pi cannot claim a QA generation")
 
