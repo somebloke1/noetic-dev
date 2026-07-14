@@ -70,6 +70,7 @@ ENV_ALLOWLIST = ["HOME", "PI_CODING_AGENT_DIR", "PI_TELEMETRY", "PI_SKIP_VERSION
 PI_CONFIG_MOUNT = Path("/tmp/pi-agent")
 MAX_ROUTED_PI_TIMEOUT = 900
 QA_FOR_PASS_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+PI_DECISION_CLAIM_DIR = Path("/var/tmp") / f"noetic-dev-pi-decision-claims-{os.getuid()}"
 PI_JSONL_EVENT_TYPES = {
     "session",
     "agent_start", "agent_end", "turn_start", "turn_end",
@@ -732,6 +733,9 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
     errors = validate_schema(record, schema)
     if errors:
         raise ModelRoutingError(f"protected Pi terminal failure record is invalid: {errors[0]}")
+    binding = record["candidate_binding"]
+    if record["role"] == "qa" and not all(re_full_sha(binding[field]) for field in binding):
+        raise ModelRoutingError("protected QA terminal failure candidate binding is incomplete")
 
     attempts = record["route_attempts"]
     accounting = record["attempt_accounting"]
@@ -941,6 +945,10 @@ def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
         os.close(directory_fd)
 
 
+def _claim_authority_decision_id(decision_id: str) -> None:
+    _claim_decision_id(PI_DECISION_CLAIM_DIR, decision_id)
+
+
 def _make_routed_pi_lifecycle():
     def route_operation(
         *,
@@ -952,7 +960,6 @@ def _make_routed_pi_lifecycle():
         cwd: Optional[Path],
         timeout: int,
         expected_response: Optional[str],
-        decision_claim_dir: Path,
     ) -> _RoutedRunResult:
         policy = load_policy()
         operation_contract = _authoritative_qa_pi_contract(policy)
@@ -987,7 +994,7 @@ def _make_routed_pi_lifecycle():
             decision_id = raw_decision.get("decision_id") if isinstance(raw_decision, dict) else None
             try:
                 decision = validate_decision(raw_decision, policy, set(excluded))
-                _claim_decision_id(decision_claim_dir, decision["decision_id"])
+                _claim_authority_decision_id(decision["decision_id"])
             except Exception as error:
                 if isinstance(decision_id, str) and decision_id:
                     _report_outcome(
@@ -1161,12 +1168,9 @@ def _make_routed_pi_lifecycle():
         candidate_tree_oid: str,
         timeout: int,
         perform_probe: bool = False,
-        decision_claim_dir: Optional[Path] = None,
     ) -> _RoutedPiLifecycleResult:
         _require_validated_identity(role, qa_for_pass_id)
         _require_validated_tools(role, tools)
-        if decision_claim_dir is None:
-            raise RuntimeError("a protected cross-process decision claim directory is required")
         try:
             prompt_text = prompt_file.read_text(encoding="utf-8", errors="strict")
         except (OSError, UnicodeError) as error:
@@ -1190,7 +1194,6 @@ def _make_routed_pi_lifecycle():
                     cwd=candidate_dir,
                     timeout=min(timeout, 120),
                     expected_response=expected,
-                    decision_claim_dir=decision_claim_dir,
                 )
             except _RoutedOperationFailure as failure:
                 record = _terminal_failure_record(
@@ -1260,7 +1263,6 @@ def _make_routed_pi_lifecycle():
                 cwd=candidate_dir,
                 timeout=timeout,
                 expected_response=None,
-                decision_claim_dir=decision_claim_dir,
             )
         except _RoutedOperationFailure as failure:
             record = _terminal_failure_record(
@@ -1378,11 +1380,8 @@ def run_routed_pi_lifecycle(
     candidate_tree_oid: str,
     timeout: int,
     perform_probe: bool = False,
-    decision_claim_dir: Optional[Path] = None,
 ) -> _RoutedPiLifecycleResult:
     """Run the authority-bearing lifecycle in a fresh isolated interpreter."""
-    if decision_claim_dir is None:
-        raise RuntimeError("a protected cross-process decision claim directory is required")
     if type(timeout) is not int or not 1 <= timeout <= MAX_ROUTED_PI_TIMEOUT:
         raise RuntimeError(f"routed Pi timeout must be an integer from 1 to {MAX_ROUTED_PI_TIMEOUT}")
     request = {
@@ -1398,7 +1397,6 @@ def run_routed_pi_lifecycle(
         "candidate_tree_oid": candidate_tree_oid,
         "timeout": timeout,
         "perform_probe": perform_probe,
-        "decision_claim_dir": str(decision_claim_dir.resolve()),
     }
     with tempfile.TemporaryDirectory(prefix="pi-authority-worker-") as directory:
         root = Path(directory)
@@ -1726,7 +1724,6 @@ def main() -> int:
             candidate_tree_oid=candidate_tree,
             timeout=args.timeout,
             perform_probe=args.probe,
-            decision_claim_dir=args.output_dir / ".decision-claims",
         )
         probe_record = lifecycle.probe_record
         if probe_record is not None:
@@ -1780,7 +1777,7 @@ if __name__ == "__main__":
             required = {
                 "role", "run_id", "role_run_id", "tools", "prompt_file", "candidate_dir",
                 "qa_for_pass_id", "candidate_sha", "base_sha", "candidate_tree_oid", "timeout",
-                "perform_probe", "decision_claim_dir",
+                "perform_probe",
             }
             if not isinstance(worker_request, dict) or set(worker_request) != required:
                 raise RuntimeError("invalid authority worker request")
@@ -1797,7 +1794,6 @@ if __name__ == "__main__":
                 candidate_tree_oid=worker_request["candidate_tree_oid"],
                 timeout=worker_request["timeout"],
                 perform_probe=worker_request["perform_probe"],
-                decision_claim_dir=Path(worker_request["decision_claim_dir"]),
             )
             write_json(Path(sys.argv[3]), {
                 "status": "success",

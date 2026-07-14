@@ -23,6 +23,7 @@ if GOV_SCRIPTS not in sys.path:
 
 import run_isolated_pi as isolated_pi  # noqa: E402
 from run_isolated_pi import (  # noqa: E402
+    PI_DECISION_CLAIM_DIR,
     PI_JSONL_EVENT_TYPES,
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
@@ -223,6 +224,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             captured["command"] = command
             captured["env"] = kwargs["env"]
             captured["timeout"] = kwargs["timeout"]
+            captured["request"] = json.loads(Path(command[-2]).read_text(encoding="utf-8"))
             Path(command[-1]).write_text(json.dumps({
                 "status": "success",
                 "probe_record": None,
@@ -241,11 +243,12 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     role="validator", run_id="run", role_run_id="validator-1", tools=[],
                     prompt_file=prompt, candidate_dir=None, qa_for_pass_id=None,
                     candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="",
-                    timeout=1, decision_claim_dir=root / "claims",
+                    timeout=1,
                 )
         self.assertEqual(captured["command"][1], "-I")
         self.assertEqual(captured["command"][3], "--routed-worker")
         self.assertEqual(captured["timeout"], 63)
+        self.assertNotIn("decision_claim_dir", captured["request"])
         self.assertEqual(result.execution_record["actual_invocation"]["authority_process"], "fresh-isolated-worker")
         self.assertNotIn("UNRELATED_SECRET", captured["env"])
 
@@ -271,7 +274,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     role="qa", run_id="run-terminal", role_run_id="qa-terminal", tools=[],
                     prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-terminal",
                     candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
-                    timeout=1, decision_claim_dir=root / "claims",
+                    timeout=1,
                 )
         self.assertEqual(raised.exception.record, record)
 
@@ -298,7 +301,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     role="qa", run_id="run-terminal", role_run_id="qa-terminal", tools=[],
                     prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-terminal",
                     candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
-                    timeout=1, decision_claim_dir=root / "claims",
+                    timeout=1,
                 )
 
     def test_terminal_failure_rejects_reordered_models_and_success_without_invocation(self):
@@ -318,6 +321,15 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         impossible_success["attempt_accounting"][-1]["invocation_count"] = 0
         with self.assertRaisesRegex(isolated_pi.ModelRoutingError, "accounting is inconsistent"):
             _validate_terminal_failure_record(impossible_success)
+
+    def test_qa_terminal_failure_requires_complete_candidate_binding(self):
+        for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
+            record = self.terminal_failure_record()
+            record["candidate_binding"][field] = ""
+            with self.subTest(field=field), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "terminal failure record is invalid"
+            ):
+                _validate_terminal_failure_record(record)
 
     def test_terminal_failure_writer_persists_record_and_digest_before_failure_return(self):
         record = self.terminal_failure_record(outcome_reporting_failed=True)
@@ -401,7 +413,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                     role="qa", run_id="run", role_run_id="qa-1", tools=[],
                     prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-1",
                     candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
-                    timeout=300, decision_claim_dir=root / "claims",
+                    timeout=300,
                 )
         self.assertEqual(captured["timeout"], 1_320)
 
@@ -419,7 +431,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                         role="qa", run_id="run", role_run_id="qa-1", tools=[],
                         prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-1",
                         candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
-                        timeout=timeout, decision_claim_dir=root / "claims",
+                        timeout=timeout,
                     )
 
     def test_cross_process_decision_claim_is_atomic_and_durable(self):
@@ -437,6 +449,24 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             child = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
         self.assertNotEqual(child.returncode, 0)
         self.assertIn("replayed", child.stderr)
+
+    def test_authority_decision_claim_namespace_is_independent_of_output_directory(self):
+        self.assertEqual(
+            PI_DECISION_CLAIM_DIR,
+            Path("/var/tmp") / f"noetic-dev-pi-decision-claims-{os.getuid()}",
+        )
+        self.assertNotIn("decision_claim_dir", inspect.signature(run_routed_pi_lifecycle).parameters)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            claim_dir = root / "authority-claims"
+            with mock.patch.object(isolated_pi, "PI_DECISION_CLAIM_DIR", claim_dir):
+                for output_dir in [root / "output-a", root / "output-b"]:
+                    output_dir.mkdir()
+                    if output_dir.name == "output-a":
+                        isolated_pi._claim_authority_decision_id("d-20260713-999994")
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "replayed"):
+                            isolated_pi._claim_authority_decision_id("d-20260713-999994")
 
     def test_authoritative_pi_contract_is_consumed_and_attempts_are_bounded(self):
         policy = json.loads((ROOT / "config" / "model-policy.json").read_text())

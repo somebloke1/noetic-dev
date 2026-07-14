@@ -376,3 +376,18 @@ Exactly one adversarial QA pass reviewed immutable candidate ad06871eba0d78823db
 
 A local exact-head candidate-broker review request for PR #31 at 8c2ee47a2a0f76bdefc1b50fce8fd135eacc44e0 failed before route selection with `command output exceeded its byte limit`. Verified Git output for protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc through head 8c2ee47 is 710,373 bytes across 46 files. The broker's MAX_PATCH_BYTES is 700,000, while its separately enforced assembled model-input bound remains 750,000. This is deterministic capture-envelope drift, not a model failure or semantic verdict.
 <!-- governance-crud:end id=k-20260714-0012 -->
+
+<!-- governance-crud:start id=k-20260714-0013 -->
+## k-20260714-0013: PR #31 exact-head review exposed output-scoped replay claims and empty QA terminal binding
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,agent-review,replay,candidate-binding
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4973745952
+- Confidence: high
+
+A candidate-broker semantic review of immutable head dca92be40c189c1fc6071a3bd83b1af3251b358f against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000055 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. The review identified two reproducible requirement-7 gaps: run_isolated_pi.py derives its decision-claim directory from caller-selected output_dir, so selecting another output directory creates a fresh anti-replay namespace; and the terminal-failure schema permits empty candidate_sha, base_sha, and candidate_tree_oid even for role qa, so empty immutable candidate binding remains schema-valid. Result SHA-256 341075947bd4dbd49acbb6c556ccdb47be5c9e5fa2a5689b34ce56c04444b465.
+<!-- governance-crud:end id=k-20260714-0013 -->

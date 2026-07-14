@@ -316,3 +316,18 @@ Retain the complete genus-router attempt sequence for independent approval, incl
 
 Raise `MAX_PATCH_BYTES` from 700,000 to 725,000 so the verified 710,373-byte PR #31 exact-head diff can be captured. Keep `MAX_REVIEW_PROMPT_BYTES == MAX_MODEL_INPUT_BYTES == 750,000` as the authoritative assembled UTF-8 prompt gate, retain the 500-file cap, and continue rejecting over-limit subprocess output before it is buffered. Serialize bounded PR metadata as JSON, then append the validated UTF-8 patch as an untrusted tail extending to end-of-prompt rather than JSON-escaping the patch; the fixed instruction declares all following bytes untrusted and no closing delimiter exists for candidate data to escape. This removes transport-only escaping overhead without omitting review content or weakening injection framing. This narrowly updates dec-20260714-0002's now-stale capture/framing mechanics; it does not enlarge the model-input contract or promise that every captured patch is admissible after metadata and framing are added.
 <!-- governance-crud:end id=dec-20260714-0005 -->
+
+<!-- governance-crud:start id=dec-20260714-0006 -->
+## dec-20260714-0006: Use one non-configurable per-authority Pi decision-claim namespace
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,replay,candidate-binding,authority
+- Source: k-20260714-0013;docs/model-routing-policy.md;docs/governance/delivery-governance.md
+- Confidence: high
+
+Protected Pi decision claims SHALL use one fixed per-UID authority namespace under /var/tmp, independent of output, run, candidate, or caller-selected paths. The public lifecycle and worker request SHALL NOT accept a decision-claim directory. Existing owner, mode, no-follow, atomic-create, file-sync, and directory-sync checks remain mandatory. /var/tmp supplies cross-process and cross-reboot persistence without requiring privilege for local QA; per-UID naming separates authority users. Protected role=qa terminal-failure records SHALL additionally require full lowercase 40-character candidate SHA, base SHA, and candidate tree OID in both runtime and Draft-07 validation while non-QA terminal records retain optional bindings.
+<!-- governance-crud:end id=dec-20260714-0006 -->

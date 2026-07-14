@@ -27,7 +27,7 @@
     "schema_version": {"type": "string", "const": "1"},
     "record_id": {"type": "string", "minLength": 1},
     "run_id": {"type": "string", "minLength": 1},
-    "role": {"type": "string", "minLength": 1},
+    "role": {"type": "string", "enum": ["qa", "planner", "validator", "publisher", "orchestrator"]},
     "role_run_id": {"type": "string", "minLength": 1},
     "qa_for_pass_id": {"type": "string"},
     "evidence_class": {"type": "string", "const": "terminal-failure"},
@@ -102,5 +102,24 @@
     "successful_probe_record_sha256": {"type": "string", "pattern": "^$|^[a-f0-9]{64}$"},
     "started_at": {"type": "string", "minLength": 1},
     "finished_at": {"type": "string", "minLength": 1}
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"role": {"const": "qa"}},
+        "required": ["role"]
+      },
+      "then": {
+        "properties": {
+          "candidate_binding": {
+            "properties": {
+              "candidate_sha": {"pattern": "^[a-f0-9]{40}$"},
+              "base_sha": {"pattern": "^[a-f0-9]{40}$"},
+              "candidate_tree_oid": {"pattern": "^[a-f0-9]{40}$"}
+            }
+          }
+        }
+      }
+    }
+  ]
 }
