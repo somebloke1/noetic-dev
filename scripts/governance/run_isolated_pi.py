@@ -36,6 +36,7 @@ from model_routing import (  # noqa: E402
     ModelRoutingError,
     STANDARD_MODELS,
     _report_outcome,
+    _strict_json_equal,
     create_router_service,
     load_litellm_key,
     load_policy,
@@ -688,7 +689,7 @@ class _OperationAttemptAccounting:
 def _authoritative_qa_pi_contract(policy: Dict[str, Any]) -> Dict[str, Any]:
     contracts = policy.get("execution_contracts")
     contract = contracts.get("authoritative_qa_pi") if isinstance(contracts, dict) else None
-    if contract != AUTHORITATIVE_QA_PI_CONTRACT:
+    if not _strict_json_equal(contract, AUTHORITATIVE_QA_PI_CONTRACT):
         raise ModelRoutingError("authoritative QA Pi execution contract is invalid")
     return {**contract, "operations": list(contract["operations"])}
 

@@ -647,6 +647,20 @@ class TestQaBindingFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("exceeded one invocation per decision", "\n".join(errors))
 
+    def test_pi_operation_contract_rejects_boolean_integer_confusion(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        qa = manifest["qa"]["records"][0]
+        actual = qa["protected_execution_record"]["actual_invocation"]
+        probe = qa["protected_probe_record"]
+        actual["operation_contract"]["maximum_invocations_per_decision"] = True
+        probe["operation_contract"]["maximum_invocations_per_decision"] = True
+        self._first_qa_with_rehashed_records(manifest)
+        passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
+        self.assertFalse(passed)
+        joined = "\n".join(errors)
+        self.assertIn("does not bind the authoritative QA Pi execution contract", joined)
+        self.assertIn("expected type integer, got boolean", joined)
+
     def test_probe_and_execution_timestamps_must_be_valid_and_ordered(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]

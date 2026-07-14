@@ -261,10 +261,11 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         self.assertEqual(contract["operations"], ["readiness_probe", "execution"])
         self.assertEqual(contract["maximum_invocations_per_decision"], 1)
 
-        mutated = json.loads(json.dumps(policy))
-        mutated["execution_contracts"]["authoritative_qa_pi"]["maximum_invocations_per_decision"] = 2
-        with self.assertRaisesRegex(RuntimeError, "execution contract is invalid"):
-            _authoritative_qa_pi_contract(mutated)
+        for invalid in [2, True]:
+            mutated = json.loads(json.dumps(policy))
+            mutated["execution_contracts"]["authoritative_qa_pi"]["maximum_invocations_per_decision"] = invalid
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(RuntimeError, "execution contract is invalid"):
+                _authoritative_qa_pi_contract(mutated)
 
         accounting = _OperationAttemptAccounting("execution", "d-20260713-999992", 1)
         accounting.record_invocation()

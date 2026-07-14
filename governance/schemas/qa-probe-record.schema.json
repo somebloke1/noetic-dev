@@ -50,7 +50,17 @@
     "authority_process": {"type": "string", "const": "fresh-isolated-worker"},
     "authority_worker_pid": {"type": "integer", "minimum": 1},
     "operation": {"type": "string", "const": "readiness_probe"},
-    "operation_contract": {"type": "object"},
+    "operation_contract": {
+      "type": "object",
+      "required": ["operations", "decision_scope", "maximum_invocations_per_decision", "report_outcome_scope"],
+      "additionalProperties": false,
+      "properties": {
+        "operations": {"type": "array", "const": ["readiness_probe", "execution"]},
+        "decision_scope": {"type": "string", "const": "per_operation"},
+        "maximum_invocations_per_decision": {"type": "integer", "const": 1},
+        "report_outcome_scope": {"type": "string", "const": "per_operation"}
+      }
+    },
     "attempt_accounting": {"type": "array", "minItems": 1, "items": {"type": "object"}},
     "route_evidence": {"type": "object"},
     "invoked_model_ref": {"type": "object"},

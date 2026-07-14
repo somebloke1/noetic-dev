@@ -36,7 +36,7 @@ from check_evidence_manifest import (  # noqa: E402
 )
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
-from model_routing import AUTHORITATIVE_QA_PI_CONTRACT, ModelRoutingError  # noqa: E402
+from model_routing import AUTHORITATIVE_QA_PI_CONTRACT, ModelRoutingError, _strict_json_equal  # noqa: E402
 from route_evidence import validate_route_evidence  # noqa: E402
 from run_isolated_pi import parse_pi_jsonl_final_assistant  # noqa: E402
 
@@ -399,7 +399,7 @@ def _check_pi_operation_accounting(
 ) -> None:
     if record.get("operation") != operation:
         errors.append(f"{label} operation does not match {operation}")
-    if record.get("operation_contract") != AUTHORITATIVE_QA_PI_CONTRACT:
+    if not _strict_json_equal(record.get("operation_contract"), AUTHORITATIVE_QA_PI_CONTRACT):
         errors.append(f"{label} does not bind the authoritative QA Pi execution contract")
 
     route_evidence = record.get("route_evidence")

@@ -241,3 +241,18 @@ An unprotected local PR #31 review at head 1033d24465a8b2a77cdfd5277c5e40e7f571f
 
 Exactly one model-invoking independent QA lifecycle reviewed immutable candidate 09dbe5ef27e14b54d4085b87981c2f27ae5269a7 through protected Pi and Terra/high. It returned changes-needed because authoritative_qa_pi was asserted as policy shape but not consumed by the protected Pi runtime, and the added tests would not reject a duplicate model invocation under one claimed decision. Probe decision d-20260714-000024 and execution decision d-20260714-000025 both completed and reported success; the protected probe and execution record SHA-256 values are 0779ee4adf13cdf54eecd0efd979ae2128ac72184755dfab4507296e53700733 and 02888b51a0e07cbab3823622994adbdf0517486af340d82adcbd5b04bb758adf.
 <!-- governance-crud:end id=k-20260714-0003 -->
+
+<!-- governance-crud:start id=k-20260714-0004 -->
+## k-20260714-0004: Independent QA found boolean/integer contract confusion
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,pi,type-safety
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4968771823
+- Confidence: high
+
+Exactly one model-invoking independent QA lifecycle reviewed immutable candidate ca2dc1d822f6e8f567af42a45c11f573ede384cf through protected Pi and Terra/high. It returned changes-needed because ordinary Python equality accepted JSON true as equal to integer 1 in both runtime authoritative_qa_pi contract consumption and delivery-gate record validation. Probe decision d-20260714-000026 and execution decision d-20260714-000027 both completed and reported success; the protected probe and execution record SHA-256 values are b885e9f3e5e3336f7599de4681adbe1386fffc7b286b3daf4eb03a8251fa5ef7 and 9b688f7fafe174124a042c3a4bdd188c96916b3094fcabb781ad3891ee7caedf.
+<!-- governance-crud:end id=k-20260714-0004 -->
