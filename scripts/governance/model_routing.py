@@ -374,6 +374,30 @@ def validate_decision(
     }
 
 
+def _rejected_decision_evidence(raw: Any, error: Exception) -> dict[str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+    decision_id = raw.get("decision_id")
+    model = raw.get("model")
+    if (
+        not isinstance(decision_id, str)
+        or not DECISION_ID.fullmatch(decision_id)
+        or not isinstance(model, str)
+        or model not in REVIEW_CANDIDATES
+    ):
+        return None
+    try:
+        digest = canonical_json_sha256(raw)
+    except (TypeError, ValueError):
+        return None
+    return {
+        "decision_id": decision_id,
+        "model": model,
+        "raw_decision_sha256": digest,
+        "rejection_type": type(error).__name__,
+    }
+
+
 def _validate_model_ref(raw: Any, policy: dict[str, Any], expected_model: str) -> dict[str, str]:
     if not isinstance(raw, dict):
         raise ModelRoutingError("genus-router model reference is invalid")
@@ -489,11 +513,41 @@ def route_and_invoke_review(
             "exclude_models": list(excluded),
             "task_summary": "Immutable noetic-dev pull-request semantic review",
         }
-        decision = validate_decision(
-            asyncio.run(active_service.route_task(route_input)),
-            active_policy,
-            set(excluded),
-        )
+        raw_decision = asyncio.run(active_service.route_task(route_input))
+        try:
+            decision = validate_decision(raw_decision, active_policy, set(excluded))
+        except Exception as error:
+            rejection = _rejected_decision_evidence(raw_decision, error)
+            if rejection is None:
+                raise
+            try:
+                _report_outcome(
+                    active_service,
+                    rejection["decision_id"],
+                    "failure",
+                    f"{type(error).__name__}: routed review decision rejected",
+                )
+                outcome_recorded = True
+            except ModelRoutingError:
+                outcome_recorded = False
+            attempts.append({
+                "decision_id": rejection["decision_id"],
+                "model": rejection["model"],
+                "outcome": "failure",
+            })
+            routed_attempts.append({
+                "decision_rejection": rejection,
+                "invocation_count": 0,
+                "outcome": "failure",
+                "outcome_recorded": outcome_recorded,
+            })
+            if not outcome_recorded:
+                raise RoutedReviewExhausted(failure_evidence())
+            remaining = [model for model in REVIEW_CANDIDATES if model not in excluded]
+            if not remaining or rejection["model"] != remaining[0]:
+                raise RoutedReviewExhausted(failure_evidence())
+            excluded.append(rejection["model"])
+            continue
         decision_id = decision["decision_id"]
         model = decision["model"]
         try:

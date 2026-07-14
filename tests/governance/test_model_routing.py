@@ -311,6 +311,44 @@ class TestModelRouting(unittest.TestCase):
         )
 
     @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
+    def test_malformed_identifiable_decision_is_reported_then_rerouted_without_invocation(self):
+        malformed = decision(TERRA, 1)
+        malformed["model_ref"]["endpoint_path"] = "/v1/chat/completions"
+        service = FakeService([malformed, decision(SOL, 2)])
+        bodies = []
+
+        def post(_url, _headers, body, _timeout):
+            bodies.append(body)
+            return routed_response(body)
+
+        _, evidence = route_and_invoke_review(
+            "prompt", json.loads, service=service, policy=self.policy, http_post=post
+        )
+        self.assertEqual([item["outcome"] for item in service.outcomes], ["failure", "success"])
+        self.assertEqual(service.inputs[1]["exclude_models"], [TERRA])
+        self.assertEqual(len(bodies), 2)
+        rejection = evidence["route_evidence"]["attempts"][0]
+        self.assertEqual(rejection["invocation_count"], 0)
+        self.assertEqual(rejection["decision_rejection"]["model"], TERRA)
+        self.assertEqual(validate_route_evidence(evidence["route_evidence"], "protected_review"), [])
+
+    @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
+    def test_malformed_decision_outcome_failure_preserves_zero_invocation_evidence(self):
+        malformed = decision(TERRA, 1)
+        malformed["model_ref"]["endpoint_path"] = "/v1/chat/completions"
+        service = FakeService([malformed], reject_outcomes=True)
+        with self.assertRaises(RoutedReviewExhausted) as caught:
+            route_and_invoke_review(
+                "prompt", json.loads, service=service, policy=self.policy,
+                http_post=lambda *_args: self.fail("malformed decision must not invoke"),
+            )
+        self.assertEqual(len(service.inputs), 1)
+        self.assertEqual(len(service.outcomes), 1)
+        rejection = caught.exception.evidence["route_evidence"]["attempts"][0]
+        self.assertEqual(rejection["invocation_count"], 0)
+        self.assertFalse(rejection["outcome_recorded"])
+
+    @mock.patch.dict(os.environ, {"LITELLM_API_KEY": "test-key"}, clear=False)
     def test_readiness_mismatch_is_reported_then_rerouted(self):
         service = FakeService([decision(TERRA, 1), decision(SOL, 2)])
 

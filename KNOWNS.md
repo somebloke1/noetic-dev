@@ -391,3 +391,18 @@ A local exact-head candidate-broker review request for PR #31 at 8c2ee47a2a0f76b
 
 A candidate-broker semantic review of immutable head dca92be40c189c1fc6071a3bd83b1af3251b358f against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000055 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. The review identified two reproducible requirement-7 gaps: run_isolated_pi.py derives its decision-claim directory from caller-selected output_dir, so selecting another output directory creates a fresh anti-replay namespace; and the terminal-failure schema permits empty candidate_sha, base_sha, and candidate_tree_oid even for role qa, so empty immutable candidate binding remains schema-valid. Result SHA-256 341075947bd4dbd49acbb6c556ccdb47be5c9e5fa2a5689b34ce56c04444b465.
 <!-- governance-crud:end id=k-20260714-0013 -->
+
+<!-- governance-crud:start id=k-20260714-0014 -->
+## k-20260714-0014: PR #31 exact-head review exposed pre-invocation outcome evidence gaps
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,agent-review,outcome-accounting,terminal-failure
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4973910532
+- Confidence: high
+
+A candidate-broker semantic review of immutable head 017defc622bf408a5871c54a8350b02c9faf1837 against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000058 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. It reproduced two pre-invocation evidence gaps. First, broker validate_decision runs before its attempt handler, so an identifiable decision with a malformed reference escapes without report_outcome, structured failure evidence, or safe rerouting. Second, protected Pi attempts to report that same decision rejection directly; if report_outcome fails, the reporting error escapes before _RoutedOperationFailure and no terminal-failure record is written. Result SHA-256 9557a6ee71e3f119687dc1c2fc58b7e64c517457436d4961aaf18d2a65f54f55.
+<!-- governance-crud:end id=k-20260714-0014 -->

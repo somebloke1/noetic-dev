@@ -82,6 +82,37 @@ class TestRouteEvidence(unittest.TestCase):
         errors = validate_route_evidence(rerouted, "independent_approval")
         self.assertIn("independent_approval successful model must be Fable or Sol", errors)
 
+    def test_zero_invocation_decision_rejection_precedes_validated_reroute(self):
+        evidence = route_evidence("protected_review", [TERRA, SOL])
+        evidence["attempts"][0] = {
+            "decision_rejection": {
+                "decision_id": "d-20260713-000001",
+                "model": TERRA,
+                "raw_decision_sha256": "a" * 64,
+                "rejection_type": "ModelRoutingError",
+            },
+            "invocation_count": 0,
+            "outcome": "failure",
+            "outcome_recorded": True,
+        }
+        self.assertEqual(validate_route_evidence(evidence, "protected_review"), [])
+
+        for field, value in [
+            ("invocation_count", 1),
+            ("outcome", "success"),
+            ("outcome_recorded", False),
+        ]:
+            mutated = copy.deepcopy(evidence)
+            mutated["attempts"][0][field] = value
+            with self.subTest(field=field):
+                self.assertTrue(validate_route_evidence(mutated, "protected_review"))
+        malformed_digest = copy.deepcopy(evidence)
+        malformed_digest["attempts"][0]["decision_rejection"]["raw_decision_sha256"] = "short"
+        self.assertTrue(validate_route_evidence(malformed_digest, "protected_review"))
+        terminal_rejection = copy.deepcopy(evidence)
+        terminal_rejection["attempts"] = terminal_rejection["attempts"][:1]
+        self.assertTrue(validate_route_evidence(terminal_rejection, "protected_review"))
+
     def test_static_or_wrong_contract_evidence_fails_closed(self):
         self.assertTrue(validate_route_evidence({"model_profile": "qa_primary"}, "authoritative_qa"))
         evidence = route_evidence("independent_approval")

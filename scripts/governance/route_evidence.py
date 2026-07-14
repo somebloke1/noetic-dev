@@ -76,9 +76,27 @@ def validate_route_evidence(evidence: Any, contract_name: str) -> list[str]:
     failed_models: list[str] = []
     for index, attempt in enumerate(attempts):
         label = f"route attempt {index + 1}"
-        if not isinstance(attempt, dict) or set(attempt) != {
-            "decision", "outcome", "outcome_recorded", "reasoning_effort"
-        }:
+        if not isinstance(attempt, dict):
+            errors.append(f"{label} fields are incomplete or unknown")
+            continue
+        rejection_fields = {
+            "decision_rejection", "invocation_count", "outcome", "outcome_recorded"
+        }
+        if set(attempt) == rejection_fields:
+            remaining = [model for model in candidates if model not in failed_models]
+            model = _validate_decision_rejection(
+                attempt.get("decision_rejection"), remaining, decision_ids, label, errors
+            )
+            if attempt.get("invocation_count") != 0:
+                errors.append(f"{label} rejected decision was invoked")
+            if attempt.get("outcome") != "failure":
+                errors.append(f"{label} rejected decision outcome must be failure")
+            if attempt.get("outcome_recorded") is not True:
+                errors.append(f"{label} outcome was not recorded")
+            if model in remaining:
+                failed_models.append(model)
+            continue
+        if set(attempt) != {"decision", "outcome", "outcome_recorded", "reasoning_effort"}:
             errors.append(f"{label} fields are incomplete or unknown")
             continue
         if attempt.get("outcome_recorded") is not True:
@@ -101,13 +119,45 @@ def validate_route_evidence(evidence: Any, contract_name: str) -> list[str]:
         )
         if isinstance(decision, dict) and decision.get("model") in remaining:
             failed_models.append(decision["model"])
-    successful_models = contract.get("successful_models")
     final_attempt = attempts[-1] if isinstance(attempts[-1], dict) else {}
+    if "decision" not in final_attempt or final_attempt.get("outcome") != "success":
+        errors.append(f"{contract_name} must end in one validated successful decision")
+    successful_models = contract.get("successful_models")
     final_decision = final_attempt.get("decision") if isinstance(final_attempt, dict) else None
     final_model = final_decision.get("model") if isinstance(final_decision, dict) else None
     if isinstance(successful_models, list) and final_model not in successful_models:
         errors.append(f"{contract_name} successful model must be Fable or Sol")
     return errors
+
+
+def _validate_decision_rejection(
+    rejection: Any,
+    remaining: list[str],
+    decision_ids: set[str],
+    label: str,
+    errors: list[str],
+) -> Any:
+    expected_fields = {"decision_id", "model", "raw_decision_sha256", "rejection_type"}
+    if not isinstance(rejection, dict) or set(rejection) != expected_fields:
+        errors.append(f"{label} decision rejection fields are incomplete or unknown")
+        return None
+    decision_id = rejection.get("decision_id")
+    if not isinstance(decision_id, str) or not DECISION_ID.fullmatch(decision_id):
+        errors.append(f"{label} rejected decision_id is invalid")
+    elif decision_id in decision_ids:
+        errors.append(f"{label} decision_id is reused")
+    else:
+        decision_ids.add(decision_id)
+    model = rejection.get("model")
+    if not remaining or model != remaining[0]:
+        errors.append(f"{label} rejected model violates routed candidate order")
+    digest = rejection.get("raw_decision_sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+        errors.append(f"{label} rejected decision digest is invalid")
+    rejection_type = rejection.get("rejection_type")
+    if not isinstance(rejection_type, str) or not rejection_type:
+        errors.append(f"{label} rejection type is invalid")
+    return model
 
 
 def _validate_decision(

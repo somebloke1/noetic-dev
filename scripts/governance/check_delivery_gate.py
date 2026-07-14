@@ -411,7 +411,12 @@ def _check_pi_operation_accounting(
 
     for index, (attempt, item) in enumerate(zip(attempts, accounting, strict=True), 1):
         decision = attempt.get("decision") if isinstance(attempt, dict) else None
-        expected_decision_id = decision.get("decision_id") if isinstance(decision, dict) else None
+        rejection = attempt.get("decision_rejection") if isinstance(attempt, dict) else None
+        expected_decision_id = (
+            decision.get("decision_id") if isinstance(decision, dict)
+            else rejection.get("decision_id") if isinstance(rejection, dict)
+            else None
+        )
         expected_fields = {"operation", "decision_id", "invocation_count", "outcome_count"}
         if not isinstance(item, dict) or set(item) != expected_fields:
             errors.append(f"{label} attempt {index} accounting fields are incomplete or unknown")
@@ -426,6 +431,8 @@ def _check_pi_operation_accounting(
             errors.append(f"{label} attempt {index} does not bind exactly one reported outcome")
         if isinstance(attempt, dict) and attempt.get("outcome") == "success" and invocation_count != 1:
             errors.append(f"{label} successful attempt {index} does not bind exactly one invocation")
+        if isinstance(rejection, dict) and invocation_count != 0:
+            errors.append(f"{label} rejected decision attempt {index} was invoked")
 
 
 def _expected_pi_config(model_ref: Dict[str, Any]) -> Dict[str, Any]:

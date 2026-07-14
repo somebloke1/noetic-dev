@@ -22,6 +22,8 @@ Protected Pi QA has a different finite contract. Its READY probe and QA executio
 
 On failure, the caller reports the failed outcome and calls `route_task` again with the same task kind, complexity, and blast radius, `prior_failure=true`, and the failed model in `exclude_models`. Callers do not manually choose an escalation model.
 
+An identifiable router decision that fails full validation is retained as a zero-invocation rejection, not as valid route authority. Its failed outcome must be recorded before the expected candidate may be excluded and rerouted. If outcome reporting fails, the lifecycle stops with structured failure evidence; protected Pi additionally writes validated terminal evidence before returning failure. A decision rejected by the protected replay claim is not a new attempt: Pi writes terminal replay evidence with zero invocations and outcomes, does not report a second outcome, and does not reroute.
+
 The caller, not genus-router, is responsible for honest classification. `task_summary` is logging-only and never influences selection.
 
 ## Sophistication policy

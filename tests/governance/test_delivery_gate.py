@@ -16,7 +16,12 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_delivery_gate import check_bootstrap_blocked, check_delivery, check_pinning  # noqa: E402
+from check_delivery_gate import (  # noqa: E402
+    _check_pi_operation_accounting,
+    check_bootstrap_blocked,
+    check_delivery,
+    check_pinning,
+)
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -33,6 +38,38 @@ def advisory_external():
 
 
 class TestDeliveryGatePositive(unittest.TestCase):
+    def test_rejected_pi_decision_accounting_binds_zero_invocations(self):
+        decision_id = "d-20260714-999999"
+        record = {
+            "operation": "execution",
+            "operation_contract": {
+                "operations": ["readiness_probe", "execution"],
+                "decision_scope": "per_operation",
+                "maximum_invocations_per_decision": 1,
+                "report_outcome_scope": "per_operation",
+            },
+            "route_evidence": {"attempts": [{
+                "decision_rejection": {
+                    "decision_id": decision_id,
+                    "model": "codex/gpt-5.6-terra",
+                    "raw_decision_sha256": "a" * 64,
+                    "rejection_type": "ModelRoutingError",
+                },
+                "invocation_count": 0,
+                "outcome": "failure",
+                "outcome_recorded": True,
+            }]},
+            "attempt_accounting": [{
+                "operation": "execution",
+                "decision_id": decision_id,
+                "invocation_count": 0,
+                "outcome_count": 1,
+            }],
+        }
+        errors = []
+        _check_pi_operation_accounting(record, "execution", "qa rejection", errors)
+        self.assertEqual(errors, [])
+
     def test_self_consistent_external_evidence_remains_advisory(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest, external_evidence=advisory_external())

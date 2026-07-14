@@ -52,7 +52,7 @@
       }
     },
     "failed_operation": {"type": "string", "enum": ["readiness_probe", "execution"]},
-    "failure_kind": {"type": "string", "enum": ["all-candidates-failed", "outcome-reporting-failed"]},
+    "failure_kind": {"type": "string", "enum": ["all-candidates-failed", "outcome-reporting-failed", "decision-rejected", "decision-replayed"]},
     "operation_contract": {
       "type": "object",
       "additionalProperties": false,
@@ -87,15 +87,27 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["order", "decision", "invocation_count", "invocation_outcome", "outcome_report_state", "failure_type"],
+        "required": ["order", "invocation_count", "invocation_outcome", "outcome_report_state", "failure_type"],
         "properties": {
           "order": {"type": "integer", "enum": [1, 2, 3]},
           "decision": {"type": "object"},
+          "decision_rejection": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["decision_id", "model", "raw_decision_sha256", "rejection_type"],
+            "properties": {
+              "decision_id": {"type": "string", "pattern": "^d-[0-9]{8}-[0-9]{6}$"},
+              "model": {"type": "string", "enum": ["codex/gpt-5.6-terra", "codex/gpt-5.6-sol", "codex/gpt-5.6-luna"]},
+              "raw_decision_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "rejection_type": {"type": "string", "minLength": 1}
+            }
+          },
           "invocation_count": {"type": "integer", "enum": [0, 1]},
           "invocation_outcome": {"type": "string", "enum": ["success", "failure"]},
-          "outcome_report_state": {"type": "string", "enum": ["recorded", "failed"]},
+          "outcome_report_state": {"type": "string", "enum": ["recorded", "failed", "not-attempted"]},
           "failure_type": {"type": "string", "minLength": 1}
-        }
+        },
+        "allOf": [{"oneOf": [{"required": ["decision"]}, {"required": ["decision_rejection"]}]}]
       }
     },
     "successful_probe_record": {"anyOf": [{"type": "object"}, {"type": "null"}]},

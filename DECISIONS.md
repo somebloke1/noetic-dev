@@ -331,3 +331,18 @@ Raise `MAX_PATCH_BYTES` from 700,000 to 725,000 so the verified 710,373-byte PR 
 
 Protected Pi decision claims SHALL use one fixed per-UID authority namespace under /var/tmp, independent of output, run, candidate, or caller-selected paths. The public lifecycle and worker request SHALL NOT accept a decision-claim directory. Existing owner, mode, no-follow, atomic-create, file-sync, and directory-sync checks remain mandatory. /var/tmp supplies cross-process and cross-reboot persistence without requiring privilege for local QA; per-UID naming separates authority users. Protected role=qa terminal-failure records SHALL additionally require full lowercase 40-character candidate SHA, base SHA, and candidate tree OID in both runtime and Draft-07 validation while non-QA terminal records retain optional bindings.
 <!-- governance-crud:end id=dec-20260714-0006 -->
+
+<!-- governance-crud:start id=dec-20260714-0007 -->
+## dec-20260714-0007: Preserve identifiable rejected decisions as non-invocation route evidence
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,model-routing,rejected-decisions,outcome-accounting,terminal-failure
+- Source: k-20260714-0014;docs/model-routing-policy.md;docs/governance/delivery-governance.md
+- Confidence: high
+
+When genus-router returns a decision with a syntactically valid decision ID and governed model but full decision validation fails, broker and protected Pi lifecycles SHALL record a zero-invocation rejected-decision attempt identified by decision ID, model, canonical raw-decision digest, and rejection type. They SHALL report exactly one failed outcome before any reroute. A rejection of the currently expected candidate may reroute only after that outcome is recorded and with the rejected model excluded; unsafe candidate-order rejection fails closed after reporting. If outcome reporting fails, broker emits structured routed-failure evidence and protected Pi emits schema/runtime-validated terminal evidence with zero invocation and zero outcomes. A fully validated decision rejected by the protected replay claim is not a new attempt: Pi SHALL emit terminal replay evidence with zero invocations/outcomes, SHALL NOT report a second outcome for the already-claimed ID, and SHALL NOT reroute. Rejected decisions remain distinguishable from validated route authority and can never authorize invocation.
+<!-- governance-crud:end id=dec-20260714-0007 -->

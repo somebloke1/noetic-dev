@@ -36,6 +36,7 @@ from model_routing import (  # noqa: E402
     ModelRoutingError,
     STANDARD_MODELS,
     _report_outcome,
+    _rejected_decision_evidence,
     _strict_json_equal,
     create_router_service,
     load_litellm_key,
@@ -745,17 +746,37 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
     if [attempt["order"] for attempt in attempts] != list(range(1, len(attempts) + 1)):
         raise ModelRoutingError("protected Pi terminal failure route order is invalid")
     expected_models = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]][:len(attempts)]
-    if [attempt["decision"].get("model") for attempt in attempts] != expected_models:
+    attempt_models = [
+        (attempt.get("decision") or attempt.get("decision_rejection", {})).get("model")
+        for attempt in attempts
+    ]
+    if attempt_models != expected_models and not (
+        record["failure_kind"] == "decision-rejected"
+        and "decision_rejection" in attempts[-1]
+        and attempt_models[:-1] == expected_models[:-1]
+    ):
         raise ModelRoutingError("protected Pi terminal failure model order is invalid")
     decision_ids: set[str] = set()
     excluded_models: set[str] = set()
     for attempt, counted in zip(attempts, accounting):
-        decision = attempt["decision"]
-        try:
-            decision = validate_decision(decision, policy, excluded_models)
-        except Exception as error:
-            raise ModelRoutingError("protected Pi terminal failure route decision is invalid") from error
-        decision_id = decision["decision_id"]
+        rejection = attempt.get("decision_rejection")
+        if rejection is not None:
+            if (
+                set(rejection) != {"decision_id", "model", "raw_decision_sha256", "rejection_type"}
+                or attempt["invocation_count"] != 0
+                or attempt["invocation_outcome"] != "failure"
+            ):
+                raise ModelRoutingError("protected Pi terminal decision rejection is invalid")
+            decision_id = rejection["decision_id"]
+            decision_model = rejection["model"]
+        else:
+            decision = attempt["decision"]
+            try:
+                decision = validate_decision(decision, policy, excluded_models)
+            except Exception as error:
+                raise ModelRoutingError("protected Pi terminal failure route decision is invalid") from error
+            decision_id = decision["decision_id"]
+            decision_model = decision["model"]
         if not isinstance(decision_id, str) or decision_id in decision_ids:
             raise ModelRoutingError("protected Pi terminal failure decision identity is invalid")
         decision_ids.add(decision_id)
@@ -767,7 +788,7 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
             or (attempt["invocation_outcome"] == "success" and attempt["invocation_count"] != 1)
         ):
             raise ModelRoutingError("protected Pi terminal failure attempt accounting is inconsistent")
-        excluded_models.add(decision["model"])
+        excluded_models.add(decision_model)
     final_attempt = attempts[-1]
     if record["failure_kind"] == "all-candidates-failed":
         if len(attempts) != len(STANDARD_MODELS) or any(
@@ -775,6 +796,12 @@ def _validate_terminal_failure_record(record: Dict[str, Any]) -> None:
             for attempt in attempts
         ):
             raise ModelRoutingError("protected Pi exhausted-candidate evidence is inconsistent")
+    elif record["failure_kind"] == "decision-rejected":
+        if "decision_rejection" not in final_attempt or final_attempt["outcome_report_state"] != "recorded":
+            raise ModelRoutingError("protected Pi rejected-decision evidence is inconsistent")
+    elif record["failure_kind"] == "decision-replayed":
+        if "decision_rejection" not in final_attempt or final_attempt["outcome_report_state"] != "not-attempted":
+            raise ModelRoutingError("protected Pi replayed-decision evidence is inconsistent")
     elif final_attempt["outcome_report_state"] != "failed":
         raise ModelRoutingError("protected Pi outcome-reporting failure evidence is inconsistent")
     elif any(
@@ -991,19 +1018,88 @@ def _make_routed_pi_lifecycle():
                 "task_summary": f"Immutable noetic-dev authoritative QA Pi {operation}",
             }
             raw_decision = asyncio.run(service.route_task(route_input))
-            decision_id = raw_decision.get("decision_id") if isinstance(raw_decision, dict) else None
             try:
                 decision = validate_decision(raw_decision, policy, set(excluded))
-                _claim_authority_decision_id(decision["decision_id"])
             except Exception as error:
-                if isinstance(decision_id, str) and decision_id:
+                rejection = _rejected_decision_evidence(raw_decision, error)
+                if rejection is None:
+                    raise
+                rejection_accounting = _OperationAttemptAccounting(
+                    operation=operation,
+                    decision_id=rejection["decision_id"],
+                    maximum_invocations=operation_contract["maximum_invocations_per_decision"],
+                )
+                routed_rejection = {
+                    "decision_rejection": rejection,
+                    "invocation_count": 0,
+                    "outcome": "failure",
+                    "outcome_recorded": True,
+                }
+                terminal_rejection = {
+                    "order": len(terminal_attempts) + 1,
+                    "decision_rejection": rejection,
+                    "invocation_count": 0,
+                    "invocation_outcome": "failure",
+                    "outcome_report_state": "recorded",
+                    "failure_type": type(error).__name__,
+                }
+                try:
                     _report_outcome(
                         service,
-                        decision_id,
+                        rejection["decision_id"],
                         "failure",
                         f"{type(error).__name__}: routed Pi {operation} decision rejected",
                     )
-                raise
+                except Exception as report_error:
+                    routed_rejection["outcome_recorded"] = False
+                    terminal_rejection["outcome_report_state"] = "failed"
+                    attempts.append(routed_rejection)
+                    terminal_attempts.append(terminal_rejection)
+                    attempt_accounting.append(rejection_accounting.terminal_evidence())
+                    raise terminal_failure(
+                        "outcome-reporting-failed",
+                        f"routed Pi {operation} rejected-decision outcome reporting failed",
+                    ) from report_error
+                rejection_accounting.record_outcome()
+                attempts.append(routed_rejection)
+                terminal_attempts.append(terminal_rejection)
+                attempt_accounting.append(rejection_accounting.evidence())
+                remaining = [
+                    model for model in [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]]
+                    if model not in excluded
+                ]
+                if not remaining or rejection["model"] != remaining[0]:
+                    raise terminal_failure(
+                        "decision-rejected",
+                        f"routed Pi {operation} decision failed validation",
+                    ) from error
+                excluded.append(rejection["model"])
+                continue
+
+            try:
+                _claim_authority_decision_id(decision["decision_id"])
+            except Exception as error:
+                rejection = _rejected_decision_evidence(raw_decision, error)
+                if rejection is None:
+                    raise
+                replay_accounting = _OperationAttemptAccounting(
+                    operation=operation,
+                    decision_id=rejection["decision_id"],
+                    maximum_invocations=operation_contract["maximum_invocations_per_decision"],
+                )
+                terminal_attempts.append({
+                    "order": len(terminal_attempts) + 1,
+                    "decision_rejection": rejection,
+                    "invocation_count": 0,
+                    "invocation_outcome": "failure",
+                    "outcome_report_state": "not-attempted",
+                    "failure_type": type(error).__name__,
+                })
+                attempt_accounting.append(replay_accounting.terminal_evidence())
+                raise terminal_failure(
+                    "decision-replayed",
+                    f"routed Pi {operation} decision was already claimed",
+                ) from error
 
             accounting = _OperationAttemptAccounting(
                 operation=operation,

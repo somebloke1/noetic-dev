@@ -37,6 +37,7 @@ from run_isolated_pi import (  # noqa: E402
     _credential_interface,
     _non_evidence_record,
     _pi_models_config,
+    _rejected_decision_evidence,
     _require_validated_identity,
     _terminal_failure_record,
     _validate_terminal_failure_record,
@@ -321,6 +322,33 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         impossible_success["attempt_accounting"][-1]["invocation_count"] = 0
         with self.assertRaisesRegex(isolated_pi.ModelRoutingError, "accounting is inconsistent"):
             _validate_terminal_failure_record(impossible_success)
+
+    def test_rejected_decision_outcome_failure_is_valid_zero_invocation_terminal_evidence(self):
+        record = self.terminal_failure_record(outcome_reporting_failed=True)
+        malformed = record["route_attempts"][0].pop("decision")
+        malformed["model_ref"]["endpoint_path"] = "/v1/chat/completions"
+        rejection = _rejected_decision_evidence(
+            malformed, isolated_pi.ModelRoutingError("invalid decision")
+        )
+        self.assertIsNotNone(rejection)
+        record["route_attempts"][0]["decision_rejection"] = rejection
+        record["route_attempts"][0]["invocation_count"] = 0
+        record["attempt_accounting"][0]["invocation_count"] = 0
+        _validate_terminal_failure_record(record)
+
+    def test_replayed_decision_does_not_report_a_second_outcome(self):
+        record = self.terminal_failure_record(outcome_reporting_failed=True)
+        raw = record["route_attempts"][0].pop("decision")
+        rejection = _rejected_decision_evidence(
+            raw, isolated_pi.ModelRoutingError("decision replayed")
+        )
+        self.assertIsNotNone(rejection)
+        record["failure_kind"] = "decision-replayed"
+        record["route_attempts"][0]["decision_rejection"] = rejection
+        record["route_attempts"][0]["invocation_count"] = 0
+        record["route_attempts"][0]["outcome_report_state"] = "not-attempted"
+        record["attempt_accounting"][0]["invocation_count"] = 0
+        _validate_terminal_failure_record(record)
 
     def test_qa_terminal_failure_requires_complete_candidate_binding(self):
         for field in ["candidate_sha", "base_sha", "candidate_tree_oid"]:
