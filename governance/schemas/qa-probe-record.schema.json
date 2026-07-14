@@ -48,7 +48,7 @@
     "schema_version": {"type": "string", "const": "2"},
     "probe_id": {"type": "string"},
     "run_id": {"type": "string"},
-    "role": {"type": "string"},
+    "role": {"type": "string", "enum": ["qa", "planner", "validator", "publisher", "orchestrator"]},
     "role_run_id": {"type": "string"},
     "qa_for_pass_id": {"type": "string"},
     "authority_process": {"type": "string", "const": "fresh-isolated-worker"},
@@ -98,5 +98,19 @@
     "stderr_sha256": {"type": "string"},
     "started_at": {"type": "string"},
     "finished_at": {"type": "string"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["role"],
+        "properties": {"role": {"const": "qa"}}
+      },
+      "then": {
+        "properties": {"qa_for_pass_id": {"type": "string", "minLength": 1}}
+      },
+      "else": {
+        "properties": {"qa_for_pass_id": {"type": "string", "const": ""}}
+      }
+    }
+  ]
 }

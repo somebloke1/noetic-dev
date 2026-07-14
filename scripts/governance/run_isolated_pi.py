@@ -129,6 +129,16 @@ def _require_validated_tools(role: str, tools: List[str]) -> None:
         raise RuntimeError(f"role {role} cannot use routed Pi tools: {tools}")
 
 
+def _require_validated_identity(role: str, qa_for_pass_id: Optional[str]) -> None:
+    if role not in ROLE_TOOL_ALLOWLISTS:
+        raise RuntimeError("routed Pi role is invalid")
+    if role == "qa":
+        if not isinstance(qa_for_pass_id, str) or not qa_for_pass_id:
+            raise RuntimeError("routed QA requires a non-empty qa_for_pass_id")
+    elif qa_for_pass_id not in (None, ""):
+        raise RuntimeError("non-QA routed Pi cannot claim a QA generation")
+
+
 def get_policy_sha() -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, env=_clean_env()
@@ -1152,6 +1162,7 @@ def _make_routed_pi_lifecycle():
         perform_probe: bool = False,
         decision_claim_dir: Optional[Path] = None,
     ) -> _RoutedPiLifecycleResult:
+        _require_validated_identity(role, qa_for_pass_id)
         _require_validated_tools(role, tools)
         if decision_claim_dir is None:
             raise RuntimeError("a protected cross-process decision claim directory is required")

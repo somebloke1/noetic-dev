@@ -316,3 +316,18 @@ An exact-head candidate-broker review at 3e7331fa2d6bd4a322d1be8aa995921cde88b07
 
 Exactly one model-invoking independent QA lifecycle reviewed immutable candidate b6f6b0c4cae172673754b88327ac10f2c9cbbb4e through protected Pi and Terra/high. READY decision d-20260714-000040 and execution decision d-20260714-000041 completed with recorded success. QA returned changes-needed with reproducible gaps: retained READY evidence did not explicitly bind role and qa_for_pass_id; invocation_outcome=success could be paired with invocation_count=0; and load_litellm_key failed before per-decision terminal evidence collection. QA also requested explicit Terra -> Sol -> Luna validation; source adjudication confirms validate_decision already enforces first-remaining candidate, but making that invariant explicit is prudent. Protected probe SHA-256 ef12a7dc1489e78a70c588bbe9f257ed7557ac707d2d8e9830134c6705076cee; execution SHA-256 b142e4949dd49f2ae4d7e3b815541c4c90da95fcf694192511f6d7a80298826f.
 <!-- governance-crud:end id=k-20260714-0008 -->
+
+<!-- governance-crud:start id=k-20260714-0009 -->
+## k-20260714-0009: PR #31 QA exposed schema-level READY identity emptiness
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,qa,readiness,identity,schema
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4973444724
+- Confidence: high
+
+Exactly one adversarial QA execution reviewed immutable candidate a7da93da9e053579ddf7a521f126c77cd9b5819f through protected Pi and Terra/high after a separately adjudicated READY-only availability failure. READY decision d-20260714-000045 and execution decision d-20260714-000046 completed with recorded success. QA returned changes-needed because qa-probe-record schema role and qa_for_pass_id accepted empty or arbitrary strings, while generation used qa_for_pass_id or empty string. Thus a rehashed schema-valid READY record could lack semantic role/generation identity. The QA confirmed the explicit route-order and success-with-zero-invocation checks addressed the prior mutations. Protected probe SHA-256 4e490f656f2877a4769fc794bbf48616ac6c4dc98d015f70f3547f3ae0cc1a61; execution SHA-256 d0a67151bb693231d692607444cd4f498e79d777df7a2ce2d63c278685eb6d11.
+<!-- governance-crud:end id=k-20260714-0009 -->

@@ -36,6 +36,7 @@ from run_isolated_pi import (  # noqa: E402
     _credential_interface,
     _non_evidence_record,
     _pi_models_config,
+    _require_validated_identity,
     _terminal_failure_record,
     _validate_terminal_failure_record,
     _write_tools_observed,
@@ -349,7 +350,7 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
                 mismatched["successful_probe_record"]
             )
             with self.subTest(field=field), self.assertRaisesRegex(
-                isolated_pi.ModelRoutingError, "probe candidate binding is inconsistent"
+                isolated_pi.ModelRoutingError, "protected Pi successful probe"
             ):
                 _validate_terminal_failure_record(mismatched)
 
@@ -552,6 +553,36 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         ok, message, _tools = validate_tools("qa", "read")
         self.assertFalse(ok)
         self.assertIn("cannot use tools", message)
+
+    def test_routed_identity_rejects_empty_qa_generation_and_nonqa_claims(self):
+        _require_validated_identity("qa", "implementation-1")
+        _require_validated_identity("validator", None)
+        _require_validated_identity("validator", "")
+        for role, qa_for, expected in [
+            ("qa", None, "non-empty"),
+            ("qa", "", "non-empty"),
+            ("future-role", "implementation-1", "role is invalid"),
+            ("validator", "implementation-1", "cannot claim"),
+        ]:
+            with self.subTest(role=role, qa_for=qa_for), self.assertRaisesRegex(RuntimeError, expected):
+                _require_validated_identity(role, qa_for)
+
+    def test_probe_schema_rejects_empty_or_unknown_qa_identity(self):
+        schema = isolated_pi.load_json_strict(ROOT / "governance/schemas/qa-probe-record.schema.json")
+        manifest = json.loads((ROOT / "tests/governance/fixtures/valid_advisory_manifest.json").read_text())
+        probe = manifest["qa"]["records"][0]["protected_probe_record"]
+        self.assertEqual(isolated_pi.validate_schema(probe, schema), [])
+        mutations = [("role", ""), ("role", "future-role"), ("qa_for_pass_id", "")]
+        for field, value in mutations:
+            mutated = json.loads(json.dumps(probe))
+            mutated[field] = value
+            with self.subTest(field=field, value=value):
+                self.assertTrue(isolated_pi.validate_schema(mutated, schema))
+
+        nonqa = json.loads(json.dumps(probe))
+        nonqa["role"] = "validator"
+        nonqa["qa_for_pass_id"] = ""
+        self.assertEqual(isolated_pi.validate_schema(nonqa, schema), [])
 
     @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
     def test_bwrap_copies_actual_held_config_fd_payload_read_only(self):
