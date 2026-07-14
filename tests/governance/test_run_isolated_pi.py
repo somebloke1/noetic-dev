@@ -583,6 +583,39 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         self.assertNotEqual(child.returncode, 0)
         self.assertIn("replayed", child.stderr)
 
+    def test_existing_unsafe_claim_directory_is_rejected_before_precreated_claim(self):
+        decision_id = "d-20260713-999992"
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            claim_dir.mkdir(mode=0o700)
+            (claim_dir / decision_id).touch(mode=0o600)
+            claim_dir.chmod(0o777)
+            with self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "directory mode is not private"
+            ) as raised:
+                _claim_decision_id(claim_dir, decision_id)
+            self.assertEqual(claim_dir.stat().st_mode & 0o777, 0o777)
+        self.assertNotIsInstance(raised.exception, _DecisionReplayError)
+
+    def test_existing_cross_uid_claim_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            claim_dir.mkdir(mode=0o700)
+            with mock.patch("run_isolated_pi.os.getuid", return_value=os.getuid() + 1), self.assertRaisesRegex(
+                isolated_pi.ModelRoutingError, "not privately owned"
+            ):
+                _claim_decision_id(claim_dir, "d-20260713-999993")
+
+    def test_new_claim_directory_is_normalized_after_restrictive_umask(self):
+        with tempfile.TemporaryDirectory() as directory:
+            claim_dir = Path(directory) / "claims"
+            previous_umask = os.umask(0o100)
+            try:
+                _claim_decision_id(claim_dir, "d-20260713-999996")
+            finally:
+                os.umask(previous_umask)
+            self.assertEqual(claim_dir.stat().st_mode & 0o777, 0o700)
+
     def test_claim_infrastructure_failure_is_not_classified_as_replay(self):
         with tempfile.TemporaryDirectory() as directory:
             claim_dir = Path(directory) / "claims"

@@ -481,3 +481,18 @@ Exactly one protected Pi QA lifecycle reviewed immutable candidate 6bf2d0977decc
 
 A candidate-broker semantic review of immutable head 2c5924efd8436e4cce65589b36764fdf30f00f7b against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000071 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. run_isolated_pi.get_policy_sha invokes git rev-parse HEAD and returns an empty string when Git metadata is unavailable. Canonical immutable production releases under /opt/noetic-dev-agent-review/releases/<commit> contain no .git, as directly verified for the active release and current symlink. A routed terminal failure in that layout therefore constructs an empty generated_by.policy_commit_sha, fails the required 40-hex schema field, and can lose the protected terminal record required by delivery-governance requirement 7. Result SHA-256 88bb6ca930d4e24b3f7718af143be6c80baab0e8b606e3b2e7ab864a7ae72394; reviewed diff SHA-256 b85e74f56155158b426f5b6bb4ec55b049dabfab23af3b124f61154b626396cc.
 <!-- governance-crud:end id=k-20260714-0019 -->
+
+<!-- governance-crud:start id=k-20260714-0020 -->
+## k-20260714-0020: PR #31 exact-head review exposed permissive existing Pi claim-directory repair
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pr-31,semantic-review,replay,claim-directory,permissions
+- Source: https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4974378240
+- Confidence: high
+
+A candidate-broker semantic review of immutable head 3e23397524e22ab146652f712090406e09b98ffe against protected base 33e8bbd2c483dab0abbb85cb5b00079e4a01b8dc routed through genus-router decision d-20260714-000074 to LiteLLM-served Terra/high and returned CHANGES_NEEDED. _claim_decision_id accepts an existing UID-owned claim directory at any mode and chmods it to 0700 rather than rejecting unsafe pre-existing permissions. If another local user precreates a future decision-ID file while the directory is permissive, the later authority chmod is too late: O_EXCL sees the file and emits decision-replayed 0/0 evidence without invocation or outcome. This violates dec-20260714-0006's retained mandatory existing owner/mode checks and weakens delivery-governance requirement 7. Result SHA-256 38b0122f3095becb94b624e3e933653da0ff8a164d9f517b61692bd2f101ea28; reviewed diff SHA-256 d7194063a7b016f6f7efb12109e701813e734c04c06d35849c96cb9966088aab.
+<!-- governance-crud:end id=k-20260714-0020 -->

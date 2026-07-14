@@ -13,6 +13,7 @@ import asyncio
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -984,13 +985,22 @@ def _claim_decision_id(claim_dir: Path, decision_id: str) -> None:
     """Atomically claim a router decision across dispatcher processes."""
     if not re.fullmatch(r"d-\d{8}-\d{6}", decision_id):
         raise ModelRoutingError("genus-router decision_id is unsafe for a replay claim")
-    claim_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    directory_stat = claim_dir.lstat()
-    if claim_dir.is_symlink() or directory_stat.st_uid != os.getuid():
-        raise ModelRoutingError("decision claim directory is not privately owned")
-    claim_dir.chmod(0o700)
+    created = False
+    try:
+        claim_dir.mkdir(mode=0o700)
+        created = True
+    except FileExistsError:
+        pass
     directory_fd = os.open(claim_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
+        directory_stat = os.fstat(directory_fd)
+        if not stat.S_ISDIR(directory_stat.st_mode) or directory_stat.st_uid != os.getuid():
+            raise ModelRoutingError("decision claim directory is not privately owned")
+        if created:
+            os.fchmod(directory_fd, 0o700)
+            directory_stat = os.fstat(directory_fd)
+        if stat.S_IMODE(directory_stat.st_mode) != 0o700:
+            raise ModelRoutingError("decision claim directory mode is not private")
         try:
             claim_fd = os.open(
                 decision_id,

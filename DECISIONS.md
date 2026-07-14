@@ -421,3 +421,18 @@ The 6bf2d09 QA verdict SHALL be retained as returned but its sole finding is rej
 
 run_isolated_pi SHALL derive policy_commit_sha through model_routing's existing verified policy identity mechanism rather than directly invoking repository Git. In a development worktree, that mechanism binds the verified top-level Git commit using fixed /usr/bin/git and a scrubbed environment. In production mode or a canonical release path, it binds the root-controlled current release directory's 40-hex identity without requiring .git. Failure to establish either identity remains fail-closed. Protected Pi tests SHALL cover delegation and a no-Git canonical production release, including terminal-record construction retaining the release SHA. Do not add a second production-identity implementation.
 <!-- governance-crud:end id=dec-20260714-0012 -->
+
+<!-- governance-crud:start id=dec-20260714-0013 -->
+## dec-20260714-0013: Reject unsafe existing Pi claim directories before claim lookup
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-14
+- Updated: 2026-07-14
+- Tags: issue-29,pi,replay,claim-directory,permissions,fd-validation
+- Source: k-20260714-0020;scripts/governance/run_isolated_pi.py;DECISIONS.md#dec-20260714-0006
+- Confidence: high
+
+The protected Pi claim primitive SHALL distinguish newly created from pre-existing claim directories. It MAY normalize a newly created directory to 0700 through its already-open file descriptor because no broader permissions were requested; it SHALL NOT repair a pre-existing directory. Before inspecting any decision-ID filename, it SHALL open the directory with O_DIRECTORY|O_NOFOLLOW and verify by fstat that it is a directory, owned by the authority UID, and exactly mode 0700. Unsafe existing type, owner, mode, symlink, or open failures are claim-infrastructure failures, never replay. Only EEXIST from O_EXCL within an already validated directory establishes decision replay. Tests SHALL cover permissive pre-existing directories with precreated claim files, cross-UID rejection, safe replay, and restrictive-umask creation.
+<!-- governance-crud:end id=dec-20260714-0013 -->
