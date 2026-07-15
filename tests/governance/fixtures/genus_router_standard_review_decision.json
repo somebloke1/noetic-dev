@@ -1,0 +1,57 @@
+{
+  "availability": "verified",
+  "decision_id": "d-20260715-000001",
+  "effective_complexity": "complex",
+  "fable_eligible": false,
+  "fallback_refs": [
+    {
+      "base_url": "http://172.22.10.160:3333",
+      "endpoint_id": "local-litellm",
+      "endpoint_path": "/v1/responses",
+      "interface_type": "openai-compatible",
+      "model_id": "codex/gpt-5.6-sol",
+      "reasoning_effort": "high",
+      "token_env": "LITELLM_API_KEY",
+      "upstream_model_id": "codex/gpt-5.6-sol"
+    },
+    {
+      "base_url": "http://172.22.10.160:3333",
+      "endpoint_id": "local-litellm",
+      "endpoint_path": "/v1/responses",
+      "interface_type": "openai-compatible",
+      "model_id": "codex/gpt-5.6-luna",
+      "reasoning_effort": "high",
+      "token_env": "LITELLM_API_KEY",
+      "upstream_model_id": "codex/gpt-5.6-luna"
+    }
+  ],
+  "fallbacks": ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"],
+  "genus": "Complex Code Review",
+  "genus_code": "REVIEW-COMPLEX",
+  "independent_approval_eligible": false,
+  "model": "codex/gpt-5.6-terra",
+  "model_ref": {
+    "base_url": "http://172.22.10.160:3333",
+    "endpoint_id": "local-litellm",
+    "endpoint_path": "/v1/responses",
+    "interface_type": "openai-compatible",
+    "model_id": "codex/gpt-5.6-terra",
+    "reasoning_effort": "high",
+    "token_env": "LITELLM_API_KEY",
+    "upstream_model_id": "codex/gpt-5.6-terra"
+  },
+  "rationale": [
+    "task_kind=review, declared complexity=complex",
+    "blast_radius=interface -> floor=routine",
+    "prior_failure=false",
+    "genus=REVIEW-COMPLEX",
+    "sophistication=complex",
+    "high_value=false -> fable_eligible=false",
+    "independent_approval=false -> eligible=false, reasoning_effort=high",
+    "awaited=true -> logging intent only",
+    "availability=verified",
+    "selected first available candidate"
+  ],
+  "routing_profile": "standard",
+  "sophistication": "complex"
+}

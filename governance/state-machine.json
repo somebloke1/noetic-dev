@@ -56,11 +56,11 @@
       "authorized_roles": ["qa"]
     },
     "INDEPENDENT_REVIEW_PENDING": {
-      "description": "Candidate ready for independent high-reasoning Fable or Sol review.",
+      "description": "Candidate ready for independent Sol/xhigh review through the closed approval profile.",
       "authorized_roles": ["reviewer"]
     },
     "READY_TO_MERGE": {
-      "description": "Independent high-reasoning reviewer approved; candidate ready to merge to main.",
+      "description": "Independent Sol/xhigh reviewer approved; candidate ready to merge to main.",
       "authorized_roles": ["publisher"]
     },
     "MERGED_TO_MAIN": {
@@ -112,12 +112,12 @@
     {"from": "QA_FAILED", "to": "REMEDIATING", "authorized_roles": ["orchestrator"], "conditions": ["remediation authorized"]},
     {"from": "REMEDIATING", "to": "CANDIDATE_PINNED", "authorized_roles": ["remediator"], "conditions": ["new implementation_pass_id", "new candidate SHA", "new qa_for_pass_id"]},
     {"from": "QA_PASSED", "to": "INDEPENDENT_REVIEW_PENDING", "authorized_roles": ["qa"], "conditions": ["all validations passed", "QA passed"]},
-    {"from": "INDEPENDENT_REVIEW_PENDING", "to": "READY_TO_MERGE", "authorized_roles": ["reviewer"], "conditions": ["independent Fable or Sol approval after candidate SHA", "high reasoning used", "not approved by PR author, implementer, or QA identity"]},
+    {"from": "INDEPENDENT_REVIEW_PENDING", "to": "READY_TO_MERGE", "authorized_roles": ["reviewer"], "conditions": ["explicit independent_approval route after candidate SHA", "closed Sol/xhigh profile used", "not approved by PR author, implementer, or QA identity"]},
     {"from": "INDEPENDENT_REVIEW_PENDING", "to": "BLOCKED", "authorized_roles": ["reviewer"], "conditions": ["independent reviewer rejects candidate"]},
     {"from": "READY_TO_MERGE", "to": "MERGED_TO_MAIN", "authorized_roles": ["publisher"], "conditions": ["squash/rebase merge to main", "merge_result_sha recorded"]},
     {"from": "MERGED_TO_MAIN", "to": "POST_MERGE_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-merge validation running against main SHA"]},
     {"from": "POST_MERGE_VALIDATING", "to": "PUBLICATION_READY", "authorized_roles": ["validator"], "conditions": ["post-merge validations and tests pass"]},
-    {"from": "PUBLICATION_READY", "to": "PUBLISHED", "authorized_roles": ["publisher"], "conditions": ["publication_sha is full 40-char main SHA", "trusted runner provenance verified", "independent high-reasoning agent approval exists"]},
+    {"from": "PUBLICATION_READY", "to": "PUBLISHED", "authorized_roles": ["publisher"], "conditions": ["publication_sha is full 40-char main SHA", "trusted runner provenance verified", "independent Sol/xhigh approval exists"]},
     {"from": "PUBLISHED", "to": "DEPLOYED", "authorized_roles": ["publisher"], "conditions": ["deployment verified"]},
     {"from": "*", "to": "BLOCKED", "authorized_roles": ["orchestrator", "reviewer"], "conditions": ["named gate condition failed"]},
     {"from": "*", "to": "ABORTED", "authorized_roles": ["orchestrator"], "conditions": ["termination decision recorded with evidence"]},
@@ -125,7 +125,7 @@
   ],
   "role_authorities": {
     "reviewer": {
-      "description": "Independent Fable or Sol agent using an authorized reviewer profile at high reasoning against an immutable snapshot.",
+      "description": "Independent Sol agent using the closed approval profile at xhigh reasoning against an immutable snapshot.",
       "can_approve": true,
       "can_implement": false,
       "can_qa": false,

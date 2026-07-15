@@ -76,7 +76,7 @@ def _issue_statuses() -> Dict[str, Any]:
 
 
 def _parse_time(value: str) -> Optional[datetime]:
-    if not value:
+    if not isinstance(value, str) or not value:
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -381,10 +381,33 @@ def _check_route_evidence(value: Any, contract: str, label: str, errors: List[st
         errors.append(f"{label}: {error}")
 
 
+def _route_decision_ids(evidence: Any) -> set[str]:
+    if not isinstance(evidence, dict) or not isinstance(evidence.get("attempts"), list):
+        return set()
+    decision_ids: set[str] = set()
+    for attempt in evidence["attempts"]:
+        if not isinstance(attempt, dict):
+            continue
+        decision = attempt.get("decision")
+        rejection = attempt.get("decision_rejection")
+        decision_id = (
+            decision.get("decision_id") if isinstance(decision, dict)
+            else rejection.get("decision_id") if isinstance(rejection, dict)
+            else None
+        )
+        if isinstance(decision_id, str):
+            decision_ids.add(decision_id)
+    return decision_ids
+
+
 def _check_invocation_route_binding(record: Dict[str, Any], label: str, errors: List[str]) -> None:
     evidence = record.get("route_evidence", {})
     attempts = evidence.get("attempts", []) if isinstance(evidence, dict) else []
+    if not isinstance(attempts, list):
+        attempts = []
     final_decision = attempts[-1].get("decision", {}) if attempts and isinstance(attempts[-1], dict) else {}
+    if not isinstance(final_decision, dict):
+        final_decision = {}
     if record.get("invoked_model_ref") != final_decision.get("model_ref"):
         errors.append(f"{label} invoked_model_ref does not match final routed model reference")
     if record.get("reasoning_effort") != "high":
@@ -527,7 +550,10 @@ def _resolve_embedded_or_path(record: Dict[str, Any], embedded_key: str, path_ke
 
 
 def _actual(record: Dict[str, Any]) -> Dict[str, Any]:
-    return record.get("actual_invocation", {}) if isinstance(record, dict) else {}
+    if not isinstance(record, dict):
+        return {}
+    actual = record.get("actual_invocation")
+    return actual if isinstance(actual, dict) else {}
 
 
 def _same_list(a: Any, b: Any) -> bool:
@@ -544,7 +570,8 @@ def _check_probe_execution_binding(
 ) -> None:
     policy = manifest.get("policy", {})
     actual = _actual(exec_record)
-    iso = actual.get("isolation", {})
+    iso_value = actual.get("isolation")
+    iso = iso_value if isinstance(iso_value, dict) else {}
     qa_run_id = qa_record.get("qa_run_id", "<unknown>")
 
     if actual.get("authority_process") != "fresh-isolated-worker" or not isinstance(actual.get("authority_worker_pid"), int):
@@ -560,11 +587,15 @@ def _check_probe_execution_binding(
 
     if exec_record.get("schema_version") != "2" or exec_record.get("role") != "qa":
         errors.append(f"qa {qa_run_id} protected execution record is not a QA schema_version=2 record")
-    if exec_record.get("evidence_class", "authoritative") != "authoritative":
+    if exec_record.get("evidence_class") != "authoritative":
         errors.append(f"qa {qa_run_id} execution record is non-evidence/advisory")
-    if exec_record.get("record_only"):
+    if exec_record.get("record_only") is not False:
         errors.append(f"qa {qa_run_id} record-only execution output cannot satisfy QA evidence")
-    if exec_record.get("writable_by_model") or actual.get("isolation", {}).get("protected_record_writable_by_model"):
+    if probe_record.get("evidence_class") != "authoritative":
+        errors.append(f"qa {qa_run_id} probe record is non-evidence/advisory")
+    if probe_record.get("record_only") is not False:
+        errors.append(f"qa {qa_run_id} record-only probe output cannot satisfy QA evidence")
+    if exec_record.get("writable_by_model") or iso.get("protected_record_writable_by_model"):
         errors.append(f"qa {qa_run_id} protected execution record was writable by QA/model")
     if exec_record.get("run_id") != manifest.get("run_id") or probe_record.get("run_id") != manifest.get("run_id"):
         errors.append(f"qa {qa_run_id} run_id does not match manifest")
@@ -612,9 +643,15 @@ def _check_probe_execution_binding(
         errors=errors,
     )
 
-    generated_by = exec_record.get("generated_by", {})
+    generated_by_value = exec_record.get("generated_by") if isinstance(exec_record, dict) else None
+    generated_by = generated_by_value if isinstance(generated_by_value, dict) else {}
     if generated_by.get("policy_commit_sha") != policy.get("sha"):
         errors.append(f"qa {qa_run_id} execution generated_by policy SHA mismatch")
+    if generated_by.get("dispatcher_path") != "scripts/governance/run_isolated_pi.py":
+        errors.append(f"qa {qa_run_id} execution dispatcher path mismatch")
+    dispatcher_path = REPO_ROOT / "scripts" / "governance" / "run_isolated_pi.py"
+    if generated_by.get("dispatcher_sha256") != sha256_file(dispatcher_path):
+        errors.append(f"qa {qa_run_id} execution dispatcher SHA256 mismatch")
     if actual.get("policy_commit_sha") != policy.get("sha"):
         errors.append(f"qa {qa_run_id} actual invocation policy SHA mismatch")
     if probe_record.get("policy_commit_sha") != policy.get("sha"):
@@ -667,6 +704,8 @@ def _check_probe_execution_binding(
         "ssh_config_mounted": False,
         "gh_config_mounted": False,
         "ambient_credentials_available": False,
+        "host_proc_mounted": False,
+        "procfs_scope": "private_pid_namespace",
         "context_files_disabled": True,
         "extensions_disabled": True,
         "skills_disabled": True,
@@ -674,8 +713,10 @@ def _check_probe_execution_binding(
         "write_tools_observed": False,
     }
     outer_iso = qa_record.get("isolation_proof", {})
+    if not isinstance(outer_iso, dict):
+        outer_iso = {}
     for field, expected_value in expected_inner_isolation.items():
-        if iso.get(field) is not expected_value:
+        if not _strict_json_equal(iso.get(field), expected_value):
             errors.append(f"qa {qa_run_id} execution isolation {field} must be {expected_value}")
         if iso.get(field) != outer_iso.get(field):
             errors.append(f"qa {qa_run_id} inner/outer isolation mismatch for {field}")
@@ -685,6 +726,46 @@ def _check_probe_execution_binding(
             errors.append(f"qa {qa_run_id} execution isolation {field} must equal candidate_tree_oid")
         if iso.get(field) != outer_iso.get(field):
             errors.append(f"qa {qa_run_id} inner/outer isolation mismatch for {field}")
+    expected_isolation_fields = set(expected_inner_isolation) | {
+        "candidate_tree_before", "candidate_tree_after"
+    }
+    if set(iso) != expected_isolation_fields:
+        errors.append(f"qa {qa_run_id} execution isolation fields are incomplete or unknown")
+
+    expected_credential_interface = {
+        "type": "scoped_env",
+        "names": ["LITELLM_API_KEY"],
+        "values_recorded": False,
+        "brokered": False,
+        "available_to_tools": False,
+        "tools_disabled_for_authoritative_qa": True,
+    }
+    if actual.get("credential_interface") != expected_credential_interface:
+        errors.append(f"qa {qa_run_id} credential interface does not match authoritative QA")
+    if probe_record.get("credential_interface") != expected_credential_interface:
+        errors.append(f"qa {qa_run_id} probe credential interface does not match authoritative QA")
+    invoked_model_ref = actual.get("invoked_model_ref")
+    expected_resolved_model = ""
+    if isinstance(invoked_model_ref, dict):
+        expected_resolved_model = (
+            f"{invoked_model_ref.get('endpoint_id', '')}/"
+            f"{invoked_model_ref.get('upstream_model_id', '')}"
+        )
+    if actual.get("resolved_model") != expected_resolved_model:
+        errors.append(f"qa {qa_run_id} resolved model does not match invoked model reference")
+    probe_model_ref = probe_record.get("invoked_model_ref")
+    expected_probe_model = ""
+    if isinstance(probe_model_ref, dict):
+        expected_probe_model = (
+            f"{probe_model_ref.get('endpoint_id', '')}/"
+            f"{probe_model_ref.get('upstream_model_id', '')}"
+        )
+    if probe_record.get("resolved_model") != expected_probe_model:
+        errors.append(f"qa {qa_run_id} probe resolved model does not match invoked model reference")
+    if actual.get("environment_values_recorded") is not False:
+        errors.append(f"qa {qa_run_id} execution recorded environment values")
+    if probe_record.get("environment_values_recorded") is not False:
+        errors.append(f"qa {qa_run_id} probe recorded environment values")
 
     nonce = probe_record.get("nonce", "")
     expected = f"READY {nonce}" if isinstance(nonce, str) and re.fullmatch(r"[a-f0-9]{16}", nonce) else ""
@@ -742,6 +823,16 @@ def _check_probe_execution_binding(
         else:
             if parsed_final_text != final_text:
                 errors.append(f"qa {qa_run_id} retained event stream final text mismatch")
+    stderr_text = actual.get("stderr_text")
+    if not isinstance(stderr_text, str):
+        errors.append(f"qa {qa_run_id} retained execution stderr is missing")
+    elif actual.get("stderr_sha256") != sha256_text(stderr_text):
+        errors.append(f"qa {qa_run_id} execution stderr hash does not match retained stderr")
+    probe_stderr_text = probe_record.get("stderr_text")
+    if not isinstance(probe_stderr_text, str):
+        errors.append(f"qa {qa_run_id} retained probe stderr is missing")
+    elif probe_record.get("stderr_sha256") != sha256_text(probe_stderr_text):
+        errors.append(f"qa {qa_run_id} probe stderr hash does not match retained stderr")
     probe_event_hash = probe_record.get("probe_event_log_sha256")
     if not isinstance(probe_event_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", probe_event_hash):
         errors.append(f"qa {qa_run_id} probe event stream hash is missing or invalid")
@@ -750,16 +841,8 @@ def _check_probe_execution_binding(
 
     execution_route = actual.get("route_evidence", {})
     probe_route = probe_record.get("route_evidence", {})
-    execution_decisions = {
-        attempt.get("decision", {}).get("decision_id")
-        for attempt in execution_route.get("attempts", [])
-        if isinstance(attempt, dict)
-    } if isinstance(execution_route, dict) else set()
-    probe_decisions = {
-        attempt.get("decision", {}).get("decision_id")
-        for attempt in probe_route.get("attempts", [])
-        if isinstance(attempt, dict)
-    } if isinstance(probe_route, dict) else set()
+    execution_decisions = _route_decision_ids(execution_route)
+    probe_decisions = _route_decision_ids(probe_route)
     if execution_decisions & probe_decisions:
         errors.append(f"qa {qa_run_id} probe and execution reused a route decision_id")
 
@@ -782,7 +865,8 @@ def _check_probe_execution_binding(
 
 
 def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path: Optional[str]) -> None:
-    repo = manifest.get("repo", {})
+    repo_value = manifest.get("repo")
+    repo = repo_value if isinstance(repo_value, dict) else {}
     pass_ids = all_pass_ids(manifest)
     records_by_pass = pass_records_by_id(manifest)
     qa_records = normalize_qa_records(manifest)
@@ -797,7 +881,8 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
 
     by_pass: Dict[str, List[Dict[str, Any]]] = {pass_id: [] for pass_id in pass_ids}
     for qa_record in qa_records:
-        by_pass.setdefault(qa_record.get("qa_for_pass_id", ""), []).append(qa_record)
+        qa_for_pass_id = qa_record.get("qa_for_pass_id")
+        by_pass.setdefault(qa_for_pass_id if isinstance(qa_for_pass_id, str) else "", []).append(qa_record)
     for pass_id in pass_ids:
         count = len(by_pass.get(pass_id, []))
         if count != 1:
@@ -854,7 +939,8 @@ def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path
             if qa_record.get(field) != expected:
                 errors.append(f"QA {qa_run_id} stale/mismatched {field}")
 
-        iso = qa_record.get("isolation_proof", {})
+        iso_value = qa_record.get("isolation_proof")
+        iso = iso_value if isinstance(iso_value, dict) else {}
         expected_iso = {
             "source_mount_read_only": True,
             "scratch_separate_from_source": True,
@@ -935,8 +1021,17 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
     if not external_evidence:
         return errors
 
-    for error in validate_schema(external_evidence, _load_schema("governance/schemas/external-evidence.schema.json")):
+    if not isinstance(external_evidence, dict):
+        errors.append("external provenance evidence must be an object")
+        return errors
+
+    schema_errors = validate_schema(
+        external_evidence, _load_schema("governance/schemas/external-evidence.schema.json")
+    )
+    for error in schema_errors:
         errors.append(f"external evidence schema: {error}")
+    if schema_errors:
+        return errors
     if external_evidence.get("schema_version") != "2" or external_evidence.get("evidence_class") != "protected-external":
         errors.append("external provenance evidence must be schema_version=2 protected-external")
 
@@ -1084,28 +1179,48 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
     pr = manifest.get("pull_request", {})
     repo = manifest.get("repo", {})
     records = pass_records_by_id(manifest)
-    implementation_agents = {record.get("agent_id") for record in records.values() if record.get("agent_id")}
-    implementation_role_runs = {record.get("role_run_id") for record in records.values() if record.get("role_run_id")}
-    qa_agents = {record.get("agent_id") for record in normalize_qa_records(manifest) if record.get("agent_id")}
-    qa_role_runs = {record.get("role_run_id") for record in normalize_qa_records(manifest) if record.get("role_run_id")}
+    implementation_agents = {
+        record["agent_id"] for record in records.values()
+        if isinstance(record.get("agent_id"), str) and record["agent_id"]
+    }
+    implementation_role_runs = {
+        record["role_run_id"] for record in records.values()
+        if isinstance(record.get("role_run_id"), str) and record["role_run_id"]
+    }
+    qa_agents = {
+        record["agent_id"] for record in normalize_qa_records(manifest)
+        if isinstance(record.get("agent_id"), str) and record["agent_id"]
+    }
+    qa_role_runs = {
+        record["role_run_id"] for record in normalize_qa_records(manifest)
+        if isinstance(record.get("role_run_id"), str) and record["role_run_id"]
+    }
     candidate_sha = repo.get("candidate_sha")
     candidate_pinned_at = _parse_time(repo.get("candidate_pinned_at", ""))
     if not candidate_pinned_at:
         errors.append("candidate_pinned_at missing or invalid; approval recency cannot be verified")
 
-    approvals = (external_evidence or {}).get("approvals", [])
-    identity_records = (external_evidence or {}).get("agent_identities", [])
+    approvals_value = (external_evidence or {}).get("approvals", [])
+    identity_records_value = (external_evidence or {}).get("agent_identities", [])
+    approvals = approvals_value if isinstance(approvals_value, list) else []
+    identity_records = identity_records_value if isinstance(identity_records_value, list) else []
     identities: Dict[str, str] = {}
     principal_agents: Dict[str, str] = {}
     for record in identity_records:
+        if not isinstance(record, dict):
+            errors.append("protected agent identity record must be an object")
+            continue
         agent_id = record.get("agent_id", "")
-        if not agent_id or agent_id in identities:
+        if not isinstance(agent_id, str) or not agent_id or agent_id in identities:
             errors.append(f"protected agent identity is missing or duplicated: {agent_id or '<empty>'}")
             continue
         if record.get("provider") != "protected-runner" or record.get("verified") is not True or not record.get("principal_id"):
             errors.append(f"protected agent identity is not verified: {agent_id}")
             continue
         principal_id = record["principal_id"]
+        if not isinstance(principal_id, str) or not principal_id:
+            errors.append(f"protected canonical principal is invalid for: {agent_id}")
+            continue
         if principal_id in principal_agents:
             errors.append(f"protected canonical principal is assigned to multiple aliases: {principal_id}")
             continue
@@ -1123,19 +1238,23 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
     valid = False
     reviewer_role_runs: set[str] = set()
     for approval in approvals:
+        if not isinstance(approval, dict):
+            errors.append("protected approval record must be an object")
+            continue
         reviewer = approval.get("reviewer", "") or approval.get("user", "")
         agent_id = approval.get("agent_id", "")
         role_run_id = approval.get("role_run_id", "")
-        identity_binding = approval.get("identity_binding", {})
+        identity_binding_value = approval.get("identity_binding")
+        identity_binding = identity_binding_value if isinstance(identity_binding_value, dict) else {}
         route_errors = validate_route_evidence(approval.get("route_evidence"), "independent_approval")
         approval_time = _parse_time(approval.get("submitted_at", "") or approval.get("timestamp", ""))
-        if not reviewer:
+        if not isinstance(reviewer, str) or not reviewer:
             errors.append("approval missing reviewer")
             continue
-        if not agent_id or reviewer != agent_id:
+        if not isinstance(agent_id, str) or not agent_id or reviewer != agent_id:
             errors.append(f"approval reviewer identity is not bound to protected agent_id: {reviewer}")
             continue
-        if not role_run_id:
+        if not isinstance(role_run_id, str) or not role_run_id:
             errors.append(f"approval by {reviewer} missing reviewer role_run_id")
             continue
         if role_run_id in reviewer_role_runs:
@@ -1194,7 +1313,7 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         valid = True
 
     if not valid:
-        errors.append("no independent current-SHA high-reasoning agent approval recorded")
+        errors.append("no independent current-SHA Sol/xhigh agent approval recorded")
 
 
 def _check_terminal_state(manifest: Dict[str, Any], errors: List[str], phase: str) -> None:
@@ -1258,7 +1377,7 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         errors.append("publication blocked: existing-work freeze/audit is still active")
 
 
-def check_delivery(
+def _check_delivery_impl(
     manifest: Dict[str, Any],
     manifest_path: Optional[str] = None,
     *,
@@ -1301,6 +1420,26 @@ def check_delivery(
         return False, publication_errors, "publication"
 
     return True, [], "publication"
+
+
+def check_delivery(
+    manifest: Dict[str, Any],
+    manifest_path: Optional[str] = None,
+    *,
+    phase: str = "pre-merge",
+    external_evidence: Optional[Dict[str, Any]] = None,
+) -> Tuple[bool, List[str], str]:
+    """Run the delivery gate and convert malformed-input faults into blockers."""
+    gate_type = "publication" if phase == "publication" else "merge"
+    try:
+        return _check_delivery_impl(
+            manifest,
+            manifest_path,
+            phase=phase,
+            external_evidence=external_evidence,
+        )
+    except Exception as error:
+        return False, [f"delivery gate rejected malformed input: {type(error).__name__}"], gate_type
 
 
 def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
@@ -1360,24 +1499,15 @@ def main() -> int:
 
     try:
         manifest = load_json(args.path)
-    except (FileNotFoundError, json.JSONDecodeError, DuplicateKeyError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, DuplicateKeyError, ValueError, RecursionError) as exc:
         print(f"Error reading manifest: {exc}", file=sys.stderr)
-        return 1
-
-    from check_evidence_manifest import check as validate_manifest  # noqa: WPS433
-
-    manifest_errors = validate_manifest(manifest, args.path)
-    if manifest_errors:
-        print("Manifest validation failed:", file=sys.stderr)
-        for error in manifest_errors:
-            print(f"  - {error}", file=sys.stderr)
         return 1
 
     external_evidence = None
     if args.external_evidence:
         try:
             external_evidence = load_json(args.external_evidence)
-        except (FileNotFoundError, json.JSONDecodeError, DuplicateKeyError, ValueError) as exc:
+        except (OSError, json.JSONDecodeError, DuplicateKeyError, ValueError, RecursionError) as exc:
             print(f"Error reading external evidence: {exc}", file=sys.stderr)
             return 1
 

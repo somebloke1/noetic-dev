@@ -119,7 +119,11 @@ EXPECTED_MODEL_POLICY = {
     "tasks": {
         "agent_review": AGENT_REVIEW_TASK,
         "authoritative_qa": AGENT_REVIEW_TASK,
-        "independent_approval": {**AGENT_REVIEW_TASK, "high_value": True},
+        "independent_approval": {
+            **AGENT_REVIEW_TASK,
+            "high_value": True,
+            "independent_approval": True,
+        },
     },
 }
 
@@ -318,9 +322,11 @@ def validate_decision(
         "fallbacks",
         "genus",
         "genus_code",
+        "independent_approval_eligible",
         "model",
         "model_ref",
         "rationale",
+        "routing_profile",
         "sophistication",
     }
     if set(raw) != required_fields:
@@ -338,6 +344,8 @@ def validate_decision(
         or raw.get("sophistication") != "complex"
         or raw.get("availability") != "verified"
         or raw.get("fable_eligible") is not False
+        or raw.get("independent_approval_eligible") is not False
+        or raw.get("routing_profile") != "standard"
     ):
         raise ModelRoutingError("genus-router decision does not match protected review classification")
     if raw.get("genus") != REVIEW_GENUS:

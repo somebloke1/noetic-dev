@@ -22,15 +22,40 @@
       "minItems": 1,
       "maxItems": 4,
       "items": {
-        "type": "object",
-        "required": ["decision", "outcome", "outcome_recorded", "reasoning_effort"],
-        "properties": {
-          "decision": {"type": "object"},
-          "outcome": {"type": "string", "enum": ["success", "failure"]},
-          "outcome_recorded": {"type": "boolean", "const": true},
-          "reasoning_effort": {"type": "string", "const": "high"}
-        },
-        "additionalProperties": false
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["decision", "outcome", "outcome_recorded", "reasoning_effort"],
+            "properties": {
+              "decision": {"type": "object"},
+              "outcome": {"type": "string", "enum": ["success", "failure"]},
+              "outcome_recorded": {"type": "boolean", "const": true},
+              "reasoning_effort": {"type": "string", "const": "high"}
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": ["decision_rejection", "invocation_count", "outcome", "outcome_recorded"],
+            "properties": {
+              "decision_rejection": {
+                "type": "object",
+                "required": ["decision_id", "model", "raw_decision_sha256", "rejection_type"],
+                "additionalProperties": false,
+                "properties": {
+                  "decision_id": {"type": "string", "pattern": "^d-[0-9]{8}-[0-9]{6}$"},
+                  "model": {"type": "string"},
+                  "raw_decision_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                  "rejection_type": {"type": "string", "minLength": 1}
+                }
+              },
+              "invocation_count": {"type": "integer", "const": 0},
+              "outcome": {"type": "string", "const": "failure"},
+              "outcome_recorded": {"type": "boolean", "const": true}
+            },
+            "additionalProperties": false
+          }
+        ]
       }
     }
   },

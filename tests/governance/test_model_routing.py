@@ -13,7 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
+ROOT = Path(__file__).resolve().parents[2]
+GOV_SCRIPTS = str(ROOT / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
@@ -65,11 +66,13 @@ def decision(model: str, number: int = 1) -> dict[str, object]:
         "model": model,
         "model_ref": model_ref(model),
         "genus_code": "REVIEW-COMPLEX",
+        "independent_approval_eligible": False,
         "fallbacks": fallbacks,
         "fallback_refs": [model_ref(item) for item in fallbacks],
         "effective_complexity": "complex",
         "sophistication": "complex",
         "rationale": ["fixed protected review classification"],
+        "routing_profile": "standard",
         "decision_id": f"d-20260713-{number:06d}",
     }
 
@@ -142,6 +145,18 @@ class TestModelRouting(unittest.TestCase):
         with self.assertRaisesRegex(ModelRoutingError, "unknown fields"):
             validate_decision(unknown, self.policy, set())
 
+        for field, value in [
+            ("independent_approval_eligible", True),
+            ("independent_approval_eligible", 0),
+            ("routing_profile", "independent_approval"),
+        ]:
+            mutated = json.loads(json.dumps(valid))
+            mutated[field] = value
+            with self.subTest(field=field, value=value), self.assertRaisesRegex(
+                ModelRoutingError, "protected review"
+            ):
+                validate_decision(mutated, self.policy, set())
+
         ungoverned = decision(TERRA)
         ungoverned["fallbacks"] = ["unapproved-model"]
         ungoverned["fallback_refs"] = [{
@@ -151,6 +166,15 @@ class TestModelRouting(unittest.TestCase):
         }]
         with self.assertRaisesRegex(ModelRoutingError, "inconsistent"):
             validate_decision(ungoverned, self.policy, set())
+
+    def test_current_genus_router_component_contract_fixture(self):
+        fixture = json.loads(
+            (ROOT / "tests/governance/fixtures/genus_router_standard_review_decision.json").read_text()
+        )
+        validated = validate_decision(fixture, self.policy, set())
+        self.assertEqual(validated["model"], TERRA)
+        self.assertEqual(validated["routing_profile"], "standard")
+        self.assertIs(validated["independent_approval_eligible"], False)
 
     def test_decision_rejects_reselected_excluded_model(self):
         with self.assertRaisesRegex(ModelRoutingError, "forbidden or excluded"):

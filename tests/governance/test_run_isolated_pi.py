@@ -86,9 +86,11 @@ def decision(model: str = TERRA, number: int = 1) -> dict[str, object]:
         "fallbacks": remaining[1:],
         "genus": "Complex Code Review",
         "genus_code": "REVIEW-COMPLEX",
+        "independent_approval_eligible": False,
         "model": model,
         "model_ref": model_ref(model),
         "rationale": ["protected authoritative QA fixture"],
+        "routing_profile": "standard",
         "sophistication": "complex",
     }
 
@@ -243,14 +245,14 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             prompt.write_text("Review", encoding="utf-8")
             with mock.patch("run_isolated_pi.subprocess.run", side_effect=run):
                 result = run_routed_pi_lifecycle(
-                    role="validator", run_id="run", role_run_id="validator-1", tools=[],
-                    prompt_file=prompt, candidate_dir=None, qa_for_pass_id=None,
-                    candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="",
+                    role="qa", run_id="run", role_run_id="qa-1", tools=[],
+                    prompt_file=prompt, candidate_dir=root, qa_for_pass_id="implementation-1",
+                    candidate_sha="d" * 40, base_sha="c" * 40, candidate_tree_oid="e" * 40,
                     timeout=1,
                 )
         self.assertEqual(captured["command"][1], "-I")
         self.assertEqual(captured["command"][3], "--routed-worker")
-        self.assertEqual(captured["timeout"], 63)
+        self.assertEqual(captured["timeout"], 66)
         self.assertNotIn("decision_claim_dir", captured["request"])
         self.assertEqual(result.execution_record["actual_invocation"]["authority_process"], "fresh-isolated-worker")
         self.assertNotIn("UNRELATED_SECRET", captured["env"])
@@ -876,8 +878,6 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         _require_validated_identity("qa", "implementation-1")
         _require_validated_identity("qa", "A")
         _require_validated_identity("qa", "x" * 128)
-        _require_validated_identity("validator", None)
-        _require_validated_identity("validator", "")
         for role, qa_for, expected in [
             ("qa", None, "bounded ASCII"),
             ("qa", "", "bounded ASCII"),
@@ -888,7 +888,10 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ("qa", "../implementation", "bounded ASCII"),
             ("qa", "x" * 129, "bounded ASCII"),
             ("future-role", "implementation-1", "role is invalid"),
-            ("validator", "implementation-1", "cannot claim"),
+            ("planner", None, "authoritative QA only"),
+            ("validator", "", "authoritative QA only"),
+            ("publisher", None, "authoritative QA only"),
+            ("orchestrator", None, "authoritative QA only"),
         ]:
             with self.subTest(role=role, qa_for=qa_for), self.assertRaisesRegex(RuntimeError, expected):
                 _require_validated_identity(role, qa_for)
@@ -908,6 +911,11 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
             ("qa_for_pass_id", "\u200b"),
             ("qa_for_pass_id", "../implementation"),
             ("qa_for_pass_id", "x" * 129),
+            ("evidence_class", "non-evidence"),
+            ("record_only", True),
+            ("resolved_model", "openai/codex/gpt-5.6-terra"),
+            ("environment_values_recorded", True),
+            ("stderr_sha256", "short"),
         ]
         for field, value in mutations:
             mutated = json.loads(json.dumps(probe))
@@ -918,7 +926,85 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         nonqa = json.loads(json.dumps(probe))
         nonqa["role"] = "validator"
         nonqa["qa_for_pass_id"] = ""
-        self.assertEqual(isolated_pi.validate_schema(nonqa, schema), [])
+        self.assertTrue(isolated_pi.validate_schema(nonqa, schema))
+        for field in ["profile_id", "profile_hash", "authority_override"]:
+            unknown = json.loads(json.dumps(probe))
+            unknown[field] = "forbidden"
+            with self.subTest(field=field):
+                self.assertTrue(isolated_pi.validate_schema(unknown, schema))
+
+    def test_nonqa_public_lifecycle_fails_before_worker_or_router_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prompt = Path(directory) / "prompt.md"
+            prompt.write_text("Work", encoding="utf-8")
+            for role in ["planner", "validator", "publisher", "orchestrator"]:
+                with self.subTest(role=role), mock.patch(
+                    "run_isolated_pi.subprocess.run"
+                ) as process, self.assertRaisesRegex(RuntimeError, "authoritative QA only"):
+                    run_routed_pi_lifecycle(
+                        role=role,
+                        run_id="run",
+                        role_run_id=f"{role}-1",
+                        tools=[],
+                        prompt_file=prompt,
+                        candidate_dir=None,
+                        qa_for_pass_id=None,
+                        candidate_sha="",
+                        base_sha="",
+                        candidate_tree_oid="",
+                        timeout=1,
+                    )
+                process.assert_not_called()
+
+    def test_execution_schema_requires_explicit_closed_authority_markers(self):
+        schema = isolated_pi.load_json_strict(
+            ROOT / "governance/schemas/qa-execution-record.schema.json"
+        )
+        manifest = json.loads(
+            (ROOT / "tests/governance/fixtures/valid_advisory_manifest.json").read_text()
+        )
+        record = manifest["qa"]["records"][0]["protected_execution_record"]
+        self.assertEqual(isolated_pi.validate_schema(record, schema), [])
+        mutations = [
+            ("qa_for_pass_id", ""),
+            ("qa_for_pass_id", "   "),
+            ("qa_for_pass_id", "../implementation"),
+            ("qa_for_pass_id", "x" * 129),
+            ("evidence_class", "non-evidence"),
+            ("record_only", True),
+        ]
+        for field, value in mutations:
+            mutated = json.loads(json.dumps(record))
+            mutated[field] = value
+            with self.subTest(field=field, value=value):
+                self.assertTrue(isolated_pi.validate_schema(mutated, schema))
+
+        unknown = json.loads(json.dumps(record))
+        unknown["authority_override"] = True
+        self.assertTrue(isolated_pi.validate_schema(unknown, schema))
+        confused = json.loads(json.dumps(record))
+        confused["actual_invocation"]["attempt_accounting"][0]["invocation_count"] = True
+        self.assertTrue(isolated_pi.validate_schema(confused, schema))
+        for nested in ["isolation", "credential_interface", "invoked_model_ref"]:
+            mutated = json.loads(json.dumps(record))
+            mutated["actual_invocation"][nested]["authority_override"] = True
+            with self.subTest(nested=nested):
+                self.assertTrue(isolated_pi.validate_schema(mutated, schema))
+        routed = json.loads(json.dumps(record))
+        routed["actual_invocation"]["route_evidence"]["attempts"][0]["decision"][
+            "authority_override"
+        ] = True
+        self.assertTrue(isolated_pi.validate_schema(routed, schema))
+        for field, value in [
+            ("environment_values_recorded", True),
+            ("resolved_model", "openai/codex/gpt-5.6-terra"),
+            ("profile_id", "independent_approval"),
+            ("stderr_sha256", "short"),
+        ]:
+            mutated = json.loads(json.dumps(record))
+            mutated["actual_invocation"][field] = value
+            with self.subTest(field=field, value=value):
+                self.assertTrue(isolated_pi.validate_schema(mutated, schema))
 
     @unittest.skipUnless(shutil.which("bwrap") or shutil.which("bubblewrap"), "bubblewrap is required")
     def test_bwrap_copies_actual_held_config_fd_payload_read_only(self):
@@ -947,6 +1033,19 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, '{"sentinel":"exact-config"}')
         self.assertIn("--ro-bind-data", command)
+
+    def test_pi_binary_preserves_executable_name_while_resolving_node_prefix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            prefix = Path(directory) / "versions" / "node" / "v24.0.0"
+            cli = prefix / "lib" / "node_modules" / "pi" / "dist" / "cli.js"
+            cli.parent.mkdir(parents=True)
+            cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+            pi = prefix / "bin" / "pi"
+            pi.parent.mkdir(parents=True)
+            pi.symlink_to(cli)
+            with mock.patch("run_isolated_pi.shutil.which", return_value=str(pi)):
+                self.assertEqual(isolated_pi._pi_binary(), pi)
+                self.assertEqual(isolated_pi._node_prefix_for_pi(pi), prefix)
 
     def test_direct_provider_credentials_fail_closed(self):
         with self.assertRaisesRegex(RuntimeError, "direct provider credential"):
@@ -990,6 +1089,66 @@ class TestRunIsolatedPiPolicy(unittest.TestCase):
         with mock.patch.object(sys, "argv", argv), mock.patch("sys.stderr", stderr):
             self.assertEqual(main(), 1)
         self.assertIn("cannot authorize routed Pi execution", stderr.getvalue())
+
+    def test_cli_rejects_nonqa_execution_before_creating_output(self):
+        for role in ["planner", "validator", "publisher", "orchestrator"]:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                prompt = root / "prompt.md"
+                prompt.write_text("Work", encoding="utf-8")
+                output = root / "runs"
+                argv = [
+                    "run_isolated_pi.py",
+                    "--run-id",
+                    "run-1",
+                    "--role",
+                    role,
+                    "--role-run-id",
+                    f"{role}-1",
+                    "--prompt",
+                    str(prompt),
+                    "--output-dir",
+                    str(output),
+                ]
+                stderr = io.StringIO()
+                with self.subTest(role=role), mock.patch.object(
+                    sys, "argv", argv
+                ), mock.patch("sys.stderr", stderr):
+                    self.assertEqual(main(), 1)
+                self.assertIn("authoritative QA only", stderr.getvalue())
+                self.assertFalse(output.exists())
+
+    def test_cli_rejects_malformed_qa_identity_before_output_or_materialization(self):
+        malformed_ids = ["   ", "../implementation", "x" * 129, "\u200b"]
+        for qa_for_pass_id in malformed_ids:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                prompt = root / "prompt.md"
+                prompt.write_text("Review", encoding="utf-8")
+                output = root / "runs"
+                argv = [
+                    "run_isolated_pi.py",
+                    "--run-id", "run-1",
+                    "--role", "qa",
+                    "--role-run-id", "qa-1",
+                    "--qa-for-pass-id", qa_for_pass_id,
+                    "--prompt", str(prompt),
+                    "--candidate-dir", str(root / "candidate"),
+                    "--candidate-sha", "d" * 40,
+                    "--base-sha", "c" * 40,
+                    "--output-dir", str(output),
+                ]
+                stderr = io.StringIO()
+                with self.subTest(qa_for_pass_id=qa_for_pass_id), mock.patch.object(
+                    sys, "argv", argv
+                ), mock.patch("sys.stderr", stderr), mock.patch(
+                    "run_isolated_pi.materialize_candidate_checkout"
+                ) as materialize, mock.patch("run_isolated_pi.subprocess.run") as process:
+                    self.assertEqual(main(), 1)
+                self.assertIn("bounded ASCII", stderr.getvalue())
+                self.assertFalse(output.exists())
+                materialize.assert_not_called()
+                process.assert_not_called()
 
     def _init_candidate_repo(self, root: Path) -> str:
         subprocess.run(["git", "init"], cwd=root, check=True, capture_output=True)

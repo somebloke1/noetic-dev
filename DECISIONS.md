@@ -291,12 +291,12 @@ When changed code defines an explicit repository threat model or acceptance boun
 ## dec-20260714-0004: Independent approval succeeds only on Fable or Sol
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
 - Created: 2026-07-14
-- Updated: 2026-07-14
+- Updated: 2026-07-15
 - Tags: issue-29,delivery,independent-approval,model-eligibility
-- Source: docs/governance/delivery-governance.md;https://github.com/somebloke1/noetic-dev/pull/31#issuecomment-4969015742
+- Source: docs/governance/delivery-governance.md;governance/state-machine.json;/home/dgk/workspace/genus-router/config/router.yaml;/home/dgk/workspace/genus-router/src/genus_router/server.py@4ff584e2e5d190b7e25dc0a4607c494a50069b83
 - Confidence: high
 
 Retain the complete genus-router attempt sequence for independent approval, including failed Terra or Luna attempts, but accept a successful independent approval only when its final model is Claude Fable 5 or GPT-5.6 Sol at high reasoning. This directly enforces delivery-governance requirement 9 without pretending that ineligible attempts did not occur.
@@ -451,3 +451,18 @@ The protected Pi claim primitive SHALL distinguish newly created from pre-existi
 
 Superseding dec-20260714-0013's exact-0700 treatment of restrictive existing modes: after O_DIRECTORY|O_NOFOLLOW open and fstat owner/type validation, the claim primitive MAY fd-normalize a mode that is a strict subset of owner rwx (mode & ~0700 == 0) because this adds no group, other, or special-bit access and closes the concurrent restrictive-umask initialization window. It SHALL reject every mode carrying group/other permissions or setuid/setgid/sticky bits without repair. Both creator and concurrent observer perform the same fd validation/normalization before relative O_EXCL, yielding one successful claim and one replay. A deterministic concurrent regression SHALL pause the creator before fchmod and prove the observer normalizes safely, claims once, and leaves the creator with replay rather than claim-failure evidence.
 <!-- governance-crud:end id=dec-20260714-0014 -->
+
+<!-- governance-crud:start id=dec-20260715-0001 -->
+## dec-20260715-0001: Protected independent approval uses the closed Sol/xhigh router profile
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis-worktrees/issue-29-routed-pi-recovery
+- Created: 2026-07-15
+- Updated: 2026-07-15
+- Tags: issue-29,delivery,independent-approval,genus-router,sol,xhigh
+- Source: governance/state-machine.json;docs/governance/delivery-governance.md;docs/model-routing-policy.md;/home/dgk/workspace/genus-router/config/router.yaml;/home/dgk/workspace/genus-router/src/genus_router/server.py@4ff584e2e5d190b7e25dc0a4607c494a50069b83
+- Confidence: high
+
+Supersedes dec-20260714-0004. Protected approval evidence must bind an explicit `independent_approval=true` route request and the router's returned `routing_profile=independent_approval`. The accepted route is closed to GPT-5.6 Sol at xhigh reasoning with no fallbacks. Ordinary high-value Fable/Sol judgment remains useful but is not protected approval authority. This matches the merged genus-router policy and prevents standard high-value review evidence from being relabeled as approval.
+<!-- governance-crud:end id=dec-20260715-0001 -->

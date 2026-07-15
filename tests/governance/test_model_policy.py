@@ -76,6 +76,7 @@ class TestModelPolicy(unittest.TestCase):
         self.assertEqual(self.policy["tasks"]["independent_approval"], {
             **self.policy["tasks"]["agent_review"],
             "high_value": True,
+            "independent_approval": True,
         })
 
     def test_modality_routes_remain_litellm_governed(self):
@@ -83,6 +84,14 @@ class TestModelPolicy(unittest.TestCase):
             "embed": "snowflake-arctic-embed2",
             "asr": "qwen3-asr",
         })
+
+    def test_migration_state_separates_target_policy_from_accepted_runtime(self):
+        policy_doc = (ROOT / "docs" / "model-routing-policy.md").read_text()
+        self.assertIn("Accepted runtime paths", policy_doc)
+        self.assertIn("Missing adapter", policy_doc)
+        self.assertIn("External blocker", policy_doc)
+        self.assertIn("Qwen3-ASR", policy_doc)
+        self.assertIn("must not claim ASR readiness", policy_doc)
 
     def test_agent_review_broker_contains_no_direct_provider_harness(self):
         paths = [

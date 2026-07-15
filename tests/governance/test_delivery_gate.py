@@ -18,6 +18,8 @@ if GOV_SCRIPTS not in sys.path:
 
 from check_delivery_gate import (  # noqa: E402
     _check_pi_operation_accounting,
+    _check_route_evidence,
+    _route_decision_ids,
     check_bootstrap_blocked,
     check_delivery,
     check_pinning,
@@ -38,6 +40,47 @@ def advisory_external():
 
 
 class TestDeliveryGatePositive(unittest.TestCase):
+    def test_rejected_route_decision_can_precede_success(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        route = copy.deepcopy(
+            manifest["qa"]["records"][0]["protected_execution_record"][
+                "actual_invocation"
+            ]["route_evidence"]
+        )
+        terra = route["attempts"][0]["decision"]
+        sol = copy.deepcopy(terra)
+        sol["decision_id"] = "d-20260713-300002"
+        sol["model"] = terra["fallbacks"][0]
+        sol["model_ref"] = copy.deepcopy(terra["fallback_refs"][0])
+        sol["fallbacks"] = terra["fallbacks"][1:]
+        sol["fallback_refs"] = copy.deepcopy(terra["fallback_refs"][1:])
+        route["attempts"] = [
+            {
+                "decision_rejection": {
+                    "decision_id": terra["decision_id"],
+                    "model": terra["model"],
+                    "raw_decision_sha256": "a" * 64,
+                    "rejection_type": "ModelRoutingError",
+                },
+                "invocation_count": 0,
+                "outcome": "failure",
+                "outcome_recorded": True,
+            },
+            {
+                "decision": sol,
+                "outcome": "success",
+                "outcome_recorded": True,
+                "reasoning_effort": "high",
+            },
+        ]
+        errors = []
+        _check_route_evidence(route, "authoritative_qa", "qa route", errors)
+        self.assertEqual(errors, [])
+        self.assertEqual(
+            _route_decision_ids(route),
+            {"d-20260713-300001", "d-20260713-300002"},
+        )
+
     def test_rejected_pi_decision_accounting_binds_zero_invocations(self):
         decision_id = "d-20260714-999999"
         record = {
@@ -263,6 +306,41 @@ class TestDeliveryGateNegativeFixtures(unittest.TestCase):
 
 
 class TestExternalEvidenceFailures(unittest.TestCase):
+    def test_null_external_authority_arrays_fail_without_crashing(self):
+        for field in ["approvals", "agent_identities"]:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            external = advisory_external()
+            external[field] = None
+            passed, errors, _ = check_delivery(manifest, external_evidence=external)
+            with self.subTest(field=field):
+                self.assertFalse(passed)
+                self.assertTrue(errors)
+
+    def test_malformed_external_nested_authority_fails_without_crashing(self):
+        mutations = [
+            lambda external: external.update(artifact=None),
+            lambda external: external.update(repository=[]),
+            lambda external: external.update(workflow="invalid"),
+            lambda external: external.update(run=1),
+            lambda external: external.update(job=None),
+            lambda external: external.update(pull_request=[]),
+            lambda external: external.update(protected_ref=None),
+            lambda external: external.update(checkouts="invalid"),
+            lambda external: external.update(generator=[]),
+            lambda external: external.update(policy_file_hashes=None),
+            lambda external: external["approvals"][0].update(identity_binding=None),
+            lambda external: external["approvals"][0].update(submitted_at=[]),
+            lambda external: external["agent_identities"][0].update(agent_id=[]),
+        ]
+        for mutate in mutations:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            external = advisory_external()
+            mutate(external)
+            with self.subTest(mutate=mutate):
+                passed, errors, _ = check_delivery(manifest, external_evidence=external)
+                self.assertFalse(passed)
+                self.assertTrue(errors)
+
     def test_manifest_only_trusted_runner_is_rejected(self):
         result = subprocess.run(
             [sys.executable, "scripts/governance/check_evidence_manifest.py", str(FIXTURES_DIR / "negative_manifest_only_authoritative_manifest.json")],
@@ -322,30 +400,16 @@ class TestExternalEvidenceFailures(unittest.TestCase):
         external["approvals"][0]["route_evidence"]["attempts"][0]["reasoning_effort"] = "low"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
-        self.assertIn("did not enact high reasoning", "\n".join(errors))
+        self.assertIn("did not enact xhigh reasoning", "\n".join(errors))
 
-    def test_terra_cannot_be_final_independent_approval_model(self):
+    def test_non_sol_cannot_be_independent_approval_model(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
         route = external["approvals"][0]["route_evidence"]
-        fable_attempt = route["attempts"][0]
-        fable_attempt["outcome"] = "failure"
-        fable_decision = fable_attempt["decision"]
-        terra_decision = copy.deepcopy(fable_decision)
-        terra_decision["decision_id"] = "d-20260713-400002"
-        terra_decision["model"] = fable_decision["fallbacks"][0]
-        terra_decision["model_ref"] = copy.deepcopy(fable_decision["fallback_refs"][0])
-        terra_decision["fallbacks"] = fable_decision["fallbacks"][1:]
-        terra_decision["fallback_refs"] = copy.deepcopy(fable_decision["fallback_refs"][1:])
-        route["attempts"].append({
-            "decision": terra_decision,
-            "outcome": "success",
-            "outcome_recorded": True,
-            "reasoning_effort": "high",
-        })
+        route["attempts"][0]["decision"]["model"] = "codex/gpt-5.6-terra"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
-        self.assertIn("successful model must be Fable or Sol", "\n".join(errors))
+        self.assertIn("violates routed candidate order", "\n".join(errors))
 
     def test_reviewer_alias_is_rejected_from_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -463,7 +527,7 @@ class TestExternalEvidenceFailures(unittest.TestCase):
     def test_review_evidence_digest_mismatch_is_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
-        external["approvals"][0]["reasoning_level"] = "xhigh"
+        external["approvals"][0]["reasoning_level"] = "high"
         passed, errors, _ = check_delivery(manifest, external_evidence=external)
         self.assertFalse(passed)
         self.assertIn("review identity/approval evidence digest mismatch", "\n".join(errors))
@@ -588,6 +652,120 @@ class TestQaBindingFailures(unittest.TestCase):
         self.assertFalse(passed)
         self.assertIn("route classification", "\n".join(errors))
 
+    def test_execution_authority_markers_and_shape_fail_closed(self):
+        mutations = [
+            ("missing evidence class", lambda record: record.pop("evidence_class")),
+            ("missing record-only marker", lambda record: record.pop("record_only")),
+            ("non-evidence class", lambda record: record.update(evidence_class="non-evidence")),
+            ("record-only true", lambda record: record.update(record_only=True)),
+            ("unknown authority claim", lambda record: record.update(authority_override=True)),
+            (
+                "boolean invocation count",
+                lambda record: record["actual_invocation"]["attempt_accounting"][0].update(
+                    invocation_count=True
+                ),
+            ),
+            (
+                "unknown isolation authority",
+                lambda record: record["actual_invocation"]["isolation"].update(
+                    authority_override=True
+                ),
+            ),
+            (
+                "unknown credential authority",
+                lambda record: record["actual_invocation"]["credential_interface"].update(
+                    authority_override=True
+                ),
+            ),
+            (
+                "unknown routed-decision authority",
+                lambda record: record["actual_invocation"]["route_evidence"]["attempts"][0][
+                    "decision"
+                ].update(authority_override=True),
+            ),
+            (
+                "forged dispatcher path",
+                lambda record: record["generated_by"].update(dispatcher_path="forged.py"),
+            ),
+            (
+                "forged dispatcher digest",
+                lambda record: record["generated_by"].update(dispatcher_sha256="0" * 64),
+            ),
+            (
+                "recorded environment values",
+                lambda record: record["actual_invocation"].update(
+                    environment_values_recorded=True
+                ),
+            ),
+            (
+                "direct resolved model",
+                lambda record: record["actual_invocation"].update(
+                    resolved_model="openai/codex/gpt-5.6-terra"
+                ),
+            ),
+            (
+                "legacy profile injection",
+                lambda record: record["actual_invocation"].update(
+                    profile_id="independent_approval"
+                ),
+            ),
+            (
+                "forged stderr digest",
+                lambda record: record["actual_invocation"].update(stderr_sha256="0" * 64),
+            ),
+        ]
+        for label, mutate in mutations:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            qa = manifest["qa"]["records"][0]
+            mutate(qa["protected_execution_record"])
+            self._first_qa_with_rehashed_records(manifest)
+            passed, errors, _ = check_delivery(
+                manifest, external_evidence=advisory_external()
+            )
+            with self.subTest(label=label):
+                self.assertFalse(passed)
+                self.assertIn("execution", "\n".join(errors))
+
+    def test_null_execution_authority_objects_fail_without_crashing(self):
+        mutations = [
+            lambda record: record.update(generated_by=None),
+            lambda record: record.update(actual_invocation=None),
+            lambda record: record["actual_invocation"].update(isolation=None),
+            lambda record: record["actual_invocation"]["route_evidence"]["attempts"][0].update(
+                decision=None
+            ),
+        ]
+        for mutate in mutations:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            qa = manifest["qa"]["records"][0]
+            mutate(qa["protected_execution_record"])
+            self._first_qa_with_rehashed_records(manifest)
+            with self.subTest(mutate=mutate):
+                passed, errors, _ = check_delivery(
+                    manifest, external_evidence=advisory_external()
+                )
+                self.assertFalse(passed)
+                self.assertIn("execution", "\n".join(errors))
+
+    def test_malformed_internal_arrays_fail_without_crashing(self):
+        mutations = [
+            lambda manifest: manifest["qa"]["records"][0]["protected_execution_record"][
+                "actual_invocation"
+            ]["route_evidence"].update(attempts=1),
+            lambda manifest: manifest["qa"]["records"][0].update(isolation_proof=None),
+            lambda manifest: manifest["qa"]["records"].append(None),
+            lambda manifest: manifest["passes"]["pass_records"].append(None),
+        ]
+        for mutate in mutations:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            mutate(manifest)
+            with self.subTest(mutate=mutate):
+                passed, errors, _ = check_delivery(
+                    manifest, external_evidence=advisory_external()
+                )
+                self.assertFalse(passed)
+                self.assertTrue(errors)
+
     def test_legacy_static_only_qa_evidence_is_rejected(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         qa = manifest["qa"]["records"][0]
@@ -644,6 +822,28 @@ class TestQaBindingFailures(unittest.TestCase):
                 passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
                 self.assertFalse(passed)
                 self.assertIn(expected, "\n".join(errors))
+
+    def test_probe_authority_markers_and_shape_fail_closed(self):
+        mutations = [
+            lambda probe: probe.update(evidence_class="non-evidence"),
+            lambda probe: probe.update(record_only=True),
+            lambda probe: probe.update(profile_id="independent_approval"),
+            lambda probe: probe.update(resolved_model="openai/codex/gpt-5.6-terra"),
+            lambda probe: probe.update(environment_values_recorded=True),
+            lambda probe: probe.update(authority_override=True),
+            lambda probe: probe.update(stderr_sha256="0" * 64),
+        ]
+        for mutate in mutations:
+            manifest = load_fixture("valid_advisory_manifest.json")
+            qa = manifest["qa"]["records"][0]
+            mutate(qa["protected_probe_record"])
+            self._first_qa_with_rehashed_records(manifest)
+            passed, errors, _ = check_delivery(
+                manifest, external_evidence=advisory_external()
+            )
+            with self.subTest(mutate=mutate):
+                self.assertFalse(passed)
+                self.assertIn("probe", "\n".join(errors))
 
     def test_probe_final_text_hash_is_bound_to_ready_response(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -836,6 +1036,62 @@ class TestQaBindingFailures(unittest.TestCase):
 
 
 class TestDeliveryGateCLI(unittest.TestCase):
+    def test_cli_rejects_deep_json_without_traceback(self):
+        deep_json = "[" * 2_000 + "0" + "]" * 2_000
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            handle.write(deep_json)
+            deep_path = Path(handle.name)
+        try:
+            commands = [
+                [sys.executable, "scripts/governance/check_delivery_gate.py", str(deep_path)],
+                [
+                    sys.executable,
+                    "scripts/governance/check_delivery_gate.py",
+                    "--external-evidence",
+                    str(deep_path),
+                    str(FIXTURES_DIR / "valid_advisory_manifest.json"),
+                ],
+            ]
+            for command in commands:
+                result = subprocess.run(
+                    command, cwd=REPO_ROOT, capture_output=True, text=True
+                )
+                with self.subTest(command=command):
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertTrue(
+                        "Error reading" in result.stderr
+                        or "rejected malformed input" in result.stderr
+                    )
+        finally:
+            deep_path.unlink(missing_ok=True)
+
+    def test_cli_rejects_malformed_manifest_without_traceback(self):
+        mutations = [
+            {"publication": None},
+            {"policy": []},
+            {"passes": "invalid"},
+            {"commands": None},
+            {"state_transitions": [None]},
+        ]
+        for manifest in mutations:
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+                json.dump(manifest, handle)
+                path = Path(handle.name)
+            try:
+                result = subprocess.run(
+                    [sys.executable, "scripts/governance/check_delivery_gate.py", str(path)],
+                    cwd=REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                path.unlink(missing_ok=True)
+            with self.subTest(manifest=manifest):
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertIn("Delivery gate FAILED", result.stderr)
+
     def test_cli_rejects_forged_trusted_manifest_during_manifest_validation(self):
         fixture = FIXTURES_DIR / "negative_forged_trusted_manifest.json"
         result = subprocess.run(

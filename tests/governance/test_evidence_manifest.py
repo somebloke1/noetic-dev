@@ -35,6 +35,27 @@ def load_fixture(name: str):
 
 
 class TestEvidenceManifestValidation(unittest.TestCase):
+    def test_scalar_manifest_api_and_deep_cli_fail_without_traceback(self):
+        for value in [None, True, False, 1, 1.5, "manifest", []]:
+            with self.subTest(value=value):
+                self.assertTrue(check_manifest(value))
+
+        deep_json = "[" * 2_000 + "0" + "]" * 2_000
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            handle.write(deep_json)
+            path = Path(handle.name)
+        try:
+            result = subprocess.run(
+                [sys.executable, "scripts/governance/check_evidence_manifest.py", str(path)],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_valid_advisory_manifest_is_structurally_valid(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         errors = check_manifest(manifest)

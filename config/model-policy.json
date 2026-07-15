@@ -85,7 +85,8 @@
       "complexity": "complex",
       "blast_radius": "interface",
       "high_value": true,
-      "awaited": true
+      "awaited": true,
+      "independent_approval": true
     }
   }
 }

@@ -36,7 +36,7 @@ Relevant knowns/decisions:
 
 ## Independent Agent Review
 
-- [ ] Independent Fable or Sol reviewer used an authorized profile at high reasoning
+- [ ] Independent Sol reviewer used the closed approval profile at xhigh reasoning
 - [ ] Reviewer approved after candidate SHA pinning and against exactly the final candidate SHA
 - [ ] Approver is not PR author, implementer, remediator, QA, publisher, or orchestrator identity
 
@@ -54,7 +54,7 @@ Relevant knowns/decisions:
 - [ ] Post-merge validation and tests passed against main SHA
 - [ ] Publication SHA recorded (full 40-char SHA; branch names forbidden)
 - [ ] Existing-work freeze/audit is complete in the protected freeze artifact, or publication remains blocked
-- [ ] Independent high-reasoning agent approval and trusted-runner provenance remain valid
+- [ ] Independent Sol/xhigh approval and trusted-runner provenance remain valid
 
 ## P4 — Responsible enactment
 

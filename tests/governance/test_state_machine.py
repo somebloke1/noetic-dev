@@ -129,6 +129,17 @@ class TestStateMachine(unittest.TestCase):
         reviewer = self.sm["role_authorities"]["reviewer"]
         self.assertTrue(reviewer["can_approve"])
 
+    def test_independent_approval_uses_closed_sol_xhigh_profile(self):
+        normative = json.dumps({
+            "pending": self.sm["states"]["INDEPENDENT_REVIEW_PENDING"],
+            "ready": self.sm["states"]["READY_TO_MERGE"],
+            "reviewer": self.sm["role_authorities"]["reviewer"],
+            "transitions": self.sm["transitions"],
+        })
+        self.assertIn("Sol/xhigh", normative)
+        self.assertIn("independent_approval", normative)
+        self.assertNotIn("Fable or Sol", normative)
+
     def test_blocked_is_terminal_by_default(self):
         """BLOCKED should not have any outgoing transitions except to itself."""
         blocked_transitions = [

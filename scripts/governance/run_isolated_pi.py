@@ -137,11 +137,10 @@ def _require_validated_tools(role: str, tools: List[str]) -> None:
 def _require_validated_identity(role: str, qa_for_pass_id: Optional[str]) -> None:
     if role not in ROLE_TOOL_ALLOWLISTS:
         raise RuntimeError("routed Pi role is invalid")
-    if role == "qa":
-        if not isinstance(qa_for_pass_id, str) or not QA_FOR_PASS_ID.fullmatch(qa_for_pass_id):
-            raise RuntimeError("routed QA requires a bounded ASCII qa_for_pass_id")
-    elif qa_for_pass_id not in (None, ""):
-        raise RuntimeError("non-QA routed Pi cannot claim a QA generation")
+    if role != "qa":
+        raise RuntimeError("routed Pi execution supports authoritative QA only")
+    if not isinstance(qa_for_pass_id, str) or not QA_FOR_PASS_ID.fullmatch(qa_for_pass_id):
+        raise RuntimeError("routed QA requires a bounded ASCII qa_for_pass_id")
 
 
 def get_policy_sha() -> str:
@@ -508,20 +507,21 @@ def _pi_binary() -> Path:
     found = shutil.which("pi")
     if not found:
         raise RuntimeError("pi executable not found on PATH")
-    return Path(found).resolve()
+    return Path(found)
 
 
 def _node_prefix_for_pi(pi_binary: Path) -> Optional[Path]:
     # pi is expected under .../versions/node/<version>/bin or a symlink into that tree.
-    for parent in [pi_binary, *pi_binary.parents]:
-        if parent.name == "bin" and parent.parent.name.startswith("v"):
-            return parent.parent
-        if parent.name.startswith("v") and parent.parent.name == "node":
-            return parent
-    # Resolved CLI may be under <prefix>/lib/node_modules/...
-    for parent in pi_binary.parents:
-        if parent.name.startswith("v") and parent.parent.name == "node":
-            return parent
+    for candidate in [pi_binary, pi_binary.resolve()]:
+        for parent in [candidate, *candidate.parents]:
+            if parent.name == "bin" and parent.parent.name.startswith("v"):
+                return parent.parent
+            if parent.name.startswith("v") and parent.parent.name == "node":
+                return parent
+        # Resolved CLI may be under <prefix>/lib/node_modules/...
+        for parent in candidate.parents:
+            if parent.name.startswith("v") and parent.parent.name == "node":
+                return parent
     return None
 
 
@@ -1406,6 +1406,8 @@ def _make_routed_pi_lifecycle():
                 "role": role,
                 "role_run_id": role_run_id,
                 "qa_for_pass_id": qa_for_pass_id or "",
+                "evidence_class": "authoritative" if role == "qa" else "execution",
+                "record_only": False,
                 "authority_process": "fresh-isolated-worker",
                 "authority_worker_pid": os.getpid(),
                 **_base_invocation_fields(
@@ -1426,12 +1428,17 @@ def _make_routed_pi_lifecycle():
                 "final_assistant_text_sha256": sha256_text(probe.final_assistant_text),
                 "model_config_sha256": probe.model_config_sha256,
                 "model_config_delivery": "inherited-fd-copy",
+                "environment_values_recorded": False,
+                "credential_interface": _credential_interface(
+                    {"LITELLM_API_KEY": ""}, tools, role
+                ),
                 "nonce": nonce,
                 "expected_response": expected,
                 "observed_response": probe.final_assistant_text,
                 "exit_code": probe.process.returncode,
                 "stdout_sha256": sha256_text(probe.process.stdout),
                 "stderr_sha256": sha256_text(probe.process.stderr),
+                "stderr_text": probe.process.stderr,
                 "started_at": probe_start,
                 "finished_at": probe_finish,
             }
@@ -1527,6 +1534,7 @@ def _make_routed_pi_lifecycle():
                 "exit_code": routed.process.returncode,
                 "stdout_sha256": sha256_text(routed.process.stdout),
                 "stderr_sha256": sha256_text(routed.process.stderr),
+                "stderr_text": routed.process.stderr,
                 "qa_event_log_sha256": sha256_text(routed.process.stdout),
                 "isolation": isolation,
             },
@@ -1572,6 +1580,8 @@ def run_routed_pi_lifecycle(
     perform_probe: bool = False,
 ) -> _RoutedPiLifecycleResult:
     """Run the authority-bearing lifecycle in a fresh isolated interpreter."""
+    _require_validated_identity(role, qa_for_pass_id)
+    _require_validated_tools(role, tools)
     if type(timeout) is not int or not 1 <= timeout <= MAX_ROUTED_PI_TIMEOUT:
         raise RuntimeError(f"routed Pi timeout must be an integer from 1 to {MAX_ROUTED_PI_TIMEOUT}")
     request = {
@@ -1848,9 +1858,19 @@ def main() -> int:
         print(tool_error, file=sys.stderr)
         return 1
 
+    if not args.record_only and args.role != "qa":
+        print(
+            "real routed Pi execution supports authoritative QA only; "
+            "other roles require explicit task dimensions and evidence contracts",
+            file=sys.stderr,
+        )
+        return 1
+
     if args.role == "qa":
-        if not args.qa_for_pass_id:
-            print("QA dispatch requires --qa-for-pass-id", file=sys.stderr)
+        try:
+            _require_validated_identity(args.role, args.qa_for_pass_id)
+        except RuntimeError as error:
+            print(str(error), file=sys.stderr)
             return 1
         if not args.candidate_dir:
             print("QA dispatch requires --candidate-dir", file=sys.stderr)

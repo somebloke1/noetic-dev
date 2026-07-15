@@ -37,6 +37,7 @@ Classification combines task kind, declared complexity, blast radius, and prior 
 | Complex but bounded | Terra, then Sol | Non-trivial implementation, debugging, QA, review, and research |
 | Complex and systemic | Sol | Architecture, orchestration, cross-component design, consequential remediation |
 | High-value independent judgment | Fable or Sol | Independent semantic review, critical research, or judgment where model-family diversity materially improves confidence |
+| Protected independent approval | Sol at xhigh reasoning | Closed approval route, distinct from ordinary high-value judgment and bound to an explicit `independent_approval=true` request |
 
 Fable is not a general-purpose fallback or bulk-work model. It is eligible only for explicitly governed high-value independent review, critical research, or systemic design judgment. Sol remains the default highest-capability engineering and orchestration model.
 
@@ -69,14 +70,18 @@ The local review broker receives only `LITELLM_API_KEY`, preferably as the syste
 
 ## Migration state
 
-The protected local `agent-review` broker and protected Pi QA worker are routed runtime paths. `run_isolated_pi.py` emits schema-v2 protected records for routed QA; its record-only mode remains explicitly non-evidentiary. `governance/model-profiles.json` remains historical metadata only; it does not authorize runtime model selection or delivery.
+The invariants above are the target policy, not a claim that every adapter is complete.
 
-OpenCode-facing execution and goalchain semantic curation are not yet accepted routed paths. They remain migration blockers rather than direct-access exceptions.
+- **Accepted runtime paths:** the candidate local `agent-review` broker and protected Pi authoritative-QA worker. `run_isolated_pi.py` rejects real non-QA execution until callers supply honest task dimensions and compatible evidence contracts. Its broad `--record-only` role surface remains explicitly non-evidentiary. `governance/model-profiles.json` is historical metadata only and cannot authorize runtime selection.
+- **Missing adapter:** bounded OpenCode execution, goalchain semantic curation through LiteLLM/Snowflake, modality callers, and independent-approval invocation. Existing direct OpenCode providers and the Ollama goalchain curator remain non-compliant dependencies, not compatibility exceptions.
+- **External blocker:** production still runs a rollback broker until an exact reviewed release is installed and exercised. Snowflake is served by canonical LiteLLM, but the governed curator adapter is missing. Exact Qwen3-ASR is not currently advertised by LiteLLM and no noetic-dev ASR caller exists; `qwen3.6-a3b` is not a substitute. The system must not claim ASR readiness until both deployment and a real transcription succeed.
+
+Issue #29 remains open for those missing adapters and external readiness gates. A merged broker/Pi-QA slice does not complete the repository-wide migration.
 
 ## Governance
 
 Model prose is never evidence by itself. Every broker review requires its bound readiness phase and aggregate attempt evidence. Every protected Pi READY or execution operation requires separate captured evidence bound to the candidate/work-unit identity, policy commit, distinct route decision, resolved LiteLLM reference, harness configuration, at-most-one invocation per decision, and exactly one per-attempt outcome.
 
-Delivery evidence schema v2 rejects static model-profile authorization. Each protected invocation carries `route_evidence` with the exact classification and ordered attempts; every attempt binds the complete genus-router decision, canonical LiteLLM reference, enacted high reasoning, outcome, and confirmation that `report_outcome` succeeded. Authoritative QA uses the non-high-value complex-review contract. Independent approval uses a distinct high-value complex-review contract, making Fable eligible without making it a general fallback; only Fable or Sol may be the final successful approval model, even when failed Terra/Luna route attempts are retained as evidence.
+Delivery evidence schema v2 rejects static model-profile authorization. Each protected invocation carries `route_evidence` with the exact classification and ordered attempts; every attempt binds the complete genus-router decision, canonical LiteLLM reference, enacted reasoning, outcome, and confirmation that `report_outcome` succeeded. Authoritative QA uses the non-high-value complex-review contract. Protected independent approval requires the router's closed Sol/xhigh profile and an explicit `independent_approval=true` request; ordinary high-value Fable/Sol judgment is not approval evidence.
 
 This policy governs both development of noetic-dev and the developed noetic-dev system. During migration, existing direct invocations are non-compliant dependencies to remove; they are not compatibility paths to preserve.

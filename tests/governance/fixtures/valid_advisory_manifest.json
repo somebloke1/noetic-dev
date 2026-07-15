@@ -157,7 +157,7 @@
     "ref": "refs/heads/main",
     "runner_attestation": {
       "artifact": {
-        "manifest_sha256": "bf99b7f82c5ecacf750f78491d53e450b2c3e3be9998757a24471caf70f888c4"
+        "manifest_sha256": "ed058da69421d506db78226d11a5cf7628eb4d806729f9c6085d9c66e0b2647a"
       }
     },
     "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -204,6 +204,8 @@
           "extensions_disabled": true,
           "gh_config_mounted": false,
           "host_home_mounted": false,
+          "host_proc_mounted": false,
+          "procfs_scope": "private_pid_namespace",
           "scratch_separate_from_source": true,
           "skills_disabled": true,
           "source_mount_read_only": true,
@@ -235,11 +237,29 @@
               "@/tmp/prompt.md"
             ],
             "argv_sha256": "3429f30c86fff5e14de0611481aebd61cc8ebfed9666e9c065423393a10a1074",
+            "attempt_accounting": [
+              {
+                "decision_id": "d-20260713-300001",
+                "invocation_count": 1,
+                "operation": "execution",
+                "outcome_count": 1
+              }
+            ],
             "authority_process": "fresh-isolated-worker",
             "authority_worker_pid": 4242,
             "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
             "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
             "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "credential_interface": {
+              "available_to_tools": false,
+              "brokered": false,
+              "names": [
+                "LITELLM_API_KEY"
+              ],
+              "tools_disabled_for_authoritative_qa": true,
+              "type": "scoped_env",
+              "values_recorded": false
+            },
             "environment_name_allowlist": [
               "HOME",
               "PI_CODING_AGENT_DIR",
@@ -249,6 +269,7 @@
             ],
             "environment_values_recorded": false,
             "exit_code": 0,
+            "final_assistant_text": "QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.",
             "final_assistant_text_sha256": "c50c4813c3a98043befc2e26337d5b0c21945720b888540766b10aed83d0ec3a",
             "finished_at": "2026-07-11T12:20:00+00:00",
             "invoked_model_ref": {
@@ -269,6 +290,8 @@
               "extensions_disabled": true,
               "gh_config_mounted": false,
               "host_home_mounted": false,
+              "host_proc_mounted": false,
+              "procfs_scope": "private_pid_namespace",
               "scratch_separate_from_source": true,
               "skills_disabled": true,
               "source_mount_read_only": true,
@@ -278,14 +301,24 @@
             },
             "model_config_delivery": "inherited-fd-copy",
             "model_config_sha256": "8475be64b7f2ff719bedaafd566f3b0e9bb6659705f1d22b716829813166c01d",
+            "operation": "execution",
+            "operation_contract": {
+              "decision_scope": "per_operation",
+              "maximum_invocations_per_decision": 1,
+              "operations": [
+                "readiness_probe",
+                "execution"
+              ],
+              "report_outcome_scope": "per_operation"
+            },
             "pi_version": "pi 1.0.0",
             "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
-            "profile_id": "qa_primary",
             "prompt_sha256": "7a2fe63483211abb8f45e1921fc82714c557a810af004d52cd64ab681dd88fb3",
+            "prompt_text": "Adversarially falsify impl-g1-0001 at dddddddddddddddddddddddddddddddddddddddd.",
+            "qa_event_log": "{\"type\":\"agent_start\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}],\"willRetry\":false}\n",
             "qa_event_log_sha256": "1ac8aa9ccc7b6db6774754b040ceb4b632f790cfe2fae2ac50606bec308e5eff",
             "reasoning_effort": "high",
-            "resolved_model": "openai-codex/gpt-5.6-terra",
+            "resolved_model": "local-litellm/codex/gpt-5.6-terra",
             "route_evidence": {
               "attempts": [
                 {
@@ -322,6 +355,7 @@
                     ],
                     "genus": "Complex Code Review",
                     "genus_code": "REVIEW-COMPLEX",
+                    "independent_approval_eligible": false,
                     "model": "codex/gpt-5.6-terra",
                     "model_ref": {
                       "base_url": "http://172.22.10.160:3333",
@@ -336,6 +370,7 @@
                     "rationale": [
                       "protected route evidence fixture"
                     ],
+                    "routing_profile": "standard",
                     "sophistication": "complex"
                   },
                   "outcome": "success",
@@ -353,35 +388,15 @@
               "schema_version": "1"
             },
             "started_at": "2026-07-11T12:07:00+00:00",
-            "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stderr_text": "",
             "stdout_sha256": "1ac8aa9ccc7b6db6774754b040ceb4b632f790cfe2fae2ac50606bec308e5eff",
-            "tools": [],
-            "prompt_text": "Adversarially falsify impl-g1-0001 at dddddddddddddddddddddddddddddddddddddddd.",
-            "final_assistant_text": "QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.",
-            "qa_event_log": "{\"type\":\"agent_start\"}\n{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}}\n{\"type\":\"agent_end\",\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"QA transcript: checked null, wrong-type, unknown-id, replay, TOCTOU, credential-isolation, event-binding, and failure-path cases; no blocking finding.\"}],\"stopReason\":\"stop\"}],\"willRetry\":false}\n",
-            "operation": "execution",
-            "operation_contract": {
-              "operations": [
-                "readiness_probe",
-                "execution"
-              ],
-              "decision_scope": "per_operation",
-              "maximum_invocations_per_decision": 1,
-              "report_outcome_scope": "per_operation"
-            },
-            "attempt_accounting": [
-              {
-                "operation": "execution",
-                "decision_id": "d-20260713-300001",
-                "invocation_count": 1,
-                "outcome_count": 1
-              }
-            ]
+            "tools": []
           },
           "evidence_class": "authoritative",
           "generated_by": {
             "dispatcher_path": "scripts/governance/run_isolated_pi.py",
-            "dispatcher_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+            "dispatcher_sha256": "0b3552bdb53678bc751c2b9a352d12954eaa7725e983502f1a4b5af505f30628",
             "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           },
           "qa_for_pass_id": "impl-g1-0001",
@@ -392,14 +407,32 @@
           "run_id": "00000000-0000-0000-0000-000000000002",
           "schema_version": "2"
         },
-        "protected_execution_record_sha256": "f72e44ad6566ef2770abea17f4d168c81af7cbd19f0368a1040b98f18c7e5b71",
+        "protected_execution_record_sha256": "327e3384fd31fbf06164c6516a77c9c7ddeaec14b0827cae5e8911bf0e89c141",
         "protected_probe_record": {
+          "attempt_accounting": [
+            {
+              "decision_id": "d-20260713-300002",
+              "invocation_count": 1,
+              "operation": "readiness_probe",
+              "outcome_count": 1
+            }
+          ],
           "authority_process": "fresh-isolated-worker",
           "authority_worker_pid": 4242,
           "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
           "candidate_sha": "dddddddddddddddddddddddddddddddddddddddd",
           "candidate_tree_oid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
           "context_files_disabled": true,
+          "credential_interface": {
+            "available_to_tools": false,
+            "brokered": false,
+            "names": [
+              "LITELLM_API_KEY"
+            ],
+            "tools_disabled_for_authoritative_qa": true,
+            "type": "scoped_env",
+            "values_recorded": false
+          },
           "environment_name_allowlist": [
             "HOME",
             "PI_CODING_AGENT_DIR",
@@ -407,6 +440,8 @@
             "PI_SKIP_VERSION_CHECK",
             "LITELLM_API_KEY"
           ],
+          "environment_values_recorded": false,
+          "evidence_class": "authoritative",
           "exit_code": 0,
           "expected_response": "READY abc123def4567890",
           "extensions_disabled": true,
@@ -426,6 +461,16 @@
           "model_config_sha256": "8475be64b7f2ff719bedaafd566f3b0e9bb6659705f1d22b716829813166c01d",
           "nonce": "abc123def4567890",
           "observed_response": "READY abc123def4567890",
+          "operation": "readiness_probe",
+          "operation_contract": {
+            "decision_scope": "per_operation",
+            "maximum_invocations_per_decision": 1,
+            "operations": [
+              "readiness_probe",
+              "execution"
+            ],
+            "report_outcome_scope": "per_operation"
+          },
           "pi_version": "pi 1.0.0",
           "policy_commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "probe_argv": [
@@ -452,10 +497,11 @@
           "probe_event_log_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
           "probe_id": "probe-valid-0001",
           "probe_prompt_hash": "64a74da21f750e47684a3935095b810f772cc77de892ce56f5d1db11e8f80266",
-          "profile_hash": "bd3e19338b7a6708a2c7c387404c31f74114acde64e3fe4ca9d879048dd280ce",
-          "profile_id": "qa_primary",
+          "qa_for_pass_id": "impl-g1-0001",
           "reasoning_effort": "high",
-          "resolved_model": "openai-codex/gpt-5.6-terra",
+          "record_only": false,
+          "resolved_model": "local-litellm/codex/gpt-5.6-terra",
+          "role": "qa",
           "role_run_id": "qa-role-g1-0001",
           "route_evidence": {
             "attempts": [
@@ -493,6 +539,7 @@
                   ],
                   "genus": "Complex Code Review",
                   "genus_code": "REVIEW-COMPLEX",
+                  "independent_approval_eligible": false,
                   "model": "codex/gpt-5.6-terra",
                   "model_ref": {
                     "base_url": "http://172.22.10.160:3333",
@@ -507,6 +554,7 @@
                   "rationale": [
                     "protected route evidence fixture"
                   ],
+                  "routing_profile": "standard",
                   "sophistication": "complex"
                 },
                 "outcome": "success",
@@ -527,32 +575,13 @@
           "schema_version": "2",
           "skills_disabled": true,
           "started_at": "2026-07-11T12:05:00+00:00",
-          "stderr_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_text": "",
           "stdout_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
           "themes_disabled": true,
-          "tools": [],
-          "operation": "readiness_probe",
-          "operation_contract": {
-            "operations": [
-              "readiness_probe",
-              "execution"
-            ],
-            "decision_scope": "per_operation",
-            "maximum_invocations_per_decision": 1,
-            "report_outcome_scope": "per_operation"
-          },
-          "attempt_accounting": [
-            {
-              "operation": "readiness_probe",
-              "decision_id": "d-20260713-300002",
-              "invocation_count": 1,
-              "outcome_count": 1
-            }
-          ],
-          "role": "qa",
-          "qa_for_pass_id": "impl-g1-0001"
+          "tools": []
         },
-        "protected_probe_record_sha256": "8f35e06943f7fba9afa12bf228859e534c79406b2d87385594a4cdf7bd03f922",
+        "protected_probe_record_sha256": "6496d194279cb8fdccf976965fb482a0781433690c6e19b39f64ca7ef7e81ba8",
         "qa_for_pass_id": "impl-g1-0001",
         "qa_run_id": "qa-g1-0001",
         "report_hash": "4444444444444444444444444444444444444444444444444444444444444444",

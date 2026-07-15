@@ -107,7 +107,7 @@ def normalize_qa_records(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     qa = manifest.get("qa", {})
     if isinstance(qa, dict) and isinstance(qa.get("records"), list):
-        return qa["records"]
+        return [record for record in qa["records"] if isinstance(record, dict)]
     if isinstance(qa, dict) and qa.get("qa_for_pass_id"):
         return [qa]
     return []
@@ -115,15 +115,29 @@ def normalize_qa_records(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def all_pass_ids(manifest: Dict[str, Any]) -> List[str]:
     passes = manifest.get("passes", {})
-    return list(passes.get("implementation_pass_ids", [])) + list(passes.get("remediation_pass_ids", []))
+    if not isinstance(passes, dict):
+        return []
+    implementation = passes.get("implementation_pass_ids")
+    remediation = passes.get("remediation_pass_ids")
+    return (
+        [item for item in implementation if isinstance(item, str)]
+        if isinstance(implementation, list) else []
+    ) + (
+        [item for item in remediation if isinstance(item, str)]
+        if isinstance(remediation, list) else []
+    )
 
 
 def pass_records_by_id(manifest: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     passes = manifest.get("passes", {})
+    if not isinstance(passes, dict) or not isinstance(passes.get("pass_records"), list):
+        return {}
     return {
         item.get("pass_id", ""): item
-        for item in passes.get("pass_records", [])
-        if isinstance(item, dict) and item.get("pass_id")
+        for item in passes["pass_records"]
+        if isinstance(item, dict)
+        and isinstance(item.get("pass_id"), str)
+        and item.get("pass_id")
     }
 
 
@@ -271,7 +285,8 @@ def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
     pass_records = pass_records_by_id(manifest)
     qa_records = normalize_qa_records(manifest)
 
-    if not isinstance(manifest.get("qa", {}).get("records"), list):
+    qa_value = manifest.get("qa")
+    if not isinstance(qa_value, dict) or not isinstance(qa_value.get("records"), list):
         errors.append("qa.records array is required; legacy single qa object is not authoritative")
     if not qa_records:
         errors.append("no QA records present")
@@ -279,12 +294,18 @@ def _check_qa(manifest: Dict[str, Any], errors: List[str]) -> None:
     seen: dict[str, int] = {}
     qa_run_ids: set[str] = set()
     qa_role_run_ids: set[str] = set()
-    pass_role_run_ids = {record.get("role_run_id") for record in pass_records.values() if record.get("role_run_id")}
+    pass_role_run_ids = {
+        record["role_run_id"] for record in pass_records.values()
+        if isinstance(record.get("role_run_id"), str) and record["role_run_id"]
+    }
     for record in qa_records:
         qa_label = record.get("qa_run_id", "<unknown>")
-        qa_run_id = record.get("qa_run_id", "")
-        qa_role_run_id = record.get("role_run_id", "")
-        pass_id = record.get("qa_for_pass_id", "")
+        qa_run_id_value = record.get("qa_run_id")
+        qa_role_run_id_value = record.get("role_run_id")
+        pass_id_value = record.get("qa_for_pass_id")
+        qa_run_id = qa_run_id_value if isinstance(qa_run_id_value, str) else ""
+        qa_role_run_id = qa_role_run_id_value if isinstance(qa_role_run_id_value, str) else ""
+        pass_id = pass_id_value if isinstance(pass_id_value, str) else ""
         pass_record = pass_records.get(pass_id, {})
         seen[pass_id] = seen.get(pass_id, 0) + 1
         if pass_id not in ids:
@@ -493,7 +514,7 @@ def _check_schema_references(errors: List[str]) -> None:
             errors.append(f"{path.relative_to(REPO_ROOT)} schema error: {err}")
 
 
-def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
+def _check_impl(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
     """Run validation checks. Returns error messages."""
     errors: List[str] = []
 
@@ -526,6 +547,16 @@ def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
     return errors
 
 
+def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
+    """Validate a manifest and convert malformed-input faults into diagnostics."""
+    if not isinstance(manifest, dict):
+        return ["manifest must be a JSON object"]
+    try:
+        return _check_impl(manifest, path)
+    except Exception as error:
+        return [f"manifest rejected malformed input: {type(error).__name__}"]
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print("Usage: check_evidence_manifest.py <manifest.json>", file=sys.stderr)
@@ -534,7 +565,7 @@ def main() -> int:
     manifest_path = sys.argv[1]
     try:
         manifest = load_json_strict(manifest_path)
-    except (FileNotFoundError, json.JSONDecodeError, DuplicateKeyError, ValueError) as exc:
+    except (OSError, json.JSONDecodeError, DuplicateKeyError, ValueError, RecursionError) as exc:
         print(f"Error reading manifest: {exc}", file=sys.stderr)
         return 1
 

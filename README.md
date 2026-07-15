@@ -11,7 +11,7 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 3. **Executive governance:** a superior portable re-instantiation of the noetic-pi/pi2 APM lessons orders deterministic multi-agent work.
 4. **Cognitive programs:** disciplines and development pipelines run on the executive controller while semantic judgment remains with agents.
 5. **Observability/control:** structured cognitional events feed web and TUI renderers; tmux and browser PTYs are optional attach mechanisms.
-6. **Model substrate:** genus-router mandatorily selects models by work sophistication; every invocation, including Pi/OpenCode and local modalities, goes through LiteLLM.
+6. **Model substrate target:** genus-router mandatorily selects models by work sophistication and LiteLLM is the sole access boundary. The accepted runtime slice currently covers the review broker and Pi authoritative QA; OpenCode, goalchain curation, modality callers, and production rollout remain explicit migration work.
 7. **Governance review adapter:** the broker validates a genus-router decision, enacts high reasoning through LiteLLM, records every outcome, and reroutes without direct provider credentials.
 
 ## Start here

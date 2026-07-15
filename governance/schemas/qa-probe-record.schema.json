@@ -9,6 +9,8 @@
     "role",
     "role_run_id",
     "qa_for_pass_id",
+    "evidence_class",
+    "record_only",
     "authority_process",
     "authority_worker_pid",
     "operation",
@@ -17,6 +19,7 @@
     "route_evidence",
     "invoked_model_ref",
     "reasoning_effort",
+    "resolved_model",
     "pi_version",
     "policy_commit_sha",
     "candidate_sha",
@@ -24,6 +27,8 @@
     "candidate_tree_oid",
     "tools",
     "environment_name_allowlist",
+    "environment_values_recorded",
+    "credential_interface",
     "context_files_disabled",
     "extensions_disabled",
     "skills_disabled",
@@ -41,16 +46,20 @@
     "exit_code",
     "stdout_sha256",
     "stderr_sha256",
+    "stderr_text",
     "started_at",
     "finished_at"
   ],
+  "additionalProperties": false,
   "properties": {
     "schema_version": {"type": "string", "const": "2"},
     "probe_id": {"type": "string"},
     "run_id": {"type": "string"},
-    "role": {"type": "string", "enum": ["qa", "planner", "validator", "publisher", "orchestrator"]},
+    "role": {"type": "string", "const": "qa"},
     "role_run_id": {"type": "string"},
-    "qa_for_pass_id": {"type": "string"},
+    "qa_for_pass_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "evidence_class": {"type": "string", "const": "authoritative"},
+    "record_only": {"type": "boolean", "const": false},
     "authority_process": {"type": "string", "const": "fresh-isolated-worker"},
     "authority_worker_pid": {"type": "integer", "minimum": 1},
     "operation": {"type": "string", "const": "readiness_probe"},
@@ -65,20 +74,34 @@
         "report_outcome_scope": {"type": "string", "const": "per_operation"}
       }
     },
-    "attempt_accounting": {"type": "array", "minItems": 1, "items": {"type": "object"}},
-    "route_evidence": {"type": "object"},
-    "invoked_model_ref": {"type": "object"},
+    "attempt_accounting": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["operation", "decision_id", "invocation_count", "outcome_count"],
+        "additionalProperties": false,
+        "properties": {
+          "operation": {"type": "string", "const": "readiness_probe"},
+          "decision_id": {"type": "string", "pattern": "^d-[0-9]{8}-[0-9]{6}$"},
+          "invocation_count": {"type": "integer", "enum": [0, 1]},
+          "outcome_count": {"type": "integer", "const": 1}
+        }
+      }
+    },
+    "route_evidence": {"$ref": "#/definitions/qa_route_evidence"},
+    "invoked_model_ref": {"$ref": "#/definitions/standard_model_ref"},
     "reasoning_effort": {"type": "string", "const": "high"},
-    "resolved_model": {"type": "string"},
-    "profile_id": {"type": "string"},
-    "profile_hash": {"type": "string"},
+    "resolved_model": {"type": "string", "pattern": "^local-litellm/codex/gpt-5\\.6-(sol|terra|luna)$"},
     "pi_version": {"type": "string"},
     "policy_commit_sha": {"type": "string"},
-    "candidate_sha": {"type": "string"},
-    "base_sha": {"type": "string"},
-    "candidate_tree_oid": {"type": "string"},
+    "candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "base_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "candidate_tree_oid": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "tools": {"type": "array", "items": {"type": "string"}},
     "environment_name_allowlist": {"type": "array", "items": {"type": "string"}},
+    "environment_values_recorded": {"type": "boolean", "const": false},
+    "credential_interface": {"$ref": "#/definitions/qa_credential_interface"},
     "context_files_disabled": {"type": "boolean"},
     "extensions_disabled": {"type": "boolean"},
     "skills_disabled": {"type": "boolean"},
@@ -95,22 +118,117 @@
     "observed_response": {"type": "string", "pattern": "^READY [a-f0-9]{16}$"},
     "exit_code": {"type": "integer"},
     "stdout_sha256": {"type": "string"},
-    "stderr_sha256": {"type": "string"},
+    "stderr_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "stderr_text": {"type": "string", "maxLength": 1048576},
     "started_at": {"type": "string"},
     "finished_at": {"type": "string"}
   },
-  "allOf": [
-    {
-      "if": {
-        "required": ["role"],
-        "properties": {"role": {"const": "qa"}}
-      },
-      "then": {
-        "properties": {"qa_for_pass_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}}
-      },
-      "else": {
-        "properties": {"qa_for_pass_id": {"type": "string", "const": ""}}
+  "definitions": {
+    "standard_model_ref": {
+      "type": "object",
+      "required": ["model_id", "endpoint_id", "upstream_model_id", "interface_type", "base_url", "endpoint_path", "token_env", "reasoning_effort"],
+      "additionalProperties": false,
+      "properties": {
+        "model_id": {"type": "string", "enum": ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]},
+        "endpoint_id": {"type": "string", "const": "local-litellm"},
+        "upstream_model_id": {"type": "string", "enum": ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]},
+        "interface_type": {"type": "string", "const": "openai-compatible"},
+        "base_url": {"type": "string", "const": "http://172.22.10.160:3333"},
+        "endpoint_path": {"type": "string", "const": "/v1/responses"},
+        "token_env": {"type": "string", "const": "LITELLM_API_KEY"},
+        "reasoning_effort": {"type": "string", "const": "high"}
+      }
+    },
+    "qa_route_decision": {
+      "type": "object",
+      "required": ["availability", "decision_id", "effective_complexity", "fable_eligible", "fallback_refs", "fallbacks", "genus", "genus_code", "independent_approval_eligible", "model", "model_ref", "rationale", "routing_profile", "sophistication"],
+      "additionalProperties": false,
+      "properties": {
+        "availability": {"type": "string", "const": "verified"},
+        "decision_id": {"type": "string", "pattern": "^d-[0-9]{8}-[0-9]{6}$"},
+        "effective_complexity": {"type": "string", "const": "complex"},
+        "fable_eligible": {"type": "boolean", "const": false},
+        "fallback_refs": {"type": "array", "maxItems": 2, "items": {"$ref": "#/definitions/standard_model_ref"}},
+        "fallbacks": {"type": "array", "maxItems": 2, "items": {"type": "string", "enum": ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]}},
+        "genus": {"type": "string", "const": "Complex Code Review"},
+        "genus_code": {"type": "string", "const": "REVIEW-COMPLEX"},
+        "independent_approval_eligible": {"type": "boolean", "const": false},
+        "model": {"type": "string", "enum": ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]},
+        "model_ref": {"$ref": "#/definitions/standard_model_ref"},
+        "rationale": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "routing_profile": {"type": "string", "const": "standard"},
+        "sophistication": {"type": "string", "const": "complex"}
+      }
+    },
+    "qa_route_attempt": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["decision", "outcome", "outcome_recorded", "reasoning_effort"],
+          "additionalProperties": false,
+          "properties": {
+            "decision": {"$ref": "#/definitions/qa_route_decision"},
+            "outcome": {"type": "string", "enum": ["success", "failure"]},
+            "outcome_recorded": {"type": "boolean", "const": true},
+            "reasoning_effort": {"type": "string", "const": "high"}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["decision_rejection", "invocation_count", "outcome", "outcome_recorded"],
+          "additionalProperties": false,
+          "properties": {
+            "decision_rejection": {
+              "type": "object",
+              "required": ["decision_id", "model", "raw_decision_sha256", "rejection_type"],
+              "additionalProperties": false,
+              "properties": {
+                "decision_id": {"type": "string", "pattern": "^d-[0-9]{8}-[0-9]{6}$"},
+                "model": {"type": "string", "enum": ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]},
+                "raw_decision_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "rejection_type": {"type": "string", "minLength": 1}
+              }
+            },
+            "invocation_count": {"type": "integer", "const": 0},
+            "outcome": {"type": "string", "const": "failure"},
+            "outcome_recorded": {"type": "boolean", "const": true}
+          }
+        }
+      ]
+    },
+    "qa_route_evidence": {
+      "type": "object",
+      "required": ["schema_version", "classification", "attempts"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {"type": "string", "const": "1"},
+        "classification": {
+          "type": "object",
+          "required": ["task_kind", "complexity", "blast_radius", "high_value", "awaited"],
+          "additionalProperties": false,
+          "properties": {
+            "task_kind": {"type": "string", "const": "review"},
+            "complexity": {"type": "string", "const": "complex"},
+            "blast_radius": {"type": "string", "const": "interface"},
+            "high_value": {"type": "boolean", "const": false},
+            "awaited": {"type": "boolean", "const": true}
+          }
+        },
+        "attempts": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"$ref": "#/definitions/qa_route_attempt"}}
+      }
+    },
+    "qa_credential_interface": {
+      "type": "object",
+      "required": ["type", "names", "values_recorded", "brokered", "available_to_tools", "tools_disabled_for_authoritative_qa"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {"type": "string", "const": "scoped_env"},
+        "names": {"type": "array", "const": ["LITELLM_API_KEY"]},
+        "values_recorded": {"type": "boolean", "const": false},
+        "brokered": {"type": "boolean", "const": false},
+        "available_to_tools": {"type": "boolean", "const": false},
+        "tools_disabled_for_authoritative_qa": {"type": "boolean", "const": true}
       }
     }
-  ]
+  }
 }
