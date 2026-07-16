@@ -292,6 +292,53 @@ class TestAgentReview(unittest.TestCase):
                     self.assertIn(b" 400 ", response)
                     review_call.assert_not_called()
 
+    def test_http_returns_exhausted_route_evidence(self):
+        policy = load_model_policy()
+        excluded = []
+        attempts = []
+        for number in range(1, 4):
+            decision = build_agent_review_decision(policy, excluded, decision_id=f"d-20260716-{number:06d}")
+            attempts.append({
+                "decision": decision,
+                "invocation_count": 1,
+                "outcome": "failure",
+                "outcome_recorded": True,
+                "reasoning_effort": "high",
+            })
+            excluded.append(decision["model"])
+        evidence = {
+            "schema_version": "1",
+            "classification": {
+                "task_kind": "review",
+                "complexity": "complex",
+                "blast_radius": "interface",
+                "high_value": False,
+                "awaited": True,
+            },
+            "attempts": attempts,
+        }
+        self.assertEqual(validate_route_evidence(evidence), [])
+        body = json.dumps(self.REQUEST, separators=(",", ":")).encode()
+        request = b"POST /review HTTP/1.0\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body
+        with tempfile.TemporaryDirectory() as directory:
+            socket_path = str(Path(directory) / "broker.sock")
+            with UnixServer(socket_path, Handler) as server, mock.patch("agent_review_broker.review") as review_call:
+                review_call.side_effect = ReviewExecutionError("all routed review candidates failed", evidence)
+                thread = threading.Thread(target=server.handle_request)
+                thread.start()
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.connect(socket_path)
+                    client.sendall(request)
+                    client.shutdown(socket.SHUT_WR)
+                    response = b""
+                    while chunk := client.recv(4_096):
+                        response += chunk
+                thread.join(timeout=5)
+        self.assertIn(b" 503 ", response)
+        payload = json.loads(response.split(b"\r\n\r\n", 1)[1])
+        self.assertEqual(payload["error"], "all routed review candidates failed")
+        self.assertEqual(validate_route_evidence(payload["route_evidence"]), [])
+
     def test_second_pr_validation_rechecks_full_admission(self):
         valid = {
             "state": "open",
