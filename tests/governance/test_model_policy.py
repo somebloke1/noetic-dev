@@ -119,9 +119,10 @@ class TestModelPolicy(unittest.TestCase):
 
     def test_docs_do_not_overclaim_runtime_migration(self) -> None:
         text = DOC_PATH.read_text(encoding="utf-8")
-        self.assertIn("does not claim live OpenCode, Pi, broker, embedding, or ASR adapters are fully migrated", text)
+        self.assertIn("does not claim live OpenCode, protected Pi, embedding, or ASR adapters are fully migrated", text)
         self.assertIn("must not be cited as evidence", text)
         self.assertIn("Missing runtime adapters remain open work", text)
+        self.assertIn("full broker genus-router outcome reporting", text)
 
 
 if __name__ == "__main__":
