@@ -1,0 +1,39 @@
+{
+  "schema_version": "development.verified-change.packet/v1",
+  "program_id": "development.verified-change",
+  "program_version": "v1",
+  "program_instance_id": "program-m1-telos-recoverability",
+  "execution_profile": "m1-bounded-remediation",
+  "governing_purpose_id": "purpose-m1-telos-recoverability-proof",
+  "attention_packet": {
+    "packet_id": "product-attention-m1-reference",
+    "producer_actor_id": "actor-attention-m1-reference",
+    "evidence_id": "evidence-development-m1-reference",
+    "evidence_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "question_id": "question-development-m1-reference"
+  },
+  "insight_packet": {
+    "packet_id": "product-insight-m1-reference",
+    "producer_actor_id": "actor-insight-m1-reference",
+    "insight_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "attention_packet_id": "product-attention-m1-reference",
+    "question_id": "question-development-m1-reference"
+  },
+  "implementation_procedure": {
+    "artifact_id": "product-procedure-m1-reference",
+    "artifact_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "producer_actor_id": "actor-procedure-m1-reference",
+    "insight_packet_id": "product-insight-m1-reference"
+  },
+  "final_implementation": {
+    "generation": 2,
+    "accepted_event_id": "event-m1-generation-2-accepted",
+    "candidate_id": "candidate-m1-generation-2",
+    "candidate_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "implementer_actor_id": "actor-implementer-m1",
+    "verification_obligation_id": "obligation-m1-generation-2",
+    "implementation_procedure_artifact_id": "product-procedure-m1-reference"
+  },
+  "source_trace_digest": "sha256:60bdf997b463a64a84ad1303d70f3977058f85780dd59655032229d762cc1dcb",
+  "source_trace_version": "noetic.m1.telos-recoverability-trace/v0"
+}

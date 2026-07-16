@@ -1,0 +1,318 @@
+{
+  "schema_version": "development.verified-change.contract/v1",
+  "program_id": "development.verified-change",
+  "program_version": "v1",
+  "packet_version": "development.verified-change.packet/v1",
+  "projection_version": "development.verified-change.projection/v1",
+  "terminal_state": "telos_adjudicated",
+  "canonical_json": {
+    "encoding": "ASCII",
+    "key_order": "lexicographic",
+    "separators": [",", ":"],
+    "line_termination": "LF",
+    "floating_point": "forbidden",
+    "duplicate_keys": "forbidden",
+    "null": "forbidden"
+  },
+  "packet_fields": [
+    "schema_version",
+    "program_id",
+    "program_version",
+    "program_instance_id",
+    "execution_profile",
+    "governing_purpose_id",
+    "attention_packet",
+    "insight_packet",
+    "implementation_procedure",
+    "final_implementation",
+    "source_trace_digest",
+    "source_trace_version"
+  ],
+  "packet_components": {
+    "attention_packet": {
+      "fields": [
+        "packet_id",
+        "producer_actor_id",
+        "evidence_id",
+        "evidence_digest",
+        "question_id"
+      ],
+      "operation": "P1_attentiveness",
+      "evidence_status": "opaque_fixture_attributed_product"
+    },
+    "insight_packet": {
+      "fields": [
+        "packet_id",
+        "producer_actor_id",
+        "insight_digest",
+        "attention_packet_id",
+        "question_id"
+      ],
+      "operation": "P2_intelligence",
+      "evidence_status": "opaque_fixture_attributed_product"
+    },
+    "implementation_procedure": {
+      "fields": [
+        "artifact_id",
+        "artifact_digest",
+        "producer_actor_id",
+        "insight_packet_id"
+      ],
+      "evidence_status": "opaque_fixture_attributed_procedure"
+    },
+    "final_implementation": {
+      "fields": [
+        "generation",
+        "accepted_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "implementer_actor_id",
+        "verification_obligation_id",
+        "implementation_procedure_artifact_id"
+      ],
+      "evidence_status": "opaque_fixture_attributed_candidate_reference"
+    }
+  },
+  "identity_formats": {
+    "product_id": "^product-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "actor_id": "^actor-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "evidence_id": "^evidence-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "question_id": "^question-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "program_instance_id": "^program-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "purpose_id": "^purpose-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "event_id": "^event-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "candidate_id": "^candidate-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "obligation_id": "^obligation-[a-z0-9]+(?:-[a-z0-9]+)*$",
+    "digest": "^sha256:[0-9a-f]{64}$"
+  },
+  "lineage_rules": {
+    "attention_to_insight": [
+      "insight_packet.attention_packet_id == attention_packet.packet_id",
+      "insight_packet.question_id == attention_packet.question_id"
+    ],
+    "insight_to_procedure": [
+      "implementation_procedure.insight_packet_id == insight_packet.packet_id"
+    ],
+    "procedure_to_final_implementation": [
+      "final_implementation.implementation_procedure_artifact_id == implementation_procedure.artifact_id"
+    ],
+    "pairwise_distinct_product_ids": [
+      "attention_packet.packet_id",
+      "insight_packet.packet_id",
+      "implementation_procedure.artifact_id"
+    ],
+    "final_source_equality_fields": [
+      "generation",
+      "accepted_event_id",
+      "candidate_id",
+      "candidate_digest",
+      "implementer_actor_id",
+      "verification_obligation_id"
+    ]
+  },
+  "source_digest_rule": {
+    "algorithm": "SHA-256",
+    "material": "canonical JSON bytes of the complete separately supplied parsed source trace, including one final LF",
+    "representation": "sha256:<64 lowercase hexadecimal digits>"
+  },
+  "supported_source_profiles": {
+    "m0-direct-pass": {
+      "source_trace_version": "noetic.m0.telos-adjudication-trace/v0",
+      "source_projection_version": "noetic.m0.telos-adjudication-projection/v0",
+      "reducer": "scripts.m0_trace.validate_and_project",
+      "record_cardinality": 8,
+      "event_sequence": [
+        "telos.delegation.authorized",
+        "controller.run.created",
+        "controller.run.started",
+        "controller.implementation_generation.accepted",
+        "qa.verification.adjudicated",
+        "controller.run.succeeded",
+        "controller.result.reported",
+        "telos.sub_goal.adjudicated"
+      ],
+      "semantic_generation_sequence": [1, 1, 1, 1, 1, 1, 1, 1],
+      "source_states": [
+        "initial",
+        "delegated",
+        "run_created",
+        "run_started",
+        "generation_accepted",
+        "qa_pass_attributed",
+        "run_succeeded",
+        "result_reported",
+        "telos_adjudicated"
+      ],
+      "terminal_generation": 1,
+      "terminal_accepted_projection_path": "accepted_generation",
+      "terminal_qa_projection_path": "qa_adjudication",
+      "remediation_gate": {"represented": false}
+    },
+    "m1-bounded-remediation": {
+      "source_trace_version": "noetic.m1.telos-recoverability-trace/v0",
+      "source_projection_version": "noetic.m1.telos-recoverability-projection/v0",
+      "reducer": "scripts.m1_trace.validate_and_project",
+      "record_cardinality": 11,
+      "event_sequence": [
+        "telos.delegation.authorized",
+        "controller.run.created",
+        "controller.run.started",
+        "controller.implementation_generation.accepted",
+        "qa.verification.adjudicated",
+        "controller.remediation_generation.started",
+        "controller.implementation_generation.accepted",
+        "qa.verification.adjudicated",
+        "controller.run.succeeded",
+        "controller.result.reported",
+        "telos.sub_goal.adjudicated"
+      ],
+      "semantic_generation_sequence": [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2],
+      "source_states": [
+        "initial",
+        "delegated",
+        "run_created",
+        "run_started",
+        "generation_1_accepted",
+        "generation_1_qa_failed",
+        "generation_2_remediation_started",
+        "generation_2_accepted",
+        "generation_2_qa_passed",
+        "run_succeeded",
+        "result_reported",
+        "telos_adjudicated"
+      ],
+      "terminal_generation": 2,
+      "terminal_accepted_projection_path": "generation_history[1].accepted_generation",
+      "terminal_qa_projection_path": "generation_history[1].qa_adjudication",
+      "remediation_projection_paths": [
+        "remediation_budget",
+        "remediation_generation"
+      ]
+    }
+  },
+  "source_binding_rules": [
+    "execution_profile selects exactly one explicit supported profile",
+    "source_trace_version equals the selected profile source_trace_version",
+    "the supplied source root schema_version equals source_trace_version",
+    "source_trace_digest equals the recomputed canonical source digest",
+    "the selected frozen reducer accepts the source before program projection",
+    "program_instance_id equals source_trace_projection.binding.program_id",
+    "governing_purpose_id equals source_trace_projection.delegation.purpose",
+    "every final_source_equality_field equals the selected terminal accepted generation",
+    "source_trace_projection equals the complete selected reducer projection unchanged"
+  ],
+  "phase_evidence_mapping": {
+    "P1_attentiveness": "opaque packet and observation evidence reference attributed by the program packet",
+    "P2_intelligence": "opaque insight product attributed by the program packet and structurally bound to P1",
+    "P3_reasonableness": "terminal QA adjudication attributed only by the validated source trace",
+    "P4_responsibility": "terminal Telos adjudication attributed only by the validated source trace under the recursively governing purpose"
+  },
+  "gate_order": [
+    "attention_to_insight_lineage",
+    "procedure_to_implementation_lineage",
+    "final_implementation_binding",
+    "verification",
+    "remediation",
+    "controller_result",
+    "telos_adjudication"
+  ],
+  "gates": {
+    "attention_to_insight_lineage": {
+      "kind": "deterministic",
+      "determination": "structurally_bound",
+      "fields": [
+        "kind",
+        "determination",
+        "attention_packet_id",
+        "insight_packet_id",
+        "question_id"
+      ]
+    },
+    "procedure_to_implementation_lineage": {
+      "kind": "deterministic",
+      "determination": "structurally_bound",
+      "fields": [
+        "kind",
+        "determination",
+        "insight_packet_id",
+        "procedure_artifact_id",
+        "final_procedure_artifact_id"
+      ]
+    },
+    "final_implementation_binding": {
+      "kind": "deterministic",
+      "determination": "source_equal",
+      "fields": [
+        "kind",
+        "determination",
+        "generation",
+        "accepted_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "implementer_actor_id",
+        "verification_obligation_id"
+      ]
+    },
+    "verification": {
+      "kind": "attributed_semantic",
+      "attribution": "source_trace",
+      "conclusion": "PASS",
+      "fields": [
+        "kind",
+        "attribution",
+        "actor_id",
+        "event_id",
+        "generation",
+        "accepted_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "verification_obligation_id",
+        "conclusion"
+      ]
+    },
+    "remediation": {
+      "m0-direct-pass": {"represented": false},
+      "m1-bounded-remediation": {
+        "represented": true,
+        "kind": "attributed_semantic",
+        "attribution": "source_trace",
+        "preserved_source_fields": [
+          "remediation_budget",
+          "remediation_generation"
+        ]
+      }
+    },
+    "controller_result": {
+      "kind": "attributed_semantic",
+      "attribution": "source_trace",
+      "fields": ["kind", "attribution", "result"],
+      "forbidden_result_fields": ["sub_goal_status", "disposition"]
+    },
+    "telos_adjudication": {
+      "kind": "attributed_semantic",
+      "attribution": "source_trace",
+      "fields": ["kind", "attribution", "adjudication"],
+      "sole_gate_disposition": "complete"
+    }
+  },
+  "projection_fields": [
+    "schema_version",
+    "program_id",
+    "program_version",
+    "program_instance_id",
+    "execution_profile",
+    "state",
+    "governing_purpose_id",
+    "attention_packet",
+    "insight_packet",
+    "implementation_procedure",
+    "final_implementation",
+    "source_trace_digest",
+    "source_trace_version",
+    "source_trace_projection",
+    "gates"
+  ],
+  "semantic_boundary": "P1 and P2 packets, implementation procedure, candidates, QA conclusions, controller outcomes, and Telos dispositions are attributed declarations. Deterministic gates establish strict shape, canonical digest, lineage, profile, identity, and equality bindings only. No label or gate establishes actual cognition, attentiveness, insight, semantic quality, implementation correctness, evidence sufficiency, responsible judgment, or external truth.",
+  "provenance_boundary": "Packet actor IDs and source fixture actor IDs are unauthenticated strings. No external artifact bytes, identity provenance, signature, origin, real-world authorization, genuinely independent QA, or responsible Telos principal is represented or proved.",
+  "execution_boundary": "validate_and_project(packet, source_trace) is a pure provider-free reduction. It does not read files, inspect environment or clock, use randomness, invoke subprocesses/models/networks/databases, write data, mutate inputs, execute a candidate, change a repository, publish, deploy, persist, schedule, recover a process, or generalize the two frozen source lifecycles. The CLI alone reads exactly two input paths plus one expected path in check mode and writes canonical projection bytes or a controlled error."
+}

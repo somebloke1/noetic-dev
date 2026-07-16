@@ -38,6 +38,15 @@ REQUIRED = [
     "scripts/m1_trace.py",
     "tests/m1/__init__.py",
     "tests/m1/test_telos_recoverability_trace.py",
+    # Provider-free development.verified-change/v1 program adapter (issue #37)
+    "docs/development-verified-change-v1.md",
+    "spec/programs/development.verified-change/v1/program-contract.json",
+    "spec/programs/development.verified-change/v1/development-verified-change-packet.schema.json",
+    "spec/programs/development.verified-change/v1/golden/valid-bounded-remediation-packet.json",
+    "spec/programs/development.verified-change/v1/golden/expected-projection.json",
+    "scripts/development_verified_change.py",
+    "tests/programs/__init__.py",
+    "tests/programs/test_development_verified_change.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
