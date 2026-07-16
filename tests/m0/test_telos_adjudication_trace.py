@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any, Callable
+from unittest import mock
 
 from scripts.m0_trace import (
     StrictJSONError,
@@ -113,16 +114,84 @@ class M0TraceTest(unittest.TestCase):
 
     def test_strict_json_rejects_duplicates_floats_constants_and_nulls(self) -> None:
         invalid_documents = (
-            '{"schema_version":"a","schema_version":"b","records":[]}',
-            '{"records":[{"payload":{"generation":1.0}}]}',
-            '{"records":[{"payload":{"score":NaN}}]}',
-            '{"records":[{"payload":null}]}',
-            '{"outer":{"key":1,"key":2}}',
+            (
+                '{"schema_version":"a","schema_version":"b","records":[]}',
+                "duplicate object key: schema_version",
+            ),
+            (
+                '{"records":[{"payload":{"generation":1.0}}]}',
+                "floating-point numbers are not supported: 1.0",
+            ),
+            (
+                '{"records":[{"payload":{"score":NaN}}]}',
+                "non-finite numbers are not supported: NaN",
+            ),
+            (
+                '{"records":[{"payload":null}]}',
+                "$.records[0].payload: null is not supported",
+            ),
+            ('{"outer":{"key":1,"key":2}}', "duplicate object key: key"),
         )
-        for document in invalid_documents:
+        for document, expected_message in invalid_documents:
             with self.subTest(document=document):
-                with self.assertRaises(StrictJSONError):
+                with self.assertRaises(StrictJSONError) as raised:
                     strict_json_loads(document)
+                self.assertEqual(str(raised.exception), expected_message)
+
+    def test_strict_json_controls_integer_digit_limit_and_decoder_recursion(self) -> None:
+        cases = (
+            ("oversized_integer", "1" * 5000, "invalid JSON:", ValueError),
+            (
+                "decoder_nesting",
+                "[" * (sys.getrecursionlimit() * 2) + "0" + "]" * (sys.getrecursionlimit() * 2),
+                "JSON nesting exceeds recursion limit:",
+                RecursionError,
+            ),
+        )
+        for name, document, expected_message, expected_cause in cases:
+            with self.subTest(name=name):
+                with self.assertRaises(StrictJSONError) as raised:
+                    strict_json_loads(document)
+                self.assertIn(expected_message, str(raised.exception))
+                self.assertIs(type(raised.exception.__cause__), expected_cause)
+
+    def test_strict_json_controls_recursion_from_unsupported_value_walk(self) -> None:
+        nested: Any = 0
+        for _ in range(sys.getrecursionlimit() + 100):
+            nested = [nested]
+
+        with mock.patch("scripts.m0_trace.json.loads", return_value=nested):
+            with self.assertRaises(StrictJSONError) as raised:
+                strict_json_loads("[]")
+        self.assertIn("JSON nesting exceeds recursion limit:", str(raised.exception))
+        self.assertIs(type(raised.exception.__cause__), RecursionError)
+
+    def test_cli_controls_integer_limit_and_nesting_without_traceback(self) -> None:
+        cases = (
+            ("oversized-integer.json", "1" * 5000, "invalid JSON:"),
+            (
+                "excessive-nesting.json",
+                "[" * (sys.getrecursionlimit() * 2) + "0" + "]" * (sys.getrecursionlimit() * 2),
+                "JSON nesting exceeds recursion limit:",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            for filename, document, expected_message in cases:
+                with self.subTest(filename=filename):
+                    path = Path(temporary) / filename
+                    path.write_text(document, encoding="utf-8")
+                    completed = subprocess.run(
+                        [sys.executable, str(SCRIPT_PATH), str(path)],
+                        cwd=ROOT,
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(completed.returncode, 1)
+                    self.assertEqual(completed.stdout, "")
+                    self.assertIn("M0 trace validation failed:", completed.stderr)
+                    self.assertIn(expected_message, completed.stderr)
+                    self.assertNotIn("Traceback", completed.stderr)
 
     def test_float_and_null_are_rejected_when_validator_is_called_directly(self) -> None:
         self.assert_rejected(lambda trace: trace["records"][1]["payload"].update(extra=1.5))

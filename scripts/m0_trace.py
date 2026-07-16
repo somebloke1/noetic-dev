@@ -60,9 +60,15 @@ def strict_json_loads(text: str) -> Any:
             parse_float=_reject_float,
             parse_constant=_reject_constant,
         )
+        _reject_unsupported_values(value)
+    except StrictJSONError:
+        raise
     except json.JSONDecodeError as exc:
         raise StrictJSONError(f"invalid JSON: {exc}") from exc
-    _reject_unsupported_values(value)
+    except ValueError as exc:
+        raise StrictJSONError(f"invalid JSON: {exc}") from exc
+    except RecursionError as exc:
+        raise StrictJSONError(f"JSON nesting exceeds recursion limit: {exc}") from exc
     return value
 
 
