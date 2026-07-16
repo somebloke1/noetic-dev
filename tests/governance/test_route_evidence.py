@@ -97,6 +97,10 @@ class TestRouteEvidence(unittest.TestCase):
         tainted["attempts"][0]["decision_rejection"]["decision_id"] += "\n"
         self.assertTrue(validate_route_evidence(tainted))
 
+        tainted = copy.deepcopy(evidence)
+        tainted["attempts"][0]["decision_rejection"]["raw_decision_sha256"] += "\n"
+        self.assertTrue(validate_route_evidence(tainted))
+
     def test_rejects_static_or_unknown_contract_evidence(self) -> None:
         self.assertTrue(validate_route_evidence({"model": TERRA}))
         self.assertTrue(validate_route_evidence(route_evidence(), "unknown"))

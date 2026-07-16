@@ -15,6 +15,7 @@ from json_schema import load_json_strict, validate_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DECISION_ID = re.compile(r"^d-[0-9]{8}-[0-9]{6}$")
+SHA256_HEX = re.compile(r"[a-f0-9]{64}")
 STANDARD_MODELS = [
     "codex/gpt-5.6-sol",
     "codex/gpt-5.6-terra",
@@ -86,6 +87,8 @@ def _validate_rejection(
     model = rejection["model"]
     if not remaining or model != remaining[0]:
         errors.append(f"{label} rejected model violates routed candidate order")
+    if not SHA256_HEX.fullmatch(rejection["raw_decision_sha256"]):
+        errors.append(f"{label} rejected raw decision digest is invalid")
     return model
 
 
