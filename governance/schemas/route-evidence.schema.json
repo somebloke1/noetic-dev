@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "classification": {
+      "additionalProperties": false,
+      "properties": {
+        "awaited": {"const": true},
+        "blast_radius": {"const": "interface"},
+        "complexity": {"const": "complex"},
+        "high_value": {"const": false},
+        "task_kind": {"const": "review"}
+      },
+      "required": ["awaited", "blast_radius", "complexity", "high_value", "task_kind"],
+      "type": "object"
+    },
+    "attempts": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "decision": {"type": "object"},
+              "outcome": {"enum": ["success", "failure"]},
+              "outcome_recorded": {"const": true},
+              "reasoning_effort": {"const": "high"}
+            },
+            "required": ["decision", "outcome", "outcome_recorded", "reasoning_effort"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "decision_rejection": {
+                "additionalProperties": false,
+                "properties": {
+                  "decision_id": {"pattern": "^d-[0-9]{8}-[0-9]{6}$", "type": "string"},
+                  "model": {"type": "string"},
+                  "raw_decision_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+                  "rejection_type": {"minLength": 1, "type": "string"}
+                },
+                "required": ["decision_id", "model", "raw_decision_sha256", "rejection_type"],
+                "type": "object"
+              },
+              "invocation_count": {"const": 0},
+              "outcome": {"const": "failure"},
+              "outcome_recorded": {"const": true}
+            },
+            "required": ["decision_rejection", "invocation_count", "outcome", "outcome_recorded"],
+            "type": "object"
+          }
+        ]
+      },
+      "maxItems": 3,
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": ["schema_version", "classification", "attempts"],
+  "title": "Noetic Dev Route Evidence",
+  "type": "object"
+}

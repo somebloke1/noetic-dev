@@ -70,8 +70,10 @@ REQUIRED = [
     "docs/model-routing-policy.md",
     "governance/schemas/model-policy.schema.json",
     "governance/schemas/opencode-session-policy.schema.json",
+    "governance/schemas/route-evidence.schema.json",
     "tests/governance/test_model_policy.py",
     "tests/governance/test_opencode_session_policy.py",
+    "tests/governance/test_route_evidence.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
@@ -97,6 +99,7 @@ REQUIRED = [
     "scripts/governance/run_isolated_pi.py",
     "scripts/governance/agent_review_broker.py",
     "scripts/governance/request_agent_review.py",
+    "scripts/governance/route_evidence.py",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",
