@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noetic-dev.invalid/schemas/development.verified-change.packet-v1.json",
+  "title": "development.verified-change.packet/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "program_id",
+    "program_version",
+    "program_instance_id",
+    "execution_profile",
+    "governing_purpose_id",
+    "attention_packet",
+    "insight_packet",
+    "implementation_procedure",
+    "final_implementation",
+    "source_trace_digest",
+    "source_trace_version"
+  ],
+  "properties": {
+    "schema_version": {"const": "development.verified-change.packet/v1"},
+    "program_id": {"const": "development.verified-change"},
+    "program_version": {"const": "v1"},
+    "program_instance_id": {"$ref": "#/$defs/programId"},
+    "execution_profile": {
+      "enum": ["m0-direct-pass", "m1-bounded-remediation"]
+    },
+    "governing_purpose_id": {"$ref": "#/$defs/purposeId"},
+    "attention_packet": {"$ref": "#/$defs/attentionPacket"},
+    "insight_packet": {"$ref": "#/$defs/insightPacket"},
+    "implementation_procedure": {"$ref": "#/$defs/implementationProcedure"},
+    "final_implementation": {"$ref": "#/$defs/finalImplementation"},
+    "source_trace_digest": {"$ref": "#/$defs/digest"},
+    "source_trace_version": {
+      "enum": [
+        "noetic.m0.telos-adjudication-trace/v0",
+        "noetic.m1.telos-recoverability-trace/v0"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"execution_profile": {"const": "m0-direct-pass"}},
+        "required": ["execution_profile"]
+      },
+      "then": {
+        "properties": {
+          "source_trace_version": {
+            "const": "noetic.m0.telos-adjudication-trace/v0"
+          },
+          "final_implementation": {
+            "properties": {"generation": {"const": 1}}
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "execution_profile": {"const": "m1-bounded-remediation"}
+        },
+        "required": ["execution_profile"]
+      },
+      "then": {
+        "properties": {
+          "source_trace_version": {
+            "const": "noetic.m1.telos-recoverability-trace/v0"
+          },
+          "final_implementation": {
+            "properties": {"generation": {"const": 2}}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "productId": {
+      "type": "string",
+      "pattern": "^product-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "actorId": {
+      "type": "string",
+      "pattern": "^actor-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "evidenceId": {
+      "type": "string",
+      "pattern": "^evidence-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "questionId": {
+      "type": "string",
+      "pattern": "^question-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "programId": {
+      "type": "string",
+      "pattern": "^program-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "purposeId": {
+      "type": "string",
+      "pattern": "^purpose-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^event-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "candidateId": {
+      "type": "string",
+      "pattern": "^candidate-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "obligationId": {
+      "type": "string",
+      "pattern": "^obligation-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "attentionPacket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packet_id",
+        "producer_actor_id",
+        "evidence_id",
+        "evidence_digest",
+        "question_id"
+      ],
+      "properties": {
+        "packet_id": {"$ref": "#/$defs/productId"},
+        "producer_actor_id": {"$ref": "#/$defs/actorId"},
+        "evidence_id": {"$ref": "#/$defs/evidenceId"},
+        "evidence_digest": {"$ref": "#/$defs/digest"},
+        "question_id": {"$ref": "#/$defs/questionId"}
+      }
+    },
+    "insightPacket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packet_id",
+        "producer_actor_id",
+        "insight_digest",
+        "attention_packet_id",
+        "question_id"
+      ],
+      "properties": {
+        "packet_id": {"$ref": "#/$defs/productId"},
+        "producer_actor_id": {"$ref": "#/$defs/actorId"},
+        "insight_digest": {"$ref": "#/$defs/digest"},
+        "attention_packet_id": {"$ref": "#/$defs/productId"},
+        "question_id": {"$ref": "#/$defs/questionId"}
+      }
+    },
+    "implementationProcedure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_id",
+        "artifact_digest",
+        "producer_actor_id",
+        "insight_packet_id"
+      ],
+      "properties": {
+        "artifact_id": {"$ref": "#/$defs/productId"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "producer_actor_id": {"$ref": "#/$defs/actorId"},
+        "insight_packet_id": {"$ref": "#/$defs/productId"}
+      }
+    },
+    "finalImplementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generation",
+        "accepted_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "implementer_actor_id",
+        "verification_obligation_id",
+        "implementation_procedure_artifact_id"
+      ],
+      "properties": {
+        "generation": {"type": "integer", "enum": [1, 2]},
+        "accepted_event_id": {"$ref": "#/$defs/eventId"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "implementer_actor_id": {"$ref": "#/$defs/actorId"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "implementation_procedure_artifact_id": {
+          "$ref": "#/$defs/productId"
+        }
+      }
+    }
+  }
+}
