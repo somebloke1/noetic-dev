@@ -66,11 +66,14 @@ REQUIRED = [
     "tests/programs/test_development_verified_change_status.py",
     # Mandatory genus-router / LiteLLM model policy (issue #29)
     "config/model-policy.json",
+    "config/modality-readiness-policy.json",
     "config/opencode-session-policy.json",
     "docs/model-routing-policy.md",
     "governance/schemas/model-policy.schema.json",
+    "governance/schemas/modality-readiness-policy.schema.json",
     "governance/schemas/opencode-session-policy.schema.json",
     "tests/governance/test_model_policy.py",
+    "tests/governance/test_modality_readiness_policy.py",
     "tests/governance/test_opencode_session_policy.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
@@ -190,6 +193,17 @@ def main() -> int:
     else:
         for error in validate_schema(opencode_policy, opencode_schema):
             fail(f"config/opencode-session-policy.json: {error}", failures)
+
+    modality_policy_path = ROOT / "config/modality-readiness-policy.json"
+    modality_schema_path = ROOT / "governance/schemas/modality-readiness-policy.schema.json"
+    try:
+        modality_policy = load_json_strict(modality_policy_path)
+        modality_schema = load_json_strict(modality_schema_path)
+    except (OSError, ValueError) as exc:
+        fail(f"modality readiness policy validation failed to load: {exc}", failures)
+    else:
+        for error in validate_schema(modality_policy, modality_schema):
+            fail(f"config/modality-readiness-policy.json: {error}", failures)
 
     if failures:
         print("Repository validation failed:", file=sys.stderr)

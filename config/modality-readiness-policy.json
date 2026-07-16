@@ -1,0 +1,33 @@
+{
+  "$schema": "../governance/schemas/modality-readiness-policy.schema.json",
+  "evidence_required": [
+    "route_decision_id",
+    "route_reference_sha256",
+    "endpoint_id",
+    "readiness_probe_id",
+    "request_shape_hash",
+    "response_shape_hash",
+    "latency_budget_ms",
+    "report_outcome_id"
+  ],
+  "modalities": {
+    "asr": {
+      "model": "qwen3-asr",
+      "ready": false,
+      "required_endpoint_path": "/v1/audio/transcriptions"
+    },
+    "embed": {
+      "model": "snowflake-arctic-embed2",
+      "ready": false,
+      "required_endpoint_path": "/v1/embeddings"
+    }
+  },
+  "runtime_adapters_ready": false,
+  "schema_version": "1",
+  "selection": {
+    "access_endpoint_id": "local-litellm",
+    "direct_access_allowed": false,
+    "router": "genus-router"
+  },
+  "status": "contract-only"
+}

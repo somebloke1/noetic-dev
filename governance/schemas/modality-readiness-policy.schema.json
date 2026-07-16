@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"const": "../governance/schemas/modality-readiness-policy.schema.json"},
+    "evidence_required": {"const": ["route_decision_id", "route_reference_sha256", "endpoint_id", "readiness_probe_id", "request_shape_hash", "response_shape_hash", "latency_budget_ms", "report_outcome_id"]},
+    "modalities": {
+      "additionalProperties": false,
+      "properties": {
+        "asr": {
+          "additionalProperties": false,
+          "properties": {
+            "model": {"const": "qwen3-asr"},
+            "ready": {"const": false},
+            "required_endpoint_path": {"const": "/v1/audio/transcriptions"}
+          },
+          "required": ["model", "ready", "required_endpoint_path"],
+          "type": "object"
+        },
+        "embed": {
+          "additionalProperties": false,
+          "properties": {
+            "model": {"const": "snowflake-arctic-embed2"},
+            "ready": {"const": false},
+            "required_endpoint_path": {"const": "/v1/embeddings"}
+          },
+          "required": ["model", "ready", "required_endpoint_path"],
+          "type": "object"
+        }
+      },
+      "required": ["asr", "embed"],
+      "type": "object"
+    },
+    "runtime_adapters_ready": {"const": false},
+    "schema_version": {"const": "1"},
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "access_endpoint_id": {"const": "local-litellm"},
+        "direct_access_allowed": {"const": false},
+        "router": {"const": "genus-router"}
+      },
+      "required": ["access_endpoint_id", "direct_access_allowed", "router"],
+      "type": "object"
+    },
+    "status": {"const": "contract-only"}
+  },
+  "required": ["$schema", "evidence_required", "modalities", "runtime_adapters_ready", "schema_version", "selection", "status"],
+  "title": "Noetic Dev Modality Readiness Policy",
+  "type": "object"
+}
