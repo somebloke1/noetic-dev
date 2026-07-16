@@ -59,6 +59,11 @@ REQUIRED = [
     "spec/programs/development.verified-change/v1/golden/expected-terminal-status.json",
     "scripts/development_verified_change_status.py",
     "tests/programs/test_development_verified_change_status.py",
+    # Mandatory genus-router / LiteLLM model policy (issue #29)
+    "config/model-policy.json",
+    "docs/model-routing-policy.md",
+    "governance/schemas/model-policy.schema.json",
+    "tests/governance/test_model_policy.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",

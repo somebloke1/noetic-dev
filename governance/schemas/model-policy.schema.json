@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"const": "../governance/schemas/model-policy.schema.json"},
+    "access": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_endpoint_paths": {"const": ["/v1/responses", "/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"]},
+        "applies_to_harnesses": {"const": ["pi", "opencode", "broker", "bare"]},
+        "base_url": {"const": "http://172.22.10.160:3333"},
+        "direct_provider_access": {"const": false},
+        "endpoint_id": {"const": "local-litellm"},
+        "litellm_required": {"const": true},
+        "systemd_credential": {"const": "litellm_api_key"},
+        "token_env": {"const": "LITELLM_API_KEY"}
+      },
+      "required": ["allowed_endpoint_paths", "applies_to_harnesses", "base_url", "direct_provider_access", "endpoint_id", "litellm_required", "systemd_credential", "token_env"],
+      "type": "object"
+    },
+    "execution_contracts": {"$ref": "#/definitions/execution_contracts"},
+    "failure": {"$ref": "#/definitions/failure"},
+    "generative": {"$ref": "#/definitions/generative"},
+    "modalities": {
+      "additionalProperties": false,
+      "properties": {
+        "asr": {"const": "qwen3-asr"},
+        "embed": {"const": "snowflake-arctic-embed2"}
+      },
+      "required": ["asr", "embed"],
+      "type": "object"
+    },
+    "schema_version": {"const": "1"},
+    "selection": {"$ref": "#/definitions/selection"},
+    "tasks": {"$ref": "#/definitions/tasks"}
+  },
+  "required": ["$schema", "access", "execution_contracts", "failure", "generative", "modalities", "schema_version", "selection", "tasks"],
+  "title": "Noetic Dev Model Policy",
+  "type": "object",
+  "definitions": {
+    "execution_contracts": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_review_broker": {
+          "additionalProperties": false,
+          "properties": {
+            "maximum_substantive_invocations": {"const": 1},
+            "readiness_probe_is_phase": {"const": true},
+            "report_outcome_scope": {"const": "aggregate_attempt"}
+          },
+          "required": ["maximum_substantive_invocations", "readiness_probe_is_phase", "report_outcome_scope"],
+          "type": "object"
+        },
+        "authoritative_qa_pi": {
+          "additionalProperties": false,
+          "properties": {
+            "decision_scope": {"const": "per_operation"},
+            "maximum_invocations_per_decision": {"const": 1},
+            "operations": {"const": ["readiness_probe", "execution"]},
+            "report_outcome_scope": {"const": "per_operation"}
+          },
+          "required": ["decision_scope", "maximum_invocations_per_decision", "operations", "report_outcome_scope"],
+          "type": "object"
+        }
+      },
+      "required": ["agent_review_broker", "authoritative_qa_pi"],
+      "type": "object"
+    },
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "exclude_failed_models": {"const": true},
+        "manual_model_escalation": {"const": false},
+        "report_outcome_required": {"const": true},
+        "reroute_with_prior_failure": {"const": true}
+      },
+      "required": ["exclude_failed_models", "manual_model_escalation", "report_outcome_required", "reroute_with_prior_failure"],
+      "type": "object"
+    },
+    "generative": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_endpoint_paths": {"const": ["/v1/responses", "/v1/chat/completions"]},
+        "allowed_models": {"const": ["codex/gpt-5.6-sol", "claude-fable-5", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]},
+        "capability_tiers": {"const": [["codex/gpt-5.6-sol", "claude-fable-5"], ["codex/gpt-5.6-terra"], ["codex/gpt-5.6-luna"]]},
+        "fable_eligibility": {
+          "additionalProperties": false,
+          "properties": {
+            "limited": {"const": true},
+            "minimum_complexity": {"const": "complex"},
+            "purpose": {"const": "high-value independent judgment and model-family diversity"},
+            "task_kinds": {"const": ["review", "research", "design"]}
+          },
+          "required": ["limited", "minimum_complexity", "purpose", "task_kinds"],
+          "type": "object"
+        },
+        "reasoning_effort": {"const": "high"},
+        "standard_models": {"const": ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]}
+      },
+      "required": ["allowed_endpoint_paths", "allowed_models", "capability_tiers", "fable_eligibility", "reasoning_effort", "standard_models"],
+      "type": "object"
+    },
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "lifecycle": {"const": ["classify", "route_task", "invoke", "report_outcome"]},
+        "mandatory_for_generative_tasks": {"const": true},
+        "router": {"const": "genus-router"},
+        "selection_varies_with_sophistication": {"const": true}
+      },
+      "required": ["lifecycle", "mandatory_for_generative_tasks", "router", "selection_varies_with_sophistication"],
+      "type": "object"
+    },
+    "tasks": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_review": {"$ref": "#/definitions/review_task"},
+        "authoritative_qa": {"$ref": "#/definitions/review_task"},
+        "independent_approval": {
+          "additionalProperties": false,
+          "properties": {
+            "awaited": {"const": true},
+            "blast_radius": {"const": "interface"},
+            "complexity": {"const": "complex"},
+            "high_value": {"const": true},
+            "independent_approval": {"const": true},
+            "task_kind": {"const": "review"}
+          },
+          "required": ["awaited", "blast_radius", "complexity", "high_value", "independent_approval", "task_kind"],
+          "type": "object"
+        }
+      },
+      "required": ["agent_review", "authoritative_qa", "independent_approval"],
+      "type": "object"
+    },
+    "review_task": {
+      "additionalProperties": false,
+      "properties": {
+        "awaited": {"const": true},
+        "blast_radius": {"const": "interface"},
+        "complexity": {"const": "complex"},
+        "high_value": {"const": false},
+        "task_kind": {"const": "review"}
+      },
+      "required": ["awaited", "blast_radius", "complexity", "high_value", "task_kind"],
+      "type": "object"
+    }
+  }
+}
