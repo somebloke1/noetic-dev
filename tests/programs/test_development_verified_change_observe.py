@@ -188,6 +188,24 @@ class DevelopmentVerifiedChangeObserveTest(unittest.TestCase):
         self.assertIn("passed exact read-model check", checked.stdout)
         self.assertEqual(checked.stderr, "")
 
+    def test_cli_accepts_utf8_input_while_emitting_ascii_json(self) -> None:
+        projection = copy.deepcopy(self.m1_projection)
+        projection["attention_packet"]["evidence_id"] = "evidence-development-m1-r\u00e9f\u00e9rence"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "utf8-projection.json"
+            path.write_text(json.dumps(projection, ensure_ascii=False), encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), str(path)],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=False,
+            )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        self.assertEqual(completed.stderr, b"")
+        self.assertIn(b"\\u00e9", completed.stdout)
+        completed.stdout.decode("ascii")
+
     def test_cli_rejects_bad_json_noncanonical_expected_and_wrong_expected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             temp = Path(temporary)
