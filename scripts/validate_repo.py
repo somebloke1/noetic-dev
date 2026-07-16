@@ -20,6 +20,15 @@ REQUIRED = [
     "SECURITY.md",
     "docs/cognitive-backbone.md",
     "docs/development-practices.md",
+    # Provider-free M0 Telos-to-adjudication reference trace (issue #33)
+    "docs/m0-telos-adjudication-trace.md",
+    "spec/m0/v0/telos-adjudication-trace.schema.json",
+    "spec/m0/v0/trace-contract.json",
+    "spec/m0/v0/golden/valid-telos-adjudication-trace.json",
+    "spec/m0/v0/golden/expected-projection.json",
+    "scripts/m0_trace.py",
+    "tests/m0/__init__.py",
+    "tests/m0/test_telos_adjudication_trace.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
