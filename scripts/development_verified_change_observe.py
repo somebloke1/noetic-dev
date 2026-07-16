@@ -612,7 +612,7 @@ def _closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _load_json(path: Path) -> Any:
     try:
-        text = path.read_text(encoding="ascii")
+        text = path.read_text(encoding="utf-8")
         return json.loads(text, parse_float=_reject_float, parse_constant=_reject_constant, object_pairs_hook=_closed_object)
     except RecursionError as exc:
         raise ObservabilityCompatibilityError(f"JSON nesting exceeds recursion limit: {exc}") from exc
