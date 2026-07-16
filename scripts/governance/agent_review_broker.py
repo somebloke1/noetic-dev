@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import fcntl
 import grp
 import hashlib
-import itertools
 import json
 import math
 import os
@@ -40,7 +40,7 @@ MAX_PATCH_BYTES = 200_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
 MAX_GITHUB_OUTPUT_BYTES = 1_048_576
 BWRAP = Path("/usr/bin/bwrap")
-DECISION_COUNTER = itertools.count(1)
+DECISION_COUNTER_ENV = "NOETIC_AGENT_REVIEW_DECISION_COUNTER"
 
 
 class ReviewError(RuntimeError):
@@ -144,12 +144,78 @@ def resolve_agent_review_route(policy: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def next_decision_id() -> str:
+def decision_counter_path() -> Path:
+    configured = os.environ.get(DECISION_COUNTER_ENV)
+    if configured:
+        return Path(configured)
+    state_home = os.environ.get("XDG_STATE_HOME")
+    base = Path(state_home) if state_home else Path.home() / ".local" / "state"
+    return base / "noetic-dev-agent-review" / "decision-counter.json"
+
+
+def prepare_counter_parent(counter_path: Path) -> Path:
+    absolute = counter_path if counter_path.is_absolute() else Path.cwd() / counter_path
+    parent = absolute.parent
+    current = Path(parent.anchor)
+    for part in parent.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise ReviewError("broker decision counter parent is a symlink")
+        if current.exists():
+            if not current.is_dir():
+                raise ReviewError("broker decision counter parent is invalid")
+            continue
+        current.mkdir(mode=0o700)
+    return absolute
+
+
+def reserve_decision_ids(count: int, path: Path | None = None) -> list[str]:
+    if not isinstance(count, int) or isinstance(count, bool) or count < 1 or count > 999_999:
+        raise ReviewError("decision id reservation count is invalid")
     today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d")
-    sequence = next(DECISION_COUNTER)
-    if sequence > 999_999:
-        raise ReviewError("broker route decision id space is exhausted")
-    return f"d-{today}-{sequence:06d}"
+    counter_path = path or decision_counter_path()
+    try:
+        counter_path = prepare_counter_parent(counter_path)
+        descriptor = os.open(
+            counter_path,
+            os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        with os.fdopen(descriptor, "a+", encoding="utf-8") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            handle.seek(0)
+            raw = handle.read().strip()
+            if raw:
+                state = strict_json(raw)
+                if not isinstance(state, dict):
+                    raise ReviewError("broker decision counter state is invalid")
+                counter_date = state.get("date")
+                sequence = state.get("sequence")
+                if not isinstance(counter_date, str) or not isinstance(sequence, int) or isinstance(sequence, bool):
+                    raise ReviewError("broker decision counter state is invalid")
+            else:
+                counter_date = today
+                sequence = 0
+            if counter_date != today:
+                counter_date = today
+                sequence = 0
+            if sequence + count > 999_999:
+                raise ReviewError("broker route decision id space is exhausted")
+            reserved = [f"d-{today}-{number:06d}" for number in range(sequence + 1, sequence + count + 1)]
+            handle.seek(0)
+            handle.truncate()
+            json.dump({"date": counter_date, "sequence": sequence + count}, handle, separators=(",", ":"))
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+            return reserved
+    except OSError as error:
+        raise ReviewError("broker decision counter is unavailable") from error
+
+
+def next_decision_id() -> str:
+    return reserve_decision_ids(1)[0]
 
 
 def build_model_ref(policy: dict[str, Any], model: str) -> dict[str, str]:
@@ -565,11 +631,12 @@ def review(payload: Any) -> dict[str, Any]:
     pr, material = fetch_review_material(request)
     prompt = build_prompt(pr, material, request)
     policy = load_model_policy()
+    decision_ids = reserve_decision_ids(len(PROTECTED_REVIEW_CANDIDATES))
     excluded_models: list[str] = []
     attempts: list[dict[str, Any]] = []
     last_error = "broker review failed"
-    for _candidate in PROTECTED_REVIEW_CANDIDATES:
-        decision = build_agent_review_decision(policy, excluded_models)
+    for decision_id in decision_ids:
+        decision = build_agent_review_decision(policy, excluded_models, decision_id=decision_id)
         route = route_from_decision(policy, decision)
         try:
             result = run_terra(prompt, route)

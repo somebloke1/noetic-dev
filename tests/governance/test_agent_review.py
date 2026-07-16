@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, ReviewExecutionError, UnixServer, build_agent_review_decision, build_prompt, load_model_policy, next_decision_id, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, ReviewExecutionError, UnixServer, build_agent_review_decision, build_prompt, load_model_policy, next_decision_id, parse_review_output, reserve_decision_ids, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
 from route_evidence import validate_route_evidence
 
 
@@ -27,6 +27,14 @@ class TestAgentReview(unittest.TestCase):
         "head_sha": "a" * 40,
         "base_sha": "b" * 40,
     }
+
+    def setUp(self):
+        self.counter_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.counter_dir.cleanup)
+        counter_path = str(Path(self.counter_dir.name) / "decision-counter.json")
+        self.counter_env = mock.patch.dict(os.environ, {"NOETIC_AGENT_REVIEW_DECISION_COUNTER": counter_path})
+        self.counter_env.start()
+        self.addCleanup(self.counter_env.stop)
 
     def test_request_is_fail_closed(self):
         self.assertEqual(validate_request(dict(self.REQUEST)), self.REQUEST)
@@ -214,10 +222,50 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(second["model"], "codex/gpt-5.6-sol")
         self.assertEqual(second["fallbacks"], ["codex/gpt-5.6-luna"])
 
-    @mock.patch("agent_review_broker.DECISION_COUNTER", iter([1_000_000]))
-    def test_decision_id_generation_fails_before_wrap(self):
+    def test_decision_id_generation_persists_and_fails_before_wrap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            counter = Path(directory) / "counter.json"
+            first = reserve_decision_ids(2, counter)
+            second = reserve_decision_ids(1, counter)
+        self.assertEqual(first[0][-6:], "000001")
+        self.assertEqual(first[1][-6:], "000002")
+        self.assertEqual(second[0][-6:], "000003")
+
+        with tempfile.TemporaryDirectory() as directory:
+            counter = Path(directory) / "counter.json"
+            counter.write_text('{"date":"20260716","sequence":999998}\n', encoding="utf-8")
+            with self.assertRaisesRegex(ReviewError, "decision id space"):
+                reserve_decision_ids(2, counter)
+
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "target.json"
+            counter = Path(directory) / "counter.json"
+            counter.symlink_to(target)
+            with self.assertRaisesRegex(ReviewError, "counter is unavailable"):
+                reserve_decision_ids(1, counter)
+            self.assertFalse(target.exists())
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real = root / "real"
+            real.mkdir()
+            linked_parent = root / "linked"
+            linked_parent.symlink_to(real, target_is_directory=True)
+            with self.assertRaisesRegex(ReviewError, "parent is a symlink"):
+                reserve_decision_ids(1, linked_parent / "counter.json")
+            self.assertFalse((real / "counter.json").exists())
+
+    @mock.patch("agent_review_broker.reserve_decision_ids", side_effect=ReviewError("decision id space exhausted"))
+    @mock.patch("agent_review_broker.run_terra")
+    @mock.patch("agent_review_broker.fetch_review_material")
+    def test_review_reserves_route_ids_before_invocation(self, fetch: mock.Mock, terra: mock.Mock, _reserve: mock.Mock):
+        fetch.return_value = (
+            {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
+            {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
+        )
         with self.assertRaisesRegex(ReviewError, "decision id space"):
-            next_decision_id()
+            review(self.REQUEST)
+        terra.assert_not_called()
 
     def test_agent_review_route_rejects_direct_provider_policy(self):
         policy = load_model_policy()
