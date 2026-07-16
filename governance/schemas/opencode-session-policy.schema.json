@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"const": "../governance/schemas/opencode-session-policy.schema.json"},
+    "adapter": {"const": "opencode"},
+    "evidence_required": {"const": ["route_decision_id", "route_reference_sha256", "opencode_version", "static_title", "json_event_log_sha256", "model_turn_count", "report_outcome_id"]},
+    "failure": {
+      "additionalProperties": false,
+      "properties": {
+        "direct_provider_credential_present": {"const": "fail_closed"},
+        "generated_title_detected": {"const": "fail_closed"},
+        "missing_json_event_log": {"const": "fail_closed"},
+        "missing_report_outcome": {"const": "fail_closed"},
+        "model_turn_limit_exceeded": {"const": "fail_closed"},
+        "unrouted_model_identity": {"const": "fail_closed"}
+      },
+      "required": ["direct_provider_credential_present", "generated_title_detected", "missing_json_event_log", "missing_report_outcome", "model_turn_limit_exceeded", "unrouted_model_identity"],
+      "type": "object"
+    },
+    "runtime_adapter_ready": {"const": false},
+    "schema_version": {"const": "1"},
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_provider": {"const": "litellm"},
+        "config_override_required": {"const": true},
+        "direct_provider_credentials_scrubbed": {"const": true},
+        "provider_allowlist": {"const": ["litellm"]},
+        "router": {"const": "genus-router"}
+      },
+      "required": ["allowed_provider", "config_override_required", "direct_provider_credentials_scrubbed", "provider_allowlist", "router"],
+      "type": "object"
+    },
+    "session_contract": {
+      "additionalProperties": false,
+      "properties": {
+        "json_events_required": {"const": true},
+        "maximum_model_turns_per_session": {"const": 1},
+        "outcome_reporting_scope": {"const": "per_route_decision"},
+        "route_decision_scope": {"const": "per_model_turn"},
+        "static_title_required": {"const": true},
+        "tools_allowed": {"const": false}
+      },
+      "required": ["json_events_required", "maximum_model_turns_per_session", "outcome_reporting_scope", "route_decision_scope", "static_title_required", "tools_allowed"],
+      "type": "object"
+    },
+    "status": {"const": "contract-only"}
+  },
+  "required": ["$schema", "adapter", "evidence_required", "failure", "runtime_adapter_ready", "schema_version", "selection", "session_contract", "status"],
+  "title": "Noetic Dev OpenCode Session Policy",
+  "type": "object"
+}

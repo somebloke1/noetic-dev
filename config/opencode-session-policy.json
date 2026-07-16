@@ -1,0 +1,41 @@
+{
+  "$schema": "../governance/schemas/opencode-session-policy.schema.json",
+  "adapter": "opencode",
+  "evidence_required": [
+    "route_decision_id",
+    "route_reference_sha256",
+    "opencode_version",
+    "static_title",
+    "json_event_log_sha256",
+    "model_turn_count",
+    "report_outcome_id"
+  ],
+  "failure": {
+    "direct_provider_credential_present": "fail_closed",
+    "generated_title_detected": "fail_closed",
+    "missing_json_event_log": "fail_closed",
+    "missing_report_outcome": "fail_closed",
+    "model_turn_limit_exceeded": "fail_closed",
+    "unrouted_model_identity": "fail_closed"
+  },
+  "runtime_adapter_ready": false,
+  "schema_version": "1",
+  "selection": {
+    "allowed_provider": "litellm",
+    "config_override_required": true,
+    "direct_provider_credentials_scrubbed": true,
+    "provider_allowlist": [
+      "litellm"
+    ],
+    "router": "genus-router"
+  },
+  "session_contract": {
+    "json_events_required": true,
+    "maximum_model_turns_per_session": 1,
+    "outcome_reporting_scope": "per_route_decision",
+    "route_decision_scope": "per_model_turn",
+    "static_title_required": true,
+    "tools_allowed": false
+  },
+  "status": "contract-only"
+}
