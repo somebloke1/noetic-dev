@@ -35,7 +35,11 @@ The source trace is never embedded in the packet. The closed root has exactly:
 
 `final_implementation` has exactly `generation`, `accepted_event_id`, `candidate_id`, `candidate_digest`, `implementer_actor_id`, `verification_obligation_id`, and `implementation_procedure_artifact_id`. The procedure reference must equal the prior artifact ID. Every other final field must equal the selected source projection's terminal accepted generation; generation is integer 1 for M0 and integer 2 for M1, never a boolean.
 
-Strict JSON rejects duplicate keys, floating-point values, non-finite constants, nulls, non-string object keys, unsupported direct Python values, and unknown or missing fields. Digests are lowercase `sha256:` plus 64 hexadecimal digits. The executable schema is [Draft 2020-12](../spec/programs/development.verified-change/v1/development-verified-change-packet.schema.json); the [contract](../spec/programs/development.verified-change/v1/program-contract.json) fixes all fields, profile details, mappings, gates, and boundaries.
+Strict JSON rejects duplicate keys, floating-point values, non-finite constants, nulls, non-string object keys, unsupported direct Python values, and unknown or missing fields. Digests are lowercase `sha256:` plus 64 hexadecimal digits.
+
+Draft 2020-12 validation is structural only: it closes shapes, fixed values, patterns, and profile-local conditions. It does not enforce cross-field equality, lineage, pairwise distinctness, canonical source digest equality, or source-projection bindings. A packet is accepted only after both structural schema validation where used and the paired standard-library validate_and_project(packet, source_trace) semantic/cross-field validation; the reducer is the executable authority for those invariants.
+
+The structural [Draft 2020-12 packet schema](../spec/programs/development.verified-change/v1/development-verified-change-packet.schema.json) and the [program contract](../spec/programs/development.verified-change/v1/program-contract.json) record their respective boundaries. Neither substitutes Draft validation for the reducer-owned linked invariants.
 
 ## Explicit source profiles
 
