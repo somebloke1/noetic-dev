@@ -122,7 +122,7 @@ class TestModelPolicy(unittest.TestCase):
         self.assertIn("does not claim live OpenCode, protected Pi, embedding, or ASR adapters are fully migrated", text)
         self.assertIn("must not be cited as evidence", text)
         self.assertIn("Missing runtime adapters remain open work", text)
-        self.assertIn("full broker genus-router outcome reporting", text)
+        self.assertIn("live broker genus-router route/outcome reporting", text)
 
 
 if __name__ == "__main__":
