@@ -22,11 +22,12 @@
             "additionalProperties": false,
             "properties": {
               "decision": {"type": "object"},
+              "invocation_count": {"const": 1},
               "outcome": {"enum": ["success", "failure"]},
               "outcome_recorded": {"const": true},
               "reasoning_effort": {"const": "high"}
             },
-            "required": ["decision", "outcome", "outcome_recorded", "reasoning_effort"],
+            "required": ["decision", "invocation_count", "outcome", "outcome_recorded", "reasoning_effort"],
             "type": "object"
           },
           {

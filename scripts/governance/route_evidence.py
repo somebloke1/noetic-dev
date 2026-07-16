@@ -58,6 +58,8 @@ def validate_route_evidence(evidence: Any, contract_name: str = "protected_revie
             continue
         decision = attempt["decision"]
         _validate_decision(decision, remaining, access, generative, decision_ids, label, errors)
+        if attempt["invocation_count"] != 1:
+            errors.append(f"{label} decision attempt must record exactly one invocation")
         expected_outcome = "success" if index == len(attempts) - 1 else "failure"
         if attempt["outcome"] != expected_outcome:
             errors.append(f"{label} outcome must be {expected_outcome}")

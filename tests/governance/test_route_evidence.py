@@ -56,6 +56,7 @@ def route_evidence(models: list[str] | None = None) -> dict[str, object]:
         remaining = [item for item in candidates if item not in selected[:index]]
         attempts.append({
             "decision": decision(model, remaining, index + 1),
+            "invocation_count": 1,
             "outcome": "success" if index == len(selected) - 1 else "failure",
             "outcome_recorded": True,
             "reasoning_effort": "high",
@@ -109,6 +110,7 @@ class TestRouteEvidence(unittest.TestCase):
         mutations = []
         for path, value in [
             (("classification", "high_value"), True),
+            (("attempts", 0, "invocation_count"), 0),
             (("attempts", 0, "outcome_recorded"), False),
             (("attempts", 0, "reasoning_effort"), "low"),
             (("attempts", 0, "decision", "genus"), "Other"),
