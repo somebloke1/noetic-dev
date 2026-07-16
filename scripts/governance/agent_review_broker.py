@@ -192,7 +192,13 @@ def reserve_decision_ids(count: int, path: Path | None = None) -> list[str]:
                     raise ReviewError("broker decision counter state is invalid")
                 counter_date = state.get("date")
                 sequence = state.get("sequence")
-                if not isinstance(counter_date, str) or not isinstance(sequence, int) or isinstance(sequence, bool):
+                if (
+                    not isinstance(counter_date, str)
+                    or not isinstance(sequence, int)
+                    or isinstance(sequence, bool)
+                    or sequence < 0
+                    or sequence > 999_999
+                ):
                     raise ReviewError("broker decision counter state is invalid")
             else:
                 counter_date = today
@@ -640,7 +646,7 @@ def review(payload: Any) -> dict[str, Any]:
         route = route_from_decision(policy, decision)
         try:
             result = run_terra(prompt, route)
-        except ReviewError as error:
+        except (ReviewError, TimeoutError, socket.timeout) as error:
             last_error = str(error)
             attempts.append({
                 "decision": decision,

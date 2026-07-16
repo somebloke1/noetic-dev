@@ -237,6 +237,13 @@ class TestAgentReview(unittest.TestCase):
             with self.assertRaisesRegex(ReviewError, "decision id space"):
                 reserve_decision_ids(2, counter)
 
+        for sequence in (-1, 1_000_000):
+            with self.subTest(sequence=sequence), tempfile.TemporaryDirectory() as directory:
+                counter = Path(directory) / "counter.json"
+                counter.write_text(json.dumps({"date": "20260716", "sequence": sequence}), encoding="utf-8")
+                with self.assertRaisesRegex(ReviewError, "counter state is invalid"):
+                    reserve_decision_ids(1, counter)
+
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "target.json"
             counter = Path(directory) / "counter.json"
@@ -445,6 +452,20 @@ class TestAgentReview(unittest.TestCase):
             {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
         )
         terra.side_effect = [ReviewError("first model failed"), {"verdict": "pass", "summary": "Reviewed.", "findings": []}]
+        result = review(self.REQUEST)
+        models = [call.args[1]["model"] for call in terra.call_args_list]
+        self.assertEqual(models, ["codex/gpt-5.6-terra", "codex/gpt-5.6-sol"])
+        self.assertEqual(validate_route_evidence(result["route_evidence"]), [])
+        self.assertEqual([attempt["outcome"] for attempt in result["route_evidence"]["attempts"]], ["failure", "success"])
+
+    @mock.patch("agent_review_broker.run_terra")
+    @mock.patch("agent_review_broker.fetch_review_material")
+    def test_review_reroutes_after_timeout(self, fetch: mock.Mock, terra: mock.Mock):
+        fetch.return_value = (
+            {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
+            {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
+        )
+        terra.side_effect = [TimeoutError("model timed out"), {"verdict": "pass", "summary": "Reviewed.", "findings": []}]
         result = review(self.REQUEST)
         models = [call.args[1]["model"] for call in terra.call_args_list]
         self.assertEqual(models, ["codex/gpt-5.6-terra", "codex/gpt-5.6-sol"])
