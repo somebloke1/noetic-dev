@@ -16,7 +16,8 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, ReviewExecutionError, UnixServer, build_agent_review_decision, build_prompt, load_model_policy, next_decision_id, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from route_evidence import validate_route_evidence
 
 
 class TestAgentReview(unittest.TestCase):
@@ -204,6 +205,20 @@ class TestAgentReview(unittest.TestCase):
             "token_env": "LITELLM_API_KEY",
         })
 
+    def test_agent_review_decision_tracks_reroute_order(self):
+        policy = load_model_policy()
+        first = build_agent_review_decision(policy, [], decision_id="d-20260716-000001")
+        second = build_agent_review_decision(policy, [first["model"]], decision_id="d-20260716-000002")
+        self.assertEqual(first["model"], "codex/gpt-5.6-terra")
+        self.assertEqual(first["fallbacks"], ["codex/gpt-5.6-sol", "codex/gpt-5.6-luna"])
+        self.assertEqual(second["model"], "codex/gpt-5.6-sol")
+        self.assertEqual(second["fallbacks"], ["codex/gpt-5.6-luna"])
+
+    @mock.patch("agent_review_broker.DECISION_COUNTER", iter([1_000_000]))
+    def test_decision_id_generation_fails_before_wrap(self):
+        with self.assertRaisesRegex(ReviewError, "decision id space"):
+            next_decision_id()
+
     def test_agent_review_route_rejects_direct_provider_policy(self):
         policy = load_model_policy()
         policy["access"]["direct_provider_access"] = True
@@ -321,8 +336,39 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(result["model"], "codex/gpt-5.6-terra")
         self.assertEqual(result["provider"], "litellm")
         self.assertEqual(result["reasoning"], "high")
+        self.assertRegex(result["route_decision_id"], r"^d-[0-9]{8}-[0-9]{6}$")
+        self.assertEqual(validate_route_evidence(result["route_evidence"]), [])
+        self.assertEqual(result["route_evidence"]["attempts"][0]["outcome"], "success")
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
+
+    @mock.patch("agent_review_broker.run_terra")
+    @mock.patch("agent_review_broker.fetch_review_material")
+    def test_review_reroutes_after_recorded_failure(self, fetch: mock.Mock, terra: mock.Mock):
+        fetch.return_value = (
+            {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
+            {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
+        )
+        terra.side_effect = [ReviewError("first model failed"), {"verdict": "pass", "summary": "Reviewed.", "findings": []}]
+        result = review(self.REQUEST)
+        models = [call.args[1]["model"] for call in terra.call_args_list]
+        self.assertEqual(models, ["codex/gpt-5.6-terra", "codex/gpt-5.6-sol"])
+        self.assertEqual(validate_route_evidence(result["route_evidence"]), [])
+        self.assertEqual([attempt["outcome"] for attempt in result["route_evidence"]["attempts"]], ["failure", "success"])
+
+    @mock.patch("agent_review_broker.run_terra")
+    @mock.patch("agent_review_broker.fetch_review_material")
+    def test_review_returns_exhausted_route_evidence(self, fetch: mock.Mock, terra: mock.Mock):
+        fetch.return_value = (
+            {"title": "PR", "body": "", "user": {"login": "somebloke1"}},
+            {"files": ["x"], "diff": "+x", "diff_sha256": "c" * 64},
+        )
+        terra.side_effect = [ReviewError("failed") for _ in range(3)]
+        with self.assertRaises(ReviewExecutionError) as raised:
+            review(self.REQUEST)
+        evidence = raised.exception.evidence
+        self.assertEqual(validate_route_evidence(evidence), [])
+        self.assertEqual([attempt["outcome"] for attempt in evidence["attempts"]], ["failure", "failure", "failure"])
 
 
 if __name__ == "__main__":

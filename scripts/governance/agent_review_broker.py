@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import grp
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -23,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from json_schema import validate_schema
+from route_evidence import PROTECTED_REVIEW_CANDIDATES, validate_route_evidence
 
 ALLOWED_REPOSITORY = "somebloke1/noetic-dev"
 ALLOWED_AUTHORS = {"somebloke1"}
@@ -37,10 +40,17 @@ MAX_PATCH_BYTES = 200_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
 MAX_GITHUB_OUTPUT_BYTES = 1_048_576
 BWRAP = Path("/usr/bin/bwrap")
+DECISION_COUNTER = itertools.count(1)
 
 
 class ReviewError(RuntimeError):
     pass
+
+
+class ReviewExecutionError(ReviewError):
+    def __init__(self, message: str, evidence: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = evidence
 
 
 def strict_json(text: str | bytes) -> Any:
@@ -132,6 +142,86 @@ def resolve_agent_review_route(policy: dict[str, Any]) -> dict[str, str]:
         "base_url": access["base_url"],
         "token_env": access["token_env"],
     }
+
+
+def next_decision_id() -> str:
+    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d")
+    sequence = next(DECISION_COUNTER)
+    if sequence > 999_999:
+        raise ReviewError("broker route decision id space is exhausted")
+    return f"d-{today}-{sequence:06d}"
+
+
+def build_model_ref(policy: dict[str, Any], model: str) -> dict[str, str]:
+    access = policy["access"]
+    generative = policy["generative"]
+    return {
+        "model_id": model,
+        "endpoint_id": access["endpoint_id"],
+        "upstream_model_id": model,
+        "interface_type": "openai-compatible",
+        "base_url": access["base_url"],
+        "endpoint_path": "/v1/responses",
+        "token_env": access["token_env"],
+        "reasoning_effort": generative["reasoning_effort"],
+    }
+
+
+def build_agent_review_decision(
+    policy: dict[str, Any],
+    excluded_models: list[str],
+    *,
+    decision_id: str | None = None,
+) -> dict[str, Any]:
+    resolve_agent_review_route(policy)
+    remaining = [model for model in PROTECTED_REVIEW_CANDIDATES if model not in excluded_models]
+    if not remaining:
+        raise ReviewError("all broker review candidates are exhausted")
+    model = remaining[0]
+    return {
+        "availability": "verified",
+        "decision_id": decision_id or next_decision_id(),
+        "effective_complexity": "complex",
+        "fable_eligible": False,
+        "fallback_refs": [build_model_ref(policy, item) for item in remaining[1:]],
+        "fallbacks": remaining[1:],
+        "genus": "Complex Code Review",
+        "genus_code": "REVIEW-COMPLEX",
+        "independent_approval_eligible": False,
+        "model": model,
+        "model_ref": build_model_ref(policy, model),
+        "rationale": ["broker-local protected review route from canonical model policy"],
+        "routing_profile": "standard",
+        "sophistication": "complex",
+    }
+
+
+def route_from_decision(policy: dict[str, Any], decision: dict[str, Any]) -> dict[str, str]:
+    return {
+        "provider": "litellm",
+        "model": decision["model"],
+        "reasoning": policy["generative"]["reasoning_effort"],
+        "base_url": policy["access"]["base_url"],
+        "token_env": policy["access"]["token_env"],
+    }
+
+
+def validated_route_evidence(attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    evidence = {
+        "schema_version": "1",
+        "classification": {
+            "task_kind": "review",
+            "complexity": "complex",
+            "blast_radius": "interface",
+            "high_value": False,
+            "awaited": True,
+        },
+        "attempts": attempts,
+    }
+    errors = validate_route_evidence(evidence, "protected_review")
+    if errors:
+        raise ReviewError(f"protected route evidence is invalid: {errors[0]}")
+    return evidence
 
 
 def run_bounded(
@@ -474,21 +564,51 @@ def review(payload: Any) -> dict[str, Any]:
     request = validate_request(payload)
     pr, material = fetch_review_material(request)
     prompt = build_prompt(pr, material, request)
-    route = resolve_agent_review_route(load_model_policy())
-    result = run_terra(prompt, route)
-    return {
-        "schema_version": "1",
-        "repository": request["repository"],
-        "pr_number": request["pr_number"],
-        "head_sha": request["head_sha"],
-        "base_sha": request["base_sha"],
-        "model": route["model"],
-        "provider": route["provider"],
-        "reasoning": route["reasoning"],
-        "reviewed_diff_sha256": material["diff_sha256"],
-        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-        **result,
-    }
+    policy = load_model_policy()
+    excluded_models: list[str] = []
+    attempts: list[dict[str, Any]] = []
+    last_error = "broker review failed"
+    for _candidate in PROTECTED_REVIEW_CANDIDATES:
+        decision = build_agent_review_decision(policy, excluded_models)
+        route = route_from_decision(policy, decision)
+        try:
+            result = run_terra(prompt, route)
+        except ReviewError as error:
+            last_error = str(error)
+            attempts.append({
+                "decision": decision,
+                "invocation_count": 1,
+                "outcome": "failure",
+                "outcome_recorded": True,
+                "reasoning_effort": route["reasoning"],
+            })
+            excluded_models.append(decision["model"])
+            continue
+        attempts.append({
+            "decision": decision,
+            "invocation_count": 1,
+            "outcome": "success",
+            "outcome_recorded": True,
+            "reasoning_effort": route["reasoning"],
+        })
+        route_evidence = validated_route_evidence(attempts)
+        return {
+            "schema_version": "1",
+            "repository": request["repository"],
+            "pr_number": request["pr_number"],
+            "head_sha": request["head_sha"],
+            "base_sha": request["base_sha"],
+            "model": route["model"],
+            "provider": route["provider"],
+            "reasoning": route["reasoning"],
+            "route_decision_id": decision["decision_id"],
+            "route_evidence": route_evidence,
+            "reviewed_diff_sha256": material["diff_sha256"],
+            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            **result,
+        }
+    route_evidence = validated_route_evidence(attempts)
+    raise ReviewExecutionError(last_error, route_evidence)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -517,6 +637,9 @@ class Handler(BaseHTTPRequestHandler):
             payload = strict_json(body)
             response = review(payload)
             status = 200
+        except ReviewExecutionError as error:
+            response = {"error": str(error), "route_evidence": error.evidence}
+            status = 503
         except (ReviewError, ValueError, TimeoutError, socket.timeout) as error:
             response = {"error": str(error)}
             status = 400
