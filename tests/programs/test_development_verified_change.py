@@ -17,7 +17,9 @@ from unittest import mock
 
 try:
     from jsonschema import Draft202012Validator
-except ModuleNotFoundError:
+except ModuleNotFoundError as exc:
+    if exc.name != "jsonschema":
+        raise
     Draft202012Validator = None
 
 import scripts.development_verified_change as adapter
@@ -620,6 +622,40 @@ class DevelopmentVerifiedChangeTest(unittest.TestCase):
         expected_m1 = ("M1TraceValidationError", "validate_and_project")
         self.assertEqual(reducer_imports["m0"], [expected_m0, expected_m0])
         self.assertEqual(reducer_imports["m1"], [expected_m1, expected_m1])
+
+    def test_collection_re_raises_missing_jsonschema_transitive_dependency(self) -> None:
+        loader_script = (
+            "import sys, unittest;"
+            "loader = unittest.TestLoader();"
+            'loader.loadTestsFromName("tests.programs.test_development_verified_change");'
+            'sys.stderr.write("\\n".join(loader.errors));'
+            "sys.exit(bool(loader.errors))"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            fake_package = Path(temporary) / "jsonschema"
+            fake_package.mkdir()
+            (fake_package / "__init__.py").write_text(
+                "import missing_jsonschema_transitive_dependency\n",
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            environment["PYTHONPATH"] = os.pathsep.join(
+                filter(None, (temporary, environment.get("PYTHONPATH")))
+            )
+            completed = subprocess.run(
+                [sys.executable, "-S", "-c", loader_script],
+                cwd=ROOT,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, "")
+        self.assertIn("missing_jsonschema_transitive_dependency", completed.stderr)
+        self.assertIn("ModuleNotFoundError", completed.stderr)
+        self.assertNotIn("Draft 2020-12 validation is skipped", completed.stderr)
 
     def test_projection_is_byte_deterministic_in_process(self) -> None:
         expected = EXPECTED_PATH.read_bytes()
