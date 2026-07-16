@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any, Callable
 from unittest import mock
 
-from jsonschema import Draft202012Validator
+try:
+    from jsonschema import Draft202012Validator
+except ModuleNotFoundError:
+    Draft202012Validator = None
 
 import scripts.development_verified_change as adapter
 from scripts.development_verified_change import (
@@ -867,6 +870,10 @@ class DevelopmentVerifiedChangeTest(unittest.TestCase):
                         source_contract["semantic_generation_sequence"],
                     )
 
+    @unittest.skipIf(
+        Draft202012Validator is None,
+        "optional jsonschema is unavailable; Draft 2020-12 validation is skipped",
+    )
     def test_draft_2020_12_schema_is_valid_and_accepts_only_closed_packet_shapes(self) -> None:
         schema = load_json_strict(SCHEMA_PATH)
         Draft202012Validator.check_schema(schema)
