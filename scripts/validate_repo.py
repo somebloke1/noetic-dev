@@ -53,6 +53,12 @@ REQUIRED = [
     "spec/programs/development.verified-change/v1/golden/expected-terminal-observability.json",
     "scripts/development_verified_change_observe.py",
     "tests/programs/test_development_verified_change_observe.py",
+    # Provider-free terminal status explanation read model (issue #41)
+    "docs/development-verified-change-terminal-status-v1.md",
+    "spec/programs/development.verified-change/v1/terminal-status-contract.json",
+    "spec/programs/development.verified-change/v1/golden/expected-terminal-status.json",
+    "scripts/development_verified_change_status.py",
+    "tests/programs/test_development_verified_change_status.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
