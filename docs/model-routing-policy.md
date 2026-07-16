@@ -26,7 +26,7 @@ The broker review contract limits each route decision to one substantive invocat
 
 ## Current Slice
 
-This repository slice adds the canonical machine policy at `config/model-policy.json`, the strict schema at `governance/schemas/model-policy.schema.json`, contract tests, a narrow broker runtime check that admits the `agent_review` model invocation only when the policy still requires local LiteLLM access and includes the broker harness, and an OpenCode routed-session contract at `config/opencode-session-policy.json`. The OpenCode contract is `runtime_adapter_ready=false`; it deliberately does not claim live OpenCode, protected Pi, embedding, or ASR adapters are fully migrated.
+This repository slice adds the canonical machine policy at `config/model-policy.json`, the strict schema at `governance/schemas/model-policy.schema.json`, contract tests, a narrow broker runtime check that admits the `agent_review` model invocation only when the policy still requires local LiteLLM access and includes the broker harness, an OpenCode routed-session contract at `config/opencode-session-policy.json`, and a per-modality readiness evidence record schema at `governance/schemas/modality-readiness-record.schema.json`. The OpenCode contract is `runtime_adapter_ready=false`; the modality evidence record is a checker contract only; this slice deliberately does not claim live OpenCode, protected Pi, embedding, or ASR adapters are fully migrated.
 
 Accepted target policy:
 
@@ -36,5 +36,6 @@ Accepted target policy:
 - Embedding route: `snowflake-arctic-embed2`.
 - ASR route: `qwen3-asr`.
 - OpenCode routed-session contract: one routed model turn per session, static title required, JSON event log required, tools disabled, provider allowlist restricted to `litellm`, and outcome reporting required per route decision.
+- Modality readiness evidence record: one persisted record per modality must bind modality, model, LiteLLM endpoint path, route decision, successful readiness probe, request/response shape hashes, positive latency, and successful `report_outcome`; it is evidence shape, not a readiness claim.
 
 Missing runtime adapters remain open work under Issue #29. This policy must not be cited as evidence that ASR readiness, embedding migration, live OpenCode routing, full broker genus-router outcome reporting, or protected Pi routing has completed.

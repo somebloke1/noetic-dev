@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "record_kind": {"const": "modality-readiness-record"},
+    "modality": {"enum": ["asr", "embed"]},
+    "model": {"type": "string", "minLength": 1},
+    "endpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {"const": "local-litellm"},
+        "path": {"enum": ["/v1/audio/transcriptions", "/v1/embeddings"]}
+      },
+      "required": ["id", "path"],
+      "type": "object"
+    },
+    "route_decision": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {"type": "string", "minLength": 1},
+        "model": {"type": "string", "minLength": 1},
+        "endpoint_id": {"const": "local-litellm"},
+        "endpoint_path": {"enum": ["/v1/audio/transcriptions", "/v1/embeddings"]},
+        "route_reference_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "required": ["decision_id", "model", "endpoint_id", "endpoint_path", "route_reference_sha256"],
+      "type": "object"
+    },
+    "readiness_probe": {
+      "additionalProperties": false,
+      "properties": {
+        "probe_id": {"type": "string", "minLength": 1},
+        "passed": {"const": true},
+        "model": {"type": "string", "minLength": 1},
+        "endpoint_id": {"const": "local-litellm"},
+        "endpoint_path": {"enum": ["/v1/audio/transcriptions", "/v1/embeddings"]},
+        "request_shape_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "response_shape_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "latency_ms": {"type": "integer"}
+      },
+      "required": ["probe_id", "passed", "model", "endpoint_id", "endpoint_path", "request_shape_hash", "response_shape_hash", "latency_ms"],
+      "type": "object"
+    },
+    "report_outcome": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome_id": {"type": "string", "minLength": 1},
+        "decision_id": {"type": "string", "minLength": 1},
+        "status": {"const": "success"},
+        "reported_at": {"type": "string", "minLength": 1}
+      },
+      "required": ["outcome_id", "decision_id", "status", "reported_at"],
+      "type": "object"
+    },
+    "generated_at": {"type": "string", "minLength": 1}
+  },
+  "required": ["schema_version", "record_kind", "modality", "model", "endpoint", "route_decision", "readiness_probe", "report_outcome", "generated_at"],
+  "title": "Noetic Dev Modality Readiness Evidence Record",
+  "type": "object"
+}

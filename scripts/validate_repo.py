@@ -69,8 +69,10 @@ REQUIRED = [
     "config/opencode-session-policy.json",
     "docs/model-routing-policy.md",
     "governance/schemas/model-policy.schema.json",
+    "governance/schemas/modality-readiness-record.schema.json",
     "governance/schemas/opencode-session-policy.schema.json",
     "tests/governance/test_model_policy.py",
+    "tests/governance/test_modality_readiness_record.py",
     "tests/governance/test_opencode_session_policy.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
@@ -93,6 +95,7 @@ REQUIRED = [
     "scripts/governance/json_schema.py",
     "scripts/governance/collect_evidence.py",
     "scripts/governance/check_evidence_manifest.py",
+    "scripts/governance/check_modality_readiness_record.py",
     "scripts/governance/check_delivery_gate.py",
     "scripts/governance/run_isolated_pi.py",
     "scripts/governance/agent_review_broker.py",
