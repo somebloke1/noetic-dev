@@ -138,22 +138,28 @@ class M0TraceTest(unittest.TestCase):
                     strict_json_loads(document)
                 self.assertEqual(str(raised.exception), expected_message)
 
-    def test_strict_json_controls_integer_digit_limit_and_decoder_recursion(self) -> None:
+    def test_strict_json_controls_oversized_positive_and_negative_integers(self) -> None:
         cases = (
-            ("oversized_integer", "1" * 5000, "invalid JSON:", ValueError),
-            (
-                "decoder_nesting",
-                "[" * (sys.getrecursionlimit() * 2) + "0" + "]" * (sys.getrecursionlimit() * 2),
-                "JSON nesting exceeds recursion limit:",
-                RecursionError,
-            ),
+            ("positive", "1" * 5000),
+            ("negative", "-" + "1" * 5000),
         )
-        for name, document, expected_message, expected_cause in cases:
+        for name, document in cases:
             with self.subTest(name=name):
                 with self.assertRaises(StrictJSONError) as raised:
                     strict_json_loads(document)
-                self.assertIn(expected_message, str(raised.exception))
-                self.assertIs(type(raised.exception.__cause__), expected_cause)
+                self.assertIn("invalid JSON:", str(raised.exception))
+                self.assertIs(type(raised.exception.__cause__), ValueError)
+
+    def test_strict_json_controls_recursion_from_json_decoder(self) -> None:
+        decoder_error = RecursionError("decoder recursion sentinel")
+        with mock.patch("scripts.m0_trace.json.loads", side_effect=decoder_error):
+            with self.assertRaises(StrictJSONError) as raised:
+                strict_json_loads("[]")
+        self.assertEqual(
+            str(raised.exception),
+            "JSON nesting exceeds recursion limit: decoder recursion sentinel",
+        )
+        self.assertIs(raised.exception.__cause__, decoder_error)
 
     def test_strict_json_controls_recursion_from_unsupported_value_walk(self) -> None:
         nested: Any = 0
@@ -166,11 +172,12 @@ class M0TraceTest(unittest.TestCase):
         self.assertIn("JSON nesting exceeds recursion limit:", str(raised.exception))
         self.assertIs(type(raised.exception.__cause__), RecursionError)
 
-    def test_cli_controls_integer_limit_and_nesting_without_traceback(self) -> None:
+    def test_cli_controls_real_oversized_integer_and_deep_json_inputs(self) -> None:
         cases = (
-            ("oversized-integer.json", "1" * 5000, "invalid JSON:"),
+            ("oversized-positive-integer.json", "1" * 5000, "invalid JSON:"),
+            ("oversized-negative-integer.json", "-" + "1" * 5000, "invalid JSON:"),
             (
-                "excessive-nesting.json",
+                "deep-json.json",
                 "[" * (sys.getrecursionlimit() * 2) + "0" + "]" * (sys.getrecursionlimit() * 2),
                 "JSON nesting exceeds recursion limit:",
             ),
