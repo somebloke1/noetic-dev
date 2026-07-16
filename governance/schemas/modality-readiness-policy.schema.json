@@ -11,7 +11,7 @@
           "additionalProperties": false,
           "properties": {
             "model": {"const": "qwen3-asr"},
-            "ready": {"const": false},
+            "ready": {"type": "boolean"},
             "required_endpoint_path": {"const": "/v1/audio/transcriptions"}
           },
           "required": ["model", "ready", "required_endpoint_path"],
@@ -21,7 +21,7 @@
           "additionalProperties": false,
           "properties": {
             "model": {"const": "snowflake-arctic-embed2"},
-            "ready": {"const": false},
+            "ready": {"type": "boolean"},
             "required_endpoint_path": {"const": "/v1/embeddings"}
           },
           "required": ["model", "ready", "required_endpoint_path"],
@@ -31,7 +31,22 @@
       "required": ["asr", "embed"],
       "type": "object"
     },
-    "runtime_adapters_ready": {"const": false},
+    "readiness_evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "endpoint_id": {"const": "local-litellm"},
+        "latency_budget_ms": {"type": "integer", "minimum": 1},
+        "readiness_probe_id": {"type": "string", "minLength": 1},
+        "report_outcome_id": {"type": "string", "minLength": 1},
+        "request_shape_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "response_shape_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "route_decision_id": {"type": "string", "minLength": 1},
+        "route_reference_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "required": ["endpoint_id", "latency_budget_ms", "readiness_probe_id", "report_outcome_id", "request_shape_hash", "response_shape_hash", "route_decision_id", "route_reference_sha256"],
+      "type": "object"
+    },
+    "runtime_adapters_ready": {"type": "boolean"},
     "schema_version": {"const": "1"},
     "selection": {
       "additionalProperties": false,
@@ -43,9 +58,40 @@
       "required": ["access_endpoint_id", "direct_access_allowed", "router"],
       "type": "object"
     },
-    "status": {"const": "contract-only"}
+    "status": {"enum": ["contract-only", "ready"]}
   },
   "required": ["$schema", "evidence_required", "modalities", "runtime_adapters_ready", "schema_version", "selection", "status"],
+  "allOf": [
+    {
+      "if": {"properties": {"runtime_adapters_ready": {"const": false}}},
+      "then": {
+        "properties": {
+          "modalities": {
+            "properties": {
+              "asr": {"properties": {"ready": {"const": false}}},
+              "embed": {"properties": {"ready": {"const": false}}}
+            }
+          },
+          "status": {"const": "contract-only"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"runtime_adapters_ready": {"const": true}}},
+      "then": {
+        "required": ["readiness_evidence"],
+        "properties": {
+          "modalities": {
+            "properties": {
+              "asr": {"properties": {"ready": {"const": true}}},
+              "embed": {"properties": {"ready": {"const": true}}}
+            }
+          },
+          "status": {"const": "ready"}
+        }
+      }
+    }
+  ],
   "title": "Noetic Dev Modality Readiness Policy",
   "type": "object"
 }

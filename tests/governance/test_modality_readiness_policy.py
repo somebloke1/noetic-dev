@@ -66,6 +66,38 @@ class TestModalityReadinessPolicy(unittest.TestCase):
         ]:
             self.assertIn(required, self.policy["evidence_required"])
 
+    def test_future_ready_claim_requires_concrete_evidence(self) -> None:
+        ready = json.loads(json.dumps(self.policy))
+        ready["runtime_adapters_ready"] = True
+        ready["status"] = "ready"
+        ready["modalities"]["embed"]["ready"] = True
+        ready["modalities"]["asr"]["ready"] = True
+        self.assertNotEqual(validate_schema(ready, self.schema), [])
+
+        ready["readiness_evidence"] = {
+            "endpoint_id": "local-litellm",
+            "latency_budget_ms": 750,
+            "readiness_probe_id": "probe-1",
+            "report_outcome_id": "outcome-1",
+            "request_shape_hash": "a" * 64,
+            "response_shape_hash": "b" * 64,
+            "route_decision_id": "decision-1",
+            "route_reference_sha256": "c" * 64,
+        }
+        self.assertEqual(validate_schema(ready, self.schema), [])
+
+        for field in ready["readiness_evidence"]:
+            with self.subTest(field=field):
+                missing = json.loads(json.dumps(ready))
+                del missing["readiness_evidence"][field]
+                self.assertNotEqual(validate_schema(missing, self.schema), [])
+
+        for latency in (0, -1):
+            with self.subTest(latency=latency):
+                invalid = json.loads(json.dumps(ready))
+                invalid["readiness_evidence"]["latency_budget_ms"] = latency
+                self.assertNotEqual(validate_schema(invalid, self.schema), [])
+
     def test_docs_do_not_claim_modality_runtime_readiness(self) -> None:
         text = DOC_PATH.read_text(encoding="utf-8")
         self.assertIn("modality readiness contract", text)

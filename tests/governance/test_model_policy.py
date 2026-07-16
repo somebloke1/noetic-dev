@@ -43,6 +43,12 @@ class TestModelPolicy(unittest.TestCase):
                 target[path[-1]] = value
                 self.assertNotEqual(validate_schema(mutated, self.schema), [])
 
+    def test_dependency_free_schema_validator_supports_numeric_minimum(self) -> None:
+        schema = {"type": "object", "properties": {"latency": {"type": "integer", "minimum": 1}}, "required": ["latency"]}
+        self.assertEqual(validate_schema({"latency": 1}, schema), [])
+        self.assertNotEqual(validate_schema({"latency": 0}, schema), [])
+        self.assertNotEqual(validate_schema({"latency": -1}, schema), [])
+
     def test_all_access_is_litellm_only(self) -> None:
         access = self.policy["access"]
         self.assertEqual(access["endpoint_id"], "local-litellm")

@@ -82,7 +82,7 @@ def validate_schema(value: Any, schema: dict[str, Any], path: str = "$") -> List
 
     Supported keywords: type, required, properties, additionalProperties,
     items, enum, const, pattern, minLength, maxLength, minItems, maxItems, anyOf,
-    oneOf, allOf, if/then/else (shallow), and $ref for local #/definitions refs.
+    oneOf, allOf, if/then/else (shallow), minimum, and $ref for local #/definitions refs.
     """
     return _validate(value, schema, schema, path)
 
@@ -153,6 +153,10 @@ def _validate(value: Any, schema: dict[str, Any], root: dict[str, Any], path: st
             errors.append(f"{path}: string longer than {schema['maxLength']}")
         if "pattern" in schema and not re.match(schema["pattern"], value):
             errors.append(f"{path}: string does not match pattern {schema['pattern']}")
+
+    if (isinstance(value, int) or isinstance(value, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            errors.append(f"{path}: number less than minimum {schema['minimum']}")
 
     if isinstance(value, list):
         if "minItems" in schema and len(value) < schema["minItems"]:

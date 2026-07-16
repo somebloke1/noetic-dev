@@ -36,6 +36,6 @@ Accepted target policy:
 - Embedding route: `snowflake-arctic-embed2`.
 - ASR route: `qwen3-asr`.
 - OpenCode routed-session contract: one routed model turn per session, static title required, JSON event log required, tools disabled, provider allowlist restricted to `litellm`, and outcome reporting required per route decision.
-- Modality readiness contract: embedding and ASR routes remain contract-only until route decision, readiness probe, endpoint, request shape, response shape, latency budget, and `report_outcome` evidence exist.
+- Modality readiness contract: embedding and ASR routes remain contract-only until route decision, readiness probe, endpoint, request shape, response shape, latency budget, and `report_outcome` evidence exist; the schema models a future `ready` state only when that evidence object is present.
 
 Missing runtime adapters remain open work under Issue #29. This policy must not be cited as evidence that ASR readiness, embedding migration, live OpenCode routing, full broker genus-router outcome reporting, or protected Pi routing has completed.
