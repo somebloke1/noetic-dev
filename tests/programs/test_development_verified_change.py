@@ -61,6 +61,7 @@ PACKET_PATH = PROGRAM_ROOT / "golden/valid-bounded-remediation-packet.json"
 EXPECTED_PATH = PROGRAM_ROOT / "golden/expected-projection.json"
 CONTRACT_PATH = PROGRAM_ROOT / "program-contract.json"
 SCHEMA_PATH = PROGRAM_ROOT / "development-verified-change-packet.schema.json"
+DOC_PATH = ROOT / "docs/development-verified-change-v1.md"
 M0_TRACE_PATH = ROOT / "spec/m0/v0/golden/valid-telos-adjudication-trace.json"
 M0_PROJECTION_PATH = ROOT / "spec/m0/v0/golden/expected-projection.json"
 M0_CONTRACT_PATH = ROOT / "spec/m0/v0/trace-contract.json"
@@ -68,6 +69,15 @@ M1_TRACE_PATH = ROOT / "spec/m1/v0/golden/valid-telos-recoverability-trace.json"
 M1_PROJECTION_PATH = ROOT / "spec/m1/v0/golden/expected-projection.json"
 M1_CONTRACT_PATH = ROOT / "spec/m1/v0/trace-contract.json"
 SCRIPT_PATH = ROOT / "scripts/development_verified_change.py"
+DRAFT_STRUCTURAL_BOUNDARY = (
+    "Draft 2020-12 validation is structural only: it closes shapes, fixed values, "
+    "patterns, and profile-local conditions. It does not enforce cross-field equality, "
+    "lineage, pairwise distinctness, canonical source digest equality, or "
+    "source-projection bindings. A packet is accepted only after both structural "
+    "schema validation where used and the paired standard-library "
+    "validate_and_project(packet, source_trace) semantic/cross-field validation; the "
+    "reducer is the executable authority for those invariants."
+)
 
 FROZEN_SHA256 = {
     "docs/m0-telos-adjudication-trace.md": "f5e8bf8b991d6a5d0e98e8914714bcadb6d75696303661943dcd6cb55fecbb74",
@@ -832,7 +842,7 @@ class DevelopmentVerifiedChangeTest(unittest.TestCase):
                     self.assertIn(message, completed.stderr)
                     self.assertNotIn("Traceback", completed.stderr)
 
-    def test_contract_schema_reducer_fixture_and_projection_are_mutually_exact(self) -> None:
+    def test_declared_contract_structures_match_schema_reducer_and_projection(self) -> None:
         contract = load_json_strict(CONTRACT_PATH)
         schema = load_json_strict(SCHEMA_PATH)
         projection = validate_and_project(self.packet, self.m1_source)
@@ -910,7 +920,7 @@ class DevelopmentVerifiedChangeTest(unittest.TestCase):
         Draft202012Validator is None,
         "optional jsonschema is unavailable; Draft 2020-12 validation is skipped",
     )
-    def test_draft_2020_12_schema_is_valid_and_accepts_only_closed_packet_shapes(self) -> None:
+    def test_draft_2020_12_schema_enforces_only_structural_packet_boundary(self) -> None:
         schema = load_json_strict(SCHEMA_PATH)
         Draft202012Validator.check_schema(schema)
         validator = Draft202012Validator(schema)
@@ -939,9 +949,31 @@ class DevelopmentVerifiedChangeTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assertTrue(list(validator.iter_errors(packet)))
 
-    def test_schema_contract_required_fields_and_patterns_are_in_parity(self) -> None:
+        wrong_attention_lineage = copy.deepcopy(self.packet)
+        wrong_attention_lineage["insight_packet"]["attention_packet_id"] = (
+            "product-other-attention"
+        )
+        colliding_product_ids = copy.deepcopy(self.packet)
+        attention_id = colliding_product_ids["attention_packet"]["packet_id"]
+        colliding_product_ids["implementation_procedure"]["artifact_id"] = attention_id
+        colliding_product_ids["final_implementation"][
+            "implementation_procedure_artifact_id"
+        ] = attention_id
+        for name, packet in (
+            ("wrong_attention_lineage", wrong_attention_lineage),
+            ("colliding_product_ids", colliding_product_ids),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(list(validator.iter_errors(packet)), [])
+                with self.assertRaises(ProgramValidationError):
+                    validate_and_project(packet, self.m1_source)
+
+    def test_schema_and_contract_share_declared_structural_fields_and_patterns(self) -> None:
         contract = load_json_strict(CONTRACT_PATH)
         schema = load_json_strict(SCHEMA_PATH)
+        self.assertEqual(contract["draft_2020_12_boundary"], DRAFT_STRUCTURAL_BOUNDARY)
+        self.assertEqual(schema["description"], DRAFT_STRUCTURAL_BOUNDARY)
+        self.assertIn(DRAFT_STRUCTURAL_BOUNDARY, DOC_PATH.read_text(encoding="utf-8"))
         mapping = {
             "product_id": "productId",
             "actor_id": "actorId",

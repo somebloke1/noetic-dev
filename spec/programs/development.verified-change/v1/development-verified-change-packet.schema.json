@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://noetic-dev.invalid/schemas/development.verified-change.packet-v1.json",
   "title": "development.verified-change.packet/v1",
+  "description": "Draft 2020-12 validation is structural only: it closes shapes, fixed values, patterns, and profile-local conditions. It does not enforce cross-field equality, lineage, pairwise distinctness, canonical source digest equality, or source-projection bindings. A packet is accepted only after both structural schema validation where used and the paired standard-library validate_and_project(packet, source_trace) semantic/cross-field validation; the reducer is the executable authority for those invariants.",
   "type": "object",
   "additionalProperties": false,
   "required": [
