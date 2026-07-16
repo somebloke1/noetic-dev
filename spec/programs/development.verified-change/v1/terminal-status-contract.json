@@ -1,0 +1,98 @@
+{
+  "schema_version": "development.verified-change.terminal-status.contract/v1",
+  "input_observability_version": "development.verified-change.terminal-observability/v1",
+  "read_model_version": "development.verified-change.terminal-status/v1",
+  "top_level_fields": [
+    "schema_version",
+    "scope",
+    "subject",
+    "controller_status",
+    "telos_status",
+    "qa_status",
+    "remediation_status",
+    "operational_status",
+    "references",
+    "explicit_unknowns"
+  ],
+  "scope": {
+    "view_kind": "terminal_status_explanation",
+    "claim_boundary": "terminal_observability_projection_only",
+    "live_operational_data": "not_present",
+    "input_provenance": "upstream_precondition_not_authenticated"
+  },
+  "operational_status_entries": [
+    "readiness",
+    "current_command_authority",
+    "critical_path",
+    "causal_graph"
+  ],
+  "operational_status_value": "not_derivable_from_terminal_projection",
+  "controller_boundary": "source only from controller.result; no Telos disposition, readiness, recommendation, action, or command authority",
+  "telos_boundary": "source only from telos.adjudication.adjudication; no controller success inference or command authority",
+  "qa_boundary": "copied IDs/conclusions and structural presence booleans only; no semantic truth or independent-QA judgment",
+  "remediation_boundary": "M0 represented false remains no-budget; M1 represented true preserves source-attributed budget and generation",
+  "explicit_unknowns": [
+    "artifact_availability_and_content",
+    "semantic_correctness",
+    "authenticated_actor_identity",
+    "genuinely_independent_qa",
+    "live_runtime_state",
+    "readiness_blockage_or_critical_path",
+    "current_command_authority",
+    "external_effect_execution",
+    "causality_not_preserved_in_projection"
+  ],
+  "forbidden_inferences_or_additions": [
+    "packet, source trace, or program projection validation",
+    "program, M0, M1, or terminal-observability reducer invocation",
+    "digest recomputation",
+    "artifact content or dereference locations",
+    "authenticated provenance or actor identity",
+    "semantic correctness or evidence sufficiency",
+    "genuinely independent QA",
+    "ready, blocked, current, or live status",
+    "actual critical path, dependencies, queue, duration, freshness, health, progress, or recommendation",
+    "actions, commands, approval, retry, remediation advice, steering, or dispatch",
+    "external effect execution",
+    "causal graph completeness"
+  ],
+  "pure_function": {
+    "name": "derive_terminal_status",
+    "argument": "one already-produced parsed terminal observability object",
+    "result": "fresh dict",
+    "forbidden_dependencies": [
+      "terminal-observability reducer",
+      "program reducer",
+      "M0 reducer",
+      "M1 reducer",
+      "digest implementation",
+      "files",
+      "environment",
+      "clock",
+      "randomness",
+      "processes",
+      "Git",
+      "providers",
+      "models",
+      "network",
+      "MCP",
+      "database",
+      "controller",
+      "scheduler",
+      "writes"
+    ]
+  },
+  "cli": {
+    "input_paths": 1,
+    "check_additional_paths": 1,
+    "input_encoding": "UTF-8",
+    "output_encoding": "ASCII",
+    "output_key_order": "lexicographic",
+    "output_indentation_spaces": 2,
+    "output_line_termination": "one final LF",
+    "validation_or_io_failure_exit": 1,
+    "argument_failure_exit": 2,
+    "failure_stdout": "empty",
+    "failure_stderr": "one controlled message without traceback"
+  }
+}

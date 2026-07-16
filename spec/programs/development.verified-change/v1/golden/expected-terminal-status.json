@@ -1,0 +1,152 @@
+{
+  "controller_status": {
+    "accepted_event_id": "event-m1-generation-2-accepted",
+    "event_id": "event-m1-result-reported",
+    "evidence_event_ids": [
+      "event-m1-generation-2-accepted",
+      "event-m1-generation-2-qa-passed",
+      "event-m1-run-succeeded"
+    ],
+    "generation": 2,
+    "kind": "source_attributed_controller_result",
+    "no_command_authority": true,
+    "no_telos_disposition": true,
+    "qa_event_id": "event-m1-generation-2-qa-passed",
+    "result_id": "result-m1-generation-2",
+    "run_outcome": "succeeded",
+    "success_event_id": "event-m1-run-succeeded"
+  },
+  "explicit_unknowns": [
+    "artifact_availability_and_content",
+    "semantic_correctness",
+    "authenticated_actor_identity",
+    "genuinely_independent_qa",
+    "live_runtime_state",
+    "readiness_blockage_or_critical_path",
+    "current_command_authority",
+    "external_effect_execution",
+    "causality_not_preserved_in_projection"
+  ],
+  "operational_status": {
+    "causal_graph": {
+      "reason": "terminal input preserves named references but not immediate caused_by edges or a complete graph",
+      "status": "not_derivable_from_terminal_projection",
+      "supporting_unknown": "causality_not_preserved_in_projection"
+    },
+    "critical_path": {
+      "reason": "terminal input has no dependency graph, queue, or live blocker state",
+      "status": "not_derivable_from_terminal_projection",
+      "supporting_unknown": "readiness_blockage_or_critical_path"
+    },
+    "current_command_authority": {
+      "reason": "terminal input has no current command actor, approval, or act-from surface",
+      "status": "not_derivable_from_terminal_projection",
+      "supporting_unknown": "current_command_authority"
+    },
+    "readiness": {
+      "reason": "terminal input has no live runtime state or ready/blocked evaluation",
+      "status": "not_derivable_from_terminal_projection",
+      "supporting_unknown": "readiness_blockage_or_critical_path"
+    }
+  },
+  "qa_status": {
+    "generations": [
+      {
+        "accepted_event_id": "event-m1-generation-1-accepted",
+        "conclusion": "FAIL",
+        "finding_present": true,
+        "generation": 1,
+        "qa_event_id": "event-m1-generation-1-qa-failed",
+        "remediation_reference_present": false
+      },
+      {
+        "accepted_event_id": "event-m1-generation-2-accepted",
+        "conclusion": "PASS",
+        "finding_present": false,
+        "generation": 2,
+        "qa_event_id": "event-m1-generation-2-qa-passed",
+        "remediation_reference_present": true
+      }
+    ],
+    "independence_not_authenticated": true,
+    "semantic_truth_not_judged": true,
+    "terminal_conclusion": "PASS",
+    "terminal_event_id": "event-m1-generation-2-qa-passed",
+    "terminal_generation": 2
+  },
+  "references": {
+    "candidate_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "candidate_id": "candidate-m1-generation-2",
+    "source_trace_digest": "sha256:60bdf997b463a64a84ad1303d70f3977058f85780dd59655032229d762cc1dcb",
+    "verification_obligation_id": "obligation-m1-generation-2"
+  },
+  "remediation_status": {
+    "attribution": "source_trace",
+    "budget": {
+      "authorized": 1,
+      "consumed": 1,
+      "remaining": 0
+    },
+    "generation": {
+      "event_id": "event-m1-remediation-generation-2-started",
+      "failed_accepted_event_id": "event-m1-generation-1-accepted",
+      "failed_qa_event_id": "event-m1-generation-1-qa-failed",
+      "failed_verification_obligation_id": "obligation-m1-generation-1",
+      "finding_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "finding_id": "finding-m1-generation-1",
+      "generation": 2,
+      "remediation_ordinal": 1,
+      "target_generation": 2
+    },
+    "represented": true
+  },
+  "schema_version": "development.verified-change.terminal-status/v1",
+  "scope": {
+    "claim_boundary": "terminal_observability_projection_only",
+    "input_provenance": "upstream_precondition_not_authenticated",
+    "live_operational_data": "not_present",
+    "view_kind": "terminal_status_explanation"
+  },
+  "subject": {
+    "execution_profile": "m1-bounded-remediation",
+    "governing_purpose_id": "purpose-m1-telos-recoverability-proof",
+    "program_id": "development.verified-change",
+    "program_instance_id": "program-m1-telos-recoverability",
+    "program_version": "v1",
+    "projection_state": "telos_adjudicated",
+    "source": {
+      "binding": {
+        "correlation_id": "correlation-m1-reference-1",
+        "delegation_digest": "sha256:a714c5114f871c50677d37ca810fefd7af531f3d6d93cc72e8b4b2ed761ce865",
+        "delegation_id": "delegation-m1-reference",
+        "goal_chain_id": "chain-35",
+        "program_id": "program-m1-telos-recoverability",
+        "run_id": "run-m1-reference-1",
+        "sub_goal_id": "subgoal-35"
+      },
+      "projection_state": "telos_adjudicated",
+      "projection_version": "noetic.m1.telos-recoverability-projection/v0",
+      "trace_digest": "sha256:60bdf997b463a64a84ad1303d70f3977058f85780dd59655032229d762cc1dcb",
+      "trace_version": "noetic.m1.telos-recoverability-trace/v0"
+    }
+  },
+  "telos_status": {
+    "disposition": "complete",
+    "event_id": "event-m1-telos-adjudicated",
+    "evidence_event_ids": [
+      "event-m1-generation-1-accepted",
+      "event-m1-generation-1-qa-failed",
+      "event-m1-remediation-generation-2-started",
+      "event-m1-generation-2-accepted",
+      "event-m1-generation-2-qa-passed",
+      "event-m1-run-succeeded",
+      "event-m1-result-reported"
+    ],
+    "generation": 2,
+    "kind": "source_attributed_telos_adjudication",
+    "no_command_authority": true,
+    "no_controller_success_inference": true,
+    "result_event_id": "event-m1-result-reported",
+    "result_id": "result-m1-generation-2"
+  }
+}
