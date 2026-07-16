@@ -185,6 +185,31 @@ class DevelopmentVerifiedChangeStatusTest(unittest.TestCase):
         with self.assertRaises(status.TerminalStatusCompatibilityError):
             status.derive_terminal_status(m1)
 
+    def test_profile_bound_qa_history_rejects_bad_conclusions_and_generations(self) -> None:
+        mutations = [
+            ("$.qa.generation_history[0].qa_adjudication.conclusion", "PASS"),
+            ("$.qa.generation_history[1].qa_adjudication.conclusion", "FAIL"),
+            ("$.qa.generation_history[0].generation", 2),
+            ("$.qa.generation_history[1].generation", 1),
+            ("$.qa.generation_history[0].accepted_generation.generation", 2),
+            ("$.qa.generation_history[1].accepted_generation.generation", 1),
+            ("$.qa.terminal_verification.conclusion", "FAIL"),
+            ("$.qa.terminal_verification.generation", 1),
+        ]
+        for pointer, value in mutations:
+            with self.subTest(pointer=pointer):
+                candidate = copy.deepcopy(self.m1_observability)
+                target = candidate
+                for part in pointer.removeprefix("$.").split(".")[:-1]:
+                    if "[" in part:
+                        name, index = part[:-1].split("[")
+                        target = target[name][int(index)]
+                    else:
+                        target = target[part]
+                target[pointer.rsplit(".", 1)[1]] = value
+                with self.assertRaises(status.TerminalStatusCompatibilityError):
+                    status.derive_terminal_status(candidate)
+
     def test_cli_modes_utf8_input_and_failures_are_controlled(self) -> None:
         completed = subprocess.run([sys.executable, str(SCRIPT_PATH), str(OBSERVABILITY_PATH)], cwd=ROOT, check=False, capture_output=True)
         self.assertEqual(completed.returncode, 0, completed.stderr.decode())

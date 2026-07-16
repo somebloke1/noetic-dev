@@ -318,6 +318,9 @@ def _qa_status(qa: dict[str, Any], profile: str) -> dict[str, Any]:
         path = f"$.qa.generation_history[{index}]"
         item = _shape(item, ("generation", "accepted_generation", "qa_adjudication"), path)
         generation = _integer(item["generation"], f"{path}.generation")
+        expected_generation = index + 1
+        if generation != expected_generation:
+            _fail(f"{path}.generation", f"expected generation {expected_generation}")
         if type(item["accepted_generation"]) is not dict:
             _fail(f"{path}.accepted_generation", "expected object")
         if type(item["qa_adjudication"]) is not dict:
@@ -333,11 +336,16 @@ def _qa_status(qa: dict[str, Any], profile: str) -> dict[str, Any]:
             qa_fields = M1_QA_PASS_FIELDS
         accepted = _shape(item["accepted_generation"], accepted_fields, f"{path}.accepted_generation")
         if "generation" in accepted:
-            _integer(accepted["generation"], f"{path}.accepted_generation.generation")
+            accepted_generation = _integer(accepted["generation"], f"{path}.accepted_generation.generation")
+            if accepted_generation != expected_generation:
+                _fail(f"{path}.accepted_generation.generation", f"expected generation {expected_generation}")
         for field in accepted_fields:
             if field != "generation":
                 _string(accepted[field], f"{path}.accepted_generation.{field}")
         adjudication = _string_fields(item["qa_adjudication"], qa_fields, f"{path}.qa_adjudication")
+        expected_conclusion = "FAIL" if profile == M1_PROFILE and index == 0 else "PASS"
+        if adjudication["conclusion"] != expected_conclusion:
+            _fail(f"{path}.qa_adjudication.conclusion", f"expected {expected_conclusion}")
         generations.append({
             "generation": generation,
             "accepted_event_id": accepted["event_id"],
@@ -347,8 +355,14 @@ def _qa_status(qa: dict[str, Any], profile: str) -> dict[str, Any]:
             "remediation_reference_present": "remediation_event_id" in accepted,
         })
     terminal = qa["terminal_verification"]
+    terminal_generation = _integer(terminal["generation"], "$.qa.terminal_verification.generation")
+    expected_terminal_generation = 1 if profile == M0_PROFILE else 2
+    if terminal_generation != expected_terminal_generation:
+        _fail("$.qa.terminal_verification.generation", f"expected generation {expected_terminal_generation}")
+    if terminal["conclusion"] != "PASS":
+        _fail("$.qa.terminal_verification.conclusion", "expected PASS")
     return {
-        "terminal_generation": terminal["generation"],
+        "terminal_generation": terminal_generation,
         "terminal_conclusion": terminal["conclusion"],
         "terminal_event_id": terminal["event_id"],
         "generations": generations,
