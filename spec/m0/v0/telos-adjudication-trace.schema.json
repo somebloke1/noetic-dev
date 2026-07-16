@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://noetic-dev.invalid/spec/m0/v0/telos-adjudication-trace.schema.json",
-  "title": "noetic-dev provider-free M0 Telos-to-adjudication trace",
+  "title": "noetic-dev self-contained provider-free M0 Telos-to-adjudication fixture",
   "type": "object",
   "required": ["schema_version", "records"],
   "properties": {
@@ -34,7 +34,8 @@
     },
     "actorId": {
       "type": "string",
-      "pattern": "^actor-[a-z0-9]+(?:-[a-z0-9]+)*$"
+      "pattern": "^actor-[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Opaque fixture-declared actor ID; no external provenance or authentication is represented."
     },
     "digest": {
       "type": "string",
@@ -124,6 +125,7 @@
     },
     "authorityEntry": {
       "type": "object",
+      "description": "Actor ID and actions declared inside the fixture for internal structural checks only.",
       "required": ["actor_id", "actions"],
       "properties": {
         "actor_id": {"$ref": "#/$defs/actorId"},
@@ -158,6 +160,7 @@
         "revocation_status": {"type": "string", "const": "not_revoked"},
         "authority": {
           "type": "object",
+          "description": "Fixture-declared actor/action mapping; not proof of real-world authorization.",
           "required": ["telos", "controller", "implementer", "qa"],
           "properties": {
             "telos": {
@@ -398,6 +401,7 @@
     },
     "delegationAuthorized": {
       "type": "object",
+      "description": "Fixture record label; not proof of externally authenticated or authorized delegation.",
       "required": ["schema_version", "event_id", "event_type", "occurred_at", "actor", "binding", "caused_by", "payload"],
       "properties": {
         "schema_version": {"type": "string", "const": "noetic.m0.trace-record/v0"},
@@ -468,6 +472,7 @@
     },
     "qaAdjudicated": {
       "type": "object",
+      "description": "PASS attributed to a structurally distinct fixture-declared QA actor ID; not external independence.",
       "required": ["schema_version", "event_id", "event_type", "occurred_at", "actor", "binding", "caused_by", "payload"],
       "properties": {
         "schema_version": {"type": "string", "const": "noetic.m0.trace-record/v0"},
