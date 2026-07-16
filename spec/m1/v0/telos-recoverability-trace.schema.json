@@ -1,0 +1,676 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://noetic-dev.invalid/spec/m1/v0/telos-recoverability-trace.schema.json",
+  "title": "noetic-dev fixed provider-free M1 Telos recoverability fixture",
+  "description": "Fixture-internal structural declarations only; actor provenance, external authorization, semantic correctness, and independent QA are not established.",
+  "type": "object",
+  "required": ["schema_version", "records"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "noetic.m1.telos-recoverability-trace/v0"
+    },
+    "records": {
+      "type": "array",
+      "minItems": 11,
+      "maxItems": 11,
+      "prefixItems": [
+        {"$ref": "#/$defs/delegationAuthorized"},
+        {"$ref": "#/$defs/runCreated"},
+        {"$ref": "#/$defs/runStarted"},
+        {"$ref": "#/$defs/generation1Accepted"},
+        {"$ref": "#/$defs/generation1QaFailed"},
+        {"$ref": "#/$defs/generation2RemediationStarted"},
+        {"$ref": "#/$defs/generation2Accepted"},
+        {"$ref": "#/$defs/generation2QaPassed"},
+        {"$ref": "#/$defs/runSucceeded"},
+        {"$ref": "#/$defs/resultReported"},
+        {"$ref": "#/$defs/telosAdjudicated"}
+      ],
+      "items": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "eventId": {
+      "type": "string",
+      "pattern": "^event-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "actorId": {
+      "type": "string",
+      "pattern": "^actor-[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Opaque fixture-declared actor ID; no external provenance or authentication is represented."
+    },
+    "candidateId": {
+      "type": "string",
+      "pattern": "^candidate-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "obligationId": {
+      "type": "string",
+      "pattern": "^obligation-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "findingId": {
+      "type": "string",
+      "pattern": "^finding-[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Opaque fixture finding identity; no finding semantics are represented."
+    },
+    "resultId": {
+      "type": "string",
+      "pattern": "^result-[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "delegation_id",
+        "delegation_digest",
+        "goal_chain_id",
+        "sub_goal_id",
+        "program_id",
+        "run_id",
+        "generation",
+        "correlation_id"
+      ],
+      "properties": {
+        "delegation_id": {
+          "type": "string",
+          "pattern": "^delegation-[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "delegation_digest": {"$ref": "#/$defs/digest"},
+        "goal_chain_id": {
+          "type": "string",
+          "pattern": "^chain-[1-9][0-9]*$"
+        },
+        "sub_goal_id": {
+          "type": "string",
+          "pattern": "^subgoal-[1-9][0-9]*$"
+        },
+        "program_id": {
+          "type": "string",
+          "pattern": "^program-[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^run-[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "generation": {
+          "type": "integer",
+          "enum": [1, 2]
+        },
+        "correlation_id": {
+          "type": "string",
+          "pattern": "^correlation-[a-z0-9]+(?:-[a-z0-9]+)*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "bindingGeneration1": {
+      "allOf": [
+        {"$ref": "#/$defs/binding"},
+        {"properties": {"generation": {"const": 1}}}
+      ]
+    },
+    "bindingGeneration2": {
+      "allOf": [
+        {"$ref": "#/$defs/binding"},
+        {"properties": {"generation": {"const": 2}}}
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "required": ["role", "actor_id"],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["telos", "controller", "implementer", "qa"]
+        },
+        "actor_id": {"$ref": "#/$defs/actorId"}
+      },
+      "additionalProperties": false
+    },
+    "telosActor": {
+      "allOf": [
+        {"$ref": "#/$defs/actor"},
+        {"properties": {"role": {"const": "telos"}}}
+      ]
+    },
+    "controllerActor": {
+      "allOf": [
+        {"$ref": "#/$defs/actor"},
+        {"properties": {"role": {"const": "controller"}}}
+      ]
+    },
+    "qaActor": {
+      "allOf": [
+        {"$ref": "#/$defs/actor"},
+        {"properties": {"role": {"const": "qa"}}}
+      ]
+    },
+    "oneCause": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {"$ref": "#/$defs/eventId"}
+    },
+    "authorityEntry": {
+      "type": "object",
+      "description": "Actor ID and action declarations used for fixture-internal structural checks only.",
+      "required": ["actor_id", "actions"],
+      "properties": {
+        "actor_id": {"$ref": "#/$defs/actorId"},
+        "actions": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "delegationPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "purpose",
+        "authorized_at",
+        "valid_from",
+        "expires_at",
+        "revocation_status",
+        "policy",
+        "authority"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "authorize_delegation"},
+        "purpose": {
+          "type": "string",
+          "pattern": "^purpose-[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "authorized_at": {"$ref": "#/$defs/timestamp"},
+        "valid_from": {"$ref": "#/$defs/timestamp"},
+        "expires_at": {"$ref": "#/$defs/timestamp"},
+        "revocation_status": {"type": "string", "const": "not_revoked"},
+        "policy": {
+          "type": "object",
+          "required": ["max_remediation_generations"],
+          "properties": {
+            "max_remediation_generations": {"type": "integer", "const": 1}
+          },
+          "additionalProperties": false
+        },
+        "authority": {
+          "type": "object",
+          "description": "Fixture declaration, not proof of real-world authorization.",
+          "required": ["telos", "controller", "implementer", "qa"],
+          "properties": {
+            "telos": {
+              "allOf": [
+                {"$ref": "#/$defs/authorityEntry"},
+                {
+                  "properties": {
+                    "actions": {
+                      "prefixItems": [{"const": "telos.sub_goal.adjudicated"}],
+                      "items": false,
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              ]
+            },
+            "controller": {
+              "allOf": [
+                {"$ref": "#/$defs/authorityEntry"},
+                {
+                  "properties": {
+                    "actions": {
+                      "prefixItems": [
+                        {"const": "controller.run.created"},
+                        {"const": "controller.run.started"},
+                        {"const": "controller.implementation_generation.accepted"},
+                        {"const": "controller.remediation_generation.started"},
+                        {"const": "controller.run.succeeded"},
+                        {"const": "controller.result.reported"}
+                      ],
+                      "items": false,
+                      "minItems": 6,
+                      "maxItems": 6
+                    }
+                  }
+                }
+              ]
+            },
+            "implementer": {
+              "allOf": [
+                {"$ref": "#/$defs/authorityEntry"},
+                {
+                  "properties": {
+                    "actions": {
+                      "items": false,
+                      "maxItems": 0
+                    }
+                  }
+                }
+              ]
+            },
+            "qa": {
+              "allOf": [
+                {"$ref": "#/$defs/authorityEntry"},
+                {
+                  "properties": {
+                    "actions": {
+                      "prefixItems": [{"const": "qa.verification.adjudicated"}],
+                      "items": false,
+                      "minItems": 1,
+                      "maxItems": 1
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "operationPayload": {
+      "type": "object",
+      "required": ["operation"],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["create_run", "start_run"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "generation1AcceptedPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "candidate_id",
+        "candidate_digest",
+        "implementer_actor_id",
+        "verification_obligation_id"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "accept_implementation_generation"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "implementer_actor_id": {"$ref": "#/$defs/actorId"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"}
+      },
+      "additionalProperties": false
+    },
+    "generation2AcceptedPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "candidate_id",
+        "candidate_digest",
+        "implementer_actor_id",
+        "verification_obligation_id",
+        "remediation_event_id",
+        "superseded_accepted_event_id"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "accept_implementation_generation"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "implementer_actor_id": {"$ref": "#/$defs/actorId"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "remediation_event_id": {"$ref": "#/$defs/eventId"},
+        "superseded_accepted_event_id": {"$ref": "#/$defs/eventId"}
+      },
+      "additionalProperties": false
+    },
+    "qaFailPayload": {
+      "type": "object",
+      "description": "Exactly one opaque finding accompanies the fixture-attributed FAIL.",
+      "required": [
+        "operation",
+        "accepted_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "verification_obligation_id",
+        "conclusion",
+        "finding_id",
+        "finding_digest"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "adjudicate_verification"},
+        "accepted_event_id": {"$ref": "#/$defs/eventId"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "conclusion": {"type": "string", "const": "FAIL"},
+        "finding_id": {"$ref": "#/$defs/findingId"},
+        "finding_digest": {"$ref": "#/$defs/digest"}
+      },
+      "additionalProperties": false
+    },
+    "qaPassPayload": {
+      "type": "object",
+      "description": "Fixture-attributed PASS with finding fields forbidden by the closed shape.",
+      "required": [
+        "operation",
+        "accepted_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "verification_obligation_id",
+        "conclusion"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "adjudicate_verification"},
+        "accepted_event_id": {"$ref": "#/$defs/eventId"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "conclusion": {"type": "string", "const": "PASS"}
+      },
+      "additionalProperties": false
+    },
+    "remediationPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "remediation_ordinal",
+        "target_generation",
+        "failed_accepted_event_id",
+        "failed_qa_event_id",
+        "failed_verification_obligation_id",
+        "finding_id",
+        "finding_digest"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "start_remediation_generation"},
+        "remediation_ordinal": {"type": "integer", "const": 1},
+        "target_generation": {"type": "integer", "const": 2},
+        "failed_accepted_event_id": {"$ref": "#/$defs/eventId"},
+        "failed_qa_event_id": {"$ref": "#/$defs/eventId"},
+        "failed_verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "finding_id": {"$ref": "#/$defs/findingId"},
+        "finding_digest": {"$ref": "#/$defs/digest"}
+      },
+      "additionalProperties": false
+    },
+    "successPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "accepted_event_id",
+        "qa_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "verification_obligation_id",
+        "qa_conclusion"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "succeed_run"},
+        "accepted_event_id": {"$ref": "#/$defs/eventId"},
+        "qa_event_id": {"$ref": "#/$defs/eventId"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "qa_conclusion": {"type": "string", "const": "PASS"}
+      },
+      "additionalProperties": false
+    },
+    "resultPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "result_id",
+        "accepted_event_id",
+        "qa_event_id",
+        "success_event_id",
+        "candidate_id",
+        "candidate_digest",
+        "verification_obligation_id",
+        "run_outcome",
+        "evidence_event_ids"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "report_result"},
+        "result_id": {"$ref": "#/$defs/resultId"},
+        "accepted_event_id": {"$ref": "#/$defs/eventId"},
+        "qa_event_id": {"$ref": "#/$defs/eventId"},
+        "success_event_id": {"$ref": "#/$defs/eventId"},
+        "candidate_id": {"$ref": "#/$defs/candidateId"},
+        "candidate_digest": {"$ref": "#/$defs/digest"},
+        "verification_obligation_id": {"$ref": "#/$defs/obligationId"},
+        "run_outcome": {"type": "string", "const": "succeeded"},
+        "evidence_event_ids": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/eventId"},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "telosPayload": {
+      "type": "object",
+      "required": [
+        "operation",
+        "result_id",
+        "result_event_id",
+        "disposition",
+        "evidence_event_ids"
+      ],
+      "properties": {
+        "operation": {"type": "string", "const": "adjudicate_sub_goal"},
+        "result_id": {"$ref": "#/$defs/resultId"},
+        "result_event_id": {"$ref": "#/$defs/eventId"},
+        "disposition": {"type": "string", "const": "complete"},
+        "evidence_event_ids": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {"$ref": "#/$defs/eventId"},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "recordBase": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "event_id",
+        "event_type",
+        "occurred_at",
+        "actor",
+        "binding",
+        "caused_by",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "noetic.m1.trace-record/v0"},
+        "event_id": {"$ref": "#/$defs/eventId"},
+        "event_type": {"type": "string"},
+        "occurred_at": {"$ref": "#/$defs/timestamp"},
+        "actor": {"$ref": "#/$defs/actor"},
+        "binding": {"$ref": "#/$defs/binding"},
+        "caused_by": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/eventId"},
+          "maxItems": 1
+        },
+        "payload": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "delegationAuthorized": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "telos.delegation.authorized"},
+            "actor": {"$ref": "#/$defs/telosActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration1"},
+            "caused_by": {"type": "array", "maxItems": 0},
+            "payload": {"$ref": "#/$defs/delegationPayload"}
+          }
+        }
+      ]
+    },
+    "runCreated": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.run.created"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration1"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {
+              "allOf": [
+                {"$ref": "#/$defs/operationPayload"},
+                {"properties": {"operation": {"const": "create_run"}}}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "runStarted": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.run.started"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration1"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {
+              "allOf": [
+                {"$ref": "#/$defs/operationPayload"},
+                {"properties": {"operation": {"const": "start_run"}}}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "generation1Accepted": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.implementation_generation.accepted"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration1"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/generation1AcceptedPayload"}
+          }
+        }
+      ]
+    },
+    "generation1QaFailed": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "qa.verification.adjudicated"},
+            "actor": {"$ref": "#/$defs/qaActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration1"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/qaFailPayload"}
+          }
+        }
+      ]
+    },
+    "generation2RemediationStarted": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.remediation_generation.started"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration2"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/remediationPayload"}
+          }
+        }
+      ]
+    },
+    "generation2Accepted": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.implementation_generation.accepted"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration2"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/generation2AcceptedPayload"}
+          }
+        }
+      ]
+    },
+    "generation2QaPassed": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "qa.verification.adjudicated"},
+            "actor": {"$ref": "#/$defs/qaActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration2"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/qaPassPayload"}
+          }
+        }
+      ]
+    },
+    "runSucceeded": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.run.succeeded"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration2"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/successPayload"}
+          }
+        }
+      ]
+    },
+    "resultReported": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "controller.result.reported"},
+            "actor": {"$ref": "#/$defs/controllerActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration2"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/resultPayload"}
+          }
+        }
+      ]
+    },
+    "telosAdjudicated": {
+      "allOf": [
+        {"$ref": "#/$defs/recordBase"},
+        {
+          "properties": {
+            "event_type": {"const": "telos.sub_goal.adjudicated"},
+            "actor": {"$ref": "#/$defs/telosActor"},
+            "binding": {"$ref": "#/$defs/bindingGeneration2"},
+            "caused_by": {"$ref": "#/$defs/oneCause"},
+            "payload": {"$ref": "#/$defs/telosPayload"}
+          }
+        }
+      ]
+    }
+  }
+}
