@@ -66,6 +66,7 @@
       ]
     ],
     "fable_eligibility": {
+      "high_value_required": true,
       "limited": true,
       "minimum_complexity": "complex",
       "purpose": "high-value independent judgment and model-family diversity",

@@ -8,6 +8,8 @@ import re
 import sys
 from pathlib import Path
 
+from governance.json_schema import load_json_strict, validate_schema
+
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = [
     "README.md",
@@ -160,6 +162,17 @@ def main() -> int:
                 fail(f"{json_path.relative_to(ROOT)}: schema reference escapes repository: {schema_ref}", failures)
             elif not schema_path.exists():
                 fail(f"{json_path.relative_to(ROOT)}: missing referenced schema: {schema_ref}", failures)
+
+    policy_path = ROOT / "config/model-policy.json"
+    schema_path = ROOT / "governance/schemas/model-policy.schema.json"
+    try:
+        policy = load_json_strict(policy_path)
+        schema = load_json_strict(schema_path)
+    except (OSError, ValueError) as exc:
+        fail(f"model policy validation failed to load: {exc}", failures)
+    else:
+        for error in validate_schema(policy, schema):
+            fail(f"config/model-policy.json: {error}", failures)
 
     if failures:
         print("Repository validation failed:", file=sys.stderr)

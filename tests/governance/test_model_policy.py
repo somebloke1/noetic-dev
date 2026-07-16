@@ -6,10 +6,7 @@ import json
 import unittest
 from pathlib import Path
 
-try:
-    from jsonschema import Draft7Validator
-except ModuleNotFoundError:  # pragma: no cover - exercised only without optional dependency
-    Draft7Validator = None
+from scripts.governance.json_schema import validate_schema
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,16 +25,13 @@ class TestModelPolicy(unittest.TestCase):
         self.schema = load_json(SCHEMA_PATH)
 
     def test_schema_validates_exact_policy_contract(self) -> None:
-        if Draft7Validator is None:
-            self.skipTest("jsonschema unavailable")
-        Draft7Validator.check_schema(self.schema)
-        validator = Draft7Validator(self.schema)
-        self.assertEqual(list(validator.iter_errors(self.policy)), [])
+        self.assertEqual(validate_schema(self.policy, self.schema), [])
         for path, value in (
             (("selection", "router"), "manual"),
             (("access", "direct_provider_access"), True),
             (("access", "base_url"), "https://api.openai.com"),
             (("generative", "allowed_models"), ["codex/gpt-5.6-terra"]),
+            (("generative", "fable_eligibility", "high_value_required"), False),
             (("modalities", "asr"), "qwen3.6-a3b"),
         ):
             with self.subTest(path=path):
@@ -46,7 +40,7 @@ class TestModelPolicy(unittest.TestCase):
                 for key in path[:-1]:
                     target = target[key]
                 target[path[-1]] = value
-                self.assertNotEqual(list(validator.iter_errors(mutated)), [])
+                self.assertNotEqual(validate_schema(mutated, self.schema), [])
 
     def test_all_access_is_litellm_only(self) -> None:
         access = self.policy["access"]
@@ -78,7 +72,10 @@ class TestModelPolicy(unittest.TestCase):
             "codex/gpt-5.6-luna",
         ])
         self.assertTrue(generative["fable_eligibility"]["limited"])
+        self.assertTrue(generative["fable_eligibility"]["high_value_required"])
         self.assertEqual(generative["fable_eligibility"]["minimum_complexity"], "complex")
+        self.assertFalse(self.policy["tasks"]["agent_review"]["high_value"])
+        self.assertFalse(self.policy["tasks"]["authoritative_qa"]["high_value"])
 
     def test_selection_and_failure_lifecycle_are_mandatory(self) -> None:
         self.assertEqual(self.policy["selection"], {

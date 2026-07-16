@@ -86,12 +86,13 @@
         "fable_eligibility": {
           "additionalProperties": false,
           "properties": {
+            "high_value_required": {"const": true},
             "limited": {"const": true},
             "minimum_complexity": {"const": "complex"},
             "purpose": {"const": "high-value independent judgment and model-family diversity"},
             "task_kinds": {"const": ["review", "research", "design"]}
           },
-          "required": ["limited", "minimum_complexity", "purpose", "task_kinds"],
+          "required": ["high_value_required", "limited", "minimum_complexity", "purpose", "task_kinds"],
           "type": "object"
         },
         "reasoning_effort": {"const": "high"},
