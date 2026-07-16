@@ -305,10 +305,14 @@ def _telos_status(adjudication: dict[str, Any], profile: str) -> dict[str, Any]:
     return status
 
 
-def _qa_status(qa: dict[str, Any]) -> dict[str, Any]:
+def _qa_status(qa: dict[str, Any], profile: str) -> dict[str, Any]:
     history = qa["generation_history"]
     if type(history) is not list or not history:
         _fail("$.qa.generation_history", "expected non-empty array")
+    if profile == M0_PROFILE and len(history) != 1:
+        _fail("$.qa.generation_history", "M0 status requires exactly one generation")
+    if profile == M1_PROFILE and len(history) != 2:
+        _fail("$.qa.generation_history", "M1 status requires exactly two generations")
     generations = []
     for index, item in enumerate(history):
         path = f"$.qa.generation_history[{index}]"
@@ -318,16 +322,21 @@ def _qa_status(qa: dict[str, Any]) -> dict[str, Any]:
             _fail(f"{path}.accepted_generation", "expected object")
         if type(item["qa_adjudication"]) is not dict:
             _fail(f"{path}.qa_adjudication", "expected object")
-        accepted_fields = M0_ACCEPTED_FIELDS if "generation" in item["accepted_generation"] else (
-            M1_ACCEPTED_REMEDIATED_FIELDS if "remediation_event_id" in item["accepted_generation"] else M1_ACCEPTED_BASE_FIELDS
-        )
+        if profile == M0_PROFILE:
+            accepted_fields = M0_ACCEPTED_FIELDS
+            qa_fields = M0_QA_FIELDS
+        elif index == 0:
+            accepted_fields = M1_ACCEPTED_BASE_FIELDS
+            qa_fields = M1_QA_FAILED_FIELDS
+        else:
+            accepted_fields = M1_ACCEPTED_REMEDIATED_FIELDS
+            qa_fields = M1_QA_PASS_FIELDS
         accepted = _shape(item["accepted_generation"], accepted_fields, f"{path}.accepted_generation")
         if "generation" in accepted:
             _integer(accepted["generation"], f"{path}.accepted_generation.generation")
         for field in accepted_fields:
             if field != "generation":
                 _string(accepted[field], f"{path}.accepted_generation.{field}")
-        qa_fields = M1_QA_FAILED_FIELDS if "finding_id" in item["qa_adjudication"] else M1_QA_PASS_FIELDS
         adjudication = _string_fields(item["qa_adjudication"], qa_fields, f"{path}.qa_adjudication")
         generations.append({
             "generation": generation,
@@ -351,6 +360,8 @@ def _qa_status(qa: dict[str, Any]) -> dict[str, Any]:
 def _remediation_status(remediation: Any, profile: str) -> dict[str, Any]:
     if type(remediation) is not dict:
         _fail("$.remediation", "expected object")
+    if profile == M0_PROFILE and set(remediation) != {"represented"}:
+        _fail("$.remediation", "M0 status requires exact no-remediation shape")
     obj = _shape(remediation, ("represented",) if set(remediation) == {"represented"} else M1_REMEDIATION_FIELDS, "$.remediation")
     represented = _boolean(obj["represented"], "$.remediation.represented")
     if profile == M0_PROFILE and represented:
@@ -412,7 +423,7 @@ def derive_terminal_status(observability: Any) -> dict[str, Any]:
         profile = root["subject"]["execution_profile"]
         controller_status = _controller_status(root["controller"]["result"], profile)
         telos_status = _telos_status(root["telos"]["adjudication"]["adjudication"], profile)
-        qa_status = _qa_status(root["qa"])
+        qa_status = _qa_status(root["qa"], profile)
         remediation_status = _remediation_status(root["remediation"], profile)
         final = root["evidence"]["final_implementation"]["value"]
         return {

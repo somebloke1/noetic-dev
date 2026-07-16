@@ -160,7 +160,9 @@ class DevelopmentVerifiedChangeStatusTest(unittest.TestCase):
     def test_m0_rejects_remediation_normalization(self) -> None:
         m0 = self.m0_observability()
         m1_remediation = copy.deepcopy(self.m1_observability["remediation"])
-        for value in ({"represented": False, "budget": {"authorized": 0}}, {"represented": None}, {"represented": True}, m1_remediation):
+        m1_false_remediation = copy.deepcopy(m1_remediation)
+        m1_false_remediation["represented"] = False
+        for value in ({"represented": False, "budget": {"authorized": 0}}, {"represented": None}, {"represented": True}, m1_remediation, m1_false_remediation):
             with self.subTest(value=value):
                 candidate = copy.deepcopy(m0)
                 candidate["remediation"] = value
@@ -172,6 +174,16 @@ class DevelopmentVerifiedChangeStatusTest(unittest.TestCase):
         candidate["remediation"] = {"represented": False}
         with self.assertRaises(status.TerminalStatusCompatibilityError):
             status.derive_terminal_status(candidate)
+
+    def test_profile_bound_qa_history_rejects_cross_profile_shapes(self) -> None:
+        m0 = self.m0_observability()
+        m0["qa"]["generation_history"] = copy.deepcopy(self.m1_observability["qa"]["generation_history"])
+        with self.assertRaises(status.TerminalStatusCompatibilityError):
+            status.derive_terminal_status(m0)
+        m1 = copy.deepcopy(self.m1_observability)
+        m1["qa"]["generation_history"] = copy.deepcopy(self.m0_observability()["qa"]["generation_history"])
+        with self.assertRaises(status.TerminalStatusCompatibilityError):
+            status.derive_terminal_status(m1)
 
     def test_cli_modes_utf8_input_and_failures_are_controlled(self) -> None:
         completed = subprocess.run([sys.executable, str(SCRIPT_PATH), str(OBSERVABILITY_PATH)], cwd=ROOT, check=False, capture_output=True)
