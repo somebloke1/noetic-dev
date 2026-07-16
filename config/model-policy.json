@@ -1,0 +1,128 @@
+{
+  "$schema": "../governance/schemas/model-policy.schema.json",
+  "access": {
+    "allowed_endpoint_paths": [
+      "/v1/responses",
+      "/v1/chat/completions",
+      "/v1/embeddings",
+      "/v1/audio/transcriptions"
+    ],
+    "applies_to_harnesses": [
+      "pi",
+      "opencode",
+      "broker",
+      "bare"
+    ],
+    "base_url": "http://127.0.0.1:3333",
+    "direct_provider_access": false,
+    "endpoint_id": "local-litellm",
+    "litellm_required": true,
+    "systemd_credential": "litellm_api_key",
+    "token_env": "LITELLM_API_KEY"
+  },
+  "execution_contracts": {
+    "agent_review_broker": {
+      "invocation_limit_scope": "per_route_decision",
+      "maximum_substantive_invocations_per_route": 1,
+      "readiness_probe_is_phase": true,
+      "reroute_after_reported_failure": true,
+      "report_outcome_scope": "aggregate_attempt"
+    },
+    "authoritative_qa_pi": {
+      "decision_scope": "per_operation",
+      "maximum_invocations_per_decision": 1,
+      "operations": [
+        "readiness_probe",
+        "execution"
+      ],
+      "report_outcome_scope": "per_operation"
+    }
+  },
+  "failure": {
+    "exclude_failed_models": true,
+    "manual_model_escalation": false,
+    "report_outcome_required": true,
+    "reroute_with_prior_failure": true
+  },
+  "generative": {
+    "allowed_endpoint_paths": [
+      "/v1/responses",
+      "/v1/chat/completions"
+    ],
+    "allowed_models": [
+      "codex/gpt-5.6-sol",
+      "claude-fable-5",
+      "codex/gpt-5.6-terra",
+      "codex/gpt-5.6-luna"
+    ],
+    "capability_tiers": [
+      [
+        "codex/gpt-5.6-sol",
+        "claude-fable-5"
+      ],
+      [
+        "codex/gpt-5.6-terra"
+      ],
+      [
+        "codex/gpt-5.6-luna"
+      ]
+    ],
+    "fable_eligibility": {
+      "high_value_required": true,
+      "limited": true,
+      "minimum_complexity": "complex",
+      "purpose": "high-value independent judgment and model-family diversity",
+      "task_kinds": [
+        "review",
+        "research",
+        "design"
+      ]
+    },
+    "reasoning_effort": "high",
+    "standard_models": [
+      "codex/gpt-5.6-sol",
+      "codex/gpt-5.6-terra",
+      "codex/gpt-5.6-luna"
+    ]
+  },
+  "modalities": {
+    "asr": "qwen3-asr",
+    "embed": "snowflake-arctic-embed2"
+  },
+  "schema_version": "1",
+  "selection": {
+    "lifecycle": [
+      "classify",
+      "route_task",
+      "invoke",
+      "report_outcome"
+    ],
+    "mandatory_for_generative_tasks": true,
+    "router": "genus-router",
+    "selection_varies_with_sophistication": true
+  },
+  "tasks": {
+    "agent_review": {
+      "awaited": true,
+      "blast_radius": "interface",
+      "complexity": "complex",
+      "high_value": false,
+      "task_kind": "review"
+    },
+    "authoritative_qa": {
+      "awaited": true,
+      "blast_radius": "interface",
+      "complexity": "complex",
+      "high_value": false,
+      "task_kind": "review"
+    },
+    "independent_approval": {
+      "awaited": true,
+      "blast_radius": "interface",
+      "complexity": "complex",
+      "high_value": true,
+      "independent_approval": true,
+      "task_kind": "review"
+    }
+  }
+}

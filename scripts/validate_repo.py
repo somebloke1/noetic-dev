@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.governance.json_schema import load_json_strict, validate_schema
+
 REQUIRED = [
     "README.md",
     "AGENTS.md",
@@ -59,6 +64,11 @@ REQUIRED = [
     "spec/programs/development.verified-change/v1/golden/expected-terminal-status.json",
     "scripts/development_verified_change_status.py",
     "tests/programs/test_development_verified_change_status.py",
+    # Mandatory genus-router / LiteLLM model policy (issue #29)
+    "config/model-policy.json",
+    "docs/model-routing-policy.md",
+    "governance/schemas/model-policy.schema.json",
+    "tests/governance/test_model_policy.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
@@ -155,6 +165,17 @@ def main() -> int:
                 fail(f"{json_path.relative_to(ROOT)}: schema reference escapes repository: {schema_ref}", failures)
             elif not schema_path.exists():
                 fail(f"{json_path.relative_to(ROOT)}: missing referenced schema: {schema_ref}", failures)
+
+    policy_path = ROOT / "config/model-policy.json"
+    schema_path = ROOT / "governance/schemas/model-policy.schema.json"
+    try:
+        policy = load_json_strict(policy_path)
+        schema = load_json_strict(schema_path)
+    except (OSError, ValueError) as exc:
+        fail(f"model policy validation failed to load: {exc}", failures)
+    else:
+        for error in validate_schema(policy, schema):
+            fail(f"config/model-policy.json: {error}", failures)
 
     if failures:
         print("Repository validation failed:", file=sys.stderr)
