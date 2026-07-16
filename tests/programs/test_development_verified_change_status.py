@@ -148,6 +148,8 @@ class DevelopmentVerifiedChangeStatusTest(unittest.TestCase):
             ("bad telos generation", lambda data: data["telos"]["adjudication"]["adjudication"].__setitem__("generation", True)),
             ("missing final candidate", lambda data: data["evidence"]["final_implementation"]["value"].pop("candidate_id")),
             ("null remediation", lambda data: data.__setitem__("remediation", None)),
+            ("null accepted generation", lambda data: data["qa"]["generation_history"][0].__setitem__("accepted_generation", None)),
+            ("boolean qa adjudication", lambda data: data["qa"]["generation_history"][0].__setitem__("qa_adjudication", True)),
             ("bad unknown order", lambda data: data["explicit_unknowns"].reverse()),
             ("readiness smuggled", lambda data: data.__setitem__("readiness", "ready")),
         )
@@ -157,12 +159,19 @@ class DevelopmentVerifiedChangeStatusTest(unittest.TestCase):
 
     def test_m0_rejects_remediation_normalization(self) -> None:
         m0 = self.m0_observability()
-        for value in ({"represented": False, "budget": {"authorized": 0}}, {"represented": None}, {"represented": True}):
+        m1_remediation = copy.deepcopy(self.m1_observability["remediation"])
+        for value in ({"represented": False, "budget": {"authorized": 0}}, {"represented": None}, {"represented": True}, m1_remediation):
             with self.subTest(value=value):
                 candidate = copy.deepcopy(m0)
                 candidate["remediation"] = value
                 with self.assertRaises(status.TerminalStatusCompatibilityError):
                     status.derive_terminal_status(candidate)
+
+    def test_m1_rejects_absent_remediation_profile_confusion(self) -> None:
+        candidate = copy.deepcopy(self.m1_observability)
+        candidate["remediation"] = {"represented": False}
+        with self.assertRaises(status.TerminalStatusCompatibilityError):
+            status.derive_terminal_status(candidate)
 
     def test_cli_modes_utf8_input_and_failures_are_controlled(self) -> None:
         completed = subprocess.run([sys.executable, str(SCRIPT_PATH), str(OBSERVABILITY_PATH)], cwd=ROOT, check=False, capture_output=True)

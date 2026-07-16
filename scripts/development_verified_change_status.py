@@ -314,6 +314,10 @@ def _qa_status(qa: dict[str, Any]) -> dict[str, Any]:
         path = f"$.qa.generation_history[{index}]"
         item = _shape(item, ("generation", "accepted_generation", "qa_adjudication"), path)
         generation = _integer(item["generation"], f"{path}.generation")
+        if type(item["accepted_generation"]) is not dict:
+            _fail(f"{path}.accepted_generation", "expected object")
+        if type(item["qa_adjudication"]) is not dict:
+            _fail(f"{path}.qa_adjudication", "expected object")
         accepted_fields = M0_ACCEPTED_FIELDS if "generation" in item["accepted_generation"] else (
             M1_ACCEPTED_REMEDIATED_FIELDS if "remediation_event_id" in item["accepted_generation"] else M1_ACCEPTED_BASE_FIELDS
         )
@@ -344,11 +348,15 @@ def _qa_status(qa: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _remediation_status(remediation: Any) -> dict[str, Any]:
+def _remediation_status(remediation: Any, profile: str) -> dict[str, Any]:
     if type(remediation) is not dict:
         _fail("$.remediation", "expected object")
     obj = _shape(remediation, ("represented",) if set(remediation) == {"represented"} else M1_REMEDIATION_FIELDS, "$.remediation")
     represented = _boolean(obj["represented"], "$.remediation.represented")
+    if profile == M0_PROFILE and represented:
+        _fail("$.remediation.represented", "M0 status cannot represent remediation")
+    if profile == M1_PROFILE and not represented:
+        _fail("$.remediation.represented", "M1 status requires represented remediation")
     if set(obj) == {"represented"} and represented:
         _fail("$.remediation", "represented true requires source-attributed remediation fields")
     if not represented:
@@ -405,7 +413,7 @@ def derive_terminal_status(observability: Any) -> dict[str, Any]:
         controller_status = _controller_status(root["controller"]["result"], profile)
         telos_status = _telos_status(root["telos"]["adjudication"]["adjudication"], profile)
         qa_status = _qa_status(root["qa"])
-        remediation_status = _remediation_status(root["remediation"])
+        remediation_status = _remediation_status(root["remediation"], profile)
         final = root["evidence"]["final_implementation"]["value"]
         return {
             "schema_version": OUTPUT_VERSION,
