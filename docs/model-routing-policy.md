@@ -28,7 +28,7 @@ This repository slice adds the canonical machine policy at `config/model-policy.
 
 Accepted target policy:
 
-- LiteLLM endpoint: `local-litellm` at `http://172.22.10.160:3333`.
+- LiteLLM endpoint: `local-litellm` at `http://127.0.0.1:3333`; non-HTTPS bearer-token traffic is only authorized on the loopback trusted boundary.
 - Credential name: `LITELLM_API_KEY` / systemd credential `litellm_api_key`.
 - Generative routes: `codex/gpt-5.6-sol`, `codex/gpt-5.6-terra`, `codex/gpt-5.6-luna`, and limited `claude-fable-5` for high-value review, research, or design only.
 - Embedding route: `snowflake-arctic-embed2`.

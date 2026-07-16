@@ -30,6 +30,7 @@ class TestModelPolicy(unittest.TestCase):
             (("selection", "router"), "manual"),
             (("access", "direct_provider_access"), True),
             (("access", "base_url"), "https://api.openai.com"),
+            (("access", "base_url"), "http://172.22.10.160:3333"),
             (("generative", "allowed_models"), ["codex/gpt-5.6-terra"]),
             (("generative", "fable_eligibility", "high_value_required"), False),
             (("modalities", "asr"), "qwen3.6-a3b"),
@@ -45,6 +46,7 @@ class TestModelPolicy(unittest.TestCase):
     def test_all_access_is_litellm_only(self) -> None:
         access = self.policy["access"]
         self.assertEqual(access["endpoint_id"], "local-litellm")
+        self.assertEqual(access["base_url"], "http://127.0.0.1:3333")
         self.assertEqual(access["token_env"], "LITELLM_API_KEY")
         self.assertTrue(access["litellm_required"])
         self.assertFalse(access["direct_provider_access"])

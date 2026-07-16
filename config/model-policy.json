@@ -13,7 +13,7 @@
       "broker",
       "bare"
     ],
-    "base_url": "http://172.22.10.160:3333",
+    "base_url": "http://127.0.0.1:3333",
     "direct_provider_access": false,
     "endpoint_id": "local-litellm",
     "litellm_required": true,

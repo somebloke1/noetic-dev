@@ -8,7 +8,7 @@
       "properties": {
         "allowed_endpoint_paths": {"const": ["/v1/responses", "/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions"]},
         "applies_to_harnesses": {"const": ["pi", "opencode", "broker", "bare"]},
-        "base_url": {"const": "http://172.22.10.160:3333"},
+        "base_url": {"const": "http://127.0.0.1:3333"},
         "direct_provider_access": {"const": false},
         "endpoint_id": {"const": "local-litellm"},
         "litellm_required": {"const": true},
