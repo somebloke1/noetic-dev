@@ -1,0 +1,267 @@
+{
+  "schema_version": "noetic.m0.telos-adjudication-trace/v0",
+  "records": [
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-delegation-authorized",
+      "event_type": "telos.delegation.authorized",
+      "occurred_at": "2026-07-15T12:00:00Z",
+      "actor": {
+        "role": "telos",
+        "actor_id": "actor-telos-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": [],
+      "payload": {
+        "operation": "authorize_delegation",
+        "purpose": "purpose-m0-telos-adjudication-proof",
+        "authorized_at": "2026-07-15T12:00:00Z",
+        "valid_from": "2026-07-15T11:59:00Z",
+        "expires_at": "2026-07-16T12:00:00Z",
+        "revocation_status": "not_revoked",
+        "authority": {
+          "telos": {
+            "actor_id": "actor-telos-m0",
+            "actions": [
+              "telos.sub_goal.adjudicated"
+            ]
+          },
+          "controller": {
+            "actor_id": "actor-controller-m0",
+            "actions": [
+              "controller.run.created",
+              "controller.run.started",
+              "controller.implementation_generation.accepted",
+              "controller.run.succeeded",
+              "controller.result.reported"
+            ]
+          },
+          "implementer": {
+            "actor_id": "actor-implementer-m0",
+            "actions": []
+          },
+          "qa": {
+            "actor_id": "actor-qa-m0",
+            "actions": [
+              "qa.verification.adjudicated"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-run-created",
+      "event_type": "controller.run.created",
+      "occurred_at": "2026-07-15T12:00:01Z",
+      "actor": {
+        "role": "controller",
+        "actor_id": "actor-controller-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-delegation-authorized"],
+      "payload": {
+        "operation": "create_run"
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-run-started",
+      "event_type": "controller.run.started",
+      "occurred_at": "2026-07-15T12:00:02Z",
+      "actor": {
+        "role": "controller",
+        "actor_id": "actor-controller-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-run-created"],
+      "payload": {
+        "operation": "start_run"
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-generation-accepted",
+      "event_type": "controller.implementation_generation.accepted",
+      "occurred_at": "2026-07-15T12:00:03Z",
+      "actor": {
+        "role": "controller",
+        "actor_id": "actor-controller-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-run-started"],
+      "payload": {
+        "operation": "accept_implementation_generation",
+        "candidate_id": "candidate-m0-generation-1",
+        "candidate_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "implementer_actor_id": "actor-implementer-m0",
+        "verification_obligation_id": "obligation-m0-generation-1"
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-qa-adjudicated",
+      "event_type": "qa.verification.adjudicated",
+      "occurred_at": "2026-07-15T12:00:04Z",
+      "actor": {
+        "role": "qa",
+        "actor_id": "actor-qa-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-generation-accepted"],
+      "payload": {
+        "operation": "adjudicate_verification",
+        "accepted_event_id": "event-generation-accepted",
+        "candidate_id": "candidate-m0-generation-1",
+        "candidate_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "verification_obligation_id": "obligation-m0-generation-1",
+        "conclusion": "PASS"
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-run-succeeded",
+      "event_type": "controller.run.succeeded",
+      "occurred_at": "2026-07-15T12:00:05Z",
+      "actor": {
+        "role": "controller",
+        "actor_id": "actor-controller-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-qa-adjudicated"],
+      "payload": {
+        "operation": "succeed_run",
+        "accepted_event_id": "event-generation-accepted",
+        "qa_event_id": "event-qa-adjudicated",
+        "candidate_id": "candidate-m0-generation-1",
+        "candidate_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "verification_obligation_id": "obligation-m0-generation-1",
+        "qa_conclusion": "PASS"
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-result-reported",
+      "event_type": "controller.result.reported",
+      "occurred_at": "2026-07-15T12:00:06Z",
+      "actor": {
+        "role": "controller",
+        "actor_id": "actor-controller-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-run-succeeded"],
+      "payload": {
+        "operation": "report_result",
+        "result_id": "result-m0-generation-1",
+        "accepted_event_id": "event-generation-accepted",
+        "qa_event_id": "event-qa-adjudicated",
+        "success_event_id": "event-run-succeeded",
+        "candidate_id": "candidate-m0-generation-1",
+        "candidate_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "verification_obligation_id": "obligation-m0-generation-1",
+        "run_outcome": "succeeded",
+        "evidence_event_ids": [
+          "event-generation-accepted",
+          "event-qa-adjudicated",
+          "event-run-succeeded"
+        ]
+      }
+    },
+    {
+      "schema_version": "noetic.m0.trace-record/v0",
+      "event_id": "event-telos-adjudicated",
+      "event_type": "telos.sub_goal.adjudicated",
+      "occurred_at": "2026-07-15T12:00:07Z",
+      "actor": {
+        "role": "telos",
+        "actor_id": "actor-telos-m0"
+      },
+      "binding": {
+        "delegation_id": "delegation-m0-reference",
+        "delegation_digest": "sha256:718c87ae557eeb29103326e78a228dd081fd1dbc0233de95369de1aafac848f4",
+        "goal_chain_id": "chain-33",
+        "sub_goal_id": "subgoal-33",
+        "program_id": "program-m0-telos-adjudication",
+        "run_id": "run-m0-reference-1",
+        "generation": 1,
+        "correlation_id": "correlation-m0-reference-1"
+      },
+      "caused_by": ["event-result-reported"],
+      "payload": {
+        "operation": "adjudicate_sub_goal",
+        "result_id": "result-m0-generation-1",
+        "result_event_id": "event-result-reported",
+        "disposition": "complete",
+        "evidence_event_ids": [
+          "event-generation-accepted",
+          "event-qa-adjudicated",
+          "event-run-succeeded",
+          "event-result-reported"
+        ]
+      }
+    }
+  ]
+}

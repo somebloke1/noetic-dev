@@ -1,0 +1,93 @@
+{
+  "schema_version": "noetic.m0.telos-adjudication-contract/v0",
+  "trace_version": "noetic.m0.telos-adjudication-trace/v0",
+  "record_version": "noetic.m0.trace-record/v0",
+  "projection_version": "noetic.m0.telos-adjudication-projection/v0",
+  "generation": 1,
+  "canonical_json": {
+    "encoding": "ASCII",
+    "key_order": "lexicographic",
+    "separators": [",", ":"],
+    "line_termination": "LF",
+    "floating_point": "forbidden",
+    "duplicate_keys": "forbidden",
+    "null": "forbidden"
+  },
+  "binding_fields": [
+    "delegation_id",
+    "delegation_digest",
+    "goal_chain_id",
+    "sub_goal_id",
+    "program_id",
+    "run_id",
+    "generation",
+    "correlation_id"
+  ],
+  "event_sequence": [
+    "telos.delegation.authorized",
+    "controller.run.created",
+    "controller.run.started",
+    "controller.implementation_generation.accepted",
+    "qa.verification.adjudicated",
+    "controller.run.succeeded",
+    "controller.result.reported",
+    "telos.sub_goal.adjudicated"
+  ],
+  "actor_action_ceiling": {
+    "telos": [
+      "telos.delegation.authorized",
+      "telos.sub_goal.adjudicated"
+    ],
+    "controller": [
+      "controller.run.created",
+      "controller.run.started",
+      "controller.implementation_generation.accepted",
+      "controller.run.succeeded",
+      "controller.result.reported"
+    ],
+    "implementer": [],
+    "qa": [
+      "qa.verification.adjudicated"
+    ]
+  },
+  "delegated_actions": {
+    "telos": [
+      "telos.sub_goal.adjudicated"
+    ],
+    "controller": [
+      "controller.run.created",
+      "controller.run.started",
+      "controller.implementation_generation.accepted",
+      "controller.run.succeeded",
+      "controller.result.reported"
+    ],
+    "implementer": [],
+    "qa": [
+      "qa.verification.adjudicated"
+    ]
+  },
+  "states": [
+    "initial",
+    "delegated",
+    "run_created",
+    "run_started",
+    "generation_accepted",
+    "qa_pass_attributed",
+    "run_succeeded",
+    "result_reported",
+    "telos_adjudicated"
+  ],
+  "transitions": [
+    ["initial", "telos.delegation.authorized", "delegated"],
+    ["delegated", "controller.run.created", "run_created"],
+    ["run_created", "controller.run.started", "run_started"],
+    ["run_started", "controller.implementation_generation.accepted", "generation_accepted"],
+    ["generation_accepted", "qa.verification.adjudicated", "qa_pass_attributed"],
+    ["qa_pass_attributed", "controller.run.succeeded", "run_succeeded"],
+    ["run_succeeded", "controller.result.reported", "result_reported"],
+    ["result_reported", "telos.sub_goal.adjudicated", "telos_adjudicated"]
+  ],
+  "obligation_rule": "The accepted generation creates one verification obligation; exactly one distinct QA actor attributes PASS to that obligation before controller success.",
+  "terminal_rule": "Only the delegated Telos identity may record the complete disposition, after the controller result; no later record is accepted.",
+  "semantic_boundary": "QA conclusion, controller run outcome, and Telos disposition are attributed record content. Deterministic validation establishes structure, authority, binding, and order only."
+}
