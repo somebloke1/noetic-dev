@@ -106,6 +106,46 @@ class M0TraceTest(unittest.TestCase):
         self.assertEqual(projection["telos_adjudication"]["actor_id"], "actor-telos-m0")
         self.assertNotIn("sub_goal_status", projection["controller_result"])
 
+    def test_claim_language_confines_identity_and_authority_to_fixture(self) -> None:
+        documentation = (ROOT / "docs/m0-telos-adjudication-trace.md").read_text(
+            encoding="utf-8"
+        )
+        contract = load_json_strict(CONTRACT_PATH)
+        schema = load_json_strict(SCHEMA_PATH)
+        claim_sources = (
+            documentation.lower(),
+            canonical_json_bytes(contract).decode("ascii").lower(),
+        )
+        required_non_claims = (
+            "fixture-declared",
+            "external identity provenance",
+            "authentication",
+            "signature",
+            "origin",
+            "real-world authorization",
+            "externally independent qa",
+        )
+        for source_index, claim_source in enumerate(claim_sources):
+            for required_non_claim in required_non_claims:
+                with self.subTest(
+                    source_index=source_index,
+                    required_non_claim=required_non_claim,
+                ):
+                    self.assertIn(required_non_claim, claim_source)
+        claim_text = "".join(claim_sources)
+        self.assertNotIn("authorized identities", claim_text)
+        self.assertNotIn("establishes authority", claim_text)
+        schema_text = canonical_json_bytes(schema).decode("ascii").lower()
+        self.assertIn("fixture-declared actor id", schema_text)
+        self.assertIn("no external provenance or authentication", schema_text)
+        self.assertIn("not proof of real-world authorization", schema_text)
+        self.assertIn("not external independence", schema_text)
+
+        projection_text = canonical_json_bytes(self.expected).decode("ascii").lower()
+        self.assertNotIn("independent", projection_text)
+        self.assertNotIn("authenticated", projection_text)
+        self.assertNotIn("authorized_identity", projection_text)
+
     def test_validation_does_not_mutate_input(self) -> None:
         original = copy.deepcopy(self.trace)
         validate_and_project(self.trace)
@@ -207,7 +247,7 @@ class M0TraceTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assert_rejected(mutation)
 
-    def test_every_downstream_identity_binding_mismatch_is_rejected(self) -> None:
+    def test_every_downstream_fixture_binding_mismatch_is_rejected(self) -> None:
         mismatches: dict[str, Any] = {
             "delegation_id": "delegation-other",
             "delegation_digest": "sha256:" + "2" * 64,
@@ -226,7 +266,7 @@ class M0TraceTest(unittest.TestCase):
                     )
                 )
 
-    def test_delegation_digest_binds_identity_authority_and_validity_material(self) -> None:
+    def test_delegation_digest_binds_fixture_identity_actions_and_validity(self) -> None:
         def replace_run(trace: dict[str, Any]) -> None:
             for record in trace["records"]:
                 record["binding"]["run_id"] = "run-other-1"
@@ -322,7 +362,7 @@ class M0TraceTest(unittest.TestCase):
                         ].update(event_type=replacement)
                     )
 
-    def test_authority_is_complete_narrow_and_attenuated(self) -> None:
+    def test_fixture_declared_actor_action_matrix_is_complete_and_narrow(self) -> None:
         mutations = (
             lambda trace: trace["records"][0]["payload"]["authority"]["controller"][
                 "actions"
@@ -347,7 +387,7 @@ class M0TraceTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assert_rejected(mutation)
 
-    def test_delegated_identities_must_be_unique_and_events_must_use_them(self) -> None:
+    def test_fixture_declared_actor_ids_must_be_structurally_unique(self) -> None:
         self.assert_rejected(
             lambda trace: trace["records"][0]["payload"]["authority"]["qa"].update(
                 actor_id="actor-controller-m0"
@@ -408,7 +448,7 @@ class M0TraceTest(unittest.TestCase):
             with self.subTest(index=index):
                 self.assert_rejected(mutation)
 
-    def test_qa_must_be_exactly_one_distinct_pass_before_success(self) -> None:
+    def test_qa_actor_id_must_be_exactly_one_structurally_distinct_pass(self) -> None:
         self.assert_rejected(lambda trace: trace["records"][4]["payload"].update(conclusion="FAIL"))
         self.assert_rejected(
             lambda trace: trace["records"][4].update(
@@ -463,7 +503,7 @@ class M0TraceTest(unittest.TestCase):
             lambda trace: trace["records"][6]["payload"].update(disposition="complete")
         )
 
-    def test_only_telos_can_adjudicate_and_terminal_state_is_monotonic(self) -> None:
+    def test_only_fixture_declared_telos_actor_id_can_record_terminal_state(self) -> None:
         self.assert_rejected(
             lambda trace: trace["records"][7].update(
                 actor={"role": "controller", "actor_id": "actor-controller-m0"}

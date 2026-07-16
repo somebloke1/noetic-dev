@@ -87,7 +87,8 @@
     ["run_succeeded", "controller.result.reported", "result_reported"],
     ["result_reported", "telos.sub_goal.adjudicated", "telos_adjudicated"]
   ],
-  "obligation_rule": "The accepted generation creates one verification obligation; exactly one distinct QA actor attributes PASS to that obligation before controller success.",
-  "terminal_rule": "Only the delegated Telos identity may record the complete disposition, after the controller result; no later record is accepted.",
-  "semantic_boundary": "QA conclusion, controller run outcome, and Telos disposition are attributed record content. Deterministic validation establishes structure, authority, binding, and order only."
+  "obligation_rule": "The accepted generation creates one verification obligation; the QA record attributes PASS to exactly one structurally distinct fixture-declared QA actor ID bound to that obligation before controller success.",
+  "terminal_rule": "Only the actor ID declared under the fixture's Telos role may record the complete disposition, after the controller result; no later record is accepted.",
+  "semantic_boundary": "QA conclusion, controller run outcome, and Telos disposition are fixture-attributed record content. Deterministic validation establishes structure, internally consistent declared actor/action mapping, binding, and order only.",
+  "provenance_boundary": "No external identity provenance, authentication, signature, origin, real-world authorization, or externally independent QA principal is represented or proved."
 }
