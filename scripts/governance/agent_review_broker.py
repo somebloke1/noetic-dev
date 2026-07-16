@@ -22,9 +22,14 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 
+from json_schema import validate_schema
+
 ALLOWED_REPOSITORY = "somebloke1/noetic-dev"
 ALLOWED_AUTHORS = {"somebloke1"}
-MODEL = "openai-codex/gpt-5.6-terra"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+MODEL_POLICY_PATH = REPO_ROOT / "config" / "model-policy.json"
+MODEL_POLICY_SCHEMA_PATH = REPO_ROOT / "governance" / "schemas" / "model-policy.schema.json"
+MODEL = "codex/gpt-5.6-terra"
 REASONING = "high"
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 MAX_REQUEST_BYTES = 16_384
@@ -62,6 +67,71 @@ def strict_json(text: str | bytes) -> Any:
         )
     except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ReviewError("invalid JSON") from error
+
+
+def load_model_policy(path: Path = MODEL_POLICY_PATH) -> dict[str, Any]:
+    try:
+        raw = path.read_bytes()
+    except OSError as error:
+        raise ReviewError("model policy is unavailable") from error
+    policy = strict_json(raw)
+    if not isinstance(policy, dict):
+        raise ReviewError("model policy must be a JSON object")
+    validate_model_policy(policy)
+    return policy
+
+
+def validate_model_policy(policy: dict[str, Any]) -> None:
+    try:
+        schema_raw = MODEL_POLICY_SCHEMA_PATH.read_bytes()
+    except OSError as error:
+        raise ReviewError("model policy schema is unavailable") from error
+    schema = strict_json(schema_raw)
+    if not isinstance(schema, dict):
+        raise ReviewError("model policy schema must be a JSON object")
+    errors = validate_schema(policy, schema)
+    if errors:
+        raise ReviewError(f"model policy does not match canonical schema: {errors[0]}")
+
+
+def resolve_agent_review_route(policy: dict[str, Any]) -> dict[str, str]:
+    validate_model_policy(policy)
+    access = policy.get("access")
+    generative = policy.get("generative")
+    tasks = policy.get("tasks")
+    if not isinstance(access, dict) or not isinstance(generative, dict) or not isinstance(tasks, dict):
+        raise ReviewError("model policy is missing routing sections")
+    task = tasks.get("agent_review")
+    if not isinstance(task, dict) or task.get("task_kind") != "review" or task.get("high_value") is not False:
+        raise ReviewError("model policy does not admit the broker review task")
+    harnesses = access.get("applies_to_harnesses")
+    if not isinstance(harnesses, list) or "broker" not in harnesses:
+        raise ReviewError("model policy does not admit the broker harness")
+    if access.get("direct_provider_access") is not False or access.get("litellm_required") is not True:
+        raise ReviewError("model policy does not require LiteLLM-only broker access")
+    if access.get("endpoint_id") != "local-litellm" or access.get("base_url") != "http://127.0.0.1:3333":
+        raise ReviewError("model policy broker endpoint is not the local LiteLLM endpoint")
+    if access.get("token_env") != "LITELLM_API_KEY":
+        raise ReviewError("model policy broker credential is not LITELLM_API_KEY")
+    allowed_models = generative.get("allowed_models")
+    standard_models = generative.get("standard_models")
+    if not isinstance(allowed_models, list) or not isinstance(standard_models, list):
+        raise ReviewError("model policy model lists are invalid")
+    if MODEL not in allowed_models or MODEL not in standard_models:
+        raise ReviewError("broker review model is not admitted by model policy")
+    endpoint_paths = generative.get("allowed_endpoint_paths")
+    if not isinstance(endpoint_paths, list) or not set(endpoint_paths).issuperset({"/v1/responses", "/v1/chat/completions"}):
+        raise ReviewError("model policy does not admit generative LiteLLM endpoints")
+    reasoning = generative.get("reasoning_effort")
+    if not isinstance(reasoning, str) or reasoning != REASONING:
+        raise ReviewError("model policy broker reasoning does not match the broker contract")
+    return {
+        "provider": "litellm",
+        "model": MODEL,
+        "reasoning": reasoning,
+        "base_url": access["base_url"],
+        "token_env": access["token_env"],
+    }
 
 
 def run_bounded(
@@ -364,17 +434,23 @@ def _safe_file(value: Any) -> bool:
     return ".." not in Path(value).parts
 
 
-def run_terra(prompt: str) -> dict[str, Any]:
+def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any]:
+    route = route or resolve_agent_review_route(load_model_policy())
     env = {
         "HOME": os.environ.get("HOME", str(Path.home())),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "PI_TELEMETRY": "0",
         "PI_SKIP_VERSION_CHECK": "1",
     }
+    token = os.environ.get(route["token_env"])
+    if token:
+        env[route["token_env"]] = token
+    env["OPENAI_BASE_URL"] = route["base_url"]
+    env["LITELLM_BASE_URL"] = route["base_url"]
     command = [
         "pi", "--print", "--no-session", "--no-tools", "--no-context-files", "--no-extensions", "--no-skills",
-        "--no-prompt-templates", "--no-themes", "--provider", "openai-codex", "--model", "gpt-5.6-terra",
-        "--thinking", REASONING,
+        "--no-prompt-templates", "--no-themes", "--provider", route["provider"], "--model", route["model"],
+        "--thinking", route["reasoning"],
     ]
     returncode, stdout, stderr = run_bounded(
         command,
@@ -386,11 +462,11 @@ def run_terra(prompt: str) -> dict[str, Any]:
     )
     if returncode != 0:
         detail = stderr.decode("utf-8", errors="replace").strip()[:500]
-        raise ReviewError(f"Terra invocation failed with exit {returncode}: {detail}")
+        raise ReviewError(f"broker model invocation failed with exit {returncode}: {detail}")
     try:
         output = stdout.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
-        raise ReviewError("Terra returned non-UTF-8 output") from error
+        raise ReviewError("broker model returned non-UTF-8 output") from error
     return parse_review_output(output)
 
 
@@ -398,15 +474,17 @@ def review(payload: Any) -> dict[str, Any]:
     request = validate_request(payload)
     pr, material = fetch_review_material(request)
     prompt = build_prompt(pr, material, request)
-    result = run_terra(prompt)
+    route = resolve_agent_review_route(load_model_policy())
+    result = run_terra(prompt, route)
     return {
         "schema_version": "1",
         "repository": request["repository"],
         "pr_number": request["pr_number"],
         "head_sha": request["head_sha"],
         "base_sha": request["base_sha"],
-        "model": MODEL,
-        "reasoning": REASONING,
+        "model": route["model"],
+        "provider": route["provider"],
+        "reasoning": route["reasoning"],
         "reviewed_diff_sha256": material["diff_sha256"],
         "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         **result,

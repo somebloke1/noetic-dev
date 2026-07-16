@@ -16,7 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, parse_review_output, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
 
 
 class TestAgentReview(unittest.TestCase):
@@ -175,11 +175,67 @@ class TestAgentReview(unittest.TestCase):
     def test_terra_receives_large_prompt_on_stdin(self, bounded: mock.Mock):
         bounded.return_value = (0, b'{"verdict":"pass","summary":"Reviewed.","findings":[]}', b"")
         prompt = "x" * 200_000
-        result = run_terra(prompt)
+        route = {
+            "provider": "litellm",
+            "model": "codex/gpt-5.6-terra",
+            "reasoning": "high",
+            "base_url": "http://127.0.0.1:3333",
+            "token_env": "LITELLM_API_KEY",
+        }
+        result = run_terra(prompt, route)
         command = bounded.call_args.args[0]
         self.assertNotIn(prompt, command)
+        self.assertIn("litellm", command)
+        self.assertIn("codex/gpt-5.6-terra", command)
         self.assertEqual(bounded.call_args.kwargs["input_text"], prompt)
+        env = bounded.call_args.kwargs["env"]
+        self.assertEqual(env["OPENAI_BASE_URL"], "http://127.0.0.1:3333")
+        self.assertEqual(env["LITELLM_BASE_URL"], "http://127.0.0.1:3333")
         self.assertEqual(result["verdict"], "pass")
+
+    def test_agent_review_route_is_resolved_from_model_policy(self):
+        policy = load_model_policy()
+        route = resolve_agent_review_route(policy)
+        self.assertEqual(route, {
+            "provider": "litellm",
+            "model": "codex/gpt-5.6-terra",
+            "reasoning": "high",
+            "base_url": "http://127.0.0.1:3333",
+            "token_env": "LITELLM_API_KEY",
+        })
+
+    def test_agent_review_route_rejects_direct_provider_policy(self):
+        policy = load_model_policy()
+        policy["access"]["direct_provider_access"] = True
+        with self.assertRaisesRegex(ReviewError, "canonical schema"):
+            resolve_agent_review_route(policy)
+
+    def test_agent_review_route_rejects_unadmitted_model(self):
+        policy = load_model_policy()
+        policy["generative"]["allowed_models"] = ["codex/gpt-5.6-sol"]
+        with self.assertRaisesRegex(ReviewError, "canonical schema"):
+            resolve_agent_review_route(policy)
+
+    def test_agent_review_route_rejects_malformed_policy_shapes(self):
+        cases = [
+            (("access", "applies_to_harnesses"), "broker"),
+            (("generative", "allowed_models"), "codex/gpt-5.6-terra"),
+            (("generative", "standard_models"), "codex/gpt-5.6-terra"),
+            (("generative", "allowed_endpoint_paths"), 1),
+            (("selection",), None),
+        ]
+        for path, value in cases:
+            with self.subTest(path=path):
+                policy = load_model_policy()
+                if value is None:
+                    del policy[path[0]]
+                else:
+                    target = policy
+                    for key in path[:-1]:
+                        target = target[key]
+                    target[path[-1]] = value
+                with self.assertRaisesRegex(ReviewError, "canonical schema"):
+                    resolve_agent_review_route(policy)
 
     def test_http_rejects_body_shorter_than_content_length(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -262,7 +318,8 @@ class TestAgentReview(unittest.TestCase):
         result = review(self.REQUEST)
         self.assertEqual(result["head_sha"], "a" * 40)
         self.assertEqual(result["base_sha"], "b" * 40)
-        self.assertEqual(result["model"], "openai-codex/gpt-5.6-terra")
+        self.assertEqual(result["model"], "codex/gpt-5.6-terra")
+        self.assertEqual(result["provider"], "litellm")
         self.assertEqual(result["reasoning"], "high")
         self.assertEqual(result["reviewed_diff_sha256"], "c" * 64)
         self.assertRegex(result["prompt_sha256"], r"^[a-f0-9]{64}$")
