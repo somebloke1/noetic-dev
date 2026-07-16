@@ -47,6 +47,12 @@ REQUIRED = [
     "scripts/development_verified_change.py",
     "tests/programs/__init__.py",
     "tests/programs/test_development_verified_change.py",
+    # Provider-free terminal observability read model (issue #39)
+    "docs/development-verified-change-terminal-observability-v1.md",
+    "spec/programs/development.verified-change/v1/terminal-observability-contract.json",
+    "spec/programs/development.verified-change/v1/golden/expected-terminal-observability.json",
+    "scripts/development_verified_change_observe.py",
+    "tests/programs/test_development_verified_change_observe.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
