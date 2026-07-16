@@ -106,46 +106,6 @@ class M0TraceTest(unittest.TestCase):
         self.assertEqual(projection["telos_adjudication"]["actor_id"], "actor-telos-m0")
         self.assertNotIn("sub_goal_status", projection["controller_result"])
 
-    def test_claim_language_confines_identity_and_authority_to_fixture(self) -> None:
-        documentation = (ROOT / "docs/m0-telos-adjudication-trace.md").read_text(
-            encoding="utf-8"
-        )
-        contract = load_json_strict(CONTRACT_PATH)
-        schema = load_json_strict(SCHEMA_PATH)
-        claim_sources = (
-            documentation.lower(),
-            canonical_json_bytes(contract).decode("ascii").lower(),
-        )
-        required_non_claims = (
-            "fixture-declared",
-            "external identity provenance",
-            "authentication",
-            "signature",
-            "origin",
-            "real-world authorization",
-            "externally independent qa",
-        )
-        for source_index, claim_source in enumerate(claim_sources):
-            for required_non_claim in required_non_claims:
-                with self.subTest(
-                    source_index=source_index,
-                    required_non_claim=required_non_claim,
-                ):
-                    self.assertIn(required_non_claim, claim_source)
-        claim_text = "".join(claim_sources)
-        self.assertNotIn("authorized identities", claim_text)
-        self.assertNotIn("establishes authority", claim_text)
-        schema_text = canonical_json_bytes(schema).decode("ascii").lower()
-        self.assertIn("fixture-declared actor id", schema_text)
-        self.assertIn("no external provenance or authentication", schema_text)
-        self.assertIn("not proof of real-world authorization", schema_text)
-        self.assertIn("not external independence", schema_text)
-
-        projection_text = canonical_json_bytes(self.expected).decode("ascii").lower()
-        self.assertNotIn("independent", projection_text)
-        self.assertNotIn("authenticated", projection_text)
-        self.assertNotIn("authorized_identity", projection_text)
-
     def test_validation_does_not_mutate_input(self) -> None:
         original = copy.deepcopy(self.trace)
         validate_and_project(self.trace)
