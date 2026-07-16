@@ -8,9 +8,12 @@ import re
 import sys
 from pathlib import Path
 
-from governance.json_schema import load_json_strict, validate_schema
-
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.governance.json_schema import load_json_strict, validate_schema
+
 REQUIRED = [
     "README.md",
     "AGENTS.md",
