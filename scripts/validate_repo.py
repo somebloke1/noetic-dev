@@ -66,9 +66,12 @@ REQUIRED = [
     "tests/programs/test_development_verified_change_status.py",
     # Mandatory genus-router / LiteLLM model policy (issue #29)
     "config/model-policy.json",
+    "config/opencode-session-policy.json",
     "docs/model-routing-policy.md",
     "governance/schemas/model-policy.schema.json",
+    "governance/schemas/opencode-session-policy.schema.json",
     "tests/governance/test_model_policy.py",
+    "tests/governance/test_opencode_session_policy.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
@@ -176,6 +179,17 @@ def main() -> int:
     else:
         for error in validate_schema(policy, schema):
             fail(f"config/model-policy.json: {error}", failures)
+
+    opencode_policy_path = ROOT / "config/opencode-session-policy.json"
+    opencode_schema_path = ROOT / "governance/schemas/opencode-session-policy.schema.json"
+    try:
+        opencode_policy = load_json_strict(opencode_policy_path)
+        opencode_schema = load_json_strict(opencode_schema_path)
+    except (OSError, ValueError) as exc:
+        fail(f"opencode session policy validation failed to load: {exc}", failures)
+    else:
+        for error in validate_schema(opencode_policy, opencode_schema):
+            fail(f"config/opencode-session-policy.json: {error}", failures)
 
     if failures:
         print("Repository validation failed:", file=sys.stderr)
