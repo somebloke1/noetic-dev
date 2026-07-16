@@ -17,8 +17,15 @@ class TerminalStatusCompatibilityError(ValueError):
 
 INPUT_VERSION = "development.verified-change.terminal-observability/v1"
 OUTPUT_VERSION = "development.verified-change.terminal-status/v1"
+PROGRAM_ID = "development.verified-change"
+PROGRAM_VERSION = "v1"
 M0_PROFILE = "m0-direct-pass"
 M1_PROFILE = "m1-bounded-remediation"
+PROJECTION_STATE = "telos_adjudicated"
+M0_SOURCE_VERSION = "noetic.m0.telos-adjudication-trace/v0"
+M0_SOURCE_PROJECTION_VERSION = "noetic.m0.telos-adjudication-projection/v0"
+M1_SOURCE_VERSION = "noetic.m1.telos-recoverability-trace/v0"
+M1_SOURCE_PROJECTION_VERSION = "noetic.m1.telos-recoverability-projection/v0"
 
 ROOT_FIELDS = (
     "schema_version",
@@ -42,6 +49,25 @@ SUBJECT_FIELDS = (
     "source",
 )
 SOURCE_FIELDS = ("trace_version", "trace_digest", "projection_version", "projection_state", "binding")
+M0_BINDING_FIELDS = (
+    "correlation_id",
+    "delegation_digest",
+    "delegation_id",
+    "generation",
+    "goal_chain_id",
+    "program_id",
+    "run_id",
+    "sub_goal_id",
+)
+M1_BINDING_FIELDS = (
+    "correlation_id",
+    "delegation_digest",
+    "delegation_id",
+    "goal_chain_id",
+    "program_id",
+    "run_id",
+    "sub_goal_id",
+)
 EVIDENCE_FIELDS = ("attention", "insight", "procedure", "final_implementation", "lineage")
 EVIDENCE_VALUE_FIELDS = ("evidence_status", "value")
 FINAL_VALUE_FIELDS = (
@@ -185,28 +211,39 @@ def _copy_string_map(value: Any, path: str) -> dict[str, Any]:
     return copy.deepcopy(value)
 
 
-def _validate_binding(value: Any, path: str) -> dict[str, Any]:
-    if type(value) is not dict:
-        _fail(path, "expected object")
-    for field, item in value.items():
-        _string(field, f"{path}.<key>")
+def _validate_binding(value: Any, path: str, profile: str) -> dict[str, Any]:
+    fields = M0_BINDING_FIELDS if profile == M0_PROFILE else M1_BINDING_FIELDS
+    obj = _shape(value, fields, path)
+    for field in fields:
+        item = obj[field]
         if field == "generation":
             _integer(item, f"{path}.{field}")
         else:
             _string(item, f"{path}.{field}")
-    return value
+    return obj
 
 
 def _validate_subject(subject: Any) -> dict[str, Any]:
     obj = _shape(subject, SUBJECT_FIELDS, "$.subject")
     for field in SUBJECT_FIELDS[:-1]:
         _string(obj[field], f"$.subject.{field}")
+    _exact(obj["program_id"], PROGRAM_ID, "$.subject.program_id")
+    _exact(obj["program_version"], PROGRAM_VERSION, "$.subject.program_version")
+    _exact(obj["projection_state"], PROJECTION_STATE, "$.subject.projection_state")
     if obj["execution_profile"] not in (M0_PROFILE, M1_PROFILE):
         _fail("$.subject.execution_profile", "unsupported profile")
+    profile = obj["execution_profile"]
     source = _shape(obj["source"], SOURCE_FIELDS, "$.subject.source")
     for field in SOURCE_FIELDS[:-1]:
         _string(source[field], f"$.subject.source.{field}")
-    _validate_binding(source["binding"], "$.subject.source.binding")
+    if profile == M0_PROFILE:
+        _exact(source["trace_version"], M0_SOURCE_VERSION, "$.subject.source.trace_version")
+        _exact(source["projection_version"], M0_SOURCE_PROJECTION_VERSION, "$.subject.source.projection_version")
+    else:
+        _exact(source["trace_version"], M1_SOURCE_VERSION, "$.subject.source.trace_version")
+        _exact(source["projection_version"], M1_SOURCE_PROJECTION_VERSION, "$.subject.source.projection_version")
+    _exact(source["projection_state"], PROJECTION_STATE, "$.subject.source.projection_state")
+    _validate_binding(source["binding"], "$.subject.source.binding", profile)
     return obj
 
 
