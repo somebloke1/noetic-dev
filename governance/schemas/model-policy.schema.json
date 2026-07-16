@@ -44,11 +44,13 @@
         "agent_review_broker": {
           "additionalProperties": false,
           "properties": {
-            "maximum_substantive_invocations": {"const": 1},
+            "invocation_limit_scope": {"const": "per_route_decision"},
+            "maximum_substantive_invocations_per_route": {"const": 1},
             "readiness_probe_is_phase": {"const": true},
+            "reroute_after_reported_failure": {"const": true},
             "report_outcome_scope": {"const": "aggregate_attempt"}
           },
-          "required": ["maximum_substantive_invocations", "readiness_probe_is_phase", "report_outcome_scope"],
+          "required": ["invocation_limit_scope", "maximum_substantive_invocations_per_route", "readiness_probe_is_phase", "reroute_after_reported_failure", "report_outcome_scope"],
           "type": "object"
         },
         "authoritative_qa_pi": {

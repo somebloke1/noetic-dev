@@ -22,6 +22,8 @@ classify -> route_task -> invoke through LiteLLM -> report_outcome
 
 On failure, the caller reports the failed outcome and requests another route with the same task dimensions, `prior_failure=true`, and the failed model excluded. Outcome-reporting failure stops the lifecycle; it is not permission to bypass genus-router.
 
+The broker review contract limits each route decision to one substantive invocation. After a reported failure, reroute creates a new route decision with its own one-invocation limit; the limit is not a global prohibition on governed reroute.
+
 ## Current Slice
 
 This repository slice adds the canonical machine policy at `config/model-policy.json`, the strict schema at `governance/schemas/model-policy.schema.json`, and contract tests. It deliberately does not claim live OpenCode, Pi, broker, embedding, or ASR adapters are fully migrated.

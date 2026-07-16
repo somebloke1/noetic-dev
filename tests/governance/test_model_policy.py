@@ -95,10 +95,13 @@ class TestModelPolicy(unittest.TestCase):
 
     def test_tasks_and_execution_contracts_are_bounded(self) -> None:
         self.assertEqual(self.policy["execution_contracts"]["agent_review_broker"], {
-            "maximum_substantive_invocations": 1,
+            "invocation_limit_scope": "per_route_decision",
+            "maximum_substantive_invocations_per_route": 1,
             "readiness_probe_is_phase": True,
+            "reroute_after_reported_failure": True,
             "report_outcome_scope": "aggregate_attempt",
         })
+        self.assertTrue(self.policy["failure"]["reroute_with_prior_failure"])
         self.assertEqual(self.policy["execution_contracts"]["authoritative_qa_pi"], {
             "decision_scope": "per_operation",
             "maximum_invocations_per_decision": 1,

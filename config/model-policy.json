@@ -22,8 +22,10 @@
   },
   "execution_contracts": {
     "agent_review_broker": {
-      "maximum_substantive_invocations": 1,
+      "invocation_limit_scope": "per_route_decision",
+      "maximum_substantive_invocations_per_route": 1,
       "readiness_probe_is_phase": true,
+      "reroute_after_reported_failure": true,
       "report_outcome_scope": "aggregate_attempt"
     },
     "authoritative_qa_pi": {
