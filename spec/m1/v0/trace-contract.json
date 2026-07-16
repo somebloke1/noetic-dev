@@ -1,0 +1,141 @@
+{
+  "schema_version": "noetic.m1.telos-recoverability-contract/v0",
+  "trace_version": "noetic.m1.telos-recoverability-trace/v0",
+  "record_version": "noetic.m1.trace-record/v0",
+  "projection_version": "noetic.m1.telos-recoverability-projection/v0",
+  "record_cardinality": 11,
+  "canonical_json": {
+    "encoding": "ASCII",
+    "key_order": "lexicographic",
+    "separators": [",", ":"],
+    "line_termination": "LF",
+    "floating_point": "forbidden",
+    "duplicate_keys": "forbidden",
+    "null": "forbidden"
+  },
+  "stable_binding_fields": [
+    "delegation_id",
+    "delegation_digest",
+    "goal_chain_id",
+    "sub_goal_id",
+    "program_id",
+    "run_id",
+    "correlation_id"
+  ],
+  "semantic_generation_sequence": [1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2],
+  "event_sequence": [
+    "telos.delegation.authorized",
+    "controller.run.created",
+    "controller.run.started",
+    "controller.implementation_generation.accepted",
+    "qa.verification.adjudicated",
+    "controller.remediation_generation.started",
+    "controller.implementation_generation.accepted",
+    "qa.verification.adjudicated",
+    "controller.run.succeeded",
+    "controller.result.reported",
+    "telos.sub_goal.adjudicated"
+  ],
+  "actor_role_sequence": [
+    "telos",
+    "controller",
+    "controller",
+    "controller",
+    "qa",
+    "controller",
+    "controller",
+    "qa",
+    "controller",
+    "controller",
+    "telos"
+  ],
+  "actor_action_ceiling": {
+    "telos": [
+      "telos.delegation.authorized",
+      "telos.sub_goal.adjudicated"
+    ],
+    "controller": [
+      "controller.run.created",
+      "controller.run.started",
+      "controller.implementation_generation.accepted",
+      "controller.remediation_generation.started",
+      "controller.run.succeeded",
+      "controller.result.reported"
+    ],
+    "implementer": [],
+    "qa": [
+      "qa.verification.adjudicated"
+    ]
+  },
+  "delegated_actions": {
+    "telos": [
+      "telos.sub_goal.adjudicated"
+    ],
+    "controller": [
+      "controller.run.created",
+      "controller.run.started",
+      "controller.implementation_generation.accepted",
+      "controller.remediation_generation.started",
+      "controller.run.succeeded",
+      "controller.result.reported"
+    ],
+    "implementer": [],
+    "qa": [
+      "qa.verification.adjudicated"
+    ]
+  },
+  "states": [
+    "initial",
+    "delegated",
+    "run_created",
+    "run_started",
+    "generation_1_accepted",
+    "generation_1_qa_failed",
+    "generation_2_remediation_started",
+    "generation_2_accepted",
+    "generation_2_qa_passed",
+    "run_succeeded",
+    "result_reported",
+    "telos_adjudicated"
+  ],
+  "transitions": [
+    ["initial", "telos.delegation.authorized", "delegated"],
+    ["delegated", "controller.run.created", "run_created"],
+    ["run_created", "controller.run.started", "run_started"],
+    ["run_started", "controller.implementation_generation.accepted", "generation_1_accepted"],
+    ["generation_1_accepted", "qa.verification.adjudicated", "generation_1_qa_failed"],
+    ["generation_1_qa_failed", "controller.remediation_generation.started", "generation_2_remediation_started"],
+    ["generation_2_remediation_started", "controller.implementation_generation.accepted", "generation_2_accepted"],
+    ["generation_2_accepted", "qa.verification.adjudicated", "generation_2_qa_passed"],
+    ["generation_2_qa_passed", "controller.run.succeeded", "run_succeeded"],
+    ["run_succeeded", "controller.result.reported", "result_reported"],
+    ["result_reported", "telos.sub_goal.adjudicated", "telos_adjudicated"]
+  ],
+  "remediation_policy": {
+    "max_remediation_generations": 1,
+    "counter_source": "derived_from_fixed_remediation_event_cardinality",
+    "caller_supplied_counters": "forbidden"
+  },
+  "qa_rule": "Generation 1 has exactly one fixture-attributed FAIL with exactly one opaque finding ID and digest. Generation 2 has exactly one fixture-attributed PASS and no finding field. Both QA records bind their own generation's accepted event, candidate, digest, and verification obligation.",
+  "remediation_rule": "The sole remediation event follows the generation-1 FAIL, consumes ordinal one, targets generation 2, and cites the failed acceptance, QA event, obligation, finding ID, and finding digest. Generation-2 acceptance cites that remediation event and the superseded generation-1 acceptance.",
+  "freshness_rule": "Candidate IDs, candidate digests, accepted-event IDs, verification-obligation IDs, and QA-event IDs are distinct across semantic generations.",
+  "controller_success_rule": "Controller success and result are generation 2 only and bind only generation-2 acceptance, candidate, obligation, QA PASS, and success evidence. The controller result contains no sub-goal status or disposition.",
+  "controller_evidence_sequence": [
+    "controller.implementation_generation.accepted@generation-2",
+    "qa.verification.adjudicated@generation-2",
+    "controller.run.succeeded@generation-2"
+  ],
+  "telos_evidence_sequence": [
+    "controller.implementation_generation.accepted@generation-1",
+    "qa.verification.adjudicated@generation-1",
+    "controller.remediation_generation.started@generation-2",
+    "controller.implementation_generation.accepted@generation-2",
+    "qa.verification.adjudicated@generation-2",
+    "controller.run.succeeded@generation-2",
+    "controller.result.reported@generation-2"
+  ],
+  "terminal_rule": "Only the actor ID declared under the fixture's Telos role may record complete after the full ordered lineage, and no later record is accepted.",
+  "semantic_boundary": "Candidates, opaque finding, QA conclusions, controller outcome, and Telos disposition are fixture-attributed declarations. Validation establishes deterministic structure, binding, cardinality, evidence, actor/action mapping, and order only; it does not establish semantic correctness.",
+  "provenance_boundary": "Fixture-internal actor IDs and actions do not establish external identity provenance, authentication, signatures, origin, real-world authorization, or an externally independent QA principal.",
+  "recovery_boundary": "This fixture proves one structurally attributed QA-failure remediation path only. It is not crash recovery, persistence recovery, scheduling, publication, or a generic controller loop."
+}

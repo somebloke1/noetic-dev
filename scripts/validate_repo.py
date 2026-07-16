@@ -29,6 +29,15 @@ REQUIRED = [
     "scripts/m0_trace.py",
     "tests/m0/__init__.py",
     "tests/m0/test_telos_adjudication_trace.py",
+    # Provider-free fixed M1 bounded recoverability reference trace (issue #35)
+    "docs/m1-telos-recoverability-trace.md",
+    "spec/m1/v0/telos-recoverability-trace.schema.json",
+    "spec/m1/v0/trace-contract.json",
+    "spec/m1/v0/golden/valid-telos-recoverability-trace.json",
+    "spec/m1/v0/golden/expected-projection.json",
+    "scripts/m1_trace.py",
+    "tests/m1/__init__.py",
+    "tests/m1/test_telos_recoverability_trace.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",
