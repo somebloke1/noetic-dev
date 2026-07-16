@@ -79,6 +79,15 @@ class TestRouteEvidence(unittest.TestCase):
         self.assertEqual(validate_route_evidence(route_evidence()), [])
         self.assertEqual(validate_route_evidence(route_evidence([TERRA, SOL])), [])
 
+    def test_exhausted_route_can_end_in_terminal_failure(self) -> None:
+        exhausted = route_evidence([TERRA, SOL, LUNA])
+        exhausted["attempts"][-1]["outcome"] = "failure"
+        self.assertEqual(validate_route_evidence(exhausted), [])
+
+        partial = route_evidence([TERRA, SOL])
+        partial["attempts"][-1]["outcome"] = "failure"
+        self.assertTrue(validate_route_evidence(partial))
+
     def test_zero_invocation_rejection_can_precede_success(self) -> None:
         evidence = route_evidence([TERRA, SOL])
         evidence["attempts"][0] = {

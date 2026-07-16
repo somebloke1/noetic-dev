@@ -60,14 +60,15 @@ def validate_route_evidence(evidence: Any, contract_name: str = "protected_revie
         _validate_decision(decision, remaining, access, generative, decision_ids, label, errors)
         if attempt["invocation_count"] != 1:
             errors.append(f"{label} decision attempt must record exactly one invocation")
-        expected_outcome = "success" if index == len(attempts) - 1 else "failure"
-        if attempt["outcome"] != expected_outcome:
-            errors.append(f"{label} outcome must be {expected_outcome}")
+        if index < len(attempts) - 1 and attempt["outcome"] != "failure":
+            errors.append(f"{label} non-terminal outcome must be failure")
         if decision.get("model") in remaining:
             failed_models.append(decision["model"])
     final_attempt = attempts[-1]
-    if "decision" not in final_attempt or final_attempt.get("outcome") != "success":
-        errors.append("protected_review must end in one validated successful decision")
+    if "decision" not in final_attempt:
+        errors.append("protected_review must end in one validated decision")
+    elif final_attempt["outcome"] == "failure" and len(attempts) != len(PROTECTED_REVIEW_CANDIDATES):
+        errors.append("protected_review terminal failure must exhaust all routed candidates")
     return errors
 
 
