@@ -152,10 +152,14 @@ class GenusRouterMCP:
             )
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise GenusRouterError("genus-router component manifest is unavailable") from error
-        expected = {"component_sha", "command_sha256", "config_sha256"}
+        expected = {"component_sha", "command_sha256", "config_sha256", "genus_table_sha256"}
         if type(manifest) is not dict or set(manifest) != expected or manifest.get("component_sha") != self.component_sha:
             raise GenusRouterError("genus-router component manifest is invalid")
-        for path, field in ((self.command, "command_sha256"), (self.config, "config_sha256")):
+        for path, field in (
+            (self.command, "command_sha256"),
+            (self.config, "config_sha256"),
+            (self.config.parent / "genus_models.csv", "genus_table_sha256"),
+        ):
             digest = hashlib.sha256(self._immutable_bytes(path)).hexdigest()
             if type(manifest.get(field)) is not str or manifest[field] != digest:
                 raise GenusRouterError(f"genus-router {field} does not match the manifest")

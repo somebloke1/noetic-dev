@@ -108,10 +108,14 @@ class TestGenusRouterMCP(unittest.TestCase):
             command.chmod(0o500)
             config.write_text("routing: {}\n", encoding="utf-8")
             config.chmod(0o400)
+            table = config.parent / "genus_models.csv"
+            table.write_text("GenusCode,Genus,TopModel1\n", encoding="utf-8")
+            table.chmod(0o400)
             manifest = {
                 "component_sha": "a" * 40,
                 "command_sha256": hashlib.sha256(command.read_bytes()).hexdigest(),
                 "config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+                "genus_table_sha256": hashlib.sha256(table.read_bytes()).hexdigest(),
             }
             manifest_path = root / "component-manifest.json"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")

@@ -42,6 +42,19 @@ class TestAgentReviewSystemd(unittest.TestCase):
         requirements = (ROOT / "deploy" / "requirements-agent-review.txt").read_text().splitlines()
         self.assertEqual(requirements, ["mcp==1.28.1"])
 
+    def test_installer_provisions_the_referenced_runtime_and_service(self):
+        installer = (ROOT / "deploy" / "install-agent-review.sh").read_text()
+        self.assertIn('python3 -m venv "$root/runtime/mcp"', installer)
+        self.assertIn('requirements-agent-review.txt', installer)
+        self.assertIn('python3 -m venv "$router_release"', installer)
+        self.assertIn('git -C "$genus_source" archive "$genus_sha"', installer)
+        self.assertIn('pip install --disable-pip-version-check "$genus_archive"', installer)
+        self.assertNotIn('pip install --disable-pip-version-check "$genus_source"', installer)
+        self.assertIn('"$genus_archive/config/genus_models.csv"', installer)
+        self.assertIn('genus_table_sha256', installer)
+        self.assertIn('component-manifest.json', installer)
+        self.assertIn('systemctl enable --now noetic-dev-agent-review-broker.service', installer)
+
     def test_runner_cannot_reach_broker_credentials(self):
         unit = (UNITS / "noetic-dev-actions-runner.service").read_text()
         self.assertIn("User=noetic-github-runner", unit)
