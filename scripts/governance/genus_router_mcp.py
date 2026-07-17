@@ -121,6 +121,7 @@ class GenusRouterMCP:
         component_sha: str,
         *,
         litellm_token: str | None = None,
+        health_interval: float = 5.0,
         timeout: int = 30,
     ) -> None:
         if not command.is_absolute() or not config.is_absolute():
@@ -131,6 +132,7 @@ class GenusRouterMCP:
         self.config = config
         self.component_sha = component_sha
         self.litellm_token = litellm_token
+        self.health_interval = health_interval
         self.timeout = timeout
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
@@ -241,6 +243,10 @@ class GenusRouterMCP:
         except BaseException as error:
             raise GenusRouterError(f"genus-router {name} transport failed") from error
 
+    @property
+    def is_alive(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
     async def _call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         result = await self._session.call_tool(name, arguments)
         if getattr(result, "isError", False):
@@ -283,7 +289,12 @@ class GenusRouterMCP:
                 self._session = session
                 self._stop = asyncio.Event()
                 self._ready.set()
-                await self._stop.wait()
+                while True:
+                    try:
+                        await asyncio.wait_for(self._stop.wait(), timeout=self.health_interval)
+                        break
+                    except TimeoutError:
+                        validate_tools(await session.list_tools())
                 self._session = None
 
     def __enter__(self) -> GenusRouterMCP:

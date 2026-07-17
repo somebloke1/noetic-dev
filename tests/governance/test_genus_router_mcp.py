@@ -87,6 +87,16 @@ class TestGenusRouterMCP(unittest.TestCase):
         client = GenusRouterMCP(Path("/bin/true"), Path("/config.yaml"), "a" * 40, litellm_token="scoped-test-token")
         self.assertEqual(client.litellm_token, "scoped-test-token")
 
+    def test_liveness_reflects_managed_mcp_thread(self):
+        client = GenusRouterMCP(Path("/bin/true"), Path("/config.yaml"), "a" * 40)
+        self.assertFalse(client.is_alive)
+        thread = threading.Thread(target=lambda: threading.Event().wait(0.1))
+        client._thread = thread
+        thread.start()
+        self.assertTrue(client.is_alive)
+        thread.join()
+        self.assertFalse(client.is_alive)
+
     def test_component_manifest_binds_command_and_config_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -799,7 +799,10 @@ def serve(socket_path: Path, router: GenusRouterMCP, socket_group: str | None = 
         else:
             socket_path.chmod(0o600)
         server.server_activate()
-        server.serve_forever()
+        server.timeout = 1
+        while router.is_alive:
+            server.handle_request()
+        raise ReviewError("external genus-router MCP session terminated")
 
 
 def main() -> int:
