@@ -7,7 +7,10 @@ change broker runtime behavior.
 
 from __future__ import annotations
 
+import argparse
+import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -200,3 +203,30 @@ def _validate_model_ref(
         errors.append(f"{label} model reference bypasses the canonical LiteLLM contract")
     if expected_model not in generative.get("standard_models", []):
         errors.append(f"{label} model reference is not a standard protected-review model")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Validate retained protected route evidence")
+    parser.add_argument("evidence", type=Path)
+    parser.add_argument("--head-sha", required=True)
+    args = parser.parse_args()
+    if not re.fullmatch(r"[a-f0-9]{40}", args.head_sha):
+        parser.error("--head-sha must be a full lowercase SHA-1")
+    try:
+        payload = load_json_strict(args.evidence)
+    except (OSError, ValueError) as error:
+        print(f"route evidence is unreadable: {error}", file=sys.stderr)
+        return 1
+    if type(payload) is not dict or payload.get("head_sha") != args.head_sha or type(payload.get("route_evidence")) is not dict:
+        print("route evidence wrapper does not match the candidate SHA", file=sys.stderr)
+        return 1
+    errors = validate_route_evidence(payload["route_evidence"])
+    if errors:
+        print(json.dumps(errors, ensure_ascii=True), file=sys.stderr)
+        return 1
+    print("Protected route evidence is valid")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

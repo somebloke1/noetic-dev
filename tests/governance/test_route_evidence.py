@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import copy
+import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -132,6 +135,16 @@ class TestRouteEvidence(unittest.TestCase):
     def test_rejects_static_or_unknown_contract_evidence(self) -> None:
         self.assertTrue(validate_route_evidence({"model": TERRA}))
         self.assertTrue(validate_route_evidence(route_evidence(), "unknown"))
+
+    def test_retained_evidence_cli_binds_candidate_sha(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "agent-review-result.json"
+            head_sha = "a" * 40
+            evidence.write_text(json.dumps({"head_sha": head_sha, "route_evidence": route_evidence()}), encoding="utf-8")
+            command = [sys.executable, str(Path(GOV_SCRIPTS) / "route_evidence.py"), "--head-sha", head_sha, str(evidence)]
+            self.assertEqual(subprocess.run(command, check=False, capture_output=True).returncode, 0)
+            command[3] = "b" * 40
+            self.assertNotEqual(subprocess.run(command, check=False, capture_output=True).returncode, 0)
 
     def test_route_mutations_fail_closed(self) -> None:
         mutations = []

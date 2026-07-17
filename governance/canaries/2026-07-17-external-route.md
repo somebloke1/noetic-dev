@@ -2,4 +2,6 @@
 
 This procedure exercises the live external routing path introduced by issue #51. It does not itself claim that an execution has occurred.
 
-Accept one execution only when external records bind an exact candidate SHA and request to protected CI, genus-router `route_task`, one canonical LiteLLM model invocation, acknowledged genus-router `report_outcome`, and validated route evidence. The route, invocation evidence, and outcome must carry the same immutable `decision_id`; records from separate executions cannot be combined. Broker-local routing claims and controlled test fixtures do not satisfy the procedure.
+The authoritative record is the successful protected Agent Review run and its 90-day `agent-review-<pr>-<head-sha>/agent-review-result.json` artifact. Validate it with `python3 scripts/governance/route_evidence.py --head-sha <head-sha> <artifact-path>`. The validator requires the wrapper SHA, canonical router component, classification, decisions, one invocation per decision, acknowledged outcomes, and one shared immutable `decision_id` per route/invocation/outcome attempt. The router's root-owned `state/decisions.jsonl` and `state/outcomes.jsonl` are corroborating host records retained with the deployed component.
+
+Accept one execution only when those records bind the exact candidate request to protected CI, genus-router `route_task`, canonical LiteLLM invocation, and genus-router `report_outcome`. Records from separate executions cannot be combined. Broker-local routing claims and controlled test fixtures do not satisfy the procedure.
