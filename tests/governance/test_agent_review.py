@@ -179,7 +179,7 @@ class TestAgentReview(unittest.TestCase):
             "provider": "litellm",
             "model": "codex/gpt-5.6-terra",
             "reasoning": "high",
-            "base_url": "http://127.0.0.1:3333",
+            "base_url": "http://172.22.10.160:3333",
             "token_env": "LITELLM_API_KEY",
         }
         result = run_terra(prompt, route)
@@ -189,8 +189,8 @@ class TestAgentReview(unittest.TestCase):
         self.assertIn("codex/gpt-5.6-terra", command)
         self.assertEqual(bounded.call_args.kwargs["input_text"], prompt)
         env = bounded.call_args.kwargs["env"]
-        self.assertEqual(env["OPENAI_BASE_URL"], "http://127.0.0.1:3333")
-        self.assertEqual(env["LITELLM_BASE_URL"], "http://127.0.0.1:3333")
+        self.assertEqual(env["OPENAI_BASE_URL"], "http://172.22.10.160:3333")
+        self.assertEqual(env["LITELLM_BASE_URL"], "http://172.22.10.160:3333")
         self.assertEqual(result["verdict"], "pass")
 
     def test_agent_review_route_is_resolved_from_model_policy(self):
@@ -200,7 +200,7 @@ class TestAgentReview(unittest.TestCase):
             "provider": "litellm",
             "model": "codex/gpt-5.6-terra",
             "reasoning": "high",
-            "base_url": "http://127.0.0.1:3333",
+            "base_url": "http://172.22.10.160:3333",
             "token_env": "LITELLM_API_KEY",
         })
 

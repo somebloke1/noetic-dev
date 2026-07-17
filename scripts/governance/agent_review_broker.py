@@ -109,7 +109,7 @@ def resolve_agent_review_route(policy: dict[str, Any]) -> dict[str, str]:
         raise ReviewError("model policy does not admit the broker harness")
     if access.get("direct_provider_access") is not False or access.get("litellm_required") is not True:
         raise ReviewError("model policy does not require LiteLLM-only broker access")
-    if access.get("endpoint_id") != "local-litellm" or access.get("base_url") != "http://127.0.0.1:3333":
+    if access.get("endpoint_id") != "local-litellm" or access.get("base_url") != "http://172.22.10.160:3333":
         raise ReviewError("model policy broker endpoint is not the local LiteLLM endpoint")
     if access.get("token_env") != "LITELLM_API_KEY":
         raise ReviewError("model policy broker credential is not LITELLM_API_KEY")

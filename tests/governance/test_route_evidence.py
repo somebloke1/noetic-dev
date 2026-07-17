@@ -22,7 +22,7 @@ def model_ref(model: str) -> dict[str, str]:
         "endpoint_id": "local-litellm",
         "upstream_model_id": model,
         "interface_type": "openai-compatible",
-        "base_url": "http://127.0.0.1:3333",
+        "base_url": "http://172.22.10.160:3333",
         "endpoint_path": "/v1/responses",
         "token_env": "LITELLM_API_KEY",
         "reasoning_effort": "high",
