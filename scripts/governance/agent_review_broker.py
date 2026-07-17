@@ -539,6 +539,7 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
         or route["token_env"] != "LITELLM_API_KEY"
     ):
         raise ReviewError("broker invocation route does not match the canonical route")
+    token = load_litellm_token()
     env = {
         "HOME": os.environ.get("HOME", str(Path.home())),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -546,7 +547,6 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
         "PI_TELEMETRY": "0",
         "PI_SKIP_VERSION_CHECK": "1",
     }
-    token = load_litellm_token()
     if token:
         env[route["token_env"]] = token
     env["OPENAI_BASE_URL"] = route["base_url"]

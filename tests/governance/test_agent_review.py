@@ -305,6 +305,7 @@ class TestAgentReview(unittest.TestCase):
                     "base_url": "http://172.22.10.160:3333", "token_env": "LITELLM_API_KEY",
                 })
         self.assertEqual(bounded.call_args.kwargs["env"]["LITELLM_API_KEY"], "systemd-secret")
+        self.assertIn("PI_CODING_AGENT_DIR", bounded.call_args.kwargs["env"])
 
     @mock.patch("agent_review_broker.run_bounded")
     def test_terra_rejects_control_bearing_credential_before_invocation(self, bounded: mock.Mock):
