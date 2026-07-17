@@ -46,3 +46,16 @@ jobs:
           --head-sha "${{ github.event.pull_request.head.sha }}"
           --base-sha "${{ github.event.pull_request.base.sha }}"
           --output "$RUNNER_TEMP/agent-review-result.json"
+      - name: Retain exact-SHA route evidence
+        if: always()
+        run: >-
+          python3 policy/scripts/governance/capture_protected_ci.py
+          --evidence "$RUNNER_TEMP/agent-review-result.json"
+          --policy "policy/governance/protected-dev-ruleset.json"
+      - name: Upload exact-SHA route evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: agent-review-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/agent-review-result.json
+          retention-days: 90
