@@ -33,6 +33,7 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("ProtectHome=true", unit)
         self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/python3", unit)
         self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/genus-router", unit)
+        self.assertIn("/opt/noetic-dev-agent-review/runtime/bin", unit)
         self.assertIn("--genus-router-sha f2b839b0cfc737c4c1f0a46d3d519d414529545c", unit)
         self.assertIn("LoadCredential=litellm_api_key", unit)
         self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/state", unit)
