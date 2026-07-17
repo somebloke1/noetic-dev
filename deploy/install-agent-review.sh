@@ -35,11 +35,11 @@ fi
 if [[ ! -x $root/runtime/mcp/bin/python3 ]]; then
   python3 -m venv "$root/runtime/mcp"
 fi
-"$root/runtime/mcp/bin/python3" -m pip install --disable-pip-version-check -r "$release/deploy/requirements-agent-review.txt"
+env -u LITELLM_API_KEY "$root/runtime/mcp/bin/python3" -m pip install --disable-pip-version-check -r "$release/deploy/requirements-agent-review.txt"
 
 if [[ ! -x $router_release/bin/genus-router ]]; then
   python3 -m venv "$router_release"
-  "$router_release/bin/python3" -m pip install --disable-pip-version-check "$genus_archive"
+  env -u LITELLM_API_KEY "$router_release/bin/python3" -m pip install --disable-pip-version-check "$genus_archive"
 fi
 install -d -o root -g root -m 0755 "$router_release/config"
 install -d -o noetic-review-broker -g noetic-agent-review -m 0750 "$router_release/state"
