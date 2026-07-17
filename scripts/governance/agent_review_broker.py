@@ -21,6 +21,7 @@ import unicodedata
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from json_schema import validate_schema
 
@@ -31,12 +32,14 @@ MODEL_POLICY_PATH = REPO_ROOT / "config" / "model-policy.json"
 MODEL_POLICY_SCHEMA_PATH = REPO_ROOT / "governance" / "schemas" / "model-policy.schema.json"
 MODEL = "codex/gpt-5.6-terra"
 REASONING = "high"
+LITELLM_BASE_URL = "http://172.22.10.160:3333"
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 MAX_REQUEST_BYTES = 16_384
 MAX_PATCH_BYTES = 200_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
 MAX_GITHUB_OUTPUT_BYTES = 1_048_576
 BWRAP = Path("/usr/bin/bwrap")
+IP = Path("/usr/sbin/ip")
 
 
 class ReviewError(RuntimeError):
@@ -109,7 +112,7 @@ def resolve_agent_review_route(policy: dict[str, Any]) -> dict[str, str]:
         raise ReviewError("model policy does not admit the broker harness")
     if access.get("direct_provider_access") is not False or access.get("litellm_required") is not True:
         raise ReviewError("model policy does not require LiteLLM-only broker access")
-    if access.get("endpoint_id") != "local-litellm" or access.get("base_url") != "http://127.0.0.1:3333":
+    if access.get("endpoint_id") != "local-litellm" or access.get("base_url") != LITELLM_BASE_URL:
         raise ReviewError("model policy broker endpoint is not the local LiteLLM endpoint")
     if access.get("token_env") != "LITELLM_API_KEY":
         raise ReviewError("model policy broker credential is not LITELLM_API_KEY")
@@ -132,6 +135,38 @@ def resolve_agent_review_route(policy: dict[str, Any]) -> dict[str, str]:
         "base_url": access["base_url"],
         "token_env": access["token_env"],
     }
+
+
+def validate_litellm_transport(base_url: str) -> None:
+    if type(base_url) is not str or base_url != LITELLM_BASE_URL:
+        raise ReviewError("LiteLLM transport check requires the canonical endpoint")
+    endpoint = urlsplit(base_url)
+    if endpoint.scheme != "http" or endpoint.hostname is None:
+        raise ReviewError("LiteLLM transport check requires an HTTP endpoint host")
+    try:
+        result = subprocess.run(
+            [str(IP), "-j", "route", "get", endpoint.hostname],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ReviewError("LiteLLM transport route validation failed") from error
+    if result.returncode != 0:
+        raise ReviewError(f"LiteLLM transport route validation failed with exit {result.returncode}")
+    routes = strict_json(result.stdout)
+    if not isinstance(routes, list) or len(routes) != 1 or not isinstance(routes[0], dict):
+        raise ReviewError("LiteLLM transport route is invalid")
+    route = routes[0]
+    if (
+        route.get("type") != "local"
+        or route.get("dev") != "lo"
+        or route.get("dst") != endpoint.hostname
+        or route.get("prefsrc") != endpoint.hostname
+    ):
+        raise ReviewError("LiteLLM HTTP endpoint is not routed over the local loopback device")
 
 
 def run_bounded(
@@ -435,7 +470,23 @@ def _safe_file(value: Any) -> bool:
 
 
 def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any]:
-    route = route or resolve_agent_review_route(load_model_policy())
+    route = route if route is not None else resolve_agent_review_route(load_model_policy())
+    if type(route) is not dict:
+        raise ReviewError("broker invocation route must be an ordinary dictionary")
+    route = dict(route)
+    expected_route = {
+        "provider": "litellm",
+        "model": MODEL,
+        "reasoning": REASONING,
+        "base_url": LITELLM_BASE_URL,
+        "token_env": "LITELLM_API_KEY",
+    }
+    if (
+        any(type(key) is not str for key in route)
+        or set(route) != set(expected_route)
+        or any(type(route[key]) is not str or route[key] != value for key, value in expected_route.items())
+    ):
+        raise ReviewError("broker invocation route does not match the canonical route")
     env = {
         "HOME": os.environ.get("HOME", str(Path.home())),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -452,6 +503,7 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
         "--no-prompt-templates", "--no-themes", "--provider", route["provider"], "--model", route["model"],
         "--thinking", route["reasoning"],
     ]
+    validate_litellm_transport(route["base_url"])
     returncode, stdout, stderr = run_bounded(
         command,
         max_stdout=MAX_MODEL_OUTPUT_BYTES,
@@ -551,6 +603,8 @@ def validate_runtime() -> None:
         raise ReviewError("Bubblewrap runtime validation failed") from error
     if result.returncode != 0:
         raise ReviewError(f"Bubblewrap runtime validation failed with exit {result.returncode}")
+    route = resolve_agent_review_route(load_model_policy())
+    validate_litellm_transport(route["base_url"])
 
 
 def serve(socket_path: Path, socket_group: str | None = None) -> None:

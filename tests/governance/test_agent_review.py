@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -16,7 +17,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, Handler, ReviewError, UnixServer, build_prompt, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_transport, validate_pr, validate_request, validate_runtime
 
 
 class TestAgentReview(unittest.TestCase):
@@ -127,6 +128,38 @@ class TestAgentReview(unittest.TestCase):
         with self.assertRaisesRegex(ReviewError, "required executable is unavailable"):
             validate_runtime()
 
+    @mock.patch("agent_review_broker.subprocess.run")
+    def test_litellm_transport_requires_a_kernel_local_loopback_route(self, run: mock.Mock):
+        run.return_value = subprocess.CompletedProcess([], 0, stdout=(
+            b'[{"type":"local","dst":"172.22.10.160","dev":"lo",'
+            b'"prefsrc":"172.22.10.160","flags":[],"uid":1000,"cache":["local"]}]'
+        ))
+        validate_litellm_transport("http://172.22.10.160:3333")
+        self.assertEqual(run.call_args.args[0], ["/usr/sbin/ip", "-j", "route", "get", "172.22.10.160"])
+        with self.assertRaisesRegex(ReviewError, "canonical endpoint"):
+            validate_litellm_transport("http://127.0.0.1:9999")
+        masquerade = type("Masquerade", (str,), {"__ne__": lambda self, other: False})
+        with self.assertRaisesRegex(ReviewError, "canonical endpoint"):
+            validate_litellm_transport(masquerade("http://127.0.0.1:9999"))
+        self.assertEqual(run.call_count, 1)
+
+        rejected = [
+            subprocess.CompletedProcess([], 1, stdout=b""),
+            subprocess.CompletedProcess([], 0, stdout=b"{}"),
+            subprocess.CompletedProcess([], 0, stdout=(
+                b'[{"type":"unicast","dst":"172.22.10.160","dev":"wlan0",'
+                b'"prefsrc":"172.22.10.10"}]'
+            )),
+            subprocess.CompletedProcess([], 0, stdout=(
+                b'[{"type":"local","dst":"172.22.10.161","dev":"lo",'
+                b'"prefsrc":"172.22.10.161"}]'
+            )),
+        ]
+        for result in rejected:
+            with self.subTest(result=result), self.assertRaises(ReviewError):
+                run.return_value = result
+                validate_litellm_transport("http://172.22.10.160:3333")
+
     @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_subprocess_namespace_kills_inheriting_descendants_after_leader_exits(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -179,19 +212,79 @@ class TestAgentReview(unittest.TestCase):
             "provider": "litellm",
             "model": "codex/gpt-5.6-terra",
             "reasoning": "high",
-            "base_url": "http://127.0.0.1:3333",
+            "base_url": "http://172.22.10.160:3333",
             "token_env": "LITELLM_API_KEY",
         }
-        result = run_terra(prompt, route)
+        with mock.patch("agent_review_broker.validate_litellm_transport") as validate_transport:
+            result = run_terra(prompt, route)
+        validate_transport.assert_called_once_with("http://172.22.10.160:3333")
         command = bounded.call_args.args[0]
         self.assertNotIn(prompt, command)
         self.assertIn("litellm", command)
         self.assertIn("codex/gpt-5.6-terra", command)
         self.assertEqual(bounded.call_args.kwargs["input_text"], prompt)
         env = bounded.call_args.kwargs["env"]
-        self.assertEqual(env["OPENAI_BASE_URL"], "http://127.0.0.1:3333")
-        self.assertEqual(env["LITELLM_BASE_URL"], "http://127.0.0.1:3333")
+        self.assertEqual(env["OPENAI_BASE_URL"], "http://172.22.10.160:3333")
+        self.assertEqual(env["LITELLM_BASE_URL"], "http://172.22.10.160:3333")
         self.assertEqual(result["verdict"], "pass")
+
+    @mock.patch("agent_review_broker.run_bounded")
+    @mock.patch("agent_review_broker.validate_litellm_transport")
+    def test_terra_revalidates_transport_immediately_before_invocation(
+        self, validate_transport: mock.Mock, bounded: mock.Mock
+    ):
+        events = []
+        validate_transport.side_effect = lambda _base_url: events.append("transport")
+        bounded.side_effect = lambda *_args, **_kwargs: (
+            events.append("invoke") or (0, b'{"verdict":"pass","summary":"Reviewed.","findings":[]}', b"")
+        )
+        run_terra("Review this", {
+            "provider": "litellm",
+            "model": "codex/gpt-5.6-terra",
+            "reasoning": "high",
+            "base_url": "http://172.22.10.160:3333",
+            "token_env": "LITELLM_API_KEY",
+        })
+        self.assertEqual(events, ["transport", "invoke"])
+
+    @mock.patch("agent_review_broker.run_bounded")
+    @mock.patch("agent_review_broker.validate_litellm_transport")
+    def test_terra_rejects_noncanonical_or_stateful_routes_before_invocation(
+        self, validate_transport: mock.Mock, bounded: mock.Mock
+    ):
+        canonical = {
+            "provider": "litellm",
+            "model": "codex/gpt-5.6-terra",
+            "reasoning": "high",
+            "base_url": "http://172.22.10.160:3333",
+            "token_env": "LITELLM_API_KEY",
+        }
+
+        class StatefulRoute(dict):
+            pass
+
+        class Masquerade(str):
+            def __eq__(self, _other):
+                return True
+
+            def __ne__(self, _other):
+                return False
+
+            __hash__ = str.__hash__
+
+        for route in [
+            {**canonical, "base_url": "http://127.0.0.1:9999"},
+            {**canonical, "provider": "openai"},
+            {**canonical, "token_env": "OTHER_TOKEN"},
+            {**canonical, "base_url": Masquerade("http://203.0.113.9:4444")},
+            {**canonical, "provider": Masquerade("openai")},
+            {**canonical, "token_env": Masquerade("OTHER_TOKEN")},
+            StatefulRoute(canonical),
+        ]:
+            with self.subTest(route=route), self.assertRaises(ReviewError):
+                run_terra("Review this", route)
+        validate_transport.assert_not_called()
+        bounded.assert_not_called()
 
     def test_agent_review_route_is_resolved_from_model_policy(self):
         policy = load_model_policy()
@@ -200,7 +293,7 @@ class TestAgentReview(unittest.TestCase):
             "provider": "litellm",
             "model": "codex/gpt-5.6-terra",
             "reasoning": "high",
-            "base_url": "http://127.0.0.1:3333",
+            "base_url": "http://172.22.10.160:3333",
             "token_env": "LITELLM_API_KEY",
         })
 
