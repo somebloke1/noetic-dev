@@ -63,6 +63,7 @@ def route_evidence(models: list[str] | None = None) -> dict[str, object]:
         })
     return {
         "schema_version": "1",
+        "component_sha": "f2b839b0cfc737c4c1f0a46d3d519d414529545c",
         "classification": {
             "task_kind": "review",
             "complexity": "complex",
@@ -111,6 +112,23 @@ class TestRouteEvidence(unittest.TestCase):
         tainted["attempts"][0]["decision_rejection"]["raw_decision_sha256"] += "\n"
         self.assertTrue(validate_route_evidence(tainted))
 
+    def test_terminal_rejections_must_exhaust_all_candidates(self) -> None:
+        evidence = route_evidence([TERRA, SOL, LUNA])
+        for index, model in enumerate([TERRA, SOL, LUNA]):
+            evidence["attempts"][index] = {
+                "decision_rejection": {
+                    "decision_id": f"d-20260716-{index + 1:06d}",
+                    "model": model,
+                    "raw_decision_sha256": "a" * 64,
+                    "rejection_type": "invalid external decision",
+                },
+                "invocation_count": 0,
+                "outcome": "failure",
+                "outcome_recorded": True,
+            }
+        self.assertEqual(validate_route_evidence(evidence), [])
+        self.assertTrue(validate_route_evidence({**evidence, "attempts": evidence["attempts"][:2]}))
+
     def test_rejects_static_or_unknown_contract_evidence(self) -> None:
         self.assertTrue(validate_route_evidence({"model": TERRA}))
         self.assertTrue(validate_route_evidence(route_evidence(), "unknown"))
@@ -119,6 +137,8 @@ class TestRouteEvidence(unittest.TestCase):
         mutations = []
         for path, value in [
             (("classification", "high_value"), True),
+            (("component_sha",), "a" * 39),
+            (("component_sha",), "a" * 40),
             (("attempts", 0, "invocation_count"), 0),
             (("attempts", 0, "outcome_recorded"), False),
             (("attempts", 0, "reasoning_effort"), "low"),

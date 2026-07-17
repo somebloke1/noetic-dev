@@ -3,6 +3,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {"const": "1"},
+    "component_sha": {"const": "f2b839b0cfc737c4c1f0a46d3d519d414529545c"},
     "classification": {
       "additionalProperties": false,
       "properties": {
@@ -58,7 +59,7 @@
       "type": "array"
     }
   },
-  "required": ["schema_version", "classification", "attempts"],
+  "required": ["schema_version", "component_sha", "classification", "attempts"],
   "title": "Noetic Dev Route Evidence",
   "type": "object"
 }

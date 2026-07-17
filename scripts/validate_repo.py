@@ -98,8 +98,13 @@ REQUIRED = [
     "scripts/governance/check_delivery_gate.py",
     "scripts/governance/run_isolated_pi.py",
     "scripts/governance/agent_review_broker.py",
+    "scripts/governance/genus_router_mcp.py",
+    "scripts/governance/request_agent_review.py",
     "scripts/governance/request_agent_review.py",
     "scripts/governance/route_evidence.py",
+    "deploy/install-agent-review.sh",
+    "deploy/requirements-agent-review.txt",
+    "deploy/requirements-agent-review.lock",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",
