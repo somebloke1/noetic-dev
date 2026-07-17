@@ -9,12 +9,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from route_evidence import STANDARD_MODELS, validate_route_evidence  # noqa: E402
+from route_evidence import STANDARD_MODELS, main, validate_route_evidence  # noqa: E402
 
 SOL, TERRA, LUNA = STANDARD_MODELS
 
@@ -137,14 +138,54 @@ class TestRouteEvidence(unittest.TestCase):
         self.assertTrue(validate_route_evidence(route_evidence(), "unknown"))
 
     def test_retained_evidence_cli_binds_candidate_sha(self) -> None:
+        head_sha = "a" * 40
+        payload = {
+            "repository": "somebloke1/noetic-dev", "pr_number": 55, "head_sha": head_sha,
+            "route_evidence": route_evidence(),
+        }
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "agent-review-result.json"
-            head_sha = "a" * 40
-            evidence.write_text(json.dumps({"head_sha": head_sha, "route_evidence": route_evidence()}), encoding="utf-8")
-            command = [sys.executable, str(Path(GOV_SCRIPTS) / "route_evidence.py"), "--head-sha", head_sha, str(evidence)]
-            self.assertEqual(subprocess.run(command, check=False, capture_output=True).returncode, 0)
-            command[3] = "b" * 40
-            self.assertNotEqual(subprocess.run(command, check=False, capture_output=True).returncode, 0)
+            evidence.write_text(json.dumps(payload), encoding="utf-8")
+            run = {
+                "id": 123, "name": "Agent Review", "path": ".github/workflows/agent-review.yml",
+                "event": "pull_request_target", "status": "completed", "conclusion": "success",
+                "head_sha": head_sha, "repository": {"full_name": "somebloke1/noetic-dev"},
+                "pull_requests": [{"number": 55, "head": {"sha": head_sha}, "base": {"ref": "dev"}}],
+            }
+            artifacts = {"artifacts": [{"name": f"agent-review-55-{head_sha}", "expired": False}]}
+            responses = [
+                subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
+            ]
+            arguments = ["route_evidence.py", "--run-id", "123", "--pr-number", "55", "--head-sha", head_sha]
+            with mock.patch.object(sys, "argv", arguments), mock.patch(
+                "route_evidence.subprocess.run", side_effect=responses
+            ), mock.patch("route_evidence.download_protected_evidence", return_value=evidence):
+                self.assertEqual(main(), 0)
+            run["conclusion"] = "failure"
+            responses = [
+                subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
+            ]
+            with mock.patch.object(sys, "argv", arguments), mock.patch(
+                "route_evidence.subprocess.run", side_effect=responses
+            ), mock.patch("route_evidence.download_protected_evidence", return_value=evidence):
+                self.assertNotEqual(main(), 0)
+
+    def test_downloaded_artifact_is_the_only_evidence_source(self) -> None:
+        from route_evidence import download_protected_evidence
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def download(command, **_kwargs):
+                destination = Path(command[command.index("--dir") + 1])
+                (destination / "agent-review-result.json").write_text("{}", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, b"", b"")
+
+            with mock.patch("route_evidence.subprocess.run", side_effect=download):
+                evidence = download_protected_evidence(123, 55, "a" * 40, root)
+            self.assertEqual(evidence, root / "agent-review-result.json")
 
     def test_route_mutations_fail_closed(self) -> None:
         mutations = []

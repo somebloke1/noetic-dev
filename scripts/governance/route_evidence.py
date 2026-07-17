@@ -10,7 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -207,17 +209,30 @@ def _validate_model_ref(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate retained protected route evidence")
-    parser.add_argument("evidence", type=Path)
     parser.add_argument("--head-sha", required=True)
+    parser.add_argument("--pr-number", type=int, required=True)
+    parser.add_argument("--run-id", type=int, required=True)
     args = parser.parse_args()
     if not re.fullmatch(r"[a-f0-9]{40}", args.head_sha):
         parser.error("--head-sha must be a full lowercase SHA-1")
-    try:
-        payload = load_json_strict(args.evidence)
-    except (OSError, ValueError) as error:
-        print(f"route evidence is unreadable: {error}", file=sys.stderr)
+    provenance_errors = validate_protected_provenance(args.run_id, args.pr_number, args.head_sha)
+    if provenance_errors:
+        print(json.dumps(provenance_errors, ensure_ascii=True), file=sys.stderr)
         return 1
-    if type(payload) is not dict or payload.get("head_sha") != args.head_sha or type(payload.get("route_evidence")) is not dict:
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_path = download_protected_evidence(args.run_id, args.pr_number, args.head_sha, Path(directory))
+            payload = load_json_strict(evidence_path)
+    except (OSError, ValueError) as error:
+        print(f"protected route evidence is unavailable: {error}", file=sys.stderr)
+        return 1
+    if (
+        type(payload) is not dict
+        or payload.get("repository") != "somebloke1/noetic-dev"
+        or payload.get("pr_number") != args.pr_number
+        or payload.get("head_sha") != args.head_sha
+        or type(payload.get("route_evidence")) is not dict
+    ):
         print("route evidence wrapper does not match the candidate SHA", file=sys.stderr)
         return 1
     errors = validate_route_evidence(payload["route_evidence"])
@@ -226,6 +241,82 @@ def main() -> int:
         return 1
     print("Protected route evidence is valid")
     return 0
+
+
+def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, directory: Path) -> Path:
+    artifact_name = f"agent-review-{pr_number}-{head_sha}"
+    result = subprocess.run(
+        [
+            "gh", "run", "download", str(run_id), "--repo", "somebloke1/noetic-dev",
+            "--name", artifact_name, "--dir", str(directory),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=60,
+        check=False,
+    )
+    if result.returncode != 0 or len(result.stdout) > 65_536:
+        raise ValueError("exact-SHA Agent Review artifact download failed")
+    evidence_path = directory / "agent-review-result.json"
+    if not evidence_path.is_file():
+        raise ValueError("Agent Review artifact does not contain route evidence")
+    return evidence_path
+
+
+def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str) -> list[str]:
+    if not 1 <= run_id <= 9_223_372_036_854_775_807 or not 1 <= pr_number <= 2_147_483_647:
+        return ["protected run or PR identifier is invalid"]
+
+    def gh_json(path: str) -> Any:
+        result = subprocess.run(
+            ["gh", "api", path],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0 or len(result.stdout) > 1_048_576:
+            raise ValueError("GitHub provenance query failed")
+        return json.loads(result.stdout)
+
+    try:
+        run = gh_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}")
+        artifacts = gh_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}/artifacts")
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return ["protected run provenance is unavailable"]
+    pull_requests = run.get("pull_requests") if isinstance(run, dict) else None
+    if (
+        run.get("id") != run_id
+        or run.get("name") != "Agent Review"
+        or run.get("path") != ".github/workflows/agent-review.yml"
+        or run.get("event") != "pull_request_target"
+        or run.get("status") != "completed"
+        or run.get("conclusion") != "success"
+        or run.get("head_sha") != head_sha
+        or not isinstance(run.get("repository"), dict)
+        or run["repository"].get("full_name") != "somebloke1/noetic-dev"
+        or not isinstance(pull_requests, list)
+        or not any(
+            isinstance(item, dict)
+            and item.get("number") == pr_number
+            and isinstance(item.get("head"), dict)
+            and item["head"].get("sha") == head_sha
+            and isinstance(item.get("base"), dict)
+            and item["base"].get("ref") == "dev"
+            for item in pull_requests
+        )
+    ):
+        return ["GitHub run does not match the protected Agent Review candidate"]
+    expected_name = f"agent-review-{pr_number}-{head_sha}"
+    listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
+    if not isinstance(listed, list) or not any(
+        isinstance(item, dict) and item.get("name") == expected_name and item.get("expired") is False
+        for item in listed
+    ):
+        return ["exact-SHA Agent Review artifact is unavailable or expired"]
+    return []
 
 
 if __name__ == "__main__":
