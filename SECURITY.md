@@ -11,7 +11,7 @@
 
 When elevated access is genuinely necessary:
 
-1. Check whether `USER_SUPPLIED_PASSWORD` is present without displaying it.
+1. Check whether `USER_PROVIDED_PASSWORD` is present without displaying it.
 2. If present, supply it only through non-interactive standard input to the narrowest required `sudo` command; suppress password prompts and never trace the command.
 3. If absent or rejected, record the concrete blocker.
 4. Never ask the user for the password, open a GUI authentication dialog, or start an interactive password prompt.
