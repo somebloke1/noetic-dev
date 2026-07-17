@@ -64,4 +64,5 @@ fi
 [[ -s /etc/credstore/litellm_api_key ]]
 
 systemctl daemon-reload
-systemctl enable --now noetic-dev-agent-review-broker.service
+systemctl enable noetic-dev-agent-review-broker.service
+systemctl restart noetic-dev-agent-review-broker.service
