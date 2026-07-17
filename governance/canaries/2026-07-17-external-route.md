@@ -1,5 +1,5 @@
-# External Route Canary
+# External Route Canary Procedure
 
-This candidate binds one protected review to the live external routing path introduced by issue #51.
+This procedure exercises the live external routing path introduced by issue #51. It does not itself claim that an execution has occurred.
 
-Acceptance requires the exact candidate SHA to pass protected CI through external genus-router `route_task`, one canonical LiteLLM model invocation per decision, acknowledged genus-router `report_outcome`, and validated route evidence. Broker-local routing claims and controlled test fixtures do not satisfy this canary.
+Accept one execution only when external records bind an exact candidate SHA to protected CI, genus-router `route_task`, one canonical LiteLLM model invocation per decision, acknowledged genus-router `report_outcome`, and validated route evidence. Broker-local routing claims and controlled test fixtures do not satisfy the procedure.
