@@ -31,7 +31,16 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("/run/noetic-dev/agent-review.sock", unit)
         self.assertIn("HOME=/var/lib/noetic-agent-review", unit)
         self.assertIn("ProtectHome=true", unit)
+        self.assertIn("runtime/mcp/bin/python3", unit)
+        self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/genus-router", unit)
+        self.assertIn("--genus-router-sha f2b839b0cfc737c4c1f0a46d3d519d414529545c", unit)
+        self.assertIn("LoadCredential=litellm_api_key", unit)
+        self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/state", unit)
         self.assertNotIn("/home/dgk", unit)
+
+    def test_mcp_client_dependency_is_exactly_pinned(self):
+        requirements = (ROOT / "deploy" / "requirements-agent-review.txt").read_text().splitlines()
+        self.assertEqual(requirements, ["mcp==1.28.1"])
 
     def test_runner_cannot_reach_broker_credentials(self):
         unit = (UNITS / "noetic-dev-actions-runner.service").read_text()

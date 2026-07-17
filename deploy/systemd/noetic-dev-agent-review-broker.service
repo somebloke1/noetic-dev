@@ -8,9 +8,10 @@ Type=simple
 User=noetic-review-broker
 Group=noetic-agent-review
 WorkingDirectory=/opt/noetic-dev-agent-review/current
-ExecStart=/usr/bin/python3 /opt/noetic-dev-agent-review/current/scripts/governance/agent_review_broker.py --socket /run/noetic-dev/agent-review.sock --socket-group noetic-agent-review
+ExecStart=/opt/noetic-dev-agent-review/runtime/mcp/bin/python3 /opt/noetic-dev-agent-review/current/scripts/governance/agent_review_broker.py --socket /run/noetic-dev/agent-review.sock --socket-group noetic-agent-review --genus-router-command /opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/genus-router --genus-router-config /opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/config/router.yaml --genus-router-sha f2b839b0cfc737c4c1f0a46d3d519d414529545c
 Environment=HOME=/var/lib/noetic-agent-review
 Environment=PATH=/opt/noetic-dev-agent-review/runtime/bin:/usr/local/bin:/usr/bin:/bin
+LoadCredential=litellm_api_key
 RuntimeDirectory=noetic-dev
 RuntimeDirectoryMode=0750
 UMask=0007
@@ -20,7 +21,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/noetic-agent-review /run/noetic-dev
+ReadWritePaths=/var/lib/noetic-agent-review /run/noetic-dev /opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/state
 RestrictSUIDSGID=true
 LockPersonality=true
 RestrictRealtime=true

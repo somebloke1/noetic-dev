@@ -6,9 +6,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import sys
 from pathlib import Path
+
+MAX_RESPONSE_BYTES = 1_048_576
 
 
 def request(socket_path: Path, payload: dict[str, object]) -> dict[str, object]:
@@ -24,13 +27,35 @@ def request(socket_path: Path, payload: dict[str, object]) -> dict[str, object]:
         client.connect(str(socket_path))
         client.sendall(wire)
         chunks = []
+        received = 0
         while chunk := client.recv(65_536):
+            received += len(chunk)
+            if received > MAX_RESPONSE_BYTES:
+                raise RuntimeError("review broker response is oversized")
             chunks.append(chunk)
     response = b"".join(chunks)
     header, separator, response_body = response.partition(b"\r\n\r\n")
-    if not separator or b" 200 " not in header.split(b"\r\n", 1)[0]:
-        raise RuntimeError(response_body.decode(errors="replace")[:1_000] or "review broker request failed")
-    return json.loads(response_body)
+    if not separator:
+        raise RuntimeError("review broker response framing is invalid")
+    header_lines = header.split(b"\r\n")
+    status_line = header_lines[0]
+    if any(not re.fullmatch(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+:[\t\x20-\x7e]*", line) for line in header_lines[1:]):
+        raise RuntimeError("review broker response header syntax is invalid")
+    lengths = [
+        line.split(b":", 1)[1].strip()
+        for line in header_lines[1:]
+        if line.lower().startswith(b"content-length:")
+    ]
+    if any(line.lower().startswith(b"transfer-encoding:") for line in header_lines[1:]):
+        raise RuntimeError("review broker response transfer encoding is forbidden")
+    if len(lengths) != 1 or not lengths[0].isdigit() or int(lengths[0]) != len(response_body):
+        raise RuntimeError("review broker response length is invalid")
+    parsed = json.loads(response_body)
+    if b" 200 " in status_line:
+        return parsed
+    if b" 503 " in status_line and isinstance(parsed, dict) and "route_evidence" in parsed:
+        return parsed
+    raise RuntimeError(response_body.decode(errors="replace")[:1_000] or "review broker request failed")
 
 
 def main() -> int:
@@ -49,6 +74,9 @@ def main() -> int:
         "base_sha": args.base_sha,
     })
     Path(args.output).write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if "route_evidence" in result and "verdict" not in result:
+        print(f"Agent review failed: {result.get('error', 'routed review exhausted')}", file=sys.stderr)
+        return 2
     print(f"Agent review: {result['verdict']} ({result['model']}, reasoning={result['reasoning']})")
     print(result["summary"])
     for finding in result["findings"]:

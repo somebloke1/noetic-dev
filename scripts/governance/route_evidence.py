@@ -31,6 +31,28 @@ PROTECTED_REVIEW_CLASSIFICATION = {
 PROTECTED_REVIEW_CANDIDATES = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]]
 
 
+def validate_route_decision(decision: Any, excluded_models: list[str]) -> list[str]:
+    if not isinstance(excluded_models, list) or any(type(model) is not str for model in excluded_models):
+        return ["excluded model list is invalid"]
+    if len(excluded_models) != len(set(excluded_models)) or any(
+        model not in PROTECTED_REVIEW_CANDIDATES for model in excluded_models
+    ):
+        return ["excluded model list is inconsistent"]
+    errors: list[str] = []
+    policy = load_json_strict(REPO_ROOT / "config" / "model-policy.json")
+    remaining = [model for model in PROTECTED_REVIEW_CANDIDATES if model not in excluded_models]
+    _validate_decision(
+        decision,
+        remaining,
+        policy.get("access", {}),
+        policy.get("generative", {}),
+        set(),
+        "external route",
+        errors,
+    )
+    return errors
+
+
 def validate_route_evidence(evidence: Any, contract_name: str = "protected_review") -> list[str]:
     if contract_name != "protected_review":
         return [f"unknown route contract: {contract_name}"]
@@ -65,8 +87,8 @@ def validate_route_evidence(evidence: Any, contract_name: str = "protected_revie
         if decision.get("model") in remaining:
             failed_models.append(decision["model"])
     final_attempt = attempts[-1]
-    if "decision" not in final_attempt:
-        errors.append("protected_review must end in one validated decision")
+    if "decision" not in final_attempt and len(attempts) != len(PROTECTED_REVIEW_CANDIDATES):
+        errors.append("protected_review terminal rejection must exhaust all routed candidates")
     elif final_attempt["outcome"] == "failure" and len(attempts) != len(PROTECTED_REVIEW_CANDIDATES):
         errors.append("protected_review terminal failure must exhaust all routed candidates")
     return errors

@@ -26,7 +26,9 @@ The broker review contract limits each route decision to one substantive invocat
 
 ## Current Slice
 
-This repository slice adds the canonical machine policy at `config/model-policy.json`, the strict schema at `governance/schemas/model-policy.schema.json`, contract tests, a narrow broker runtime check that admits the `agent_review` model invocation only when the policy still requires local LiteLLM access and includes the broker harness, an OpenCode routed-session contract at `config/opencode-session-policy.json`, and a broker route-evidence contract at `governance/schemas/route-evidence.schema.json`. The OpenCode contract is `runtime_adapter_ready=false`; the route-evidence contract is not live broker routing; this slice deliberately does not claim live OpenCode, protected Pi, embedding, or ASR adapters are fully migrated.
+This repository slice adds the canonical machine policy, strict schemas, and a protected-review broker adapter that starts one persistent external genus-router MCP stdio process through the official MCP client. The broker verifies the external tool contract, submits only protected-review dimensions, validates every returned decision and model reference before one bounded LiteLLM invocation, and requires external `report_outcome` acknowledgement before success or reroute. Route evidence binds the external component SHA. Deployment and an exact-SHA protected canary remain required before this implementation can be cited as a recurring live trace. The OpenCode contract remains `runtime_adapter_ready=false`; this slice does not claim live OpenCode, protected Pi, embedding, or ASR adapters are fully migrated.
+
+The broker and trusted external genus-router process both receive the scoped LiteLLM credential. Genus-router uses it only for the canonical `/v1/models` availability check; the bounded Pi subprocess uses it for the selected model invocation. Unrelated broker environment values are not forwarded to genus-router.
 
 Accepted target policy:
 
@@ -38,4 +40,4 @@ Accepted target policy:
 - OpenCode routed-session contract: one routed model turn per session, static title required, JSON event log required, tools disabled, provider allowlist restricted to `litellm`, and outcome reporting required per route decision.
 - Broker route-evidence contract: protected review attempts must follow Terra -> Sol -> Luna candidate order, record every outcome, preserve high reasoning, and bind every model reference to the local LiteLLM `/v1/responses` endpoint.
 
-Missing runtime adapters remain open work under Issue #29. This policy must not be cited as evidence that ASR readiness, embedding migration, live OpenCode routing, live broker genus-router route/outcome reporting, or protected Pi routing has completed.
+Missing runtime adapters remain open work under Issue #29. This implementation must not be cited as evidence that live broker genus-router route/outcome reporting recurs in deployment until its exact-SHA canary passes, or that ASR readiness, embedding migration, live OpenCode routing, or protected Pi routing has completed.

@@ -14,6 +14,7 @@ import selectors
 import signal
 import socket
 import socketserver
+import stat
 import subprocess
 import tempfile
 import time
@@ -23,7 +24,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from genus_router_mcp import GenusRouterError, GenusRouterMCP, GenusRouterToolError
 from json_schema import validate_schema
+from route_evidence import DECISION_ID, PROTECTED_REVIEW_CANDIDATES, PROTECTED_REVIEW_CLASSIFICATION, validate_route_decision, validate_route_evidence
 
 ALLOWED_REPOSITORY = "somebloke1/noetic-dev"
 ALLOWED_AUTHORS = {"somebloke1"}
@@ -33,6 +36,7 @@ MODEL_POLICY_SCHEMA_PATH = REPO_ROOT / "governance" / "schemas" / "model-policy.
 MODEL = "codex/gpt-5.6-terra"
 REASONING = "high"
 LITELLM_BASE_URL = "http://172.22.10.160:3333"
+GENUS_ROUTER_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 MAX_REQUEST_BYTES = 16_384
 MAX_PATCH_BYTES = 200_000
@@ -44,6 +48,12 @@ IP = Path("/usr/sbin/ip")
 
 class ReviewError(RuntimeError):
     pass
+
+
+class ReviewExecutionError(ReviewError):
+    def __init__(self, message: str, evidence: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.evidence = evidence
 
 
 def strict_json(text: str | bytes) -> Any:
@@ -195,7 +205,7 @@ def run_bounded(
             env=env,
             start_new_session=True,
         )
-    except OSError as error:
+    except (OSError, ValueError) as error:
         input_file.close()
         raise ReviewError("unable to start isolated command") from error
     streams = {process.stdout: (bytearray(), max_stdout), process.stderr: (bytearray(), max_stderr)}
@@ -299,8 +309,7 @@ def gh_json(*args: str) -> Any:
         env=os.environ.copy(),
     )
     if returncode != 0:
-        detail = stderr.decode("utf-8", errors="replace").strip()[:500]
-        raise ReviewError(f"GitHub API request failed: {detail}")
+        raise ReviewError(f"GitHub API request failed with exit {returncode}")
     try:
         return strict_json(stdout)
     except ReviewError as error:
@@ -469,22 +478,65 @@ def _safe_file(value: Any) -> bool:
     return ".." not in Path(value).parts
 
 
+def load_litellm_token() -> str | None:
+    if "LITELLM_API_KEY" in os.environ:
+        return validate_litellm_token(os.environ["LITELLM_API_KEY"])
+    credentials_directory = os.environ.get("CREDENTIALS_DIRECTORY")
+    if not credentials_directory:
+        return None
+    descriptor = None
+    try:
+        descriptor = os.open(
+            Path(credentials_directory) / "litellm_api_key",
+            os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ReviewError("LiteLLM systemd credential is not a regular file")
+        raw = os.read(descriptor, 16_385)
+    except OSError as error:
+        raise ReviewError("LiteLLM systemd credential is unavailable") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if len(raw) > 16_384:
+        raise ReviewError("LiteLLM systemd credential is oversized")
+    try:
+        token = raw.decode("utf-8").strip()
+    except UnicodeDecodeError as error:
+        raise ReviewError("LiteLLM systemd credential is not UTF-8") from error
+    return validate_litellm_token(token)
+
+
+def validate_litellm_token(token: str) -> str:
+    if not token:
+        raise ReviewError("LiteLLM credential is empty")
+    try:
+        encoded = token.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ReviewError("LiteLLM credential is not valid UTF-8") from error
+    if len(encoded) > 16_384:
+        raise ReviewError("LiteLLM credential is oversized")
+    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in token):
+        raise ReviewError("LiteLLM credential contains a control character")
+    return token
+
+
 def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any]:
     route = route if route is not None else resolve_agent_review_route(load_model_policy())
     if type(route) is not dict:
         raise ReviewError("broker invocation route must be an ordinary dictionary")
     route = dict(route)
-    expected_route = {
-        "provider": "litellm",
-        "model": MODEL,
-        "reasoning": REASONING,
-        "base_url": LITELLM_BASE_URL,
-        "token_env": "LITELLM_API_KEY",
-    }
+    expected_fields = {"provider", "model", "reasoning", "base_url", "token_env"}
     if (
         any(type(key) is not str for key in route)
-        or set(route) != set(expected_route)
-        or any(type(route[key]) is not str or route[key] != value for key, value in expected_route.items())
+        or set(route) != expected_fields
+        or any(type(value) is not str for value in route.values())
+        or route["provider"] != "litellm"
+        or route["model"] not in PROTECTED_REVIEW_CANDIDATES
+        or route["reasoning"] != REASONING
+        or route["base_url"] != LITELLM_BASE_URL
+        or route["token_env"] != "LITELLM_API_KEY"
     ):
         raise ReviewError("broker invocation route does not match the canonical route")
     env = {
@@ -493,7 +545,7 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
         "PI_TELEMETRY": "0",
         "PI_SKIP_VERSION_CHECK": "1",
     }
-    token = os.environ.get(route["token_env"])
+    token = load_litellm_token()
     if token:
         env[route["token_env"]] = token
     env["OPENAI_BASE_URL"] = route["base_url"]
@@ -513,8 +565,7 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
         input_text=prompt,
     )
     if returncode != 0:
-        detail = stderr.decode("utf-8", errors="replace").strip()[:500]
-        raise ReviewError(f"broker model invocation failed with exit {returncode}: {detail}")
+        raise ReviewError(f"broker model invocation failed with exit {returncode}")
     try:
         output = stdout.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
@@ -522,25 +573,145 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
     return parse_review_output(output)
 
 
-def review(payload: Any) -> dict[str, Any]:
+def route_from_decision(decision: dict[str, Any]) -> dict[str, str]:
+    model_ref = decision["model_ref"]
+    return {
+        "provider": "litellm",
+        "model": model_ref["upstream_model_id"],
+        "reasoning": model_ref["reasoning_effort"],
+        "base_url": model_ref["base_url"],
+        "token_env": model_ref["token_env"],
+    }
+
+
+def validated_route_evidence(attempts: list[dict[str, Any]], component_sha: str) -> dict[str, Any]:
+    if component_sha != GENUS_ROUTER_SHA:
+        raise ReviewError("external genus-router component SHA is not canonical")
+    evidence = {
+        "schema_version": "1",
+        "component_sha": component_sha,
+        "classification": PROTECTED_REVIEW_CLASSIFICATION,
+        "attempts": attempts,
+    }
+    errors = validate_route_evidence(evidence)
+    if errors:
+        raise ReviewError(f"protected route evidence is invalid: {errors[0]}")
+    return evidence
+
+
+def report_outcome(router: Any, decision_id: str, outcome: str, notes: str) -> None:
+    try:
+        acknowledgement = router.call_tool("report_outcome", {
+            "decision_id": decision_id,
+            "outcome": outcome,
+            "notes": notes[:1_000],
+        })
+    except GenusRouterError as error:
+        raise ReviewError("external genus-router outcome reporting failed") from error
+    if type(acknowledgement) is not dict or set(acknowledgement) != {"recorded"} or acknowledgement["recorded"] is not True:
+        raise ReviewError("external genus-router did not acknowledge the outcome")
+
+
+def review(payload: Any, router: Any | None = None) -> dict[str, Any]:
+    if router is None:
+        raise ReviewError("external genus-router MCP session is unavailable")
     request = validate_request(payload)
     pr, material = fetch_review_material(request)
     prompt = build_prompt(pr, material, request)
-    route = resolve_agent_review_route(load_model_policy())
-    result = run_terra(prompt, route)
-    return {
-        "schema_version": "1",
-        "repository": request["repository"],
-        "pr_number": request["pr_number"],
-        "head_sha": request["head_sha"],
-        "base_sha": request["base_sha"],
-        "model": route["model"],
-        "provider": route["provider"],
-        "reasoning": route["reasoning"],
-        "reviewed_diff_sha256": material["diff_sha256"],
-        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-        **result,
-    }
+    excluded_models: list[str] = []
+    attempts: list[dict[str, Any]] = []
+    decision_ids: set[str] = set()
+    last_error = "all routed review candidates failed"
+    while len(excluded_models) < len(PROTECTED_REVIEW_CANDIDATES):
+        arguments = {
+            **PROTECTED_REVIEW_CLASSIFICATION,
+            "prior_failure": bool(excluded_models),
+            "exclude_models": list(excluded_models),
+            "task_summary": f"protected review {request['repository']}#{request['pr_number']} at {request['head_sha']}",
+        }
+        try:
+            decision = router.call_tool("route_task", arguments)
+        except GenusRouterError as error:
+            raise ReviewError("external genus-router route_task failed") from error
+        decision_errors = validate_route_decision(decision, excluded_models)
+        decision_id = decision.get("decision_id") if isinstance(decision, dict) else None
+        if type(decision_id) is str and decision_id in decision_ids:
+            raise ReviewError("external genus-router reused a decision_id")
+        if decision_errors:
+            model = decision.get("model") if isinstance(decision, dict) else None
+            remaining = [item for item in PROTECTED_REVIEW_CANDIDATES if item not in excluded_models]
+            if type(decision_id) is not str or not DECISION_ID.fullmatch(decision_id) or not remaining or model != remaining[0]:
+                raise ReviewError(f"external genus-router decision is invalid: {decision_errors[0]}")
+            report_outcome(router, decision_id, "failure", f"Rejected malformed decision: {decision_errors[0]}")
+            decision_ids.add(decision_id)
+            attempts.append({
+                "decision_rejection": {
+                    "decision_id": decision_id,
+                    "model": model,
+                    "raw_decision_sha256": hashlib.sha256(json.dumps(decision, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+                    "rejection_type": decision_errors[0],
+                },
+                "invocation_count": 0,
+                "outcome": "failure",
+                "outcome_recorded": True,
+            })
+            excluded_models.append(model)
+            continue
+        decision_ids.add(decision["decision_id"])
+        route = route_from_decision(decision)
+        try:
+            result = run_terra(prompt, route)
+        except (ReviewError, TimeoutError, socket.timeout) as error:
+            last_error = str(error)
+            report_outcome(router, decision["decision_id"], "failure", "Broker model invocation failed")
+            attempts.append({
+                "decision": decision,
+                "invocation_count": 1,
+                "outcome": "failure",
+                "outcome_recorded": True,
+                "reasoning_effort": route["reasoning"],
+            })
+            excluded_models.append(decision["model"])
+            continue
+        report_outcome(router, decision["decision_id"], "success", "Protected review completed")
+        attempts.append({
+            "decision": decision,
+            "invocation_count": 1,
+            "outcome": "success",
+            "outcome_recorded": True,
+            "reasoning_effort": route["reasoning"],
+        })
+        route_evidence = validated_route_evidence(attempts, router.component_sha)
+        return {
+            "schema_version": "1",
+            "repository": request["repository"],
+            "pr_number": request["pr_number"],
+            "head_sha": request["head_sha"],
+            "base_sha": request["base_sha"],
+            "model": route["model"],
+            "provider": route["provider"],
+            "reasoning": route["reasoning"],
+            "route_decision_id": decision["decision_id"],
+            "route_evidence": route_evidence,
+            "reviewed_diff_sha256": material["diff_sha256"],
+            "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            **result,
+        }
+    try:
+        router.call_tool("route_task", {
+            **PROTECTED_REVIEW_CLASSIFICATION,
+            "prior_failure": True,
+            "exclude_models": list(excluded_models),
+            "task_summary": f"confirm exhausted protected review {request['head_sha']}",
+        })
+    except GenusRouterToolError as error:
+        if not isinstance(error.payload, dict) or error.payload.get("error") != "no_candidates":
+            raise ReviewError("external genus-router exhaustion response is invalid") from error
+    except GenusRouterError as error:
+        raise ReviewError("external genus-router exhaustion check failed") from error
+    else:
+        raise ReviewError("external genus-router returned a route after candidate exhaustion")
+    raise ReviewExecutionError(last_error, validated_route_evidence(attempts, router.component_sha))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -567,8 +738,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(body) != length:
                 raise ReviewError("request body ended before Content-Length")
             payload = strict_json(body)
-            response = review(payload)
+            response = review(payload, getattr(self.server, "router_client", None))
             status = 200
+        except ReviewExecutionError as error:
+            response = {"error": str(error), "route_evidence": error.evidence}
+            status = 503
         except (ReviewError, ValueError, TimeoutError, socket.timeout) as error:
             response = {"error": str(error)}
             status = 400
@@ -585,6 +759,7 @@ class Handler(BaseHTTPRequestHandler):
 
 class UnixServer(socketserver.UnixStreamServer):
     allow_reuse_address = True
+    router_client: Any = None
 
 
 def validate_runtime() -> None:
@@ -607,11 +782,12 @@ def validate_runtime() -> None:
     validate_litellm_transport(route["base_url"])
 
 
-def serve(socket_path: Path, socket_group: str | None = None) -> None:
+def serve(socket_path: Path, router: GenusRouterMCP, socket_group: str | None = None) -> None:
     validate_runtime()
     socket_path.parent.mkdir(parents=True, exist_ok=True)
     socket_path.unlink(missing_ok=True)
-    with UnixServer(str(socket_path), Handler, bind_and_activate=False) as server:
+    with router, UnixServer(str(socket_path), Handler, bind_and_activate=False) as server:
+        server.router_client = router
         previous_umask = os.umask(0o177)
         try:
             server.server_bind()
@@ -630,8 +806,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Serve bounded local Terra PR review")
     parser.add_argument("--socket", default=os.environ.get("NOETIC_AGENT_REVIEW_SOCKET", "/run/noetic-dev/agent-review.sock"))
     parser.add_argument("--socket-group")
+    parser.add_argument("--genus-router-command", type=Path, required=True)
+    parser.add_argument("--genus-router-config", type=Path, required=True)
+    parser.add_argument("--genus-router-sha", required=True)
     args = parser.parse_args()
-    serve(Path(args.socket), args.socket_group)
+    if args.genus_router_sha != GENUS_ROUTER_SHA:
+        parser.error("--genus-router-sha does not match the canonical component SHA")
+    router = GenusRouterMCP(
+        args.genus_router_command,
+        args.genus_router_config,
+        args.genus_router_sha,
+        litellm_token=load_litellm_token(),
+    )
+    serve(Path(args.socket), router, args.socket_group)
     return 0
 
 
