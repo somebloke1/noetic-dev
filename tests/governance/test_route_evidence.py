@@ -179,6 +179,16 @@ class TestRouteEvidence(unittest.TestCase):
             ), mock.patch("route_evidence.download_protected_evidence", return_value=evidence):
                 self.assertNotEqual(main(), 0)
 
+            payload["base_sha"] = head_sha
+            evidence.write_text(json.dumps(payload), encoding="utf-8")
+            with mock.patch.object(sys, "argv", arguments), mock.patch(
+                "route_evidence.subprocess.run"
+            ) as run_api, mock.patch(
+                "route_evidence.download_protected_evidence", return_value=evidence
+            ):
+                self.assertNotEqual(main(), 0)
+                run_api.assert_not_called()
+
     def test_downloaded_artifact_is_the_only_evidence_source(self) -> None:
         from route_evidence import download_protected_evidence
 

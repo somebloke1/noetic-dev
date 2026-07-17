@@ -229,6 +229,7 @@ def main() -> int:
         or payload.get("head_sha") != args.head_sha
         or not isinstance(payload.get("base_sha"), str)
         or not re.fullmatch(r"[a-f0-9]{40}", payload["base_sha"])
+        or payload["base_sha"] == args.head_sha
         or type(payload.get("route_evidence")) is not dict
     ):
         print("route evidence wrapper does not match the candidate SHA", file=sys.stderr)
