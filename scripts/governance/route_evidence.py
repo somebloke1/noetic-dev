@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,33 @@ STANDARD_MODELS = [
     "codex/gpt-5.6-terra",
     "codex/gpt-5.6-luna",
 ]
+REQUIRED_PROTECTED_CHECKS = [
+    {"context": "agent-review"},
+    {"context": "Repository validation (candidate)"},
+    {"context": "Workflow pinning validation (candidate)"},
+    {"context": "Genuine tests (candidate)"},
+    {"context": "Bootstrap honesty (advisory, fail-closed)"},
+]
+REQUIRED_PULL_REQUEST_PARAMETERS = {
+    "required_approving_review_count": 0,
+    "dismiss_stale_reviews_on_push": True,
+    "required_reviewers": [],
+    "require_code_owner_review": False,
+    "require_last_push_approval": False,
+    "required_review_thread_resolution": True,
+    "allowed_merge_methods": ["squash"],
+}
+REQUIRED_STATUS_PARAMETERS = {
+    "strict_required_status_checks_policy": True,
+    "do_not_enforce_on_create": False,
+    "required_status_checks": REQUIRED_PROTECTED_CHECKS,
+}
+REQUIRED_RULESET_RULES = [
+    {"type": "deletion"},
+    {"type": "non_fast_forward"},
+    {"type": "pull_request", "parameters": REQUIRED_PULL_REQUEST_PARAMETERS},
+    {"type": "required_status_checks", "parameters": REQUIRED_STATUS_PARAMETERS},
+]
 PROTECTED_REVIEW_CLASSIFICATION = {
     "task_kind": "review",
     "complexity": "complex",
@@ -34,6 +62,87 @@ PROTECTED_REVIEW_CLASSIFICATION = {
     "high_value": False,
     "awaited": True,
 }
+
+
+def github_json(path: str) -> Any:
+    result = subprocess.run(
+        ["gh", "api", path],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        timeout=30,
+        check=False,
+    )
+    if result.returncode != 0 or len(result.stdout) > 1_048_576:
+        raise ValueError("GitHub provenance query failed")
+    return json.loads(result.stdout)
+
+
+def protected_ci_snapshot(run_id: int, run: Any, applied_rules: Any, ruleset: Any) -> dict[str, Any] | None:
+    if not isinstance(run, dict) or not isinstance(applied_rules, list) or not isinstance(ruleset, dict):
+        return None
+    ruleset_id = ruleset.get("id")
+    relevant = [
+        rule for rule in applied_rules
+        if isinstance(rule, dict) and rule.get("ruleset_id") == ruleset_id
+    ]
+    rules_by_type = {
+        rule.get("type"): rule for rule in relevant if isinstance(rule.get("type"), str)
+    }
+    pull_rule = rules_by_type.get("pull_request")
+    status_rule = next((rule for rule in relevant if rule.get("type") == "required_status_checks"), None)
+    status_parameters = status_rule.get("parameters") if isinstance(status_rule, dict) else None
+    checks = status_parameters.get("required_status_checks") if isinstance(status_parameters, dict) else None
+    run_created_at = run.get("created_at")
+    created_at = ruleset.get("created_at")
+    updated_at = ruleset.get("updated_at")
+    try:
+        run_time = datetime.fromisoformat(run_created_at.replace("Z", "+00:00"))
+        created_time = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        updated_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if (
+        type(ruleset_id) is not int
+        or ruleset.get("name") != "Protected dev governance"
+        or ruleset.get("target") != "branch"
+        or ruleset.get("source_type") != "Repository"
+        or ruleset.get("source") != "somebloke1/noetic-dev"
+        or ruleset.get("enforcement") != "active"
+        or ruleset.get("bypass_actors") != []
+        or ruleset.get("current_user_can_bypass") != "never"
+        or ruleset.get("conditions") != {
+            "ref_name": {"exclude": [], "include": ["refs/heads/dev"]},
+        }
+        or ruleset.get("rules") != REQUIRED_RULESET_RULES
+        or set(rules_by_type) != {"deletion", "non_fast_forward", "pull_request", "required_status_checks"}
+        or len(relevant) != 4
+        or not isinstance(pull_rule, dict)
+        or pull_rule.get("parameters") != REQUIRED_PULL_REQUEST_PARAMETERS
+        or not isinstance(status_parameters, dict)
+        or status_parameters != REQUIRED_STATUS_PARAMETERS
+        or checks != REQUIRED_PROTECTED_CHECKS
+        or run_time.utcoffset() is None
+        or created_time.utcoffset() is None
+        or updated_time.utcoffset() is None
+        or created_time >= run_time
+        or updated_time >= run_time
+    ):
+        return None
+    return {
+        "schema_version": "1",
+        "run_id": run_id,
+        "run_created_at": run_created_at,
+        "ruleset": {
+            key: ruleset[key]
+            for key in (
+                "id", "name", "target", "source_type", "source", "enforcement",
+                "conditions", "rules", "created_at", "updated_at", "bypass_actors",
+                "current_user_can_bypass",
+            )
+        },
+        "applied_rules": relevant,
+    }
 PROTECTED_REVIEW_CANDIDATES = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]]
 
 
@@ -230,12 +339,13 @@ def main() -> int:
         or not isinstance(payload.get("base_sha"), str)
         or not re.fullmatch(r"[a-f0-9]{40}", payload["base_sha"])
         or payload["base_sha"] == args.head_sha
+        or type(payload.get("protected_ci")) is not dict
         or type(payload.get("route_evidence")) is not dict
     ):
         print("route evidence wrapper does not match the candidate SHA", file=sys.stderr)
         return 1
     provenance_errors = validate_protected_provenance(
-        args.run_id, args.pr_number, args.head_sha, payload["base_sha"]
+        args.run_id, args.pr_number, args.head_sha, payload["base_sha"], payload["protected_ci"]
     )
     if provenance_errors:
         print(json.dumps(provenance_errors, ensure_ascii=True), file=sys.stderr)
@@ -269,26 +379,21 @@ def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, dire
     return evidence_path
 
 
-def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str, base_sha: str) -> list[str]:
+def validate_protected_provenance(
+    run_id: int, pr_number: int, head_sha: str, base_sha: str, protected_ci: dict[str, Any]
+) -> list[str]:
     if not 1 <= run_id <= 9_223_372_036_854_775_807 or not 1 <= pr_number <= 2_147_483_647:
         return ["protected run or PR identifier is invalid"]
-
-    def gh_json(path: str) -> Any:
-        result = subprocess.run(
-            ["gh", "api", path],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=30,
-            check=False,
-        )
-        if result.returncode != 0 or len(result.stdout) > 1_048_576:
-            raise ValueError("GitHub provenance query failed")
-        return json.loads(result.stdout)
+    retained_ruleset = protected_ci.get("ruleset")
+    if not isinstance(retained_ruleset, dict) or type(retained_ruleset.get("id")) is not int:
+        return ["retained protected-CI ruleset identity is invalid"]
 
     try:
-        run = gh_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}")
-        artifacts = gh_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}/artifacts")
+        run = github_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}")
+        artifacts = github_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}/artifacts")
+        applied_rules = github_json("repos/somebloke1/noetic-dev/rules/branches/dev")
+        ruleset_id = retained_ruleset["id"]
+        ruleset = github_json(f"repos/somebloke1/noetic-dev/rulesets/{ruleset_id}")
     except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return ["protected run provenance is unavailable"]
     pull_requests = run.get("pull_requests") if isinstance(run, dict) else None
@@ -326,6 +431,8 @@ def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str, ba
         for item in listed
     ):
         return ["exact-SHA Agent Review artifact is unavailable or expired"]
+    if protected_ci_snapshot(run_id, run, applied_rules, ruleset) != protected_ci:
+        return ["retained protected-CI ruleset evidence is absent, changed, or inapplicable"]
     return []
 
 

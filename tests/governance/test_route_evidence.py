@@ -15,7 +15,12 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from route_evidence import STANDARD_MODELS, main, validate_route_evidence  # noqa: E402
+from route_evidence import (  # noqa: E402
+    REQUIRED_PROTECTED_CHECKS, REQUIRED_PULL_REQUEST_PARAMETERS, REQUIRED_RULESET_RULES,
+    STANDARD_MODELS, main, protected_ci_snapshot, validate_protected_provenance,
+    validate_route_evidence,
+)
+from capture_protected_ci import main as capture_protected_ci_main  # noqa: E402
 
 SOL, TERRA, LUNA = STANDARD_MODELS
 
@@ -79,6 +84,44 @@ def route_evidence(models: list[str] | None = None) -> dict[str, object]:
     }
 
 
+def protection_records() -> tuple[dict, list, dict, dict]:
+    run = {"created_at": "2026-07-17T20:10:00Z"}
+    checks = copy.deepcopy(REQUIRED_PROTECTED_CHECKS)
+    applied = [
+        {"type": "deletion", "ruleset_id": 19122088},
+        {"type": "non_fast_forward", "ruleset_id": 19122088},
+        {
+            "type": "pull_request", "ruleset_id": 19122088,
+            "parameters": copy.deepcopy(REQUIRED_PULL_REQUEST_PARAMETERS),
+        },
+        {
+            "type": "required_status_checks", "ruleset_id": 19122088,
+            "parameters": {
+                "strict_required_status_checks_policy": True,
+                "do_not_enforce_on_create": False,
+                "required_status_checks": checks,
+            },
+        },
+    ]
+    ruleset = {
+        "id": 19122088,
+        "name": "Protected dev governance",
+        "target": "branch",
+        "source_type": "Repository",
+        "source": "somebloke1/noetic-dev",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"exclude": [], "include": ["refs/heads/dev"]}},
+        "rules": copy.deepcopy(REQUIRED_RULESET_RULES),
+        "created_at": "2026-07-17T20:05:00Z",
+        "updated_at": "2026-07-17T20:05:00Z",
+        "bypass_actors": [],
+        "current_user_can_bypass": "never",
+    }
+    snapshot = protected_ci_snapshot(123, run, applied, ruleset)
+    assert snapshot is not None
+    return run, applied, ruleset, snapshot
+
+
 class TestRouteEvidence(unittest.TestCase):
     def test_valid_success_and_reroute_sequences(self) -> None:
         self.assertEqual(validate_route_evidence(route_evidence()), [])
@@ -139,9 +182,11 @@ class TestRouteEvidence(unittest.TestCase):
 
     def test_retained_evidence_cli_binds_candidate_sha(self) -> None:
         head_sha = "a" * 40
+        protection_run, applied_rules, ruleset, protected_ci = protection_records()
         payload = {
             "repository": "somebloke1/noetic-dev", "pr_number": 55, "head_sha": head_sha,
-            "base_sha": "b" * 40, "route_evidence": route_evidence(),
+            "base_sha": "b" * 40, "protected_ci": protected_ci,
+            "route_evidence": route_evidence(),
         }
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "agent-review-result.json"
@@ -150,6 +195,7 @@ class TestRouteEvidence(unittest.TestCase):
                 "id": 123, "name": "Agent Review", "path": ".github/workflows/agent-review.yml",
                 "event": "pull_request_target", "status": "completed", "conclusion": "success",
                 "head_sha": head_sha, "repository": {"full_name": "somebloke1/noetic-dev"},
+                "created_at": protection_run["created_at"],
                 "pull_requests": [{
                     "number": 55,
                     "head": {"sha": head_sha, "repo": {"url": "https://api.github.com/repos/somebloke1/noetic-dev"}},
@@ -163,6 +209,8 @@ class TestRouteEvidence(unittest.TestCase):
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(applied_rules).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(ruleset).encode(), b""),
             ]
             arguments = ["route_evidence.py", "--run-id", "123", "--pr-number", "55", "--head-sha", head_sha]
             with mock.patch.object(sys, "argv", arguments), mock.patch(
@@ -173,6 +221,8 @@ class TestRouteEvidence(unittest.TestCase):
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(applied_rules).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(ruleset).encode(), b""),
             ]
             with mock.patch.object(sys, "argv", arguments), mock.patch(
                 "route_evidence.subprocess.run", side_effect=responses
@@ -188,6 +238,101 @@ class TestRouteEvidence(unittest.TestCase):
             ):
                 self.assertNotEqual(main(), 0)
                 run_api.assert_not_called()
+
+    def test_protected_ci_snapshot_rejects_mutable_or_bypassable_rulesets(self) -> None:
+        run, applied, ruleset, snapshot = protection_records()
+        self.assertEqual(protected_ci_snapshot(123, run, applied, ruleset), snapshot)
+        for mutation in (
+            "late", "equal-time", "naive-time", "bypass", "viewer-bypass", "missing-check",
+            "deletion", "force-push", "merge-method", "full-rule-detail", "duplicate-full-rule",
+        ):
+            changed_ruleset = copy.deepcopy(ruleset)
+            changed_applied = copy.deepcopy(applied)
+            if mutation == "late":
+                changed_ruleset["updated_at"] = "2026-07-17T20:11:00Z"
+            elif mutation == "equal-time":
+                changed_ruleset["updated_at"] = run["created_at"]
+            elif mutation == "naive-time":
+                changed_ruleset["updated_at"] = "2026-07-17T20:05:00"
+            elif mutation == "bypass":
+                changed_ruleset["bypass_actors"] = [{"actor_type": "User", "actor_id": 1}]
+            elif mutation == "viewer-bypass":
+                changed_ruleset["current_user_can_bypass"] = "always"
+            elif mutation == "missing-check":
+                changed_applied[3]["parameters"]["required_status_checks"].pop()
+            elif mutation == "deletion":
+                changed_applied.pop(0)
+            elif mutation == "force-push":
+                changed_applied.pop(1)
+            elif mutation == "merge-method":
+                changed_applied[2]["parameters"]["allowed_merge_methods"] = ["merge"]
+            elif mutation == "full-rule-detail":
+                changed_ruleset["rules"][2]["parameters"]["allowed_merge_methods"] = ["merge"]
+            else:
+                changed_ruleset["rules"].append({"type": "deletion"})
+            with self.subTest(mutation=mutation):
+                self.assertIsNone(protected_ci_snapshot(123, run, changed_applied, changed_ruleset))
+
+    def test_malformed_retained_ruleset_identity_fails_closed(self) -> None:
+        with mock.patch("route_evidence.github_json") as api:
+            errors = validate_protected_provenance(123, 55, "a" * 40, "b" * 40, {"ruleset": []})
+        self.assertEqual(errors, ["retained protected-CI ruleset identity is invalid"])
+        api.assert_not_called()
+
+    def test_capture_adds_the_applicable_ruleset_to_retained_evidence(self) -> None:
+        run, applied, ruleset, snapshot = protection_records()
+        with tempfile.TemporaryDirectory() as directory:
+            evidence = Path(directory) / "agent-review-result.json"
+            evidence.write_text(json.dumps({"repository": "somebloke1/noetic-dev"}), encoding="utf-8")
+            arguments = [
+                "capture_protected_ci.py", "--run-id", "123", "--evidence", str(evidence),
+            ]
+            with mock.patch.object(sys, "argv", arguments), mock.patch(
+                "capture_protected_ci.github_json", side_effect=[run, applied, ruleset]
+            ):
+                self.assertEqual(capture_protected_ci_main(), 0)
+            self.assertEqual(json.loads(evidence.read_text(encoding="utf-8"))["protected_ci"], snapshot)
+
+    def test_capture_rejects_malformed_applied_rules_without_rewriting_evidence(self) -> None:
+        _, valid_rules, _, _ = protection_records()
+        malformed = [None, True, 1, {}, "rule"]
+        responses = malformed + [valid_rules + [item] for item in malformed]
+        for response in responses:
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as directory:
+                evidence = Path(directory) / "agent-review-result.json"
+                original = json.dumps({"repository": "somebloke1/noetic-dev"})
+                evidence.write_text(original, encoding="utf-8")
+                arguments = [
+                    "capture_protected_ci.py", "--run-id", "123", "--evidence", str(evidence),
+                ]
+                with mock.patch.object(sys, "argv", arguments), mock.patch(
+                    "capture_protected_ci.github_json", side_effect=[{}, response]
+                ):
+                    with self.assertRaises(SystemExit):
+                        capture_protected_ci_main()
+                self.assertEqual(evidence.read_text(encoding="utf-8"), original)
+
+    def test_capture_rejects_ignored_or_multiple_applicable_rulesets(self) -> None:
+        _, valid_rules, _, _ = protection_records()
+        invalid_responses = [
+            valid_rules + [{"type": "unknown", "ruleset_id": 19122088}],
+            valid_rules + [{"type": "unknown", "ruleset_id": 2}],
+            valid_rules + [{"type": "deletion", "ruleset_id": 2}],
+        ]
+        for response in invalid_responses:
+            with self.subTest(response=response), tempfile.TemporaryDirectory() as directory:
+                evidence = Path(directory) / "agent-review-result.json"
+                original = json.dumps({"repository": "somebloke1/noetic-dev"})
+                evidence.write_text(original, encoding="utf-8")
+                arguments = [
+                    "capture_protected_ci.py", "--run-id", "123", "--evidence", str(evidence),
+                ]
+                with mock.patch.object(sys, "argv", arguments), mock.patch(
+                    "capture_protected_ci.github_json", side_effect=[{}, response]
+                ):
+                    with self.assertRaises(SystemExit):
+                        capture_protected_ci_main()
+                self.assertEqual(evidence.read_text(encoding="utf-8"), original)
 
     def test_downloaded_artifact_is_the_only_evidence_source(self) -> None:
         from route_evidence import download_protected_evidence
