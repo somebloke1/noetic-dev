@@ -34,11 +34,11 @@
           "strict_required_status_checks_policy": true,
           "do_not_enforce_on_create": false,
           "required_status_checks": [
-            {"context": "agent-review"},
-            {"context": "Repository validation (candidate)"},
-            {"context": "Workflow pinning validation (candidate)"},
-            {"context": "Genuine tests (candidate)"},
-            {"context": "Bootstrap honesty (advisory, fail-closed)"}
+            {"context": "agent-review", "integration_id": 15368},
+            {"context": "Repository validation (candidate)", "integration_id": 15368},
+            {"context": "Workflow pinning validation (candidate)", "integration_id": 15368},
+            {"context": "Genuine tests (candidate)", "integration_id": 15368},
+            {"context": "Bootstrap honesty (advisory, fail-closed)", "integration_id": 15368}
           ]
         }
       }
@@ -67,11 +67,11 @@
         "strict_required_status_checks_policy": true,
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          {"context": "agent-review"},
-          {"context": "Repository validation (candidate)"},
-          {"context": "Workflow pinning validation (candidate)"},
-          {"context": "Genuine tests (candidate)"},
-          {"context": "Bootstrap honesty (advisory, fail-closed)"}
+          {"context": "agent-review", "integration_id": 15368},
+          {"context": "Repository validation (candidate)", "integration_id": 15368},
+          {"context": "Workflow pinning validation (candidate)", "integration_id": 15368},
+          {"context": "Genuine tests (candidate)", "integration_id": 15368},
+          {"context": "Bootstrap honesty (advisory, fail-closed)", "integration_id": 15368}
         ]
       }
     }

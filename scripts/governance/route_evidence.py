@@ -17,8 +17,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from json_schema import load_json_strict, validate_schema
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENUS_ROUTER_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 DECISION_ID = re.compile(r"^d-[0-9]{8}-[0-9]{6}$")
@@ -29,11 +27,11 @@ STANDARD_MODELS = [
     "codex/gpt-5.6-luna",
 ]
 REQUIRED_PROTECTED_CHECKS = [
-    {"context": "agent-review"},
-    {"context": "Repository validation (candidate)"},
-    {"context": "Workflow pinning validation (candidate)"},
-    {"context": "Genuine tests (candidate)"},
-    {"context": "Bootstrap honesty (advisory, fail-closed)"},
+    {"context": "agent-review", "integration_id": 15368},
+    {"context": "Repository validation (candidate)", "integration_id": 15368},
+    {"context": "Workflow pinning validation (candidate)", "integration_id": 15368},
+    {"context": "Genuine tests (candidate)", "integration_id": 15368},
+    {"context": "Bootstrap honesty (advisory, fail-closed)", "integration_id": 15368},
 ]
 REQUIRED_PULL_REQUEST_PARAMETERS = {
     "required_approving_review_count": 0,
@@ -62,6 +60,25 @@ PROTECTED_REVIEW_CLASSIFICATION = {
     "high_value": False,
     "awaited": True,
 }
+
+
+def load_json_strict(path: Path) -> Any:
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate object key: {key}")
+            result[key] = value
+        return result
+
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(
+            handle,
+            object_pairs_hook=no_duplicates,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-deterministic JSON number: {value}")
+            ),
+        )
 
 
 def github_json(path: str) -> Any:
@@ -93,14 +110,14 @@ def protected_checkout_matches(base_sha: str) -> bool:
         timeout=10, check=False,
     )
     tracked = subprocess.run(
-        ["git", "--no-replace-objects", "ls-files", "-v", "--error-unmatch", "--", *paths], cwd=REPO_ROOT,
+        ["git", "--no-replace-objects", "ls-files", "-v"], cwd=REPO_ROOT,
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         timeout=10, check=False,
     )
     status = subprocess.run(
         [
             "git", "--no-replace-objects", "status", "--porcelain=v1",
-            "--untracked-files=all", "--", *paths,
+            "--untracked-files=all",
         ],
         cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, timeout=10, check=False,
@@ -119,8 +136,10 @@ def protected_checkout_matches(base_sha: str) -> bool:
         and branch.returncode == 1
         and branch.stdout == b""
         and tracked.returncode == 0
-        and set(tracked.stdout.decode("utf-8", "strict").splitlines())
-        == {f"H {path}" for path in paths}
+        and all(line.startswith("H ") for line in tracked.stdout.decode("utf-8", "strict").splitlines())
+        and {f"H {path}" for path in paths}.issubset(
+            set(tracked.stdout.decode("utf-8", "strict").splitlines())
+        )
         and status.returncode == 0
         and status.stdout == b""
         and replacements.returncode == 0
@@ -230,6 +249,8 @@ def validate_route_decision(decision: Any, excluded_models: list[str]) -> list[s
 
 
 def validate_route_evidence(evidence: Any, contract_name: str = "protected_review") -> list[str]:
+    from json_schema import validate_schema
+
     if contract_name != "protected_review":
         return [f"unknown route contract: {contract_name}"]
     errors: list[str] = []
