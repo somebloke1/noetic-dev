@@ -141,7 +141,7 @@ class TestRouteEvidence(unittest.TestCase):
         head_sha = "a" * 40
         payload = {
             "repository": "somebloke1/noetic-dev", "pr_number": 55, "head_sha": head_sha,
-            "route_evidence": route_evidence(),
+            "base_sha": "b" * 40, "route_evidence": route_evidence(),
         }
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "agent-review-result.json"
@@ -150,7 +150,14 @@ class TestRouteEvidence(unittest.TestCase):
                 "id": 123, "name": "Agent Review", "path": ".github/workflows/agent-review.yml",
                 "event": "pull_request_target", "status": "completed", "conclusion": "success",
                 "head_sha": head_sha, "repository": {"full_name": "somebloke1/noetic-dev"},
-                "pull_requests": [{"number": 55, "head": {"sha": head_sha}, "base": {"ref": "dev"}}],
+                "pull_requests": [{
+                    "number": 55,
+                    "head": {"sha": head_sha, "repo": {"url": "https://api.github.com/repos/somebloke1/noetic-dev"}},
+                    "base": {
+                        "ref": "dev", "sha": "b" * 40,
+                        "repo": {"url": "https://api.github.com/repos/somebloke1/noetic-dev"},
+                    },
+                }],
             }
             artifacts = {"artifacts": [{"name": f"agent-review-55-{head_sha}", "expired": False}]}
             responses = [

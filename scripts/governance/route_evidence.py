@@ -215,10 +215,6 @@ def main() -> int:
     args = parser.parse_args()
     if not re.fullmatch(r"[a-f0-9]{40}", args.head_sha):
         parser.error("--head-sha must be a full lowercase SHA-1")
-    provenance_errors = validate_protected_provenance(args.run_id, args.pr_number, args.head_sha)
-    if provenance_errors:
-        print(json.dumps(provenance_errors, ensure_ascii=True), file=sys.stderr)
-        return 1
     try:
         with tempfile.TemporaryDirectory() as directory:
             evidence_path = download_protected_evidence(args.run_id, args.pr_number, args.head_sha, Path(directory))
@@ -231,9 +227,17 @@ def main() -> int:
         or payload.get("repository") != "somebloke1/noetic-dev"
         or payload.get("pr_number") != args.pr_number
         or payload.get("head_sha") != args.head_sha
+        or not isinstance(payload.get("base_sha"), str)
+        or not re.fullmatch(r"[a-f0-9]{40}", payload["base_sha"])
         or type(payload.get("route_evidence")) is not dict
     ):
         print("route evidence wrapper does not match the candidate SHA", file=sys.stderr)
+        return 1
+    provenance_errors = validate_protected_provenance(
+        args.run_id, args.pr_number, args.head_sha, payload["base_sha"]
+    )
+    if provenance_errors:
+        print(json.dumps(provenance_errors, ensure_ascii=True), file=sys.stderr)
         return 1
     errors = validate_route_evidence(payload["route_evidence"])
     if errors:
@@ -264,7 +268,7 @@ def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, dire
     return evidence_path
 
 
-def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str) -> list[str]:
+def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str, base_sha: str) -> list[str]:
     if not 1 <= run_id <= 9_223_372_036_854_775_807 or not 1 <= pr_number <= 2_147_483_647:
         return ["protected run or PR identifier is invalid"]
 
@@ -294,7 +298,7 @@ def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str) ->
         or run.get("event") != "pull_request_target"
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
-        or run.get("head_sha") != head_sha
+        or run.get("head_sha") not in {head_sha, base_sha}
         or not isinstance(run.get("repository"), dict)
         or run["repository"].get("full_name") != "somebloke1/noetic-dev"
         or not isinstance(pull_requests, list)
@@ -303,8 +307,13 @@ def validate_protected_provenance(run_id: int, pr_number: int, head_sha: str) ->
             and item.get("number") == pr_number
             and isinstance(item.get("head"), dict)
             and item["head"].get("sha") == head_sha
+            and isinstance(item["head"].get("repo"), dict)
+            and item["head"]["repo"].get("url") == "https://api.github.com/repos/somebloke1/noetic-dev"
             and isinstance(item.get("base"), dict)
             and item["base"].get("ref") == "dev"
+            and item["base"].get("sha") == base_sha
+            and isinstance(item["base"].get("repo"), dict)
+            and item["base"]["repo"].get("url") == "https://api.github.com/repos/somebloke1/noetic-dev"
             for item in pull_requests
         )
     ):
