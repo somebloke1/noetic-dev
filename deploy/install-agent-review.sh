@@ -24,7 +24,7 @@ git -C "$genus_source" archive "$genus_sha" | tar -x -C "$genus_archive"
 
 getent group noetic-agent-review >/dev/null || groupadd --system noetic-agent-review
 id noetic-review-broker >/dev/null 2>&1 || useradd --system --gid noetic-agent-review --home /var/lib/noetic-agent-review --shell /usr/sbin/nologin noetic-review-broker
-install -d -o root -g root -m 0755 "$root" "$root/releases" "$root/genus-router" "$root/runtime"
+install -d -o root -g root -m 0755 "$root" "$root/releases" "$root/genus-router"
 install -d -o noetic-review-broker -g noetic-agent-review -m 0750 /var/lib/noetic-agent-review
 
 if [[ ! -d $release ]]; then
@@ -32,15 +32,11 @@ if [[ ! -d $release ]]; then
   git -C "$noetic_source" archive "$noetic_sha" | tar -x -C "$release"
 fi
 
-if [[ ! -x $root/runtime/mcp/bin/python3 ]]; then
-  python3 -m venv "$root/runtime/mcp"
-fi
-env -u LITELLM_API_KEY "$root/runtime/mcp/bin/python3" -m pip install --disable-pip-version-check -r "$release/deploy/requirements-agent-review.txt"
-
-if [[ ! -x $router_release/bin/genus-router ]]; then
+if [[ ! -x $router_release/bin/python3 ]]; then
   python3 -m venv "$router_release"
-  env -u LITELLM_API_KEY "$router_release/bin/python3" -m pip install --disable-pip-version-check "$genus_archive"
 fi
+env -u LITELLM_API_KEY "$router_release/bin/python3" -m pip install --disable-pip-version-check --require-hashes -r "$release/deploy/requirements-agent-review.lock"
+env -u LITELLM_API_KEY "$router_release/bin/python3" -m pip install --disable-pip-version-check --no-build-isolation --no-deps "$genus_archive"
 install -d -o root -g root -m 0755 "$router_release/config"
 install -d -o noetic-review-broker -g noetic-agent-review -m 0750 "$router_release/state"
 install -o root -g root -m 0444 "$genus_archive/config/router.yaml" "$router_release/config/router.yaml"
@@ -53,8 +49,8 @@ printf '{"command_sha256":"%s","component_sha":"%s","config_sha256":"%s","genus_
   "$command_sha" "$genus_sha" "$config_sha" "$table_sha" >"$router_release/component-manifest.json"
 chown root:root "$router_release/component-manifest.json"
 chmod 0444 "$router_release/component-manifest.json"
-chown -R root:root "$release" "$root/runtime/mcp" "$router_release/bin" "$router_release/lib" "$router_release/include" "$router_release/config"
-chmod -R go-w "$release" "$root/runtime/mcp" "$router_release/bin" "$router_release/lib" "$router_release/include" "$router_release/config"
+chown -R root:root "$release" "$router_release/bin" "$router_release/lib" "$router_release/include" "$router_release/config"
+chmod -R go-w "$release" "$router_release/bin" "$router_release/lib" "$router_release/include" "$router_release/config"
 
 ln -sfn "$release" "$root/current.new"
 mv -Tf "$root/current.new" "$root/current"

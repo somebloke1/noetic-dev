@@ -14,6 +14,7 @@ from typing import Any
 from json_schema import load_json_strict, validate_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+GENUS_ROUTER_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 DECISION_ID = re.compile(r"^d-[0-9]{8}-[0-9]{6}$")
 SHA256_HEX = re.compile(r"[a-f0-9]{64}")
 STANDARD_MODELS = [
@@ -61,6 +62,8 @@ def validate_route_evidence(evidence: Any, contract_name: str = "protected_revie
     errors.extend(f"schema: {error}" for error in validate_schema(evidence, schema))
     if errors:
         return errors
+    if evidence["component_sha"] != GENUS_ROUTER_SHA:
+        return ["protected_review component SHA is not canonical"]
     if evidence["classification"] != PROTECTED_REVIEW_CLASSIFICATION:
         errors.append("route classification does not match protected_review")
 

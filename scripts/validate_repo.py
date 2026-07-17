@@ -104,6 +104,7 @@ REQUIRED = [
     "scripts/governance/route_evidence.py",
     "deploy/install-agent-review.sh",
     "deploy/requirements-agent-review.txt",
+    "deploy/requirements-agent-review.lock",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",

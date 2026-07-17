@@ -138,6 +138,7 @@ class TestRouteEvidence(unittest.TestCase):
         for path, value in [
             (("classification", "high_value"), True),
             (("component_sha",), "a" * 39),
+            (("component_sha",), "a" * 40),
             (("attempts", 0, "invocation_count"), 0),
             (("attempts", 0, "outcome_recorded"), False),
             (("attempts", 0, "reasoning_effort"), "low"),

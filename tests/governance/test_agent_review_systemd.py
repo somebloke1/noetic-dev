@@ -31,7 +31,7 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("/run/noetic-dev/agent-review.sock", unit)
         self.assertIn("HOME=/var/lib/noetic-agent-review", unit)
         self.assertIn("ProtectHome=true", unit)
-        self.assertIn("runtime/mcp/bin/python3", unit)
+        self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/python3", unit)
         self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/genus-router", unit)
         self.assertIn("--genus-router-sha f2b839b0cfc737c4c1f0a46d3d519d414529545c", unit)
         self.assertIn("LoadCredential=litellm_api_key", unit)
@@ -40,16 +40,19 @@ class TestAgentReviewSystemd(unittest.TestCase):
 
     def test_mcp_client_dependency_is_exactly_pinned(self):
         requirements = (ROOT / "deploy" / "requirements-agent-review.txt").read_text().splitlines()
-        self.assertEqual(requirements, ["mcp==1.28.1"])
+        self.assertIn("mcp==1.28.1", requirements)
+        lock = (ROOT / "deploy" / "requirements-agent-review.lock").read_text()
+        self.assertIn("mcp==1.28.1 \\", lock)
+        self.assertIn("--hash=sha256:", lock)
 
     def test_installer_provisions_the_referenced_runtime_and_service(self):
         installer = (ROOT / "deploy" / "install-agent-review.sh").read_text()
-        self.assertIn('python3 -m venv "$root/runtime/mcp"', installer)
-        self.assertIn('requirements-agent-review.txt', installer)
+        self.assertIn('requirements-agent-review.lock', installer)
         self.assertIn('python3 -m venv "$router_release"', installer)
         self.assertIn('git -C "$genus_source" archive "$genus_sha"', installer)
-        self.assertIn('env -u LITELLM_API_KEY "$root/runtime/mcp/bin/python3" -m pip install', installer)
+        self.assertIn('"$router_release/bin/python3" -m pip install --disable-pip-version-check --require-hashes', installer)
         self.assertIn('env -u LITELLM_API_KEY "$router_release/bin/python3" -m pip install', installer)
+        self.assertIn('--no-build-isolation --no-deps "$genus_archive"', installer)
         self.assertNotIn('pip install --disable-pip-version-check "$genus_source"', installer)
         self.assertIn('"$genus_archive/config/genus_models.csv"', installer)
         self.assertIn('genus_table_sha256', installer)
