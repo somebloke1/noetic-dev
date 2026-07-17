@@ -17,7 +17,8 @@ if GOV_SCRIPTS not in sys.path:
 
 from route_evidence import (  # noqa: E402
     REQUIRED_PROTECTED_CHECKS, REQUIRED_PULL_REQUEST_PARAMETERS, REQUIRED_RULESET_RULES,
-    STANDARD_MODELS, main, protected_ci_snapshot, validate_protected_provenance,
+    STANDARD_MODELS, main, protected_checkout_matches, protected_ci_snapshot,
+    validate_protected_provenance,
     validate_route_evidence,
 )
 from capture_protected_ci import main as capture_protected_ci_main  # noqa: E402
@@ -215,7 +216,9 @@ class TestRouteEvidence(unittest.TestCase):
             arguments = ["route_evidence.py", "--run-id", "123", "--pr-number", "55", "--head-sha", head_sha]
             with mock.patch.object(sys, "argv", arguments), mock.patch(
                 "route_evidence.subprocess.run", side_effect=responses
-            ), mock.patch("route_evidence.download_protected_evidence", return_value=evidence):
+            ), mock.patch("route_evidence.download_protected_evidence", return_value=evidence), mock.patch(
+                "route_evidence.protected_checkout_matches", return_value=True
+            ):
                 self.assertEqual(main(), 0)
             run["conclusion"] = "failure"
             responses = [
@@ -273,63 +276,104 @@ class TestRouteEvidence(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 self.assertIsNone(protected_ci_snapshot(123, run, changed_applied, changed_ruleset))
 
+        extra_ruleset = copy.deepcopy(applied)
+        extra_ruleset.append({"type": "required_status_checks", "ruleset_id": 2, "parameters": {}})
+        self.assertIsNone(protected_ci_snapshot(123, run, extra_ruleset, ruleset))
+
     def test_malformed_retained_ruleset_identity_fails_closed(self) -> None:
         with mock.patch("route_evidence.github_json") as api:
             errors = validate_protected_provenance(123, 55, "a" * 40, "b" * 40, {"ruleset": []})
         self.assertEqual(errors, ["retained protected-CI ruleset identity is invalid"])
         api.assert_not_called()
 
+    def test_validator_checkout_must_be_the_clean_protected_base(self) -> None:
+        base_sha = "b" * 40
+        clean = [
+            subprocess.CompletedProcess([], 0, f"{base_sha}\n".encode(), b""),
+            subprocess.CompletedProcess([], 1, b"", b""),
+            subprocess.CompletedProcess([], 0, b"H governance/protected-dev-ruleset.json\nH scripts/governance/route_evidence.py\n", b""),
+            subprocess.CompletedProcess([], 0, b"", b""),
+            subprocess.CompletedProcess([], 0, b"", b""),
+        ]
+        with mock.patch("route_evidence.subprocess.run", side_effect=clean):
+            self.assertTrue(protected_checkout_matches(base_sha))
+        failures = [
+            ("a" * 40, 1, 0, b""),
+            (base_sha, 0, 0, b""),
+            (base_sha, 1, 1, b""),
+            (base_sha, 1, 0, b"?? scripts/governance/route_evidence.py\n"),
+        ]
+        tracked_paths = b"H governance/protected-dev-ruleset.json\nH scripts/governance/route_evidence.py\n"
+        for revision, branch_status, tracked_status, status in failures:
+            responses = [
+                subprocess.CompletedProcess([], 0, f"{revision}\n".encode(), b""),
+                subprocess.CompletedProcess([], branch_status, b"refs/heads/dev\n" if branch_status == 0 else b"", b""),
+                subprocess.CompletedProcess([], tracked_status, tracked_paths if tracked_status == 0 else b"", b""),
+                subprocess.CompletedProcess([], 0, status, b""),
+                subprocess.CompletedProcess([], 0, b"", b""),
+            ]
+            with self.subTest(
+                revision=revision, branch_status=branch_status,
+                tracked_status=tracked_status, status=status,
+            ), mock.patch(
+                "route_evidence.subprocess.run", side_effect=responses
+            ):
+                self.assertFalse(protected_checkout_matches(base_sha))
+        for concealed in [
+            b"S governance/protected-dev-ruleset.json\nH scripts/governance/route_evidence.py\n",
+            b"H governance/protected-dev-ruleset.json\nh scripts/governance/route_evidence.py\n",
+        ]:
+            responses = [
+                subprocess.CompletedProcess([], 0, f"{base_sha}\n".encode(), b""),
+                subprocess.CompletedProcess([], 1, b"", b""),
+                subprocess.CompletedProcess([], 0, concealed, b""),
+                subprocess.CompletedProcess([], 0, b"", b""),
+                subprocess.CompletedProcess([], 0, b"", b""),
+            ]
+            with self.subTest(concealed=concealed), mock.patch(
+                "route_evidence.subprocess.run", side_effect=responses
+            ):
+                self.assertFalse(protected_checkout_matches(base_sha))
+        replacement = [
+            subprocess.CompletedProcess([], 0, f"{base_sha}\n".encode(), b""),
+            subprocess.CompletedProcess([], 1, b"", b""),
+            subprocess.CompletedProcess([], 0, tracked_paths, b""),
+            subprocess.CompletedProcess([], 0, b"", b""),
+            subprocess.CompletedProcess([], 0, f"refs/replace/{base_sha}\n".encode(), b""),
+        ]
+        with mock.patch("route_evidence.subprocess.run", side_effect=replacement):
+            self.assertFalse(protected_checkout_matches(base_sha))
+
     def test_capture_adds_the_applicable_ruleset_to_retained_evidence(self) -> None:
-        run, applied, ruleset, snapshot = protection_records()
+        _, _, _, snapshot = protection_records()
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "agent-review-result.json"
+            policy = Path(directory) / "protected-dev-ruleset.json"
             evidence.write_text(json.dumps({"repository": "somebloke1/noetic-dev"}), encoding="utf-8")
+            policy.write_text(json.dumps(snapshot), encoding="utf-8")
             arguments = [
-                "capture_protected_ci.py", "--run-id", "123", "--evidence", str(evidence),
+                "capture_protected_ci.py", "--evidence", str(evidence), "--policy", str(policy),
             ]
-            with mock.patch.object(sys, "argv", arguments), mock.patch(
-                "capture_protected_ci.github_json", side_effect=[run, applied, ruleset]
-            ):
+            with mock.patch.object(sys, "argv", arguments):
                 self.assertEqual(capture_protected_ci_main(), 0)
             self.assertEqual(json.loads(evidence.read_text(encoding="utf-8"))["protected_ci"], snapshot)
 
-    def test_capture_rejects_malformed_applied_rules_without_rewriting_evidence(self) -> None:
-        _, valid_rules, _, _ = protection_records()
-        malformed = [None, True, 1, {}, "rule"]
-        responses = malformed + [valid_rules + [item] for item in malformed]
-        for response in responses:
-            with self.subTest(response=response), tempfile.TemporaryDirectory() as directory:
-                evidence = Path(directory) / "agent-review-result.json"
-                original = json.dumps({"repository": "somebloke1/noetic-dev"})
-                evidence.write_text(original, encoding="utf-8")
-                arguments = [
-                    "capture_protected_ci.py", "--run-id", "123", "--evidence", str(evidence),
-                ]
-                with mock.patch.object(sys, "argv", arguments), mock.patch(
-                    "capture_protected_ci.github_json", side_effect=[{}, response]
-                ):
-                    with self.assertRaises(SystemExit):
-                        capture_protected_ci_main()
-                self.assertEqual(evidence.read_text(encoding="utf-8"), original)
-
-    def test_capture_rejects_ignored_or_multiple_applicable_rulesets(self) -> None:
-        _, valid_rules, _, _ = protection_records()
-        invalid_responses = [
-            valid_rules + [{"type": "unknown", "ruleset_id": 19122088}],
-            valid_rules + [{"type": "unknown", "ruleset_id": 2}],
-            valid_rules + [{"type": "deletion", "ruleset_id": 2}],
+    def test_capture_rejects_malformed_policy_without_rewriting_evidence(self) -> None:
+        malformed = [
+            None, True, 1, {}, "policy", {"schema_version": "1"},
+            {"schema_version": "1", "ruleset": {}, "applied_rules": []},
         ]
-        for response in invalid_responses:
-            with self.subTest(response=response), tempfile.TemporaryDirectory() as directory:
+        for policy_payload in malformed:
+            with self.subTest(policy=policy_payload), tempfile.TemporaryDirectory() as directory:
                 evidence = Path(directory) / "agent-review-result.json"
+                policy = Path(directory) / "protected-dev-ruleset.json"
                 original = json.dumps({"repository": "somebloke1/noetic-dev"})
                 evidence.write_text(original, encoding="utf-8")
+                policy.write_text(json.dumps(policy_payload), encoding="utf-8")
                 arguments = [
-                    "capture_protected_ci.py", "--run-id", "123", "--evidence", str(evidence),
+                    "capture_protected_ci.py", "--evidence", str(evidence), "--policy", str(policy),
                 ]
-                with mock.patch.object(sys, "argv", arguments), mock.patch(
-                    "capture_protected_ci.github_json", side_effect=[{}, response]
-                ):
+                with mock.patch.object(sys, "argv", arguments):
                     with self.assertRaises(SystemExit):
                         capture_protected_ci_main()
                 self.assertEqual(evidence.read_text(encoding="utf-8"), original)

@@ -78,10 +78,70 @@ def github_json(path: str) -> Any:
     return json.loads(result.stdout)
 
 
+def protected_checkout_matches(base_sha: str) -> bool:
+    paths = [
+        "scripts/governance/route_evidence.py", "governance/protected-dev-ruleset.json",
+    ]
+    revision = subprocess.run(
+        ["git", "--no-replace-objects", "rev-parse", "HEAD"], cwd=REPO_ROOT,
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=10, check=False,
+    )
+    branch = subprocess.run(
+        ["git", "--no-replace-objects", "symbolic-ref", "-q", "HEAD"], cwd=REPO_ROOT,
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=10, check=False,
+    )
+    tracked = subprocess.run(
+        ["git", "--no-replace-objects", "ls-files", "-v", "--error-unmatch", "--", *paths], cwd=REPO_ROOT,
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        timeout=10, check=False,
+    )
+    status = subprocess.run(
+        [
+            "git", "--no-replace-objects", "status", "--porcelain=v1",
+            "--untracked-files=all", "--", *paths,
+        ],
+        cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, timeout=10, check=False,
+    )
+    replacements = subprocess.run(
+        [
+            "git", "--no-replace-objects", "for-each-ref", "--format=%(refname)",
+            "refs/replace/",
+        ],
+        cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, timeout=10, check=False,
+    )
+    return (
+        revision.returncode == 0
+        and revision.stdout.decode("ascii", "strict").strip() == base_sha
+        and branch.returncode == 1
+        and branch.stdout == b""
+        and tracked.returncode == 0
+        and set(tracked.stdout.decode("utf-8", "strict").splitlines())
+        == {f"H {path}" for path in paths}
+        and status.returncode == 0
+        and status.stdout == b""
+        and replacements.returncode == 0
+        and replacements.stdout == b""
+    )
+
+
 def protected_ci_snapshot(run_id: int, run: Any, applied_rules: Any, ruleset: Any) -> dict[str, Any] | None:
     if not isinstance(run, dict) or not isinstance(applied_rules, list) or not isinstance(ruleset, dict):
         return None
     ruleset_id = ruleset.get("id")
+    if (
+        len(applied_rules) != 4
+        or any(
+            not isinstance(rule, dict)
+            or rule.get("ruleset_id") != ruleset_id
+            or not isinstance(rule.get("type"), str)
+            for rule in applied_rules
+        )
+    ):
+        return None
     relevant = [
         rule for rule in applied_rules
         if isinstance(rule, dict) and rule.get("ruleset_id") == ruleset_id
@@ -131,17 +191,18 @@ def protected_ci_snapshot(run_id: int, run: Any, applied_rules: Any, ruleset: An
         return None
     return {
         "schema_version": "1",
-        "run_id": run_id,
-        "run_created_at": run_created_at,
         "ruleset": {
             key: ruleset[key]
             for key in (
                 "id", "name", "target", "source_type", "source", "enforcement",
-                "conditions", "rules", "created_at", "updated_at", "bypass_actors",
+                "conditions", "rules", "bypass_actors",
                 "current_user_can_bypass",
             )
         },
-        "applied_rules": relevant,
+        "applied_rules": [
+            {key: rule[key] for key in ("type", "parameters") if key in rule}
+            for rule in relevant
+        ],
     }
 PROTECTED_REVIEW_CANDIDATES = [STANDARD_MODELS[1], STANDARD_MODELS[0], STANDARD_MODELS[2]]
 
@@ -431,6 +492,12 @@ def validate_protected_provenance(
         for item in listed
     ):
         return ["exact-SHA Agent Review artifact is unavailable or expired"]
+    try:
+        checkout_matches = protected_checkout_matches(base_sha)
+    except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError):
+        checkout_matches = False
+    if not checkout_matches:
+        return ["validator is not executing from the clean protected base SHA"]
     if protected_ci_snapshot(run_id, run, applied_rules, ruleset) != protected_ci:
         return ["retained protected-CI ruleset evidence is absent, changed, or inapplicable"]
     return []

@@ -6,7 +6,6 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  actions: read
   contents: read
   pull-requests: read
 
@@ -49,12 +48,10 @@ jobs:
           --output "$RUNNER_TEMP/agent-review-result.json"
       - name: Retain exact-SHA route evidence
         if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: >-
           python3 policy/scripts/governance/capture_protected_ci.py
-          --run-id "${{ github.run_id }}"
           --evidence "$RUNNER_TEMP/agent-review-result.json"
+          --policy "policy/governance/protected-dev-ruleset.json"
       - name: Upload exact-SHA route evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

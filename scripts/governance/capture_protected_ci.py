@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add the active protected-branch ruleset snapshot to route evidence."""
+"""Add the protected-base ruleset declaration to route evidence."""
 
 from __future__ import annotations
 
@@ -10,43 +10,48 @@ import tempfile
 from pathlib import Path
 
 from json_schema import load_json_strict
-from route_evidence import github_json, protected_ci_snapshot
+from route_evidence import protected_ci_snapshot
+
+
+def policy_is_canonical(policy: object) -> bool:
+    if (
+        type(policy) is not dict
+        or policy.get("schema_version") != "1"
+        or type(policy.get("ruleset")) is not dict
+        or type(policy.get("applied_rules")) is not list
+    ):
+        return False
+    ruleset = policy["ruleset"]
+    ruleset_id = ruleset.get("id")
+    if type(ruleset_id) is not int:
+        return False
+    applied = [
+        {**rule, "ruleset_id": ruleset_id}
+        for rule in policy["applied_rules"]
+        if isinstance(rule, dict)
+    ]
+    runtime_ruleset = {
+        **ruleset,
+        "created_at": "2000-01-01T00:00:00Z",
+        "updated_at": "2000-01-01T00:00:00Z",
+    }
+    return protected_ci_snapshot(
+        1, {"created_at": "2000-01-01T00:00:01Z"}, applied, runtime_ruleset
+    ) == policy
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--policy", type=Path, required=True)
     args = parser.parse_args()
     payload = load_json_strict(args.evidence)
     if type(payload) is not dict or payload.get("repository") != "somebloke1/noetic-dev":
         parser.error("evidence wrapper is invalid")
-    run = github_json(f"repos/somebloke1/noetic-dev/actions/runs/{args.run_id}")
-    applied_rules = github_json("repos/somebloke1/noetic-dev/rules/branches/dev")
-    if not isinstance(applied_rules, list) or any(
-        not isinstance(rule, dict)
-        or type(rule.get("ruleset_id")) is not int
-        or not isinstance(rule.get("type"), str)
-        for rule in applied_rules
-    ):
-        parser.error("applicable protected-CI rules are invalid")
-    ruleset_ids = sorted({rule["ruleset_id"] for rule in applied_rules})
-    if (
-        len(ruleset_ids) != 1
-        or len(applied_rules) != 4
-        or {rule["type"] for rule in applied_rules}
-        != {"deletion", "non_fast_forward", "pull_request", "required_status_checks"}
-    ):
-        parser.error("exactly one applicable protected-CI ruleset is required")
-    snapshots = []
-    for ruleset_id in ruleset_ids:
-        ruleset = github_json(f"repos/somebloke1/noetic-dev/rulesets/{ruleset_id}")
-        snapshot = protected_ci_snapshot(args.run_id, run, applied_rules, ruleset)
-        if snapshot is not None:
-            snapshots.append(snapshot)
-    if len(snapshots) != 1:
-        parser.error("exactly one applicable protected-CI ruleset is required")
-    payload["protected_ci"] = snapshots[0]
+    policy = load_json_strict(args.policy)
+    if not policy_is_canonical(policy):
+        parser.error("protected-CI policy declaration is invalid")
+    payload["protected_ci"] = policy
     descriptor, temporary = tempfile.mkstemp(prefix="protected-ci-", dir=args.evidence.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
