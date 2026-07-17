@@ -542,6 +542,7 @@ def run_terra(prompt: str, route: dict[str, str] | None = None) -> dict[str, Any
     env = {
         "HOME": os.environ.get("HOME", str(Path.home())),
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PI_CODING_AGENT_DIR": os.environ.get("PI_CODING_AGENT_DIR", str(Path.home() / ".pi" / "agent")),
         "PI_TELEMETRY": "0",
         "PI_SKIP_VERSION_CHECK": "1",
     }

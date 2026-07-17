@@ -105,6 +105,7 @@ REQUIRED = [
     "deploy/install-agent-review.sh",
     "deploy/requirements-agent-review.txt",
     "deploy/requirements-agent-review.lock",
+    "deploy/pi-agent/models.json",
     # Governance test files
     "tests/governance/__init__.py",
     "tests/governance/test_command_registry.py",

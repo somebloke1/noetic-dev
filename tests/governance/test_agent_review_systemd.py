@@ -34,6 +34,7 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/python3", unit)
         self.assertIn("f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/genus-router", unit)
         self.assertIn("/opt/noetic-dev-agent-review/runtime/bin", unit)
+        self.assertIn("PI_CODING_AGENT_DIR=/opt/noetic-dev-agent-review/current/deploy/pi-agent", unit)
         self.assertIn("--genus-router-sha f2b839b0cfc737c4c1f0a46d3d519d414529545c", unit)
         self.assertIn("LoadCredential=litellm_api_key", unit)
         self.assertIn("RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK", unit)
@@ -61,6 +62,13 @@ class TestAgentReviewSystemd(unittest.TestCase):
         self.assertIn('component-manifest.json', installer)
         self.assertIn('systemctl enable noetic-dev-agent-review-broker.service', installer)
         self.assertIn('systemctl restart noetic-dev-agent-review-broker.service', installer)
+
+    def test_pi_registry_contains_only_canonical_litellm_review_models(self):
+        registry = (ROOT / "deploy" / "pi-agent" / "models.json").read_text()
+        self.assertIn('"baseUrl": "http://172.22.10.160:3333/v1"', registry)
+        self.assertIn('"apiKey": "$LITELLM_API_KEY"', registry)
+        for model in ("terra", "sol", "luna"):
+            self.assertIn(f'"id": "codex/gpt-5.6-{model}"', registry)
 
     def test_runner_cannot_reach_broker_credentials(self):
         unit = (UNITS / "noetic-dev-actions-runner.service").read_text()
