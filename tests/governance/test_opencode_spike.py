@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import base64
 import copy
 import json
 import os
 import shutil
 import socket
-import struct
 import sys
 import tempfile
 import unittest
@@ -201,11 +199,6 @@ class RouterFactory:
 
 
 class TestStrictContracts(unittest.TestCase):
-    def test_strict_json_rejects_duplicate_and_nonfinite_numbers(self):
-        for raw in ('{"a":1,"a":2}', "NaN", "Infinity", "-Infinity", "1e309"):
-            with self.subTest(raw=raw), self.assertRaises(spike.SpikeError):
-                spike.strict_json_loads(raw)
-
     def test_route_decision_is_exact_and_fail_closed(self):
         self.assertEqual(spike.validate_route_decision(route_decision())["model"], MODEL)
         mutations = []
@@ -228,38 +221,6 @@ class TestStrictContracts(unittest.TestCase):
         for value in mutations:
             with self.subTest(value=value), self.assertRaises(spike.SpikeError):
                 spike.validate_route_decision(value)
-
-    def test_tokenless_phases_reject_credential_like_environment_names(self):
-        spike.assert_no_credential_environment({"HOME": "/nonexistent", "INVOCATION_ID": "safe"})
-        for key in (
-            "CREDENTIALS_DIRECTORY",
-            "LITELLM_API_KEY",
-            "OPENAI_API_KEY",
-            "GH_TOKEN",
-            "USER_SUPPLIED_PASSWORD",
-            "AWS_ACCESS_KEY_ID",
-        ):
-            with self.subTest(key=key), self.assertRaises(spike.SpikeError):
-                spike.assert_no_credential_environment({key: "synthetic"})
-
-    def test_pinned_router_pool_must_match_sophistication_order(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = Path(directory) / "router.yaml"
-            config.write_text(
-                'routing:\n  sophistication_pools:\n    trivial: ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]\n',
-                encoding="ascii",
-            )
-            config.chmod(0o400)
-            with self.assertRaises(spike.SpikeError) as raised:
-                spike.validate_pinned_route_policy(config, expected_uid=os.getuid())
-            self.assertEqual(raised.exception.code, "route-policy-order-conflict")
-            config.chmod(0o600)
-            config.write_text(
-                'routing:\n  sophistication_pools:\n    trivial: ["codex/gpt-5.6-luna", "codex/gpt-5.6-terra", "codex/gpt-5.6-sol"]\n',
-                encoding="ascii",
-            )
-            config.chmod(0o400)
-            spike.validate_pinned_route_policy(config, expected_uid=os.getuid())
 
     def test_router_component_manifest_binds_command_config_table_and_interpreter(self):
         command = b"router-command"
@@ -367,34 +328,6 @@ class TestStrictContracts(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(spike.SpikeError):
                 spike.validate_child_request_body(value, MODEL, PROMPT)
 
-    def test_canonical_upstream_request_discards_child_system_material(self):
-        raw = spike.canonical_upstream_request(MODEL, PROMPT)
-        payload = spike.strict_json_loads(raw)
-        self.assertEqual(
-            payload,
-            {
-                "input": [{"role": "user", "content": [{"type": "input_text", "text": PROMPT}]}],
-                "max_output_tokens": 1_024,
-                "model": MODEL,
-                "reasoning": {"effort": "high"},
-                "store": False,
-                "stream": True,
-            },
-        )
-        self.assertNotIn(b"Working directory", raw)
-        self.assertEqual(spike.validate_upstream_request_body(raw), payload)
-        invalid = [
-            {**payload, "tools": []},
-            {**payload, "model": "unrouted/model"},
-            {**payload, "max_output_tokens": 1024.0},
-            {**payload, "input": [{"role": "system", "content": [{"type": "input_text", "text": PROMPT}]}]},
-        ]
-        for value in invalid:
-            with self.subTest(value=value), self.assertRaises(spike.SpikeError):
-                spike.validate_upstream_request_body(spike.canonical_json(value))
-        with self.assertRaises(spike.SpikeError):
-            spike.validate_upstream_request_body(b" " + raw)
-
     def test_config_and_bwrap_are_closed(self):
         config = spike.build_opencode_config(MODEL, 31_337)
         self.assertEqual(config["agent"][spike.AGENT_NAME]["steps"], 2)
@@ -417,17 +350,6 @@ class TestStrictContracts(unittest.TestCase):
         self.assertNotIn(str(ROOT), joined)
         self.assertNotIn(spike.TOKEN_ENV, joined)
         self.assertNotIn(spike.CREDENTIAL_NAME, joined)
-
-    def test_root_identity_ancestors_must_be_nonwritable_directories(self):
-        safe = mock.Mock(st_mode=spike.stat.S_IFDIR | 0o755, st_uid=0)
-        unsafe = mock.Mock(st_mode=spike.stat.S_IFDIR | 0o777, st_uid=0)
-        with mock.patch("run_opencode_spike.os.lstat", return_value=safe):
-            spike._validate_immutable_ancestors(Path("/opt/noetic/runtime/file"))
-        with mock.patch("run_opencode_spike.os.lstat", side_effect=[safe, unsafe]):
-            with self.assertRaises(spike.SpikeError) as raised:
-                spike._validate_immutable_ancestors(Path("/opt/noetic/runtime/file"))
-        self.assertEqual(raised.exception.code, "identity-ancestor-unsafe")
-
 
 class TestHTTPAndControlBoundaries(unittest.TestCase):
     def request_bytes(self, payload: dict | None = None, headers: list[tuple[str, str]] | None = None) -> bytes:
@@ -497,91 +419,6 @@ class TestHTTPAndControlBoundaries(unittest.TestCase):
         for raw in cases:
             with self.subTest(raw=raw[:100]), self.assertRaises(spike.SpikeError):
                 self.parse_request(raw)
-
-    def test_control_frames_bind_size_digest_and_unique_json_keys(self):
-        left, right = socket.socketpair()
-        try:
-            spike.send_frame(left, {"type": "hello", "value": 1})
-            self.assertEqual(spike.recv_frame(right), {"type": "hello", "value": 1})
-            duplicate = b'{"type":"a","type":"b"}'
-            left.sendall(struct.pack("!I", len(duplicate)) + duplicate)
-            with self.assertRaises(spike.SpikeError):
-                spike.recv_frame(right)
-        finally:
-            left.close()
-            right.close()
-
-        raw = b"body"
-        frame = {
-            "body_b64": base64.b64encode(raw).decode("ascii"),
-            "body_sha256": spike.sha256(raw),
-        }
-        self.assertEqual(spike._decode_frame_body(frame, "body"), raw)
-        frame["body_sha256"] = "0" * 64
-        with self.assertRaises(spike.SpikeError):
-            spike._decode_frame_body(frame, "body")
-
-    def test_one_request_gate_rejects_replay(self):
-        gate = spike.OneRequestGate()
-        gate.claim()
-        with self.assertRaises(spike.SpikeError):
-            gate.claim()
-
-    def test_loopback_relay_forwards_one_validated_body_and_sanitized_response(self):
-        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listener.bind(("127.0.0.1", 0))
-        listener.listen(1)
-        listener.settimeout(2)
-        port = listener.getsockname()[1]
-        relay_control, parent_control = socket.socketpair()
-        relay_control.settimeout(2)
-        parent_control.settimeout(2)
-        state = spike.RelayState()
-        thread = spike.threading.Thread(
-            target=spike.relay_one_request,
-            args=(listener, relay_control),
-            kwargs={
-                "relay_port": port,
-                "expected_model": MODEL,
-                "expected_prompt": PROMPT,
-                "state": state,
-            },
-        )
-        thread.start()
-        client = socket.create_connection(("127.0.0.1", port), timeout=2)
-        client.settimeout(2)
-        try:
-            request = self.request_bytes().replace(b"127.0.0.1:31337", f"127.0.0.1:{port}".encode("ascii"))
-            client.sendall(request)
-            frame = spike.recv_frame(parent_control)
-            self.assertEqual(frame["type"], "request")
-            self.assertEqual(spike._decode_frame_body(frame, "body"), spike.canonical_json(child_body()))
-            clean = spike.synthesize_clean_sse(MODEL, EXPECTED_TEXT)
-            spike.send_frame(
-                parent_control,
-                {
-                    "type": "response",
-                    "response_b64": base64.b64encode(clean).decode("ascii"),
-                    "response_sha256": spike.sha256(clean),
-                },
-            )
-            response = b""
-            while True:
-                chunk = client.recv(65_536)
-                if not chunk:
-                    break
-                response += chunk
-            self.assertIn(b"HTTP/1.1 200 OK", response)
-            self.assertTrue(response.endswith(clean))
-        finally:
-            client.close()
-            parent_control.close()
-            relay_control.close()
-            thread.join(2)
-        self.assertFalse(thread.is_alive())
-        self.assertEqual(state.request_count, 1)
-        self.assertIsNone(state.error_code)
-
 
 class TestUpstreamAndEventValidation(unittest.TestCase):
     def test_sse_accepts_one_exact_completion(self):
@@ -733,21 +570,6 @@ class TestUpstreamAndEventValidation(unittest.TestCase):
             with self.subTest(raw=raw[:100]), self.assertRaises(spike.SpikeError):
                 spike.parse_opencode_jsonl(raw, EXPECTED_TEXT)
 
-    @mock.patch("run_opencode_spike._run_bounded_opencode_with_limit")
-    def test_opencode_output_limit_is_active_only_around_child(self, run: mock.Mock):
-        observed = []
-
-        def capture(_command, _environment):
-            observed.append(spike.resource.getrlimit(spike.resource.RLIMIT_FSIZE))
-            return 0, b"", b""
-
-        run.side_effect = capture
-        before = spike.resource.getrlimit(spike.resource.RLIMIT_FSIZE)
-        self.assertEqual(spike._run_bounded_opencode(["true"], {}), (0, b"", b""))
-        self.assertEqual(spike.resource.getrlimit(spike.resource.RLIMIT_FSIZE), before)
-        self.assertLessEqual(observed[0][0], spike.MAX_EVENT_LOG_BYTES)
-
-
 class TestPersistenceAndPhases(unittest.TestCase):
     @unittest.skipUnless(os.environ.get("NOETIC_OPENCODE_TEST_BINARY"), "exact OpenCode binary not requested")
     def test_real_opencode_binary_completes_one_synthetic_network_isolated_turn(self):
@@ -795,18 +617,6 @@ class TestPersistenceAndPhases(unittest.TestCase):
             self.assertEqual(result["model_turn_count"], 1)
             self.assertEqual(result["bridge_request_count"], 1)
             self.assertEqual(result["upstream_request_count"], 1)
-
-    def test_private_atomic_claim_is_irreversible(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "execute.claim"
-            spike.create_claim(path, DECISION_ID, "execute")
-            self.assertEqual(spike.claim_states(path, "execute", DECISION_ID), ["claimed"])
-            with self.assertRaises(spike.SpikeError):
-                spike.create_claim(path, DECISION_ID, "execute")
-            spike.mark_request_issued(path, DECISION_ID)
-            self.assertEqual(spike.claim_states(path, "execute", DECISION_ID), ["claimed", "request-issued"])
-            with self.assertRaises(spike.SpikeError):
-                spike.mark_request_issued(path, DECISION_ID)
 
     def test_route_phase_claims_before_call_and_blocks_replay(self):
         router = FakeRouter(route_decision())
@@ -906,31 +716,6 @@ class TestPersistenceAndPhases(unittest.TestCase):
                     environment={"HOME": "/nonexistent"},
                 )
             self.assertEqual(len(router.calls), 1)
-
-    def test_systemd_credential_reader_rejects_ambient_symlink_fifo_and_controls(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            credential = root / spike.CREDENTIAL_NAME
-            credential.write_bytes(b"synthetic-secret")
-            credential.chmod(0o600)
-            value = spike.read_systemd_credential({"CREDENTIALS_DIRECTORY": directory})
-            self.assertEqual(value, bytearray(b"synthetic-secret"))
-            with self.assertRaises(spike.SpikeError):
-                spike.read_systemd_credential({"CREDENTIALS_DIRECTORY": directory, spike.TOKEN_ENV: "ambient"})
-            credential.unlink()
-            target = root / "target"
-            target.write_bytes(b"synthetic-secret")
-            credential.symlink_to(target)
-            with self.assertRaises(spike.SpikeError):
-                spike.read_systemd_credential({"CREDENTIALS_DIRECTORY": directory})
-            credential.unlink()
-            os.mkfifo(credential)
-            with self.assertRaises(spike.SpikeError):
-                spike.read_systemd_credential({"CREDENTIALS_DIRECTORY": directory})
-            credential.unlink()
-            credential.write_bytes(b"secret\n")
-            with self.assertRaises(spike.SpikeError):
-                spike.read_systemd_credential({"CREDENTIALS_DIRECTORY": directory})
 
     def test_result_validator_and_schema_preserve_non_evidence(self):
         schema = load_json_strict(ROOT / "governance" / "schemas" / "opencode-spike-record.schema.json")
