@@ -2,8 +2,13 @@
   "$schema": "./schemas/roadmap.schema.json",
   "schema_version": "1",
   "document_path": "ROADMAP.md",
-  "document_sha256": "8d7a1c73c9c93950069f4a7e11418de807472d4665e18c23fa1faab4deedbe26",
+  "document_sha256": "7fa69f4e7a00f8639b4f515a31f26a71375de4f28341e5c2f310ae93172ec542",
   "authority_issue": 32,
+  "policy_snapshot": {
+    "existing_work_freeze": "active",
+    "publication": "blocked",
+    "authoritative_delivery_gate": "external_dependency_missing"
+  },
   "baseline": {
     "branch": "dev",
     "sha": "15b9ae66ff316abf28a5041c465e95baef5e82f9",

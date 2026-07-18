@@ -4,6 +4,7 @@
 **Exact checkpoint:** `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` on 2026-07-18
 **Portfolio authority:** [GitHub issue #32](https://github.com/somebloke1/noetic-dev/issues/32)
 **Machine index:** [`governance/roadmap.json`](governance/roadmap.json)
+**Policy snapshot:** freeze=active; publication=blocked; delivery_gate=external_dependency_missing
 
 This roadmap turns the architecture in [`SYNTHESIS.md`](SYNTHESIS.md) into a
 dependency-ordered delivery program with explicit exit gates. It supersedes issue

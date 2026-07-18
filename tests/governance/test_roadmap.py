@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -164,6 +165,15 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "next stage depends on non-checkpointed D1a")
 
+    def test_next_stage_cannot_skip_earlier_or_conflict_blocked_stage(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][3]["status"] = "planned"
+        mutated["stages"][4]["status"] = "next"
+        mutated["stages"][4]["depends_on"] = ["D0", "D1a", "D1b"]
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "D3a: earlier stage D2 is not checkpointed")
+        self.assert_has_error(errors, "D3a: next stage is blocked")
+
     def test_exactly_one_next_stage_is_required(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["stages"][3]["status"] = "planned"
@@ -202,6 +212,29 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "resolution stage D9 follows blocked D3a")
 
+    def test_unresolved_conflict_cannot_resolve_in_checkpointed_stage(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"][0]["resolution_stage"] = "D0"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "unresolved conflict resolves in checkpointed D0")
+
+    def test_baseline_branch_is_closed_to_dev(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["baseline"]["branch"] = "invented"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "expected constant 'dev'")
+
+    def test_candidate_head_cannot_replace_remote_branch_baseline(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            text=True,
+        ).strip()
+        mutated["baseline"]["sha"] = head
+        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
+        self.assert_has_error(errors, "not an ancestor of declared branch")
+
     def test_markdown_heading_drift_fails(self) -> None:
         mutated = self.markdown.replace(
             "### D2 - Governance and source convergence [next]",
@@ -224,6 +257,42 @@ class TestRoadmap(unittest.TestCase):
         mutated["document_sha256"] = "0" * 64
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "ROADMAP.md SHA-256 does not match")
+
+    def test_file_validation_hashes_raw_crlf_bytes(self) -> None:
+        copied_paths = (
+            "governance/roadmap.json",
+            "governance/schemas/roadmap.schema.json",
+            "governance/audits/existing-work-freeze.json",
+            "governance/bootstrap-status.json",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            for relative in copied_paths:
+                target = temporary_root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / relative).read_bytes())
+            crlf = self.markdown.replace("\n", "\r\n").encode("utf-8")
+            (temporary_root / "ROADMAP.md").write_bytes(crlf)
+            errors = validate_roadmap_files(temporary_root)
+        self.assert_has_error(errors, "ROADMAP.md SHA-256 does not match")
+
+    def test_policy_snapshot_must_match_repository_files(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["policy_snapshot"]["existing_work_freeze"] = "complete"
+        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
+        self.assert_has_error(errors, "policy snapshot does not match repository")
+
+    def test_active_freeze_must_continue_to_block_d9(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"][1]["blocks"].remove("D9")
+        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
+        self.assert_has_error(errors, "active freeze must be resolved in D2")
+
+    def test_release_gate_cannot_drop_trust_requirements(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][-1]["exit_gate"] = "Release when convenient."
+        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
+        self.assert_has_error(errors, "D9 exit gate missing required policy phrase")
 
     def test_markdown_checkpoint_line_drift_fails_even_if_sha_remains(self) -> None:
         mutated = self.markdown.replace(

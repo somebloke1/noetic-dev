@@ -39,6 +39,12 @@ MACHINE_INDEX_LINE = (
     "**Machine index:** "
     "[`governance/roadmap.json`](governance/roadmap.json)"
 )
+POLICY_SNAPSHOT_RE = re.compile(
+    r"^\*\*Policy snapshot:\*\* freeze=(?P<existing_work_freeze>[a-z_]+); "
+    r"publication=(?P<publication>[a-z_]+); "
+    r"delivery_gate=(?P<authoritative_delivery_gate>[a-z_]+)$",
+    re.MULTILINE,
+)
 TRACK_RE = re.compile(
     r"^- \*\*(?P<id>T[0-9]+) - (?P<title>.+):\*\* (?P<constraint>.+)$",
     re.MULTILINE,
@@ -96,6 +102,8 @@ EXPECTED_REMOTE_EVIDENCE = frozenset(
         ),
     }
 )
+FREEZE_PATH = Path("governance/audits/existing-work-freeze.json")
+BOOTSTRAP_STATUS_PATH = Path("governance/bootstrap-status.json")
 
 
 def _find_cycles(stages: list[dict[str, Any]]) -> list[str]:
@@ -161,9 +169,11 @@ def _expected_evidence_field(stage: dict[str, Any]) -> str:
 def _validate_markdown_projection(
     state: dict[str, Any],
     markdown: str,
+    document_bytes: bytes | None,
 ) -> list[str]:
     errors: list[str] = []
-    document_sha256 = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
+    payload = document_bytes if document_bytes is not None else markdown.encode("utf-8")
+    document_sha256 = hashlib.sha256(payload).hexdigest()
     if document_sha256 != state["document_sha256"]:
         errors.append("ROADMAP.md SHA-256 does not match governance/roadmap.json")
     baseline_matches = list(BASELINE_RE.finditer(markdown))
@@ -190,6 +200,11 @@ def _validate_markdown_projection(
             errors.append("ROADMAP.md authority line does not match authority_issue")
     if markdown.count(MACHINE_INDEX_LINE) != 1:
         errors.append("ROADMAP.md must contain exactly one canonical machine-index line")
+    policy_matches = list(POLICY_SNAPSHOT_RE.finditer(markdown))
+    if len(policy_matches) != 1:
+        errors.append("ROADMAP.md must contain exactly one structured policy snapshot")
+    elif policy_matches[0].groupdict() != state["policy_snapshot"]:
+        errors.append("ROADMAP.md policy snapshot does not match governance/roadmap.json")
 
     headings, sections = _stage_sections(markdown)
     expected_headings = [
@@ -263,10 +278,20 @@ def _validate_evidence(
     baseline = state["baseline"]["sha"]
     remote_evidence: set[tuple[str, str]] = set()
     if root is not None:
+        remote_branch = f"refs/remotes/origin/{state['baseline']['branch']}"
         if not _git_succeeds(root, "cat-file", "-e", f"{baseline}^{{commit}}"):
             errors.append(f"baseline commit does not resolve: {baseline}")
-        elif not _git_succeeds(root, "merge-base", "--is-ancestor", baseline, "HEAD"):
-            errors.append("roadmap baseline is not an ancestor of HEAD")
+        else:
+            if not _git_succeeds(root, "merge-base", "--is-ancestor", baseline, "HEAD"):
+                errors.append("roadmap baseline is not an ancestor of HEAD")
+            if not _git_succeeds(root, "cat-file", "-e", f"{remote_branch}^{{commit}}"):
+                errors.append(f"declared roadmap branch does not resolve: {remote_branch}")
+            elif not _git_succeeds(
+                root, "merge-base", "--is-ancestor", baseline, remote_branch
+            ):
+                errors.append(
+                    f"roadmap baseline is not an ancestor of declared branch {remote_branch}"
+                )
 
     for stage in state["stages"]:
         expected_evidence = EXPECTED_EVIDENCE_BY_STAGE.get(stage["id"], ())
@@ -352,11 +377,76 @@ def _validate_evidence(
     return errors
 
 
+def _validate_repository_policy(
+    state: dict[str, Any],
+    root: Path,
+) -> list[str]:
+    errors: list[str] = []
+    try:
+        freeze = load_json_strict(root / FREEZE_PATH)
+        bootstrap = load_json_strict(root / BOOTSTRAP_STATUS_PATH)
+    except (OSError, ValueError) as exc:
+        return [f"roadmap policy files failed to load: {exc}"]
+
+    actual_snapshot = {
+        "existing_work_freeze": freeze.get("status"),
+        "publication": bootstrap.get("publication", {}).get("status"),
+        "authoritative_delivery_gate": bootstrap.get(
+            "authoritative_delivery_gate", {}
+        ).get("status"),
+    }
+    if actual_snapshot != state["policy_snapshot"]:
+        errors.append("roadmap policy snapshot does not match repository policy files")
+
+    stages = {stage["id"]: stage for stage in state["stages"]}
+    conflicts = {
+        conflict["id"]: conflict
+        for conflict in state["unresolved_conflicts"]
+    }
+    d2 = stages["D2"]
+    d9 = stages["D9"]
+    c2 = conflicts["C2"]
+    c8 = conflicts["C8"]
+
+    if freeze.get("status") == "active" or freeze.get("blocks_publication") is True:
+        if d2["status"] != "next":
+            errors.append("active freeze requires D2 to remain the next stage")
+        if c2["resolution_stage"] != "D2" or not {"D3a", "D9"}.issubset(
+            c2["blocks"]
+        ):
+            errors.append("active freeze must be resolved in D2 and block D3a and D9")
+        if "reviewed freeze disposition" not in d2["exit_gate"].lower():
+            errors.append("D2 exit gate must retain reviewed freeze disposition")
+
+    if bootstrap.get("publication", {}).get("status") == "blocked":
+        if d9["status"] in {"checkpointed", "next"}:
+            errors.append("blocked publication cannot be checkpointed or next")
+        if c8["resolution_stage"] != "D9" or "D9" not in c8["blocks"]:
+            errors.append("blocked publication must remain an unresolved D9 conflict")
+        if "D2" not in d9["depends_on"]:
+            errors.append("D9 must retain D2 governance convergence as a dependency")
+
+    if actual_snapshot["authoritative_delivery_gate"] == "external_dependency_missing":
+        required_gate_phrases = (
+            "license",
+            "distinct protected trust root",
+            "protected main",
+            "post-merge evidence",
+            "full main sha",
+        )
+        normalized_gate = d9["exit_gate"].lower()
+        for phrase in required_gate_phrases:
+            if phrase not in normalized_gate:
+                errors.append(f"D9 exit gate missing required policy phrase: {phrase}")
+    return errors
+
+
 def validate_roadmap(
     state: Any,
     schema: dict[str, Any],
     markdown: str,
     root: Path | None = None,
+    document_bytes: bytes | None = None,
 ) -> list[str]:
     """Return deterministic roadmap contract violations."""
     errors = validate_schema(state, schema)
@@ -413,6 +503,12 @@ def validate_roadmap(
             )
         if len(conflict["blocks"]) != len(set(conflict["blocks"])):
             errors.append(f"{conflict['id']}: blocked stages must be unique")
+        resolution = conflict["resolution_stage"]
+        if resolution in statuses and statuses[resolution] == "checkpointed":
+            errors.append(
+                f"{conflict['id']}: unresolved conflict resolves in checkpointed "
+                f"{resolution}"
+            )
         for blocked in conflict["blocks"]:
             if blocked not in stage_set:
                 errors.append(f"{conflict['id']}: unknown blocked stage {blocked}")
@@ -422,7 +518,6 @@ def validate_roadmap(
                 errors.append(
                     f"{conflict['id']}: unresolved conflict blocks checkpointed {blocked}"
                 )
-            resolution = conflict["resolution_stage"]
             if resolution in positions and positions[resolution] > positions[blocked]:
                 errors.append(
                     f"{conflict['id']}: resolution stage {resolution} follows blocked {blocked}"
@@ -432,6 +527,17 @@ def validate_roadmap(
         if stage["status"] == "blocked" and stage["id"] not in named_blocks:
             errors.append(f"{stage['id']}: blocked stage has no named conflict")
 
+    if len(next_stages) == 1:
+        next_stage = next_stages[0]
+        next_position = positions[next_stage]
+        for earlier in stages[:next_position]:
+            if earlier["status"] != "checkpointed":
+                errors.append(
+                    f"{next_stage}: earlier stage {earlier['id']} is not checkpointed"
+                )
+        if next_stage in named_blocks:
+            errors.append(f"{next_stage}: next stage is blocked by an unresolved conflict")
+
     track_ids = [track["id"] for track in state["parallel_tracks"]]
     if len(track_ids) != len(set(track_ids)):
         errors.append("parallel track ids must be unique")
@@ -439,7 +545,9 @@ def validate_roadmap(
         errors.append("schema version 1 parallel-track catalog or order changed")
 
     errors.extend(_validate_evidence(state, root))
-    errors.extend(_validate_markdown_projection(state, markdown))
+    errors.extend(_validate_markdown_projection(state, markdown, document_bytes))
+    if root is not None:
+        errors.extend(_validate_repository_policy(state, root))
     return errors
 
 
@@ -458,10 +566,11 @@ def validate_roadmap_files(root: Path = ROOT) -> list[str]:
     if root not in document_path.parents:
         return ["roadmap document path escapes repository"]
     try:
-        markdown = document_path.read_text(encoding="utf-8")
-    except OSError as exc:
+        document_bytes = document_path.read_bytes()
+        markdown = document_bytes.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
         return [f"roadmap document failed to load: {exc}"]
-    return validate_roadmap(state, schema, markdown, root)
+    return validate_roadmap(state, schema, markdown, root, document_bytes)
 
 
 def main() -> int:
