@@ -57,6 +57,8 @@ jobs:
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
+      - name: Install Bubblewrap
+        run: sudo apt-get update -qq && sudo apt-get install -y bubblewrap
       - name: Run genuine governance tests
         run: python3 -m unittest discover -s tests -v
 
@@ -97,6 +99,8 @@ jobs:
           python-version: "3.12"
       - name: Post-merge repository validation
         run: python3 scripts/validate_repo.py
+      - name: Install Bubblewrap
+        run: sudo apt-get update -qq && sudo apt-get install -y bubblewrap
       - name: Post-merge genuine tests
         run: python3 -m unittest discover -s tests -v
       - name: Confirm publication remains blocked pending protected evidence

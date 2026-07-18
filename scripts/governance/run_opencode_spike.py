@@ -31,6 +31,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 COMPONENT_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 RUNTIME_ROOT = Path("/opt/noetic-dev-agent-review")
+REPOSITORY = "somebloke1/noetic-dev"
 ROUTER_ROOT = RUNTIME_ROOT / "genus-router" / COMPONENT_SHA
 ROUTER_COMMAND = ROUTER_ROOT / "bin" / "genus-router"
 ROUTER_PYTHON = ROUTER_ROOT / "bin" / "python3"
@@ -42,9 +43,13 @@ STATE_DIR = Path("/var/lib/noetic-opencode-spike/state")
 EXECUTE_STATE_DIR = Path("/var/lib/noetic-opencode-spike/execute-state")
 HANDOFF_STATE_DIR = Path("/var/lib/noetic-opencode-spike/handoff-state")
 CONTROLLER_PATH = RUNTIME_ROOT / "opencode-spike-runtime" / "run_opencode_spike.py"
+ROUTER_CLIENT_PATH = RUNTIME_ROOT / "opencode-spike-runtime" / "genus_router_mcp.py"
 LITELLM_PEER_MANIFEST = RUNTIME_ROOT / "opencode-spike-runtime" / "litellm-peer-manifest.json"
+RUNTIME_MANIFEST = RUNTIME_ROOT / "opencode-spike-runtime" / "manifest.json"
+RUNTIME_APPROVAL = RUNTIME_ROOT / "opencode-spike-runtime" / "protected-review-receipt.json"
 OPENCODE_PATH = RUNTIME_ROOT / "opencode" / "1.17.20" / "opencode"
 BWRAP_PATH = Path("/usr/bin/bwrap")
+BWRAP_SHA256 = "52231e1caf55bcbc667b269f49c63599a6f7db4767ae6a039580d0ff853db712"
 PYTHON_PATH = Path("/usr/bin/python3")
 OPENCODE_VERSION = "1.17.20"
 OPENCODE_SHA256 = "373af49ceba30c1b64e964463a64f8065103f942f240933a955f6c461e1a67f6"
@@ -81,143 +86,17 @@ SHA256_HEX = re.compile(r"^[a-f0-9]{64}$")
 CAPABILITY = re.compile(r"^[a-f0-9]{64}$")
 HEADER_NAME = re.compile(rb"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 NONCE = re.compile(r"^[a-f0-9]{32}$")
-STANDARD_MODELS = [
-    "codex/gpt-5.6-sol",
-    "codex/gpt-5.6-terra",
-    "codex/gpt-5.6-luna",
-]
-TRIVIAL_ROUTE_MODELS = [
-    "codex/gpt-5.6-luna",
-    "codex/gpt-5.6-terra",
-    "codex/gpt-5.6-sol",
-]
-ROUTE_ARGUMENTS = {
-    "task_kind": "test",
-    "complexity": "trivial",
-    "blast_radius": "isolated",
-    "awaited": True,
-    "high_value": False,
-    "independent_approval": False,
-    "prior_failure": False,
-    "exclude_models": [],
-    "task_summary": "OpenCode source-free one-turn non-evidence spike",
-}
-NON_EVIDENCE_ROUTER_STATE = {
-    "evidence_class": "non-evidence",
-    "policy_status": "contract-only",
-    "runtime_adapter_ready": False,
-    "schema_version": "1",
-    "storage_scope": "isolated-spike-only",
-}
-DECISION_FIELDS = {
-    "availability",
-    "decision_id",
-    "effective_complexity",
-    "fable_eligible",
-    "fallback_refs",
-    "fallbacks",
-    "genus",
-    "genus_code",
-    "independent_approval_eligible",
-    "model",
-    "model_ref",
-    "rationale",
-    "routing_profile",
-    "sophistication",
-}
-MODEL_REF_FIELDS = {
-    "model_id",
-    "endpoint_id",
-    "upstream_model_id",
-    "interface_type",
-    "base_url",
-    "endpoint_path",
-    "token_env",
-    "reasoning_effort",
-}
-RESULT_FIELDS = {
-    "schema_version",
-    "evidence_class",
-    "runtime_adapter_ready",
-    "policy_status",
-    "execution_status",
-    "failure_code",
-    "component_sha",
-    "router_identity_sha256",
-    "route_decision_id",
-    "route_reference_sha256",
-    "routed_model",
-    "opencode_version",
-    "opencode_sha256",
-    "static_title",
-    "title_sha256",
-    "config_sha256",
-    "json_event_log_sha256",
-    "upstream_response_sha256",
-    "litellm_peer_identity_sha256",
-    "model_turn_count",
-    "bridge_request_count",
-    "upstream_request_count",
-    "parsed_upstream_completion",
-    "output_text",
-    "nonce_sha256",
-    "nonce_matched",
-    "isolation",
-    "claim_state",
-    "request_issued",
-    "outcome_status",
-    "report_outcome_acknowledged",
-    "report_outcome_acknowledgement_sha256",
-    "report_outcome_record_sha256",
-    "report_outcome_id",
-}
-ISOLATION_FIELDS = {
-    "bwrap",
-    "clear_environment",
-    "credential_parent_only",
-    "network_unshared",
-    "user_namespace",
-    "pid_namespace",
-    "ipc_namespace",
-    "uts_namespace",
-    "nested_userns_disabled",
-    "private_proc",
-    "tmpfs_state",
-    "host_source_mounted",
-}
-ALLOWED_SSE_EVENTS = {
-    "response.created",
-    "response.in_progress",
-    "response.output_item.added",
-    "response.content_part.added",
-    "response.output_text.delta",
-    "response.output_text.done",
-    "response.content_part.done",
-    "response.reasoning_summary_part.added",
-    "response.reasoning_summary_text.delta",
-    "response.reasoning_summary_text.done",
-    "response.reasoning_summary_part.done",
-    "response.output_item.done",
-    "response.completed",
-}
-FORBIDDEN_EVENT_TYPES = {
-    "response.failed",
-    "response.incomplete",
-    "response.error",
-    "response.refusal.delta",
-    "response.refusal.done",
-    "response.function_call_arguments.delta",
-    "response.function_call_arguments.done",
-}
-FORBIDDEN_ITEM_TYPES = {
-    "function_call",
-    "function_call_output",
-    "computer_call",
-    "web_search_call",
-    "file_search_call",
-    "image_generation_call",
-    "refusal",
-}
+STANDARD_MODELS = ["codex/gpt-5.6-sol", "codex/gpt-5.6-terra", "codex/gpt-5.6-luna"]
+TRIVIAL_ROUTE_MODELS = ["codex/gpt-5.6-luna", "codex/gpt-5.6-terra", "codex/gpt-5.6-sol"]
+ROUTE_ARGUMENTS = {"task_kind": "test", "complexity": "trivial", "blast_radius": "isolated", "awaited": True, "high_value": False, "independent_approval": False, "prior_failure": False, "exclude_models": [], "task_summary": "OpenCode source-free one-turn non-evidence spike"}
+NON_EVIDENCE_ROUTER_STATE = {"evidence_class": "non-evidence", "policy_status": "contract-only", "runtime_adapter_ready": False, "schema_version": "1", "storage_scope": "isolated-spike-only"}
+DECISION_FIELDS = {"availability", "decision_id", "effective_complexity", "fable_eligible", "fallback_refs", "fallbacks", "genus", "genus_code", "independent_approval_eligible", "model", "model_ref", "rationale", "routing_profile", "sophistication"}
+MODEL_REF_FIELDS = {"model_id", "endpoint_id", "upstream_model_id", "interface_type", "base_url", "endpoint_path", "token_env", "reasoning_effort"}
+RESULT_FIELDS = {"schema_version", "evidence_class", "runtime_adapter_ready", "policy_status", "execution_status", "failure_code", "component_sha", "router_identity_sha256", "route_decision_id", "route_reference_sha256", "routed_model", "opencode_version", "opencode_sha256", "static_title", "title_sha256", "config_sha256", "json_event_log_sha256", "upstream_response_sha256", "litellm_peer_identity_sha256", "model_turn_count", "bridge_request_count", "upstream_request_count", "parsed_upstream_completion", "output_text", "nonce_sha256", "nonce_matched", "isolation", "claim_state", "request_issued", "outcome_status", "report_outcome_acknowledged", "report_outcome_acknowledgement_sha256", "report_outcome_record_sha256", "report_outcome_id"}
+ISOLATION_FIELDS = {"bwrap", "clear_environment", "credential_parent_only", "network_unshared", "user_namespace", "pid_namespace", "ipc_namespace", "uts_namespace", "nested_userns_disabled", "private_proc", "tmpfs_state", "host_source_mounted"}
+ALLOWED_SSE_EVENTS = {"response.created", "response.in_progress", "response.output_item.added", "response.content_part.added", "response.output_text.delta", "response.output_text.done", "response.content_part.done", "response.reasoning_summary_part.added", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done", "response.reasoning_summary_part.done", "response.output_item.done", "response.completed"}
+FORBIDDEN_EVENT_TYPES = {"response.failed", "response.incomplete", "response.error", "response.refusal.delta", "response.refusal.done", "response.function_call_arguments.delta", "response.function_call_arguments.done"}
+FORBIDDEN_ITEM_TYPES = {"function_call", "function_call_output", "computer_call", "web_search_call", "file_search_call", "image_generation_call", "refusal"}
 
 
 class SpikeError(RuntimeError):
@@ -678,6 +557,39 @@ def read_root_json(path: Path) -> tuple[Any, bytes]:
     raw = _root_owned_file_bytes(path, maximum=262_144)
     require(raw.endswith(b"\n") and raw.count(b"\n") == 1, "handoff-json-framing-invalid")
     return strict_json_loads(raw[:-1]), raw
+
+
+def validate_runtime_manifest() -> str:
+    manifest, manifest_raw = read_root_json(RUNTIME_MANIFEST)
+    approval, approval_raw = read_root_json(RUNTIME_APPROVAL)
+    fields = {"approval_sha256", "bwrap_sha256", "component_sha", "controller_sha256", "litellm_peer_identity_sha256", "litellm_peer_manifest_sha256", "noetic_sha", "opencode_sha256", "opencode_version", "repository", "review_run_id", "router_client_sha256", "router_identity_sha256"}
+    require(type(manifest) is dict and set(manifest) == fields, "runtime-manifest-invalid")
+    require(
+        type(approval) is dict
+        and approval.get("schema_version") == "1"
+        and approval.get("repository") == REPOSITORY
+        and approval.get("pr_number") == 66
+        and approval.get("head_sha") == manifest["noetic_sha"]
+        and approval.get("run_id") == manifest["review_run_id"]
+        and approval.get("run_attempt") == 1
+        and approval.get("workflow_id") == 312_422_987
+        and approval.get("result") == "valid"
+        and approval.get("pr_merged") is True,
+        "runtime-approval-invalid",
+    )
+    require(
+        manifest["repository"] == REPOSITORY
+        and manifest["bwrap_sha256"] == BWRAP_SHA256
+        and manifest["approval_sha256"] == sha256(approval_raw)
+        and manifest["component_sha"] == COMPONENT_SHA
+        and manifest["opencode_version"] == OPENCODE_VERSION
+        and manifest["opencode_sha256"] == OPENCODE_SHA256
+        and all(type(manifest[field]) is str and SHA256_HEX.fullmatch(manifest[field]) for field in ("litellm_peer_identity_sha256", "router_identity_sha256")),
+        "runtime-manifest-invalid",
+    )
+    artifacts = {"bwrap_sha256": (BWRAP_PATH, 2_097_152), "controller_sha256": (CONTROLLER_PATH, 2_097_152), "router_client_sha256": (ROUTER_CLIENT_PATH, 1_048_576), "litellm_peer_manifest_sha256": (LITELLM_PEER_MANIFEST, 65_536)}
+    require(all(manifest[field] == sha256(_root_owned_file_bytes(path, maximum=maximum, executable=field in {"bwrap_sha256", "controller_sha256"})) for field, (path, maximum) in artifacts.items()), "runtime-artifact-mismatch")
+    return sha256(manifest_raw)
 
 
 def _validate_root_owned_symlink(path: Path) -> Path:
@@ -2957,6 +2869,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify_router_parser = subparsers.add_parser("verify-router")
     _add_router_arguments(verify_router_parser)
     subparsers.add_parser("verify-peer")
+    subparsers.add_parser("verify-runtime")
     sandbox_parser = subparsers.add_parser("sandbox-relay", help=argparse.SUPPRESS)
     sandbox_parser.add_argument("--control-socket", type=Path, required=True)
     sandbox_parser.add_argument("--relay-port", type=int, required=True)
@@ -2965,6 +2878,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     sandbox_parser.add_argument("--prompt", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.mode in {"route", "execute", "outcome"}:
+            validate_runtime_manifest()
         if args.mode == "route":
             route_phase(
                 command=args.genus_router_command,
@@ -2992,6 +2907,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.mode == "verify-peer":
             _manifest, identity = validate_litellm_peer_manifest()
             print(identity)
+            return 0
+        if args.mode == "verify-runtime":
+            print(validate_runtime_manifest())
             return 0
         if args.mode == "sandbox-relay":
             return sandbox_relay_phase(args.control_socket, args.relay_port, args.model, args.title, args.prompt)

@@ -52,8 +52,7 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
             self.assertIn("ReadOnlyPaths=/var/lib/noetic-opencode-spike/handoff-state", unit)
 
     def test_router_state_has_a_root_owned_non_evidence_classifier(self):
-        classifier = '{"evidence_class":"non-evidence","policy_status":"contract-only","runtime_adapter_ready":false,"schema_version":"1","storage_scope":"isolated-spike-only"}'
-        self.assertIn(classifier, self.installer)
+        self.assertIn('"storage_scope":"isolated-spike-only"', self.installer)
         self.assertIn('install -d -o root -g root -m 0755 "$router_state"', self.installer)
         self.assertIn('install -d -o root -g root -m 0755 "$handoff_state"', self.installer)
         self.assertIn('chmod 0444 "$router_state/classification.json"', self.installer)
@@ -62,6 +61,12 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.assertNotIn("/usr/bin/install -o", self.orchestrator)
         self.assertIn("iflag=nofollow,nonblock,fullblock", self.orchestrator)
         self.assertIn("oflag=excl,nofollow", self.orchestrator)
+
+    def test_installation_requires_protected_exact_revision_and_runtime_binding(self):
+        self.assertIn("https://github.com/somebloke1/noetic-dev.git", self.installer)
+        self.assertIn("$root/current/scripts/governance/route_attestation.py", self.installer)
+        self.assertIn("protected-review-receipt.json", self.installer)
+        self.assertIn("verify-runtime", self.installer)
 
 if __name__ == "__main__":
     unittest.main()

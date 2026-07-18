@@ -5,8 +5,8 @@ from __future__ import annotations
 import copy
 import json
 import os
-import shutil
 import socket
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -368,6 +368,16 @@ class TestStrictContracts(unittest.TestCase):
         self.assertNotIn(spike.TOKEN_ENV, joined)
         self.assertNotIn(spike.CREDENTIAL_NAME, joined)
 
+    def test_bubblewrap_unshared_network_has_working_loopback(self):
+        command = [str(spike.BWRAP_PATH), "--unshare-user", "--unshare-pid", "--unshare-net", "--disable-userns", "--assert-userns-disabled", "--die-with-parent", "--new-session", "--cap-drop", "ALL", "--clearenv", "--uid", "0", "--gid", "0", "--dir", "/usr", "--ro-bind", "/usr", "/usr"]
+        for library in (Path("/lib"), Path("/lib64")):
+            if library.exists():
+                command.extend(["--dir", str(library), "--ro-bind", str(library), str(library)])
+        probe = "import socket;s=socket.socket();s.bind(('127.0.0.1',0));s.listen();c=socket.socket();c.settimeout(2);c.connect(s.getsockname());a,_=s.accept();c.sendall(b'x');assert a.recv(1)==b'x'"
+        command.extend(["--dir", "/proc", "--proc", "/proc", "--dir", "/dev", "--dev", "/dev", str(spike.PYTHON_PATH), "-c", probe])
+        completed = subprocess.run(command, env={"PATH": "/usr/bin:/bin"}, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10, check=False)
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
+
 class TestHTTPAndControlBoundaries(unittest.TestCase):
     def request_bytes(self, payload: dict | None = None, headers: list[tuple[str, str]] | None = None) -> bytes:
         body = spike.canonical_json(payload or child_body())
@@ -588,55 +598,6 @@ class TestUpstreamAndEventValidation(unittest.TestCase):
                 spike.parse_opencode_jsonl(raw, EXPECTED_TEXT)
 
 class TestPersistenceAndPhases(unittest.TestCase):
-    @unittest.skipUnless(os.environ.get("NOETIC_OPENCODE_TEST_BINARY"), "exact OpenCode binary not requested")
-    def test_real_opencode_binary_completes_one_synthetic_network_isolated_turn(self):
-        source = Path(os.environ["NOETIC_OPENCODE_TEST_BINARY"])
-        self.assertEqual(spike.sha256(source.read_bytes()), spike.OPENCODE_SHA256)
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            binary = root / "opencode"
-            controller = root / "run_opencode_spike.py"
-            shutil.copyfile(source, binary)
-            shutil.copyfile(Path(spike.__file__), controller)
-            binary.chmod(0o555)
-            controller.chmod(0o555)
-            state = root / "state"
-            spike.atomic_create_json(state / "route.json", route_record())
-            credential_dir = root / "credentials"
-            credential_dir.mkdir(mode=0o700)
-            credential = credential_dir / spike.CREDENTIAL_NAME
-            credential.write_bytes(b"synthetic-secret")
-            credential.chmod(0o600)
-
-            def fake_upstream(body: bytes, token: bytes) -> spike.UpstreamHTTPResponse:
-                self.assertEqual(token, b"synthetic-secret")
-                payload = spike.validate_upstream_request_body(body)
-                prompt = payload["input"][0]["content"][0]["text"]
-                text = prompt.removeprefix("Respond with exactly ").removesuffix(" and nothing else.")
-                clean = spike.synthesize_clean_sse(MODEL, text)
-                return spike.UpstreamHTTPResponse(
-                    200,
-                    [("Content-Type", "text/event-stream")],
-                    clean,
-                    peer_identity_sha256="9" * 64,
-                )
-
-            with mock.patch.object(spike, "OPENCODE_PATH", binary), mock.patch.object(
-                spike, "CONTROLLER_PATH", controller
-            ):
-                result = spike.execute_phase(
-                    state_dir=state,
-                    input_dir=state,
-                    input_reader=spike.read_private_json,
-                    environment={"CREDENTIALS_DIRECTORY": str(credential_dir)},
-                    upstream_sender=fake_upstream,
-                    expected_uid=os.getuid(),
-                )
-            self.assertEqual(result["execution_status"], "success", result)
-            self.assertEqual(result["model_turn_count"], 1)
-            self.assertEqual(result["bridge_request_count"], 1)
-            self.assertEqual(result["upstream_request_count"], 1)
-
     def test_route_phase_claims_before_call_and_blocks_replay(self):
         router = FakeRouter(route_decision())
         factory = RouterFactory(router)

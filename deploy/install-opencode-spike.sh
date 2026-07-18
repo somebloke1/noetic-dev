@@ -4,8 +4,8 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 umask 077
 
-if [[ $EUID -ne 0 || $# -ne 3 ]]; then
-  echo "usage: sudo $0 NOETIC_SOURCE NOETIC_SHA OPENCODE_BINARY" >&2
+if [[ $EUID -ne 0 || $# -ne 4 ]]; then
+  echo "usage: sudo $0 NOETIC_SOURCE NOETIC_SHA OPENCODE_BINARY REVIEW_RUN_ID" >&2
   exit 2
 fi
 [[ -z ${BASH_ENV:-}${ENV:-}${LD_PRELOAD:-}${LD_LIBRARY_PATH:-} ]]
@@ -13,8 +13,10 @@ fi
 noetic_source=$1
 noetic_sha=$2
 opencode_source=$3
+review_run_id=$4
 component_sha=f2b839b0cfc737c4c1f0a46d3d519d414529545c
 opencode_sha=373af49ceba30c1b64e964463a64f8065103f942f240933a955f6c461e1a67f6
+bwrap_sha=52231e1caf55bcbc667b269f49c63599a6f7db4767ae6a039580d0ff853db712
 root=/opt/noetic-dev-agent-review
 runtime=$root/opencode-spike-runtime
 opencode_runtime=$root/opencode/1.17.20
@@ -27,14 +29,20 @@ router=$root/genus-router/$component_sha
 litellm_unit=/etc/systemd/system/litellm.service
 litellm_launcher=/opt/litellm/.venv/bin/litellm
 litellm_config=/etc/litellm/config.yaml
+attestor=$root/current/scripts/governance/route_attestation.py
+repository=https://github.com/somebloke1/noetic-dev.git
 
 [[ $noetic_sha =~ ^[0-9a-f]{40}$ ]]
-[[ $(git -C "$noetic_source" rev-parse "$noetic_sha^{commit}") == "$noetic_sha" ]]
+[[ $review_run_id =~ ^[1-9][0-9]*$ ]]
+[[ $(git --no-replace-objects -C "$noetic_source" rev-parse "$noetic_sha^{commit}") == "$noetic_sha" ]]
+[[ $(git -C "$noetic_source" remote get-url origin) == "$repository" ]]
 [[ -f $opencode_source && ! -L $opencode_source ]]
 [[ -x /usr/bin/bwrap && -x /usr/bin/python3 && -x /usr/bin/dd ]]
+[[ $(sha256sum /usr/bin/bwrap | cut -d ' ' -f 1) == "$bwrap_sha" ]]
 [[ -x $router/bin/python3 && -x $router/bin/genus-router && -f $router/config/router.yaml ]]
 [[ -f $router/component-manifest.json ]]
 [[ -f $litellm_unit && ! -L $litellm_unit && -x $litellm_launcher && ! -L $litellm_launcher && -f $litellm_config && ! -L $litellm_config ]]
+[[ -f $attestor && ! -L $attestor && $(stat -c %U "$attestor") == root && $((8#$(stat -c %a "$attestor") & 8#022)) -eq 0 ]]
 for artifact in "$litellm_unit" "$litellm_launcher" "$litellm_config"; do
   [[ $(stat -c %U "$artifact") == root ]]
   [[ $((8#$(stat -c %a "$artifact") & 8#022)) -eq 0 ]]
@@ -53,8 +61,16 @@ systemctl is-active --quiet litellm.service
 credential_mode=$(stat -c %a /etc/credstore/litellm_api_key)
 [[ $credential_mode == 400 || $credential_mode == 600 ]]
 
+[[ -n ${SUDO_USER:-} && $SUDO_USER != root ]]
+review_group=$(id -gn "$SUDO_USER")
+attestation=$(mktemp -d)
 staging=$(mktemp -d)
-trap 'rm -rf "$staging"' EXIT
+trap 'rm -rf "$attestation" "$staging"' EXIT
+chown "$SUDO_USER:$review_group" "$attestation"
+/usr/sbin/runuser -u "$SUDO_USER" -- /usr/bin/python3 -I "$attestor" --run-id "$review_run_id" --state-dir "$attestation"
+receipt=$staging/protected-review-receipt.json
+/usr/bin/dd if="$attestation/run-$review_run_id-attempt-1.json" of="$receipt" bs=262145 count=1 iflag=nofollow,nonblock,fullblock oflag=excl,nofollow conv=fsync status=none
+chmod 0400 "$receipt"
 archive=$staging/repository
 staged_opencode=$staging/opencode
 install -d -o root -g root -m 0700 "$archive"
@@ -63,7 +79,7 @@ install -o root -g root -m 0555 "$opencode_source" "$staged_opencode"
 version_home=$staging/version-home
 install -d -o root -g root -m 0700 "$version_home"
 [[ $(env -i HOME="$version_home" XDG_CONFIG_HOME="$version_home/config" XDG_DATA_HOME="$version_home/data" XDG_CACHE_HOME="$version_home/cache" XDG_STATE_HOME="$version_home/state" PATH=/usr/bin:/bin "$staged_opencode" --version) == 1.17.20 ]]
-git -C "$noetic_source" archive "$noetic_sha" | tar -x -C "$archive"
+git --no-replace-objects -C "$noetic_source" archive "$noetic_sha" | tar -x -C "$archive"
 router_identity=$(/usr/bin/python3 -I "$archive/scripts/governance/run_opencode_spike.py" verify-router \
   --genus-router-command "$router/bin/genus-router" \
   --genus-router-config "$router/config/router.yaml" \
@@ -105,6 +121,7 @@ done
 install -d -o llm-svc -g llm-svc -m 0700 "$execute_state"
 install -o root -g root -m 0555 "$archive/scripts/governance/run_opencode_spike.py" "$runtime/run_opencode_spike.py"
 install -o root -g root -m 0444 "$archive/scripts/governance/genus_router_mcp.py" "$runtime/genus_router_mcp.py"
+install -o root -g root -m 0444 "$receipt" "$runtime/protected-review-receipt.json"
 install -o root -g root -m 0555 "$staged_opencode" "$opencode_runtime/opencode"
 install -o root -g root -m 0700 "$archive/deploy/run-opencode-spike.sh" /usr/local/sbin/noetic-dev-opencode-spike
 
@@ -132,10 +149,12 @@ done
 controller_sha=$(sha256sum "$runtime/run_opencode_spike.py" | cut -d ' ' -f 1)
 router_client_sha=$(sha256sum "$runtime/genus_router_mcp.py" | cut -d ' ' -f 1)
 peer_manifest_sha=$(sha256sum "$runtime/litellm-peer-manifest.json" | cut -d ' ' -f 1)
-printf '{"component_sha":"%s","controller_sha256":"%s","litellm_peer_identity_sha256":"%s","litellm_peer_manifest_sha256":"%s","noetic_sha":"%s","opencode_sha256":"%s","opencode_version":"1.17.20","router_client_sha256":"%s","router_identity_sha256":"%s"}\n' \
-  "$component_sha" "$controller_sha" "$peer_identity" "$peer_manifest_sha" "$noetic_sha" "$opencode_sha" "$router_client_sha" "$router_identity" >"$runtime/manifest.json"
+approval_sha=$(sha256sum "$runtime/protected-review-receipt.json" | cut -d ' ' -f 1)
+printf '{"approval_sha256":"%s","bwrap_sha256":"%s","component_sha":"%s","controller_sha256":"%s","litellm_peer_identity_sha256":"%s","litellm_peer_manifest_sha256":"%s","noetic_sha":"%s","opencode_sha256":"%s","opencode_version":"1.17.20","repository":"somebloke1/noetic-dev","review_run_id":%s,"router_client_sha256":"%s","router_identity_sha256":"%s"}\n' \
+  "$approval_sha" "$bwrap_sha" "$component_sha" "$controller_sha" "$peer_identity" "$peer_manifest_sha" "$noetic_sha" "$opencode_sha" "$review_run_id" "$router_client_sha" "$router_identity" >"$runtime/manifest.json"
 chown root:root "$runtime/manifest.json"
 chmod 0444 "$runtime/manifest.json"
+/usr/bin/python3 -I "$runtime/run_opencode_spike.py" verify-runtime >/dev/null
 
 systemctl daemon-reload
 printf '%s\n' "Installed inert OpenCode spike units; no phase was started or enabled."
