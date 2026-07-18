@@ -68,7 +68,8 @@ def main() -> int:
         parser.error("--after-run-id cannot be negative")
 
     try:
-        runs = select_runs(args.run_id, args.after_run_id, args.state_dir)
+        cursor = load_cursor(args.state_dir, args.after_run_id) if args.run_id is None else 0
+        runs = select_runs(args.run_id, cursor, args.state_dir)
         if not runs:
             print("No unattested successful Agent Review run")
             return 0
@@ -76,14 +77,25 @@ def main() -> int:
         print(f"protected route attestation failed: {error}", file=sys.stderr)
         return 1
     failed = False
+    blocked = False
+    progress = cursor
     for run in runs:
         try:
-            receipt = attest_run(run, args.state_dir)
+            receipt = args.state_dir / f"run-{run['id']}-attempt-{run['run_attempt']}.json"
+            if os.path.lexists(receipt):
+                validate_existing_receipt(receipt, run["id"], run["run_attempt"])
+            else:
+                receipt = attest_run(run, args.state_dir)
         except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired) as error:
             failed = True
+            blocked = True
             print(f"run {run['id']} attestation failed: {error}", file=sys.stderr)
         else:
             print(f"Protected route attestation recorded: {receipt}")
+            if not blocked:
+                progress = run["id"]
+    if args.run_id is None and progress > cursor:
+        write_cursor(args.state_dir, progress)
     return 1 if failed else 0
 
 
@@ -129,6 +141,10 @@ def select_runs(run_id: int | None, after_run_id: int, state_dir: Path) -> list[
                     continue
                 candidates_by_id[identity] = candidate
         candidates = list(candidates_by_id.values())
+        if after_run_id > 0 and not any(
+            candidate.get("id") == after_run_id for candidate in candidates
+        ):
+            raise ValueError("Agent Review inventory is truncated before the verified cursor")
     selected = []
     for run in candidates:
         if not isinstance(run, dict) or type(run.get("id")) is not int:
@@ -141,13 +157,6 @@ def select_runs(run_id: int | None, after_run_id: int, state_dir: Path) -> list[
             print(f"skipping Agent Review run {run['id']} with invalid attempt", file=sys.stderr)
             continue
         receipt = state_dir / f"run-{run['id']}-attempt-{attempt}.json"
-        if os.path.lexists(receipt):
-            try:
-                validate_existing_receipt(receipt, run["id"], attempt)
-            except (OSError, ValueError, TypeError, AttributeError):
-                pass
-            else:
-                continue
         if (
             run.get("workflow_id") == AGENT_REVIEW_WORKFLOW_ID
             and run.get("path") == ".github/workflows/agent-review.yml"
@@ -157,6 +166,61 @@ def select_runs(run_id: int | None, after_run_id: int, state_dir: Path) -> list[
         ):
             selected.append(run)
     return sorted(selected, key=lambda item: item["id"])
+
+
+def load_cursor(state_dir: Path, bootstrap: int) -> int:
+    path = state_dir / "cursor.json"
+    if not os.path.lexists(path):
+        return bootstrap
+    parent = os.lstat(path.parent)
+    if parent.st_uid != os.getuid() or parent.st_mode & 0o777 != 0o700:
+        raise ValueError("attestation cursor directory is unsafe")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_mode & 0o777 != 0o600
+            or metadata.st_nlink != 1
+            or metadata.st_size > 4096
+        ):
+            raise ValueError("attestation cursor is unsafe")
+        payload = parse_json_strict(os.read(descriptor, 4097))
+    finally:
+        os.close(descriptor)
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"schema_version", "repository", "run_id"}
+        or payload.get("schema_version") != "1"
+        or payload.get("repository") != REPOSITORY
+        or type(payload.get("run_id")) is not int
+        or payload["run_id"] < bootstrap
+    ):
+        raise ValueError("attestation cursor is invalid")
+    return payload["run_id"]
+
+
+def write_cursor(state_dir: Path, run_id: int) -> None:
+    state_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(state_dir, 0o700)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".cursor-", dir=state_dir)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        payload = json.dumps(
+            {"schema_version": "1", "repository": REPOSITORY, "run_id": run_id},
+            sort_keys=True, separators=(",", ":"),
+        ).encode("ascii") + b"\n"
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, state_dir / "cursor.json")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
 
 
 def attest_run(run: dict[str, Any], state_dir: Path) -> Path:

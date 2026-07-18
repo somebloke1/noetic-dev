@@ -21,6 +21,8 @@ deploy/install-route-attestation-user.sh <implementation-agent-review-run-id>
 
 The argument is the successful Agent Review run for the implementation PR itself. That bootstrap run used the previous protected-base validator and is deliberately excluded; only later canaries are eligible for automated receipts.
 
+The operator persists a private verified run cursor. It advances only across successful runs with valid receipts and refuses to continue if GitHub's bounded workflow-run inventory no longer contains that cursor. A long outage therefore becomes an explicit truncation failure rather than silently dropping eligible runs.
+
 Installation is an operator action, not an isolation boundary against the invoking Unix account. The script uses a fixed shell, refuses shell/loader injection variables, derives the account home from the passwd database, and sanitizes the GitHub authentication probe. Invoke it only from the trusted operator account; the recurring systemd service is the hardened runtime boundary.
 
 The unit stores no token. It uses the operator account's existing GitHub CLI authentication to read Actions artifacts and administrator-visible ruleset state. The repository-scoped self-hosted runner cannot read that account's home or receipt directory.
