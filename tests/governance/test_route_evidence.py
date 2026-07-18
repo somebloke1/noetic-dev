@@ -383,6 +383,7 @@ class TestRouteEvidence(unittest.TestCase):
             ("jobs", ("total_count",), True),
             ("jobs", ("jobs", 0, "id"), 0),
             ("jobs", ("jobs", 0, "run_attempt"), 2),
+            ("jobs", ("jobs", 0, "workflow_name"), "Agent Review"),
             ("jobs", ("jobs", 0, "labels"), ["self-hosted"]),
             ("jobs", ("jobs", 0, "steps"), jobs["jobs"][0]["steps"] + [{"name": "extra", "conclusion": "success"}]),
             ("artifacts", ("total_count",), True),
