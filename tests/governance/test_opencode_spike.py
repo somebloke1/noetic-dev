@@ -626,6 +626,8 @@ class TestPersistenceAndPhases(unittest.TestCase):
             ):
                 result = spike.execute_phase(
                     state_dir=state,
+                    input_dir=state,
+                    input_reader=spike.read_private_json,
                     environment={"CREDENTIALS_DIRECTORY": str(credential_dir)},
                     upstream_sender=fake_upstream,
                     expected_uid=os.getuid(),
@@ -672,7 +674,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
             state = Path(directory)
             spike.atomic_create_json(state / "route.json", route_record())
             sender = mock.Mock(side_effect=AssertionError("must not invoke"))
-            result = spike.execute_phase(state_dir=state, environment={}, upstream_sender=sender, expected_uid=os.getuid())
+            result = spike.execute_phase(state_dir=state, input_dir=state, input_reader=spike.read_private_json, environment={}, upstream_sender=sender, expected_uid=os.getuid())
             self.assertEqual(result["execution_status"], "failure")
             self.assertEqual(result["failure_code"], "credential-directory-invalid")
             self.assertEqual(result["claim_state"], "claimed")
@@ -685,7 +687,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
             spike.atomic_create_json(state / "route.json", route_record())
             spike.create_claim(state / "execute.claim", DECISION_ID, "execute")
             spike.mark_claim_issued(state / "execute.claim", DECISION_ID, "execute")
-            result = spike.execute_phase(state_dir=state, environment={}, expected_uid=os.getuid())
+            result = spike.execute_phase(state_dir=state, input_dir=state, input_reader=spike.read_private_json, environment={}, expected_uid=os.getuid())
             self.assertEqual(result["failure_code"], "execute-replay-blocked")
             self.assertEqual(result["claim_state"], "request-issued")
             self.assertTrue(result["request_issued"])
@@ -695,11 +697,13 @@ class TestPersistenceAndPhases(unittest.TestCase):
 
     def test_outcome_is_tokenless_at_most_once_and_updates_record(self):
         with tempfile.TemporaryDirectory() as directory:
-            state = Path(directory) / "state"
-            route_raw = spike.atomic_create_json(state / "route.json", route_record())
+            root = Path(directory)
+            state, handoff = root / "state", root / "handoff"
+            state.mkdir(mode=0o700)
+            route_raw = spike.atomic_create_json(handoff / "route.json", route_record())
             result = failure_result()
             result["route_reference_sha256"] = spike.sha256(route_raw)
-            spike.atomic_create_json(state / "result.json", result)
+            spike.atomic_create_json(handoff / "result.json", result)
             outcomes = Path(directory) / "outcomes.jsonl"
             outcomes.touch()
             outcomes.chmod(0o600)
@@ -707,6 +711,8 @@ class TestPersistenceAndPhases(unittest.TestCase):
             factory = RouterFactory(router)
             updated = spike.outcome_phase(
                 state_dir=state,
+                input_dir=handoff,
+                input_reader=spike.read_private_json,
                 outcomes_path=outcomes,
                 router_factory=factory,
                 identity_validator=lambda *_args: ROUTER_IDENTITY,
@@ -723,6 +729,8 @@ class TestPersistenceAndPhases(unittest.TestCase):
             with self.assertRaises(spike.SpikeError):
                 spike.outcome_phase(
                     state_dir=state,
+                    input_dir=handoff,
+                    input_reader=spike.read_private_json,
                     outcomes_path=outcomes,
                     router_factory=factory,
                     identity_validator=lambda *_args: ROUTER_IDENTITY,
@@ -731,31 +739,35 @@ class TestPersistenceAndPhases(unittest.TestCase):
                 )
             self.assertEqual(len(router.calls), 1)
 
-    def test_outcome_reconciles_exact_log_without_retry_and_rejects_missing_log(self):
-        for recorded in (True, False):
-            with self.subTest(recorded=recorded), tempfile.TemporaryDirectory() as directory:
-                state = Path(directory) / "state"
-                route_raw = spike.atomic_create_json(state / "route.json", route_record())
-                result = failure_result()
-                result["route_reference_sha256"] = spike.sha256(route_raw)
-                result["outcome_status"] = "report-issued"
+    def test_outcome_reconciles_without_retry_and_rejects_missing_or_fabricated_state(self):
+        for case in ("recorded", "missing", "fabricated"):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state, handoff = root / "state", root / "handoff"
+                route_raw = spike.atomic_create_json(handoff / "route.json", route_record())
+                authoritative = failure_result()
+                authoritative["route_reference_sha256"] = spike.sha256(route_raw)
+                spike.atomic_create_json(handoff / "result.json", authoritative)
+                result = success_result() if case == "fabricated" else dict(authoritative)
+                result.update({"route_reference_sha256": spike.sha256(route_raw), "outcome_status": "report-issued"})
                 spike.atomic_create_json(state / "result.json", result)
                 spike.create_claim(state / "outcome.claim", DECISION_ID, "outcome")
                 spike.mark_claim_issued(state / "outcome.claim", DECISION_ID, "outcome")
                 outcomes = Path(directory) / "outcomes.jsonl"
                 outcomes.touch()
                 outcomes.chmod(0o600)
-                if recorded:
+                if case == "recorded":
                     append_outcome(outcomes, {"outcome": "failure", "notes": "OpenCode credential-isolated non-evidence spike failed: credential-directory-invalid"})
                 router = FakeRouter()
-                arguments = {"state_dir": state, "outcomes_path": outcomes, "router_factory": RouterFactory(router), "identity_validator": lambda *_args: ROUTER_IDENTITY, "classification_validator": lambda _path: ROUTER_CLASSIFICATION, "environment": {"HOME": "/nonexistent"}}
-                if recorded:
+                arguments = {"state_dir": state, "input_dir": handoff, "input_reader": spike.read_private_json, "outcomes_path": outcomes, "router_factory": RouterFactory(router), "identity_validator": lambda *_args: ROUTER_IDENTITY, "classification_validator": lambda _path: ROUTER_CLASSIFICATION, "environment": {"HOME": "/nonexistent"}}
+                if case == "recorded":
                     updated = spike.outcome_phase(**arguments)
                     self.assertEqual(updated["outcome_status"], "reconciled")
                     self.assertFalse(updated["report_outcome_acknowledged"])
                     self.assertIsNotNone(updated["report_outcome_record_sha256"])
                 else:
-                    with self.assertRaisesRegex(spike.SpikeError, "outcome-report-unresolved"):
+                    error = "outcome-input-invalid" if case == "fabricated" else "outcome-report-unresolved"
+                    with self.assertRaisesRegex(spike.SpikeError, error):
                         spike.outcome_phase(**arguments)
                 self.assertEqual(router.calls, [])
 

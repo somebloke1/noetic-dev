@@ -40,6 +40,7 @@ ROUTER_OUTCOMES = ROUTER_ROOT / "state" / "outcomes.jsonl"
 ROUTER_STATE_CLASSIFICATION = ROUTER_ROOT / "state" / "classification.json"
 STATE_DIR = Path("/var/lib/noetic-opencode-spike/state")
 EXECUTE_STATE_DIR = Path("/var/lib/noetic-opencode-spike/execute-state")
+HANDOFF_STATE_DIR = Path("/var/lib/noetic-opencode-spike/handoff-state")
 CONTROLLER_PATH = RUNTIME_ROOT / "opencode-spike-runtime" / "run_opencode_spike.py"
 LITELLM_PEER_MANIFEST = RUNTIME_ROOT / "opencode-spike-runtime" / "litellm-peer-manifest.json"
 OPENCODE_PATH = RUNTIME_ROOT / "opencode" / "1.17.20" / "opencode"
@@ -671,6 +672,12 @@ def validate_non_evidence_router_state(path: Path = ROUTER_STATE_CLASSIFICATION)
     require(raw.endswith(b"\n") and raw.count(b"\n") == 1, "router-state-classification-invalid")
     require(strict_json_loads(raw[:-1]) == NON_EVIDENCE_ROUTER_STATE, "router-state-classification-invalid")
     return sha256(raw)
+
+
+def read_root_json(path: Path) -> tuple[Any, bytes]:
+    raw = _root_owned_file_bytes(path, maximum=262_144)
+    require(raw.endswith(b"\n") and raw.count(b"\n") == 1, "handoff-json-framing-invalid")
+    return strict_json_loads(raw[:-1]), raw
 
 
 def _validate_root_owned_symlink(path: Path) -> Path:
@@ -2751,6 +2758,8 @@ def _sandbox_metrics(
 def execute_phase(
     *,
     state_dir: Path = EXECUTE_STATE_DIR,
+    input_dir: Path = HANDOFF_STATE_DIR,
+    input_reader: Callable[[Path], tuple[Any, bytes]] = read_root_json,
     environment: Mapping[str, str] | None = None,
     upstream_sender: Callable[[bytes, bytes], UpstreamHTTPResponse] = forward_upstream,
     expected_uid: int = 0,
@@ -2759,7 +2768,7 @@ def execute_phase(
     result_path = state_dir / "result.json"
     token: bytearray | None = None
     try:
-        route, route_raw = read_private_json(state_dir / "route.json")
+        route, route_raw = input_reader(input_dir / "route.json")
         validate_route_record(route)
         decision = route["decision"]
         decision_id = decision["decision_id"]
@@ -2841,6 +2850,8 @@ def isolated_outcome_record_sha256(path: Path, decision_id: str, outcome: str, n
 def outcome_phase(
     *,
     state_dir: Path = STATE_DIR,
+    input_dir: Path = HANDOFF_STATE_DIR,
+    input_reader: Callable[[Path], tuple[Any, bytes]] = read_root_json,
     command: Path = ROUTER_COMMAND,
     config: Path = ROUTER_CONFIG,
     component_sha: str = COMPONENT_SHA,
@@ -2856,19 +2867,31 @@ def outcome_phase(
     require(type(router_identity) is str and SHA256_HEX.fullmatch(router_identity), "router-identity-invalid")
     classification_sha = classification_validator(ROUTER_STATE_CLASSIFICATION)
     require(type(classification_sha) is str and SHA256_HEX.fullmatch(classification_sha), "router-state-classification-invalid")
-    route, _route_raw = read_private_json(state_dir / "route.json")
+    route, route_raw = input_reader(input_dir / "route.json")
     validate_route_record(route)
     require(
         route["router_identity_sha256"] == router_identity
         and route["router_state_classification_sha256"] == classification_sha,
         "router-identity-changed",
     )
-    result, _result_raw = read_private_json(state_dir / "result.json")
+    authoritative, _result_raw = input_reader(input_dir / "result.json")
+    validate_result_record(authoritative)
+    result_path = state_dir / "result.json"
+    try:
+        result, _state_raw = read_private_json(result_path)
+        persisted = True
+    except SpikeError as error:
+        if error.code != "state-file-missing":
+            raise
+        result, persisted = dict(authoritative), False
     validate_result_record(result)
     decision_id = route["decision"]["decision_id"]
     require(
-        result["route_decision_id"] == decision_id
-        and result["router_identity_sha256"] == router_identity
+        authoritative["route_decision_id"] == decision_id
+        and authoritative["router_identity_sha256"] == router_identity
+        and authoritative["route_reference_sha256"] == sha256(route_raw)
+        and authoritative["outcome_status"] == "pending"
+        and all(result[field] == authoritative[field] for field in RESULT_FIELDS - {"outcome_status", "report_outcome_acknowledged", "report_outcome_acknowledgement_sha256", "report_outcome_record_sha256"})
         and result["outcome_status"] in {"pending", "report-issued"},
         "outcome-input-invalid",
     )
@@ -2881,6 +2904,7 @@ def outcome_phase(
     require(_valid_bounded_text(notes, 1_000), "outcome-notes-invalid")
     claim_path = state_dir / "outcome.claim"
     if result["outcome_status"] == "report-issued":
+        require(persisted, "outcome-state-invalid")
         require(claim_states(claim_path, "outcome", decision_id) == ["claimed", "report-issued"], "claim-state-invalid")
         record_sha = isolated_outcome_record_sha256(outcomes_path, decision_id, outcome, notes)
         require(record_sha is not None, "outcome-report-unresolved")
@@ -2889,13 +2913,14 @@ def outcome_phase(
         result["outcome_status"] = "reconciled"
         result["report_outcome_record_sha256"] = record_sha
         validate_result_record(result)
-        atomic_replace_json(state_dir / "result.json", result)
+        atomic_replace_json(result_path, result)
         return result
+    require(not persisted, "outcome-state-invalid")
     create_claim(claim_path, decision_id, "outcome")
     mark_claim_issued(claim_path, decision_id, "outcome")
     result["outcome_status"] = "report-issued"
     validate_result_record(result)
-    atomic_replace_json(state_dir / "result.json", result)
+    atomic_create_json(result_path, result)
     with router_factory(command, config, component_sha, litellm_token=None) as router:
         acknowledgement = router.call_tool(
             "report_outcome",
@@ -2911,7 +2936,7 @@ def outcome_phase(
     result["report_outcome_record_sha256"] = record_sha
     result["report_outcome_id"] = None
     validate_result_record(result)
-    atomic_replace_json(state_dir / "result.json", result)
+    atomic_replace_json(result_path, result)
     return result
 
 

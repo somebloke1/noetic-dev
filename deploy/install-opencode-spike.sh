@@ -21,6 +21,7 @@ opencode_runtime=$root/opencode/1.17.20
 spike_home=/var/lib/noetic-opencode-spike
 state=$spike_home/state
 execute_state=$spike_home/execute-state
+handoff_state=$spike_home/handoff-state
 router_state=$spike_home/non-evidence-router-state
 router=$root/genus-router/$component_sha
 litellm_unit=/etc/systemd/system/litellm.service
@@ -30,7 +31,7 @@ litellm_config=/etc/litellm/config.yaml
 [[ $noetic_sha =~ ^[0-9a-f]{40}$ ]]
 [[ $(git -C "$noetic_source" rev-parse "$noetic_sha^{commit}") == "$noetic_sha" ]]
 [[ -f $opencode_source && ! -L $opencode_source ]]
-[[ -x /usr/bin/bwrap && -x /usr/bin/python3 ]]
+[[ -x /usr/bin/bwrap && -x /usr/bin/python3 && -x /usr/bin/dd ]]
 [[ -x $router/bin/python3 && -x $router/bin/genus-router && -f $router/config/router.yaml ]]
 [[ -f $router/component-manifest.json ]]
 [[ -f $litellm_unit && ! -L $litellm_unit && -x $litellm_launcher && ! -L $litellm_launcher && -f $litellm_config && ! -L $litellm_config ]]
@@ -72,13 +73,16 @@ router_identity=$(/usr/bin/python3 -I "$archive/scripts/governance/run_opencode_
 for artifact in route.claim route.json execute.claim result.json outcome.claim; do
   [[ ! -e $state/$artifact ]]
 done
-for artifact in route.json execute.claim result.json; do
+for artifact in execute.claim result.json; do
   [[ ! -e $execute_state/$artifact ]]
+done
+for artifact in route.json result.json; do
+  [[ ! -e $handoff_state/$artifact ]]
 done
 for artifact in classification.json decisions.jsonl outcomes.jsonl; do
   [[ ! -e $router_state/$artifact ]]
 done
-[[ ! -L $root && ! -L $runtime && ! -L $opencode_runtime && ! -L $spike_home && ! -L $state && ! -L $execute_state && ! -L $router_state ]]
+[[ ! -L $root && ! -L $runtime && ! -L $opencode_runtime && ! -L $spike_home && ! -L $state && ! -L $execute_state && ! -L $handoff_state && ! -L $router_state ]]
 
 getent group noetic-opencode-spike >/dev/null || groupadd --system noetic-opencode-spike
 id noetic-opencode-spike >/dev/null 2>&1 || useradd --system --gid noetic-opencode-spike --home "$spike_home" --no-create-home --shell /usr/sbin/nologin noetic-opencode-spike
@@ -90,6 +94,7 @@ id noetic-opencode-spike >/dev/null 2>&1 || useradd --system --gid noetic-openco
 install -d -o root -g root -m 0755 "$root" "$runtime" "$root/opencode" "$opencode_runtime"
 install -d -o root -g root -m 0755 "$spike_home"
 install -d -o noetic-opencode-spike -g noetic-opencode-spike -m 0700 "$state"
+install -d -o root -g root -m 0755 "$handoff_state"
 install -d -o root -g root -m 0755 "$router_state"
 printf '%s\n' '{"evidence_class":"non-evidence","policy_status":"contract-only","runtime_adapter_ready":false,"schema_version":"1","storage_scope":"isolated-spike-only"}' >"$router_state/classification.json"
 chown root:root "$router_state/classification.json"

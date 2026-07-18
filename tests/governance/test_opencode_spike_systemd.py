@@ -16,6 +16,7 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.execute = (SYSTEMD / "noetic-dev-opencode-spike-execute.service").read_text(encoding="utf-8")
         self.outcome = (SYSTEMD / "noetic-dev-opencode-spike-outcome.service").read_text(encoding="utf-8")
         self.installer = (ROOT / "deploy" / "install-opencode-spike.sh").read_text(encoding="utf-8")
+        self.orchestrator = (ROOT / "deploy" / "run-opencode-spike.sh").read_text(encoding="utf-8")
 
     def test_only_execute_process_receives_the_systemd_credential(self):
         self.assertNotIn("LoadCredential=", self.route)
@@ -47,12 +48,20 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.assertIn("User=llm-svc", self.execute)
         self.assertIn("Group=llm-svc", self.execute)
         self.assertIn("/var/lib/noetic-opencode-spike/execute-state", self.execute)
+        for unit in (self.execute, self.outcome):
+            self.assertIn("ReadOnlyPaths=/var/lib/noetic-opencode-spike/handoff-state", unit)
 
     def test_router_state_has_a_root_owned_non_evidence_classifier(self):
         classifier = '{"evidence_class":"non-evidence","policy_status":"contract-only","runtime_adapter_ready":false,"schema_version":"1","storage_scope":"isolated-spike-only"}'
         self.assertIn(classifier, self.installer)
         self.assertIn('install -d -o root -g root -m 0755 "$router_state"', self.installer)
+        self.assertIn('install -d -o root -g root -m 0755 "$handoff_state"', self.installer)
         self.assertIn('chmod 0444 "$router_state/classification.json"', self.installer)
+
+    def test_root_handoff_is_exclusive_no_follow_and_never_installs_into_service_state(self):
+        self.assertNotIn("/usr/bin/install -o", self.orchestrator)
+        self.assertIn("iflag=nofollow,nonblock,fullblock", self.orchestrator)
+        self.assertIn("oflag=excl,nofollow", self.orchestrator)
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/noetic-opencode-spike/execute-state
+ReadOnlyPaths=/var/lib/noetic-opencode-spike/handoff-state
 InaccessiblePaths=/etc/litellm/litellm.env
 RestrictSUIDSGID=true
 LockPersonality=true

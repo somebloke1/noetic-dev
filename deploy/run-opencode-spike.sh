@@ -1,5 +1,6 @@
 #!/bin/sh
 set -eu
+umask 077
 
 test "$(id -u)" -eq 0 || {
     printf '%s\n' "OpenCode spike orchestration requires root" >&2
@@ -16,6 +17,7 @@ export PATH
 
 state=/var/lib/noetic-opencode-spike/state
 execute_state=/var/lib/noetic-opencode-spike/execute-state
+handoff_state=/var/lib/noetic-opencode-spike/handoff-state
 router_state=/var/lib/noetic-opencode-spike/non-evidence-router-state
 route_unit=noetic-dev-opencode-spike-route.service
 execute_unit=noetic-dev-opencode-spike-execute.service
@@ -33,9 +35,15 @@ for artifact in route.claim route.json execute.claim result.json outcome.claim; 
         exit 1
     }
 done
-for artifact in route.json execute.claim result.json; do
+for artifact in execute.claim result.json; do
     test ! -e "$execute_state/$artifact" || {
         printf '%s\n' "OpenCode spike execute state blocks replay" >&2
+        exit 1
+    }
+done
+for artifact in route.json result.json; do
+    test ! -e "$handoff_state/$artifact" || {
+        printf '%s\n' "OpenCode spike handoff state blocks replay" >&2
         exit 1
     }
 done
@@ -50,18 +58,14 @@ done
 /usr/bin/systemctl start "$route_unit"
 test -f "$state/route.claim"
 test -f "$state/route.json"
-/usr/bin/install -o llm-svc -g llm-svc -m 0600 "$state/route.json" "$execute_state/route.json"
-/usr/bin/cmp -s "$state/route.json" "$execute_state/route.json"
+/usr/bin/dd if="$state/route.json" of="$handoff_state/route.json" bs=262145 count=1 iflag=nofollow,nonblock,fullblock oflag=excl,nofollow conv=fsync status=none
+/usr/bin/chmod 0444 "$handoff_state/route.json"
 
 execute_status=0
 /usr/bin/systemctl start "$execute_unit" || execute_status=$?
 test -f "$execute_state/result.json"
-/usr/bin/install -o noetic-opencode-spike -g noetic-opencode-spike -m 0600 "$execute_state/result.json" "$state/result.json"
-/usr/bin/cmp -s "$execute_state/result.json" "$state/result.json"
-if test -f "$execute_state/execute.claim"; then
-    /usr/bin/install -o noetic-opencode-spike -g noetic-opencode-spike -m 0600 "$execute_state/execute.claim" "$state/execute.claim"
-    /usr/bin/cmp -s "$execute_state/execute.claim" "$state/execute.claim"
-fi
+/usr/bin/dd if="$execute_state/result.json" of="$handoff_state/result.json" bs=262145 count=1 iflag=nofollow,nonblock,fullblock oflag=excl,nofollow conv=fsync status=none
+/usr/bin/chmod 0444 "$handoff_state/result.json"
 
 outcome_status=0
 /usr/bin/systemctl start "$outcome_unit" || outcome_status=$?
