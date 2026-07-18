@@ -681,7 +681,7 @@ def validate_protected_provenance(
         not isinstance(run, dict)
         or type(run.get("id")) is not int
         or run.get("id") != run_id
-        or run.get("name") not in {"Agent Review", f"agent-review-{pr_number}-{head_sha}"}
+        or run.get("name") != f"agent-review-{pr_number}-{head_sha}"
         or run.get("path") != ".github/workflows/agent-review.yml"
         or type(run.get("workflow_id")) is not int
         or run.get("workflow_id") != AGENT_REVIEW_WORKFLOW_ID

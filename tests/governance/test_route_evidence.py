@@ -362,11 +362,6 @@ class TestRouteEvidence(unittest.TestCase):
                 return validate_protected_provenance(123, 55, head_sha, base_sha, protected_ci)
 
         self.assertEqual(validate((github_run, pull, merge_commit, jobs, artifacts)), [])
-        static_run = copy.deepcopy(github_run)
-        static_run["name"] = "Agent Review"
-        static_job = copy.deepcopy(jobs)
-        static_job["jobs"][0]["workflow_name"] = "Agent Review"
-        self.assertEqual(validate((static_run, pull, merge_commit, static_job, artifacts)), [])
         base_job = copy.deepcopy(jobs)
         base_job["jobs"][0]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, merge_commit, base_job, artifacts)), [])
