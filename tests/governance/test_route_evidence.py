@@ -349,10 +349,12 @@ class TestRouteEvidence(unittest.TestCase):
         run, applied, ruleset, protected_ci = protection_records()
         github_run, pull, merge_commit, jobs, artifacts = provenance_records(head_sha, base_sha)
 
-        def validate(records: tuple[dict, dict, dict, dict, dict]) -> list[str]:
+        def validate(
+            records: tuple[dict, dict, dict, dict, dict], workflow: dict | None = None
+        ) -> list[str]:
             source_run, source_pull, source_merge, source_jobs, source_artifacts = records
             responses = [
-                source_run, workflow_record(), source_pull, source_merge,
+                source_run, workflow if workflow is not None else workflow_record(), source_pull, source_merge,
                 source_jobs, source_artifacts,
                 applied, ruleset,
             ]
@@ -374,6 +376,7 @@ class TestRouteEvidence(unittest.TestCase):
         mutations = []
         for target, path, value in [
             ("run", ("id",), 123.0),
+            ("run", ("name",), "Agent Review"),
             ("run", ("workflow_id",), 1),
             ("run", ("run_attempt",), True),
             ("pull", ("head", "sha"), "d" * 40),
@@ -405,6 +408,17 @@ class TestRouteEvidence(unittest.TestCase):
         for target, path, records in mutations:
             with self.subTest(target=target, path=path):
                 self.assertTrue(validate(records))
+        valid_records = (github_run, pull, merge_commit, jobs, artifacts)
+        for key, value in [
+            ("id", 1),
+            ("name", "Other Workflow"),
+            ("path", ".github/workflows/other.yml"),
+            ("state", "disabled_manually"),
+        ]:
+            workflow = workflow_record()
+            workflow[key] = value
+            with self.subTest(workflow_field=key):
+                self.assertTrue(validate(valid_records, workflow))
 
     def test_protected_ci_snapshot_rejects_mutable_or_bypassable_rulesets(self) -> None:
         run, applied, ruleset, snapshot = protection_records()
