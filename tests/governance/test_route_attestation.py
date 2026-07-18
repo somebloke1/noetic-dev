@@ -246,6 +246,7 @@ class TestRouteAttestation(unittest.TestCase):
             ({**artifacts, "total_count": 2}, pull, jobs),
             ({**artifacts, "artifacts": [{**artifacts["artifacts"][0], "expired": True}]}, pull, jobs),
             (artifacts, {**pull, "base": {"ref": "main", "sha": "b" * 40}}, jobs),
+            (artifacts, {**pull, "base": {**pull["base"], "sha": "e" * 40}}, jobs),
             (artifacts, pull, {"total_count": 2, "jobs": jobs["jobs"]}),
             (artifacts, {**pull, "state": "open", "merged": False}, jobs),
         ]

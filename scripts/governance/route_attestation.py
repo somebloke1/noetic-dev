@@ -370,6 +370,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or head["repo"].get("full_name") != REPOSITORY
         or not isinstance(base, dict)
         or base.get("ref") != "dev"
+        or base.get("sha") != base_sha
         or not isinstance(base.get("repo"), dict)
         or type(base["repo"].get("id")) is not int
         or base["repo"].get("id") != REPOSITORY_ID
