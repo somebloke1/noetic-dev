@@ -254,3 +254,22 @@ Adopt the smallest durable recurrence design: repair route_evidence.py to use th
 
 Do not claim that integration_id 15368 authenticates a workflow path. In this public user-owned repository, native required workflows and push path restrictions are unavailable. A strong resolution requires either transfer to a Team organization with required workflows or a separately hosted GitHub App with its private key outside candidate Actions and a required App-bound check. Defer app registration/service creation because it introduces a new high-value credential and operational service beyond the minimal recurrence repair; retain the risk as explicit and do not treat current required checks as cryptographic workflow provenance.
 <!-- governance-crud:end id=dec-20260717-0002 -->
+
+<!-- governance-crud:start id=dec-20260718-0001 -->
+## dec-20260718-0001: Canonical delivery roadmap and persistence authority
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-18
+- Updated: 2026-07-18
+- Tags: roadmap,governance,persistence,authority,P4
+- Source: GitHub issue #32; dev@15b9ae66ff316abf28a5041c465e95baef5e82f9; goalchain chain-90 P1-P3 research and adversarial review
+- Confidence: 0.9
+
+Adopt root ROADMAP.md as noetic-dev's canonical aggregate delivery order, exact-checkpoint narrative, dependency map, and exit-gate artifact. Pair it with governance/roadmap.json as the machine-validated stage index; both must change together and scripts/validate_repo.py must reject schema, dependency, evidence, or Markdown-projection drift.
+
+Authority remains separated: AGENTS.md and accepted decisions govern invariants and adjudicated architecture/policy; ROADMAP.md governs aggregate order and gates; bounded issues and status labels govern work scope/lifecycle; PR, CI, and QA records provide verification; knowns, decisions, and open questions retain their distinct ledger roles; goalchains carry purpose and continuity but do not override Git-tracked portfolio status. A candidate roadmap becomes authoritative only after governed integration.
+
+GitHub issue #32 remains the portfolio coordination issue. Issue #5 and its roadmap branch are superseded as execution-order authority but retained as donor evidence. This decision does not silently resolve the dev/main branch-flow conflict, active existing-work freeze, notation ratification, model-access policy conflict, runtime selection, effect authority, licensing, or release trust root; ROADMAP stage D2 and later gates expose those unresolved conditions explicitly.
+<!-- governance-crud:end id=dec-20260718-0001 -->

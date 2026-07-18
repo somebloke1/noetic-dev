@@ -12,10 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.governance.json_schema import load_json_strict, validate_schema
+from scripts.governance.check_roadmap import validate_roadmap_files  # noqa: E402
+from scripts.governance.json_schema import load_json_strict, validate_schema  # noqa: E402
 
 REQUIRED = [
     "README.md",
+    "ROADMAP.md",
     "AGENTS.md",
     "SYNTHESIS.md",
     "KNOWNS.md",
@@ -81,9 +83,11 @@ REQUIRED = [
     "governance/model-profiles.json",
     "governance/command-registry.json",
     "governance/issue-status.json",
+    "governance/roadmap.json",
     "governance/schemas/evidence-manifest.schema.json",
     "governance/schemas/command-registry.schema.json",
     "governance/schemas/issue-status.schema.json",
+    "governance/schemas/roadmap.schema.json",
     "governance/schemas/model-profiles.schema.json",
     "governance/schemas/state-machine.schema.json",
     "governance/schemas/qa-execution-record.schema.json",
@@ -104,6 +108,7 @@ REQUIRED = [
     "scripts/governance/request_agent_review.py",
     "scripts/governance/route_evidence.py",
     "scripts/governance/route_attestation.py",
+    "scripts/governance/check_roadmap.py",
     "scripts/governance/capture_protected_ci.py",
     "deploy/install-agent-review.sh",
     "deploy/install-route-attestation-user.sh",
@@ -123,6 +128,7 @@ REQUIRED = [
     "tests/governance/test_run_isolated_pi.py",
     "tests/governance/test_agent_review.py",
     "tests/governance/test_route_attestation.py",
+    "tests/governance/test_roadmap.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
@@ -171,6 +177,9 @@ def main() -> int:
     for anchor, count in anchor_counts.items():
         if count != 2:
             fail(f"governance anchor {anchor!r} occurs {count} times; expected start+end", failures)
+
+    for error in validate_roadmap_files(ROOT):
+        fail(f"roadmap validation: {error}", failures)
 
     for json_path in sorted((ROOT / "governance").rglob("*.json")):
         try:

@@ -16,6 +16,7 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 ## Start here
 
 - [`SYNTHESIS.md`](SYNTHESIS.md) — adjudicated architecture and migration path
+- [`ROADMAP.md`](ROADMAP.md) — canonical delivery order, exact checkpoint, dependencies, and exit gates
 - [`docs/cognitive-backbone.md`](docs/cognitive-backbone.md) — canonical P1–P4 form
 - [`AGENTS.md`](AGENTS.md) — project governance and invariants
 - [`docs/development-practices.md`](docs/development-practices.md) — git, worktree, issue, PR, CI, and merge discipline
@@ -36,7 +37,7 @@ Telos, the executive controller, cognitive programs, and attach adapters should 
 
 ## Current phase
 
-Architecture and governance bootstrap. The immediate frontier is to specify the superior executive controller before implementation, preserving proven donor invariants while correcting donor coupling and failure modes.
+Repository bootstrap, fixed provider-free reference proofs, and a bounded protected-review routing/attestation slice are integrated, but they are not production-runtime evidence. The next gate is governance and source convergence before donor characterization, connective contracts, or controller implementation. See [`ROADMAP.md`](ROADMAP.md) for the exact checkpoint and gates.
 
 ## License
 
