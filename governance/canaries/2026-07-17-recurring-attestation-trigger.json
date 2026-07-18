@@ -1,0 +1,23 @@
+{
+  "schema_version": "1",
+  "kind": "recurring-route-attestation-canary",
+  "repository": "somebloke1/noetic-dev",
+  "issue_number": 63,
+  "pr_number": 64,
+  "protected_base_sha": "91bf3617b957b5308d71fa43eb7ee0a2d4314771",
+  "workflow": {
+    "id": 312422987,
+    "path": ".github/workflows/agent-review.yml",
+    "event": "pull_request_target",
+    "run_name_template": "agent-review-{pr_number}-{head_sha}"
+  },
+  "artifact": {
+    "name_template": "agent-review-{pr_number}-{head_sha}",
+    "required": true
+  },
+  "receipt": {
+    "path_template": "run-{run_id}-attempt-{run_attempt}.json",
+    "required": true
+  },
+  "success_claim": false
+}
