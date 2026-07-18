@@ -795,7 +795,7 @@ def _valid_review_job(
         and job.get("run_id") == run_id
         and type(job.get("run_attempt")) is int
         and job.get("run_attempt") == 1
-        and job.get("workflow_name") == workflow_name
+        and job.get("workflow_name") in {"Agent Review", workflow_name}
         and job.get("head_sha") in (head_sha, base_sha)
         and job.get("status") == "completed"
         and job.get("conclusion") == "success"

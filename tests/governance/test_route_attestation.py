@@ -85,7 +85,7 @@ def attestation_records() -> tuple[dict, dict, dict, dict]:
         "id": 456,
         "run_id": 123,
         "run_attempt": 1,
-        "workflow_name": f"agent-review-55-{head_sha}",
+        "workflow_name": "Agent Review",
         "head_sha": head_sha,
         "status": "completed",
         "conclusion": "success",

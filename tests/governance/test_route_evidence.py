@@ -172,7 +172,7 @@ def provenance_records(
             "id": 456,
             "run_id": 123,
             "run_attempt": 1,
-            "workflow_name": f"agent-review-{pr_number}-{head_sha}",
+            "workflow_name": "Agent Review",
             "head_sha": head_sha,
             "status": "completed",
             "conclusion": "success",
@@ -355,6 +355,9 @@ class TestRouteEvidence(unittest.TestCase):
         base_job = copy.deepcopy(jobs)
         base_job["jobs"][0]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, merge_commit, base_job, artifacts)), [])
+        dynamic_job = copy.deepcopy(jobs)
+        dynamic_job["jobs"][0]["workflow_name"] = f"agent-review-55-{head_sha}"
+        self.assertEqual(validate((github_run, pull, merge_commit, dynamic_job, artifacts)), [])
         base_artifact = copy.deepcopy(artifacts)
         base_artifact["artifacts"][0]["workflow_run"]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, merge_commit, jobs, base_artifact)), [])
@@ -373,7 +376,7 @@ class TestRouteEvidence(unittest.TestCase):
             ("jobs", ("total_count",), True),
             ("jobs", ("jobs", 0, "id"), 0),
             ("jobs", ("jobs", 0, "run_attempt"), 2),
-            ("jobs", ("jobs", 0, "workflow_name"), "Agent Review"),
+            ("jobs", ("jobs", 0, "workflow_name"), "Other Workflow"),
             ("jobs", ("jobs", 0, "labels"), ["self-hosted"]),
             ("jobs", ("jobs", 0, "steps"), jobs["jobs"][0]["steps"] + [{"name": "extra", "conclusion": "success"}]),
             ("artifacts", ("total_count",), True),
