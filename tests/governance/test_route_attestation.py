@@ -271,6 +271,8 @@ class TestRouteAttestation(unittest.TestCase):
         ):
             receipt_path = attest_run(run, Path(directory))
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt_path, Path(directory) / "run-123-attempt-1.json")
+            self.assertEqual(list(Path(directory).glob(".route-attestation-*")), [])
         validate.assert_called_once_with(123, 55, "a" * 40, "b" * 40)
         self.assertEqual(receipt["artifact_id"], 789)
         self.assertEqual(receipt["artifact_digest"], f"sha256:{'c' * 64}")
@@ -439,47 +441,6 @@ class TestRouteAttestation(unittest.TestCase):
         self.assertIn("env -i HOME=", installer)
         self.assertIn('--property=Linger --value)" = yes', installer)
         self.assertIn("systemctl --user enable --now noetic-dev-route-attestation.timer", installer)
-
-    def test_attestation_integrates_run_artifact_validator_and_receipt(self) -> None:
-        pr_number = 64
-        protected_base_sha = "91bf3617b957b5308d71fa43eb7ee0a2d4314771"
-        run = run_record(321)
-        run_name = f"agent-review-{pr_number}-{run['head_sha']}"
-        run.update({"name": run_name, "display_title": run_name})
-        artifacts, pull, merge_commit, jobs = attestation_records()
-        artifact = artifacts["artifacts"][0]
-        artifact.update({"name": run_name, "workflow_run": {
-            **artifact["workflow_run"], "id": run["id"],
-        }})
-        pull.update({"number": pr_number, "base": {
-            **pull["base"], "sha": protected_base_sha,
-        }})
-        merge_commit["parents"] = [{"sha": protected_base_sha}]
-        job = jobs["jobs"][0]
-        job.update({"run_id": run["id"], "workflow_name": run_name})
-        responses = [
-            run, workflow_record(), pull, artifacts, merge_commit, jobs,
-            run, workflow_record(), pull, artifacts, merge_commit, jobs,
-        ]
-        with tempfile.TemporaryDirectory() as directory, mock.patch(
-            "route_attestation.github_json", side_effect=responses
-        ), mock.patch(
-            "route_attestation.retained_base_sha", return_value=protected_base_sha,
-        ), mock.patch(
-            "route_attestation.validate_from_protected_base", return_value="d" * 64
-        ) as validate:
-            receipt_path = attest_run(run, Path(directory))
-            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-            self.assertEqual(receipt_path, Path(directory) / "run-321-attempt-1.json")
-            self.assertTrue(receipt_path.is_file())
-            self.assertEqual(list(Path(directory).glob(".route-attestation-*")), [])
-        validate.assert_called_once_with(
-            run["id"], pr_number, run["head_sha"], protected_base_sha,
-        )
-        self.assertEqual(receipt["head_sha"], run["head_sha"])
-        self.assertEqual(receipt["artifact_name"], run_name)
-        self.assertEqual(receipt["validator_sha256"], "d" * 64)
-
 
 if __name__ == "__main__":
     unittest.main()
