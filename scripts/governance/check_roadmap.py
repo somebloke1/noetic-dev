@@ -331,8 +331,18 @@ def _validate_evidence(
                 artifact = Path(reference)
                 if artifact.is_absolute() or ".." in artifact.parts:
                     errors.append(f"{stage['id']}: unsafe artifact evidence {reference!r}")
-                elif root is not None and not (root / artifact).is_file():
-                    errors.append(f"{stage['id']}: artifact evidence does not exist: {reference}")
+                elif root is not None:
+                    resolved_root = root.resolve()
+                    resolved_artifact = (resolved_root / artifact).resolve()
+                    if resolved_root not in resolved_artifact.parents:
+                        errors.append(
+                            f"{stage['id']}: artifact evidence resolves outside repository: "
+                            f"{reference}"
+                        )
+                    elif not resolved_artifact.is_file():
+                        errors.append(
+                            f"{stage['id']}: artifact evidence does not exist: {reference}"
+                        )
         if stage["status"] == "checkpointed" and commit_count == 0:
             errors.append(
                 f"{stage['id']}: checkpointed stage requires baseline-ancestor commit evidence"

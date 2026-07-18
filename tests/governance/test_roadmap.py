@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -117,6 +118,22 @@ class TestRoadmap(unittest.TestCase):
         }
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assertTrue(errors)
+
+    def test_artifact_symlink_cannot_escape_repository(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"][-1] = {
+            "kind": "artifact",
+            "reference": "evidence-link",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            root = temporary / "repo"
+            root.mkdir()
+            outside = temporary / "outside.json"
+            outside.write_text("{}", encoding="utf-8")
+            (root / "evidence-link").symlink_to(outside)
+            errors = validate_roadmap(mutated, self.schema, self.markdown, root)
+        self.assert_has_error(errors, "artifact evidence resolves outside repository")
 
     def test_unapproved_remote_evidence_fails_closed_catalog(self) -> None:
         mutated = copy.deepcopy(self.state)
