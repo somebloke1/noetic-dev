@@ -369,6 +369,9 @@ def attest_run(run: dict[str, Any], state_dir: Path) -> Path:
 
 def load_attestation_context(run_id: int) -> dict[str, Any]:
     run = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}")
+    workflow = github_json(
+        f"repos/{REPOSITORY}/actions/workflows/{AGENT_REVIEW_WORKFLOW_ID}"
+    )
     display_title = run.get("display_title") if isinstance(run, dict) else None
     match = ARTIFACT_NAME.fullmatch(display_title) if isinstance(display_title, str) else None
     if match is None:
@@ -420,6 +423,11 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
         or run.get("display_title") != f"agent-review-{pr_number}-{head_sha}"
+        or not isinstance(workflow, dict)
+        or workflow.get("id") != AGENT_REVIEW_WORKFLOW_ID
+        or workflow.get("name") != "Agent Review"
+        or workflow.get("path") != ".github/workflows/agent-review.yml"
+        or workflow.get("state") != "active"
         or not isinstance(run.get("repository"), dict)
         or type(run["repository"].get("id")) is not int
         or run["repository"].get("id") != REPOSITORY_ID
