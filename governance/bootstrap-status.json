@@ -12,6 +12,6 @@
   },
   "publication": {
     "status": "blocked",
-    "reason": "No distinct protected workflow trust root, trusted runner provenance, credential broker, or protected post-merge main-run publication evidence exists. Candidate workflow output remains advisory for release authority."
+    "reason": "The D2 inventory still awaits protected independent review evidence, and no distinct protected workflow trust root, trusted runner provenance, credential broker, or protected post-merge main-run publication evidence exists. Candidate workflow output remains advisory for release authority."
   }
 }

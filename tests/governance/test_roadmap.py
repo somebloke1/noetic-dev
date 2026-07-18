@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts.governance.check_roadmap import validate_roadmap, validate_roadmap_files
-from scripts.governance.json_schema import load_json_strict
+from scripts.governance.json_schema import load_json_strict, validate_schema
 
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = ROOT / "governance" / "roadmap.json"
-SCHEMA_PATH = ROOT / "governance" / "schemas" / "roadmap.schema.json"
+SCHEMA_PATH = ROOT / "governance" / "schemas" / "roadmap-v2.schema.json"
+V1_SCHEMA_PATH = ROOT / "governance" / "schemas" / "roadmap.schema.json"
 DOC_PATH = ROOT / "ROADMAP.md"
 
 
@@ -33,6 +35,38 @@ class TestRoadmap(unittest.TestCase):
     def test_exact_roadmap_contract_is_valid(self) -> None:
         self.assertEqual(validate_roadmap(self.state, self.schema, self.markdown, ROOT), [])
         self.assertEqual(validate_roadmap_files(ROOT), [])
+
+    def test_schema_v1_is_preserved_and_v2_migration_is_explicit(self) -> None:
+        v1_schema = load_json_strict(V1_SCHEMA_PATH)
+        predecessor = copy.deepcopy(self.state)
+        predecessor["$schema"] = "./schemas/roadmap.schema.json"
+        predecessor["schema_version"] = "1"
+        predecessor["unresolved_conflicts"] = [
+            {"id": "C1", "title": "resolved branch-flow conflict", "resolution_stage": "D2", "blocks": ["D3a", "D9"]},
+            {"id": "C2", "title": "resolved audit conflict", "resolution_stage": "D2", "blocks": ["D3a", "D9"]},
+            {"id": "C3", "title": "resolved notation conflict", "resolution_stage": "D2", "blocks": ["D3a"]},
+            {"id": "C4", "title": "resolved model-access conflict", "resolution_stage": "D2", "blocks": ["D3a", "D4c"]},
+            *copy.deepcopy(self.state["unresolved_conflicts"][1:]),
+        ]
+        self.assertEqual(validate_schema(predecessor, v1_schema), [])
+        self.assertNotEqual(validate_schema(predecessor, self.schema), [])
+        self.assertNotEqual(validate_schema(self.state, v1_schema), [])
+
+    def test_portfolio_audit_is_schema_valid_and_digest_bound(self) -> None:
+        audit_path = ROOT / "governance" / "audits" / "20260718-d2-portfolio" / "inventory.json"
+        audit = load_json_strict(audit_path)
+        audit_schema = load_json_strict(
+            ROOT / "governance" / "schemas" / "d2-portfolio-audit.schema.json"
+        )
+        freeze = load_json_strict(
+            ROOT / "governance" / "audits" / "existing-work-freeze.json"
+        )
+        self.assertEqual(validate_schema(audit, audit_schema), [])
+        self.assertEqual(hashlib.sha256(audit_path.read_bytes()).hexdigest(), freeze["audit_sha256"])
+
+        thin = copy.deepcopy(audit)
+        del thin["open_issues"][0]["title"]
+        self.assertNotEqual(validate_schema(thin, audit_schema), [])
 
     def test_wrong_stage_container_type_fails(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -201,13 +235,13 @@ class TestRoadmap(unittest.TestCase):
 
     def test_conflict_blocks_must_be_unique(self) -> None:
         mutated = copy.deepcopy(self.state)
-        mutated["unresolved_conflicts"][0]["blocks"].append("D4c")
+        mutated["unresolved_conflicts"][1]["blocks"].append("D4c")
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "blocked stages must be unique")
 
     def test_conflict_resolution_cannot_follow_blocked_stage(self) -> None:
         mutated = copy.deepcopy(self.state)
-        mutated["unresolved_conflicts"][0]["resolution_stage"] = "D9"
+        mutated["unresolved_conflicts"][1]["resolution_stage"] = "D9"
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "resolution stage D9 follows blocked D4c")
 
@@ -261,6 +295,9 @@ class TestRoadmap(unittest.TestCase):
         copied_paths = (
             "governance/roadmap.json",
             "governance/schemas/roadmap.schema.json",
+            "governance/schemas/roadmap-v2.schema.json",
+            "governance/schemas/d2-portfolio-audit.schema.json",
+            "governance/audits/20260718-d2-portfolio/inventory.json",
             "governance/audits/existing-work-freeze.json",
             "governance/bootstrap-status.json",
         )
@@ -283,7 +320,8 @@ class TestRoadmap(unittest.TestCase):
 
     def test_resolved_d2_conflicts_are_absent(self) -> None:
         conflict_ids = {item["id"] for item in self.state["unresolved_conflicts"]}
-        self.assertTrue({"C1", "C2", "C3", "C4"}.isdisjoint(conflict_ids))
+        self.assertTrue({"C1", "C3", "C4"}.isdisjoint(conflict_ids))
+        self.assertIn("C2", conflict_ids)
 
     def test_d2_gate_cannot_negate_freeze_requirements(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -307,12 +345,21 @@ class TestRoadmap(unittest.TestCase):
             "governance/audits/existing-work-freeze.json",
             "governance/bootstrap-status.json",
         )
+        support_paths = (
+            "governance/schemas/existing-work-freeze.schema.json",
+            "governance/schemas/d2-portfolio-audit.schema.json",
+            "governance/audits/20260718-d2-portfolio/inventory.json",
+        )
         for symlinked in policy_paths:
             with self.subTest(path=symlinked), tempfile.TemporaryDirectory() as directory:
                 temporary = Path(directory)
                 root = temporary / "repo"
                 outside = temporary / "outside.json"
                 outside.write_text("{}", encoding="utf-8")
+                for relative in support_paths:
+                    target = root / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes((ROOT / relative).read_bytes())
                 for relative in policy_paths:
                     target = root / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -396,7 +443,7 @@ class TestRoadmap(unittest.TestCase):
         mutated = copy.deepcopy(self.state)
         mutated["unresolved_conflicts"] = []
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "array has fewer than 4 items")
+        self.assert_has_error(errors, "array has fewer than 5 items")
 
     def test_version_two_stage_catalog_is_closed(self) -> None:
         mutated = copy.deepcopy(self.state)

@@ -88,6 +88,10 @@ A PR candidate is ready to merge only when ALL of the following hold:
 14. External protected runner provenance binds repository, workflow, run/job, artifact digest, manifest digest, policy SHA, candidate SHA, and separate checkouts, and is captured by a separately protected required integration.
 15. All workflow action refs are pinned to full SHAs, and docker/action, job container, and service images are pinned by immutable digests.
 
+The owner authorization is not a manifest boolean. Protected external evidence
+must bind repository owner `somebloke1`, issue #32 or its comment, authorization
+time, and the exact dev SHA; the gate rejects a missing identity, URL, or SHA match.
+
 ### Publication gate
 
 Publication requires ALL of the following:
@@ -101,6 +105,11 @@ Publication requires ALL of the following:
 7. Protected post-merge push-to-main evidence binds the command outputs to the main SHA and merge method.
 8. The protected existing-work freeze artifact is complete; the manifest cannot override it.
 9. No branch-name publication: only full SHAs.
+
+Freeze completion additionally requires protected external review evidence whose
+audit digest matches `existing-work-freeze.json`, whose verdict is `pass`, and
+whose reviewed candidate SHA and evidence URL are explicit. A locally asserted
+`complete` value or caller-controlled manifest cannot satisfy this gate.
 
 ### Branch-name publication
 
@@ -138,7 +147,7 @@ Before authoritative conditions exist:
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
 - Protected `dev` branch checks and the independent-agent-review process are established. The protected policy ref, trusted runner provenance, and credential broker remain unresolved in `governance/bootstrap-status.json` until independently verified.
-- The completed existing-work audit does not establish publication authority; the distinct protected trust root and post-main evidence remain mandatory.
+- The D2 inventory remains review-pending. Protected external evidence must bind an independent exact-candidate review to its digest before the freeze may complete; the distinct protected trust root and post-main evidence also remain mandatory.
 
 ## Model profiles
 

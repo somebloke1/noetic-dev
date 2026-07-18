@@ -138,7 +138,7 @@
     {"from": "READY_TO_INTEGRATE_DEV", "to": "MERGED_TO_DEV", "authorized_roles": ["publisher"], "conditions": ["squash merge to protected dev", "dev integration SHA recorded"]},
     {"from": "MERGED_TO_DEV", "to": "POST_DEV_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-integration validation running against exact dev SHA"]},
     {"from": "POST_DEV_VALIDATING", "to": "MAIN_PROMOTION_PENDING", "authorized_roles": ["validator"], "conditions": ["post-integration validations and tests pass", "exact dev SHA recorded"]},
-    {"from": "MAIN_PROMOTION_PENDING", "to": "MAIN_PROMOTION_AUTHORIZED", "authorized_roles": ["owner"], "conditions": ["repository owner explicitly approves promotion of exact dev SHA"]},
+    {"from": "MAIN_PROMOTION_PENDING", "to": "MAIN_PROMOTION_AUTHORIZED", "authorized_roles": ["owner"], "conditions": ["protected external evidence binds repository-owner identity, issue 32 authorization record, timestamp, and exact dev SHA"]},
     {"from": "MAIN_PROMOTION_AUTHORIZED", "to": "CANDIDATE_PINNED", "authorized_roles": ["orchestrator"], "conditions": ["promotion PR targets protected main", "promotion head equals authorized dev SHA", "new implementation_pass_id and qa_for_pass_id allocated"]},
     {"from": "READY_TO_MERGE", "to": "MERGED_TO_MAIN", "authorized_roles": ["publisher"], "conditions": ["squash/rebase merge to main", "merge_result_sha recorded"]},
     {"from": "MERGED_TO_MAIN", "to": "POST_MERGE_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-merge validation running against main SHA"]},

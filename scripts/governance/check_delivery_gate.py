@@ -42,6 +42,7 @@ PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
 IMAGE_DIGEST_RE = re.compile(r"@sha256:[a-f0-9]{64}$")
 WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
 REPO_FULL_NAME = "somebloke1/noetic-dev"
+REPOSITORY_OWNER = "somebloke1"
 QA_TOOL_ALLOWLIST: set[str] = set()
 ALLOWED_MERGE_METHODS = {"squash", "rebase"}
 LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE = False
@@ -357,6 +358,37 @@ def _check_pr_and_issue(manifest: Dict[str, Any], errors: List[str]) -> None:
     elif value not in {"accepted", "ready", "in_progress"}:
         errors.append(f"issue status is not merge-eligible: {canonical}")
 
+
+def _check_owner_promotion_authorization(
+    manifest: Dict[str, Any],
+    errors: List[str],
+    external_evidence: Optional[Dict[str, Any]],
+) -> None:
+    authorization = (external_evidence or {}).get("promotion_authorization")
+    if not isinstance(authorization, dict):
+        errors.append("owner promotion authorization missing from protected external evidence")
+        return
+    candidate_sha = manifest.get("repo", {}).get("candidate_sha")
+    if authorization.get("authorized") is not True:
+        errors.append("owner promotion authorization is not affirmative")
+    if authorization.get("authorized_by") != REPOSITORY_OWNER:
+        errors.append("promotion was not authorized by the repository owner")
+    if authorization.get("dev_sha") != candidate_sha:
+        errors.append("owner-authorized dev SHA does not equal the promotion candidate SHA")
+    if authorization.get("issue") != 32:
+        errors.append("owner promotion authorization must be recorded on issue 32")
+    url = authorization.get("authorization_url", "")
+    if re.fullmatch(
+        r"https://github\.com/somebloke1/noetic-dev/issues/32(?:#issuecomment-[1-9][0-9]*)?",
+        url,
+    ) is None:
+        errors.append("owner promotion authorization URL is invalid")
+    authorized_at = _parse_time(authorization.get("authorized_at", ""))
+    pinned_at = _parse_time(manifest.get("repo", {}).get("candidate_pinned_at", ""))
+    if authorized_at is None:
+        errors.append("owner promotion authorization timestamp is invalid")
+    elif pinned_at is not None and authorized_at > pinned_at:
+        errors.append("owner promotion authorization postdates candidate pinning")
 
 def _profile_for(profile_id: str) -> Optional[Dict[str, Any]]:
     return _model_profiles().get("profiles", {}).get(profile_id)
@@ -1007,7 +1039,21 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
     external_freeze = (external_evidence or {}).get("freeze")
     if external_freeze and external_freeze != freeze:
         errors.append("publication blocked: external freeze evidence does not match protected freeze artifact")
-    if freeze.get("status") == "active" or freeze.get("blocks_publication") is True:
+    freeze_review = (external_evidence or {}).get("freeze_review")
+    if not isinstance(freeze_review, dict):
+        errors.append("publication blocked: protected independent freeze review evidence missing")
+    else:
+        if freeze_review.get("verdict") != "pass" or freeze_review.get("independent") is not True:
+            errors.append("publication blocked: freeze review did not independently pass")
+        if freeze_review.get("audit_sha256") != freeze.get("audit_sha256"):
+            errors.append("publication blocked: freeze review audit digest mismatch")
+        if not _is_sha(freeze_review.get("reviewed_candidate_sha", "")):
+            errors.append("publication blocked: freeze review candidate SHA is invalid")
+    if (
+        freeze.get("status") != "complete"
+        or freeze.get("independent_review_completed") is not True
+        or freeze.get("blocks_publication") is True
+    ):
         errors.append("publication blocked: existing-work freeze/audit is still active")
 
 
@@ -1034,6 +1080,7 @@ def check_delivery(
         merge_errors.append(f"branch-name publication forbidden: {publication_sha}")
 
     _check_pr_and_issue(manifest, merge_errors)
+    _check_owner_promotion_authorization(manifest, merge_errors, external_evidence)
     _check_required_commands(manifest, merge_errors)
     _check_qa_pairing(manifest, merge_errors, manifest_path)
     _check_terminal_state(manifest, merge_errors, phase)
@@ -1060,10 +1107,12 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
     """Return success only while bootstrap advisory mode remains honestly blocked."""
     errors: List[str] = []
     freeze = _protected_freeze()
-    if freeze.get("status") != "complete" or freeze.get("audit_completed") is not True:
-        errors.append("existing-work portfolio audit is not complete")
-    if freeze.get("blocks_publication") is not False:
-        errors.append("completed existing-work audit still claims to block publication")
+    if freeze.get("status") != "repair_authorized" or freeze.get("audit_completed") is not True:
+        errors.append("existing-work portfolio inventory is not in repair-authorized state")
+    if freeze.get("independent_review_completed") is not False:
+        errors.append("repair-authorized inventory must remain review-pending")
+    if freeze.get("blocks_publication") is not True:
+        errors.append("review-pending inventory must continue to block publication")
     bootstrap_path = REPO_ROOT / "governance" / "bootstrap-status.json"
     if not bootstrap_path.exists():
         errors.append("governance/bootstrap-status.json missing")

@@ -31,6 +31,28 @@ def advisory_external():
 
 
 class TestDeliveryGatePositive(unittest.TestCase):
+    def test_main_promotion_requires_exact_owner_authorization(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("owner promotion authorization missing", "\n".join(errors))
+
+        external["promotion_authorization"] = {
+            "authorized": True,
+            "authorized_by": "somebloke1",
+            "dev_sha": manifest["repo"]["candidate_sha"],
+            "issue": 32,
+            "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32",
+            "authorized_at": manifest["repo"]["candidate_pinned_at"],
+        }
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertNotIn("owner promotion authorization missing", "\n".join(errors))
+        self.assertNotIn("owner-authorized dev SHA", "\n".join(errors))
+
+        external["promotion_authorization"]["dev_sha"] = "0" * 40
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("owner-authorized dev SHA", "\n".join(errors))
+
     def test_self_consistent_external_evidence_remains_advisory(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest, external_evidence=advisory_external())
@@ -61,7 +83,26 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertEqual(gate_type, "publication")
         joined = "\n".join(errors)
         self.assertIn("publication blocked", joined)
-        self.assertNotIn("freeze/audit is still active", joined)
+        self.assertIn("freeze/audit is still active", joined)
+        self.assertIn("protected independent freeze review evidence missing", joined)
+
+    def test_publication_rejects_freeze_review_digest_mismatch(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["freeze_review"] = {
+            "verdict": "pass",
+            "independent": True,
+            "audit_sha256": "0" * 64,
+            "reviewed_candidate_sha": "1" * 40,
+            "evidence_url": "https://github.com/somebloke1/noetic-dev/issues/32",
+            "reviewed_at": "2026-07-18T23:46:09Z",
+        }
+        _passed, errors, _gate_type = check_delivery(
+            manifest,
+            external_evidence=external,
+            phase="publication",
+        )
+        self.assertIn("freeze review audit digest mismatch", "\n".join(errors))
 
     def test_multigeneration_history_is_valid_except_external_authority(self):
         manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
@@ -541,7 +582,8 @@ class TestDeliveryGateCLI(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("publication blocked", result.stderr)
-        self.assertNotIn("freeze/audit is still active", result.stderr)
+        self.assertIn("freeze/audit is still active", result.stderr)
+        self.assertIn("protected independent freeze review evidence missing", result.stderr)
 
     def test_cli_bootstrap_blocked_check_passes(self):
         result = subprocess.run(

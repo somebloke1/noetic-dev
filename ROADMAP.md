@@ -4,7 +4,7 @@
 **Exact checkpoint:** `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` on 2026-07-18
 **Portfolio authority:** [GitHub issue #32](https://github.com/somebloke1/noetic-dev/issues/32)
 **Machine index:** [`governance/roadmap.json`](governance/roadmap.json)
-**Policy snapshot:** freeze=complete; publication=blocked; delivery_gate=external_dependency_missing
+**Policy snapshot:** freeze=repair_authorized; publication=blocked; delivery_gate=external_dependency_missing
 
 This roadmap turns the architecture in [`SYNTHESIS.md`](SYNTHESIS.md) into a
 dependency-ordered delivery program with explicit exit gates. It supersedes issue
@@ -115,8 +115,8 @@ listed later are parallel but cannot silently satisfy a stage gate.
   `issue:https://github.com/somebloke1/noetic-dev/issues/32`.
 - **Bounded claim:** the thin composition root, governance vocabulary, validation,
   tests, and issue/PR practices exist at the exact baseline.
-- **Non-claim:** the completed existing-work audit does not resolve the distinct
-  release trust root or establish publication authority.
+- **Non-claim:** the review-pending existing-work audit does not resolve the
+  distinct release trust root or establish publication authority.
 - **Exit gate:** Repository and governance artifacts are present at the exact
   baseline without claiming publication readiness.
 
@@ -159,8 +159,8 @@ listed later are parallel but cannot silently satisfy a stage gate.
   projections:
   - protected `dev` feature integration followed by owner-authorized promotion of
     an exact validated dev SHA to protected `main`;
-  - completed 12-PR/26-branch/20-issue portfolio audit while publication remains
-    blocked by the distinct release trust root;
+  - complete 12-PR/26-branch/20-issue inventory awaiting protected independent
+    review while publication remains blocked;
   - ratified P1-P4 canonical notation with fixed human gloss and optional ECN
     modality markers;
   - mandatory LiteLLM access for every noetic-dev model invocation, including
@@ -305,6 +305,7 @@ listed later are parallel but cannot silently satisfy a stage gate.
 
 The machine index records which stages these conflicts block:
 
+- **C2 - D2 portfolio audit awaits protected independent review and integration:** resolve in D2; blocks D3a, D9.
 - **C5 - first production reference runtime is not selected:** resolve in D3a; blocks D4c, D5.
 - **C6 - principal effect persistence and event privacy semantics are undecided:** resolve in D3a; blocks D3b, D5, D7.
 - **C7 - privileged observability controls lack an authority model:** resolve in D3a; blocks none.

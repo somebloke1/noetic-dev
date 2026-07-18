@@ -19,7 +19,7 @@ from scripts.governance.json_schema import load_json_strict, validate_schema  # 
 
 
 STATE_PATH = Path("governance/roadmap.json")
-SCHEMA_PATH = Path("governance/schemas/roadmap.schema.json")
+SCHEMA_PATH = Path("governance/schemas/roadmap-v2.schema.json")
 STAGE_HEADING_RE = re.compile(
     r"^### (?P<id>D[0-9]+[a-z]?) - (?P<title>.+) "
     r"\[(?P<status>checkpointed|next|planned|blocked)\]$",
@@ -69,7 +69,7 @@ EXPECTED_STAGE_IDS = (
     "D4c", "D4d", "D5", "D6", "D7", "D8", "D9",
 )
 EXPECTED_TRACK_IDS = ("T1", "T2", "T3", "T4")
-EXPECTED_CONFLICT_IDS = ("C5", "C6", "C7", "C8")
+EXPECTED_CONFLICT_IDS = ("C2", "C5", "C6", "C7", "C8")
 EXPECTED_EVIDENCE_BY_STAGE = {
     "D0": (
         ("commit", "29196a67349537d6f8a8a711df11b86da0430857"),
@@ -119,7 +119,26 @@ EXPECTED_POLICY_EXIT_GATES = {
     ),
 }
 FREEZE_PATH = Path("governance/audits/existing-work-freeze.json")
+FREEZE_SCHEMA_PATH = Path("governance/schemas/existing-work-freeze.schema.json")
 BOOTSTRAP_STATUS_PATH = Path("governance/bootstrap-status.json")
+AUDIT_PATH = Path("governance/audits/20260718-d2-portfolio/inventory.json")
+AUDIT_SCHEMA_PATH = Path("governance/schemas/d2-portfolio-audit.schema.json")
+EXPECTED_PR_NUMBERS = (2, 4, 15, 16, 17, 18, 19, 20, 21, 22, 28, 66)
+EXPECTED_ISSUE_NUMBERS = (1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 23, 25, 27, 29, 30, 32, 57, 65)
+EXPECTED_BRANCH_NAMES = (
+    "main", "dev", "issue-1-architecture", "issue-3-controller-spec",
+    "issue-5-roadmap", "issue-6-controller-contracts", "issue-7-donor-fixtures",
+    "issue-8-cognitional-events", "issue-9-telos-delegation",
+    "issue-10-model-composition", "issue-11-cognitive-programs",
+    "issue-13-attach-contracts", "issue-14-contextforge-inventory",
+    "issue-27-terra-canary", "issue-29-broker-lifecycle-evidence",
+    "issue-29-modality-evidence-record", "issue-29-modality-readiness",
+    "issue-29-routed-governance-remediation", "issue-29-routed-pi-recovery",
+    "issue-32-canonical-roadmap", "issue-33-m0-telos-trace",
+    "issue-35-m1-recoverability", "issue-37-development-program",
+    "issue-39-terminal-observability", "issue-51-external-mcp-adapter",
+    "issue-65-opencode-spike",
+)
 
 
 def _find_cycles(stages: list[dict[str, Any]]) -> list[str]:
@@ -419,9 +438,60 @@ def _validate_repository_policy(
 
     try:
         freeze = load_policy(FREEZE_PATH)
+        freeze_schema = load_policy(FREEZE_SCHEMA_PATH)
         bootstrap = load_policy(BOOTSTRAP_STATUS_PATH)
+        audit = load_policy(AUDIT_PATH)
+        audit_schema = load_policy(AUDIT_SCHEMA_PATH)
     except (OSError, ValueError) as exc:
         return [f"roadmap policy files failed to load: {exc}"]
+
+    audit_schema_errors = validate_schema(audit, audit_schema)
+    errors.extend(f"portfolio audit: {error}" for error in audit_schema_errors)
+    freeze_schema_errors = validate_schema(freeze, freeze_schema)
+    errors.extend(f"existing-work freeze: {error}" for error in freeze_schema_errors)
+    audit_file = root.resolve() / AUDIT_PATH
+    audit_sha256 = hashlib.sha256(audit_file.read_bytes()).hexdigest()
+    if freeze.get("audit_artifact") != str(AUDIT_PATH):
+        errors.append("freeze audit_artifact must bind the canonical D2 inventory")
+    if freeze.get("audit_sha256") != audit_sha256:
+        errors.append("freeze audit_sha256 does not match the D2 inventory bytes")
+    if freeze.get("captured_at") != audit.get("captured_at"):
+        errors.append("freeze captured_at does not match the D2 inventory")
+    for key, collection in (
+        ("open_pull_requests", audit.get("open_pull_requests", [])),
+        ("branches", audit.get("branches", [])),
+        ("open_issues", audit.get("open_issues", [])),
+    ):
+        if audit.get("counts", {}).get(key if key != "open_pull_requests" else key) != len(collection):
+            errors.append(f"portfolio audit count does not match {key}")
+    pr_numbers = tuple(item.get("number") for item in audit.get("open_pull_requests", []))
+    if pr_numbers != EXPECTED_PR_NUMBERS or len(set(pr_numbers)) != len(pr_numbers):
+        errors.append("portfolio audit open PR identities or order changed")
+    for pull_request in audit.get("open_pull_requests", []):
+        if pull_request.get("url") != f"https://github.com/somebloke1/noetic-dev/pull/{pull_request.get('number')}":
+            errors.append("portfolio audit PR URL does not match its number")
+    issue_numbers = tuple(item.get("number") for item in audit.get("open_issues", []))
+    if issue_numbers != EXPECTED_ISSUE_NUMBERS or len(set(issue_numbers)) != len(issue_numbers):
+        errors.append("portfolio audit open issue identities or order changed")
+    for issue in audit.get("open_issues", []):
+        if issue.get("url") != f"https://github.com/somebloke1/noetic-dev/issues/{issue.get('number')}":
+            errors.append("portfolio audit issue URL does not match its number")
+        status_labels = [label for label in issue.get("labels", []) if label.startswith("status:")]
+        expected_status = status_labels[0].removeprefix("status:") if len(status_labels) == 1 else "missing"
+        if issue.get("status") != expected_status:
+            errors.append(f"portfolio audit issue {issue.get('number')} status does not match labels")
+    branch_names = tuple(item.get("name") for item in audit.get("branches", []))
+    if branch_names != EXPECTED_BRANCH_NAMES or len(set(branch_names)) != len(branch_names):
+        errors.append("portfolio audit branch identities or order changed")
+    branches = {item.get("name"): item for item in audit.get("branches", [])}
+    for ref_name in ("main", "dev"):
+        if branches.get(ref_name, {}).get("sha") != audit.get("refs", {}).get(ref_name):
+            errors.append(f"portfolio audit {ref_name} ref does not match branch inventory")
+        if branches.get(ref_name, {}).get("protected") is not True:
+            errors.append(f"portfolio audit {ref_name} must be recorded as protected")
+    for pull_request in audit.get("open_pull_requests", []):
+        if pull_request.get("head") not in branches:
+            errors.append(f"portfolio audit PR {pull_request.get('number')} head branch is absent")
 
     actual_snapshot = {
         "existing_work_freeze": freeze.get("status"),
@@ -445,10 +515,29 @@ def _validate_repository_policy(
     if d2["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D2"]:
         errors.append("D2 requires the exact schema-v2 D2 exit gate")
 
-    if freeze.get("status") == "active" or freeze.get("blocks_publication") is True:
+    c2 = conflicts["C2"]
+    if freeze.get("status") != "complete" or freeze.get("blocks_publication") is True:
         if d2["status"] != "next":
-            errors.append("active freeze requires D2 to remain the next stage")
-        errors.append("active freeze is incompatible with the schema-v2 D2 disposition")
+            errors.append("review-pending freeze requires D2 to remain the next stage")
+        if c2["resolution_stage"] != "D2" or not {"D3a", "D9"}.issubset(c2["blocks"]):
+            errors.append("review-pending freeze must remain a D2 conflict blocking D3a and D9")
+    if freeze.get("status") == "repair_authorized":
+        if freeze.get("audit_completed") is not True:
+            errors.append("repair-authorized freeze requires a completed inventory")
+        if freeze.get("independent_review_completed") is not False:
+            errors.append("repair-authorized freeze must remain review-pending")
+        if freeze.get("blocks_publication") is not True:
+            errors.append("repair-authorized freeze must block publication")
+        if freeze.get("blocks_new_pr_opening_claims") is not False:
+            errors.append("repair-authorized freeze must allow its bounded repair PR")
+        expected_repair = {
+            "issue": 32,
+            "head": "issue-32-canonical-roadmap",
+            "base": "dev",
+            "max_pull_requests": 1,
+        }
+        if freeze.get("authorized_repair") != expected_repair:
+            errors.append("repair-authorized freeze has an invalid bounded PR exception")
 
     if bootstrap.get("publication", {}).get("status") == "blocked":
         if d9["status"] in {"checkpointed", "next"}:

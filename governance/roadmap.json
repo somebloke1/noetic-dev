@@ -1,11 +1,11 @@
 {
-  "$schema": "./schemas/roadmap.schema.json",
+  "$schema": "./schemas/roadmap-v2.schema.json",
   "schema_version": "2",
   "document_path": "ROADMAP.md",
-  "document_sha256": "fd7270e876947f1c65e76050632141de7eef58b3376a7ca70800618dabaffe15",
+  "document_sha256": "1d84a470f94acdbe34438bac4435e2d98e19dad07f85bbbebbb71d07824e7700",
   "authority_issue": 32,
   "policy_snapshot": {
-    "existing_work_freeze": "complete",
+    "existing_work_freeze": "repair_authorized",
     "publication": "blocked",
     "authoritative_delivery_gate": "external_dependency_missing"
   },
@@ -216,6 +216,12 @@
     }
   ],
   "unresolved_conflicts": [
+    {
+      "id": "C2",
+      "title": "D2 portfolio audit awaits protected independent review and integration",
+      "resolution_stage": "D2",
+      "blocks": ["D3a", "D9"]
+    },
     {
       "id": "C5",
       "title": "first production reference runtime is not selected",
