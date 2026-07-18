@@ -309,11 +309,8 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or type(pull.get("number")) is not int
         or pull.get("number") != pr_number
         or pull.get("draft") is not False
-        or type(pull.get("merged")) is not bool
-        or not (
-            (pull.get("state") == "open" and pull.get("merged") is False)
-            or (pull.get("state") == "closed" and pull.get("merged") is True)
-        )
+        or pull.get("state") != "closed"
+        or pull.get("merged") is not True
         or not isinstance(head, dict)
         or not isinstance(head.get("ref"), str)
         or head.get("sha") != head_sha

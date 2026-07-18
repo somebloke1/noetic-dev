@@ -4,7 +4,7 @@ The protected Agent Review workflow produces exact-run route evidence. A separat
 
 ## Operation
 
-`scripts/governance/route_attestation.py` discovers completed successful Agent Review runs after the configured bootstrap run. For each unattested run it:
+`scripts/governance/route_attestation.py` discovers completed successful Agent Review runs for closed, merged pull requests after the configured bootstrap run. Open pull requests are ineligible because their live base SHA can advance after the reviewed run. For each unattested run it:
 
 1. requires one exact run attempt, retained artifact, stable pull-request record, and review job;
 2. derives the candidate and protected-base SHAs from the artifact name and stable PR endpoint;
