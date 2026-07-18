@@ -27,6 +27,4 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ProtectControlGroups=true
-ProtectKernelModules=true
 ProtectKernelTunables=true
-ProtectKernelLogs=true

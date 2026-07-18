@@ -410,6 +410,8 @@ class TestRouteAttestation(unittest.TestCase):
         self.assertIn("ProtectHome=tmpfs", service)
         self.assertIn("BindReadOnlyPaths=%h/.config/gh", service)
         self.assertIn("NoNewPrivileges=true", service)
+        self.assertNotIn("ProtectKernelModules=", service)
+        self.assertNotIn("ProtectKernelLogs=", service)
         self.assertIn("/usr/bin/python3 -I", service)
         self.assertIn("UnsetEnvironment=GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN", service)
         self.assertIn("GH_HOST PYTHONPATH PYTHONHOME LD_PRELOAD", service)
