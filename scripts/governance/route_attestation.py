@@ -36,8 +36,10 @@ from route_evidence import (
     _timestamp,
     _valid_artifact,
     _valid_review_job,
+    download_protected_evidence,
     github_json,
     github_json_pages,
+    load_json_strict,
     parse_json_strict,
 )
 
@@ -279,6 +281,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         raise ValueError("retained artifact name does not bind a PR and candidate SHA")
     pr_number = int(match.group(1))
     head_sha = match.group(2)
+    base_sha = retained_base_sha(run_id, pr_number, head_sha)
 
     pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
     jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
@@ -320,21 +323,19 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or head["repo"].get("full_name") != REPOSITORY
         or not isinstance(base, dict)
         or base.get("ref") != "dev"
-        or not isinstance(base.get("sha"), str)
-        or re.fullmatch(r"[a-f0-9]{40}", base["sha"]) is None
         or not isinstance(base.get("repo"), dict)
         or type(base["repo"].get("id")) is not int
         or base["repo"].get("id") != REPOSITORY_ID
         or base["repo"].get("full_name") != REPOSITORY
         or run.get("head_branch") != head.get("ref")
         or not isinstance(run.get("head_sha"), str)
-        or run.get("head_sha") not in {head_sha, base["sha"]}
+        or run.get("head_sha") not in {head_sha, base_sha}
         or not isinstance(jobs, dict)
         or type(jobs.get("total_count")) is not int
         or jobs.get("total_count") != 1
         or not isinstance(listed_jobs, list)
         or len(listed_jobs) != 1
-        or not _valid_review_job(listed_jobs[0], run_id, head_sha, base["sha"])
+        or not _valid_review_job(listed_jobs[0], run_id, head_sha, base_sha)
         or not _valid_artifact(artifact, run_id, head_sha, f"agent-review-{pr_number}-{head_sha}")
     ):
         raise ValueError("run, PR, job, or artifact metadata is invalid")
@@ -346,7 +347,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         "job_id": listed_jobs[0]["id"],
         "pr_number": pr_number,
         "head_sha": head_sha,
-        "base_sha": base["sha"],
+        "base_sha": base_sha,
         "artifact_id": artifact["id"],
         "artifact_name": artifact["name"],
         "artifact_digest": artifact["digest"],
@@ -356,6 +357,26 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         "pr_state": pull["state"],
         "pr_merged": pull["merged"],
     }
+
+
+def retained_base_sha(run_id: int, pr_number: int, head_sha: str) -> str:
+    with tempfile.TemporaryDirectory(prefix="noetic-route-source-") as directory:
+        path = download_protected_evidence(
+            run_id, pr_number, head_sha, Path(directory)
+        )
+        payload = load_json_strict(path)
+    base_sha = payload.get("base_sha") if isinstance(payload, dict) else None
+    if (
+        not isinstance(payload, dict)
+        or payload.get("repository") != REPOSITORY
+        or payload.get("pr_number") != pr_number
+        or payload.get("head_sha") != head_sha
+        or not isinstance(base_sha, str)
+        or re.fullmatch(r"[a-f0-9]{40}", base_sha) is None
+        or base_sha == head_sha
+    ):
+        raise ValueError("retained artifact does not bind an exact protected base")
+    return base_sha
 
 
 def validate_from_protected_base(run_id: int, pr_number: int, head_sha: str, base_sha: str) -> str:

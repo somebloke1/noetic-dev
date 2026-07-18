@@ -342,6 +342,9 @@ class TestRouteEvidence(unittest.TestCase):
         base_job = copy.deepcopy(jobs)
         base_job["jobs"][0]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, base_job, artifacts)), [])
+        advanced_pull = copy.deepcopy(pull)
+        advanced_pull["base"]["sha"] = "e" * 40
+        self.assertEqual(validate((github_run, advanced_pull, jobs, artifacts)), [])
         mutations = []
         for target, path, value in [
             ("run", ("id",), 123.0),

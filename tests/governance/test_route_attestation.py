@@ -199,7 +199,9 @@ class TestRouteAttestation(unittest.TestCase):
             side_effect=[run, artifacts, pull, jobs, run, artifacts, pull, jobs],
         ), mock.patch(
             "route_attestation.validate_from_protected_base", return_value="d" * 64
-        ) as validate:
+        ) as validate, mock.patch(
+            "route_attestation.retained_base_sha", return_value="b" * 40
+        ):
             receipt_path = attest_run(run, Path(directory))
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         validate.assert_called_once_with(123, 55, "a" * 40, "b" * 40)
@@ -217,7 +219,9 @@ class TestRouteAttestation(unittest.TestCase):
         responses = [run, artifacts, pull, jobs, run, changed, pull, jobs]
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "route_attestation.github_json", side_effect=responses
-        ), mock.patch("route_attestation.validate_from_protected_base", return_value="d" * 64):
+        ), mock.patch(
+            "route_attestation.validate_from_protected_base", return_value="d" * 64
+        ), mock.patch("route_attestation.retained_base_sha", return_value="b" * 40):
             with self.assertRaisesRegex(ValueError, "changed during attestation"):
                 attest_run(run, Path(directory))
 
@@ -234,7 +238,11 @@ class TestRouteAttestation(unittest.TestCase):
         for responses in mutations:
             with self.subTest(responses=responses), tempfile.TemporaryDirectory() as directory, mock.patch(
                 "route_attestation.github_json", side_effect=[run, *responses]
-            ), mock.patch("route_attestation.validate_from_protected_base") as validate:
+            ), mock.patch(
+                "route_attestation.validate_from_protected_base"
+            ) as validate, mock.patch(
+                "route_attestation.retained_base_sha", return_value="b" * 40
+            ):
                 with self.assertRaises(ValueError):
                     attest_run(run, Path(directory))
                 validate.assert_not_called()
