@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -17,7 +20,7 @@ if GOV_SCRIPTS not in sys.path:
 
 from route_evidence import (  # noqa: E402
     REQUIRED_PROTECTED_CHECKS, REQUIRED_PULL_REQUEST_PARAMETERS, REQUIRED_RULESET_RULES,
-    STANDARD_MODELS, main, protected_checkout_matches, protected_ci_snapshot,
+    STANDARD_MODELS, github_json, main, protected_checkout_matches, protected_ci_snapshot,
     validate_protected_provenance,
     validate_route_evidence,
 )
@@ -123,7 +126,103 @@ def protection_records() -> tuple[dict, list, dict, dict]:
     return run, applied, ruleset, snapshot
 
 
+def provenance_records(
+    head_sha: str, base_sha: str, pr_number: int = 55
+) -> tuple[dict, dict, dict, dict, dict]:
+    run = {
+        "id": 123,
+        "name": "Agent Review",
+        "path": ".github/workflows/agent-review.yml",
+        "workflow_id": 312422987,
+        "run_attempt": 1,
+        "event": "pull_request_target",
+        "status": "completed",
+        "conclusion": "success",
+        "display_title": f"agent-review-{pr_number}-{head_sha}",
+        "head_branch": "issue-route-canary",
+        "head_sha": head_sha,
+        "created_at": "2026-07-17T20:10:00Z",
+        "repository": {"id": 1297462728, "full_name": "somebloke1/noetic-dev"},
+        "head_repository": {"id": 1297462728, "full_name": "somebloke1/noetic-dev"},
+        "pull_requests": [],
+    }
+    pull = {
+        "number": pr_number,
+        "state": "closed",
+        "merged": True,
+        "merge_commit_sha": "f" * 40,
+        "merged_at": "2026-07-17T20:12:00Z",
+        "created_at": "2026-07-17T20:00:00Z",
+        "draft": False,
+        "head": {
+            "ref": "issue-route-canary",
+            "sha": head_sha,
+            "repo": {"id": 1297462728, "full_name": "somebloke1/noetic-dev"},
+        },
+        "base": {
+            "ref": "dev",
+            "sha": base_sha,
+            "repo": {"id": 1297462728, "full_name": "somebloke1/noetic-dev"},
+        },
+    }
+    merge_commit = {"sha": "f" * 40, "parents": [{"sha": base_sha}]}
+    jobs = {
+        "total_count": 1,
+        "jobs": [{
+            "id": 456,
+            "run_id": 123,
+            "run_attempt": 1,
+            "workflow_name": "Agent Review",
+            "head_sha": head_sha,
+            "status": "completed",
+            "conclusion": "success",
+            "name": "agent-review",
+            "labels": ["self-hosted", "noetic-dev", "terra-review"],
+            "steps": [
+                {"name": name, "conclusion": "success"}
+                for name in [
+                    "Set up job",
+                    "Checkout protected policy SHA only",
+                    "Enforce local-runner admission policy",
+                    "Request immutable semantic review",
+                    "Retain exact-SHA route evidence",
+                    "Upload exact-SHA route evidence",
+                    "Post Checkout protected policy SHA only",
+                    "Complete job",
+                ]
+            ],
+        }],
+    }
+    artifacts = {
+        "total_count": 1,
+        "artifacts": [{
+            "id": 789,
+            "name": f"agent-review-{pr_number}-{head_sha}",
+            "expired": False,
+            "size_in_bytes": 1024,
+            "digest": f"sha256:{'c' * 64}",
+            "workflow_run": {
+                "id": 123,
+                "repository_id": 1297462728,
+                "head_repository_id": 1297462728,
+                "head_sha": head_sha,
+            },
+        }],
+    }
+    return run, pull, merge_commit, jobs, artifacts
+
+
 class TestRouteEvidence(unittest.TestCase):
+    def test_github_queries_reject_duplicate_json_and_inherited_tokens(self) -> None:
+        response = subprocess.CompletedProcess([], 0, b'{"id":1,"id":2}', b"")
+        with mock.patch("route_evidence.subprocess.run", return_value=response) as execute:
+            with self.assertRaises(ValueError):
+                github_json("repos/somebloke1/noetic-dev")
+        environment = execute.call_args.kwargs["env"]
+        self.assertNotIn("GH_TOKEN", environment)
+        self.assertNotIn("GITHUB_TOKEN", environment)
+        self.assertNotIn("GH_HOST", environment)
+
     def test_valid_success_and_reroute_sequences(self) -> None:
         self.assertEqual(validate_route_evidence(route_evidence()), [])
         self.assertEqual(validate_route_evidence(route_evidence([TERRA, SOL])), [])
@@ -192,23 +291,13 @@ class TestRouteEvidence(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "agent-review-result.json"
             evidence.write_text(json.dumps(payload), encoding="utf-8")
-            run = {
-                "id": 123, "name": "Agent Review", "path": ".github/workflows/agent-review.yml",
-                "event": "pull_request_target", "status": "completed", "conclusion": "success",
-                "head_sha": head_sha, "repository": {"full_name": "somebloke1/noetic-dev"},
-                "created_at": protection_run["created_at"],
-                "pull_requests": [{
-                    "number": 55,
-                    "head": {"sha": head_sha, "repo": {"url": "https://api.github.com/repos/somebloke1/noetic-dev"}},
-                    "base": {
-                        "ref": "dev", "sha": "b" * 40,
-                        "repo": {"url": "https://api.github.com/repos/somebloke1/noetic-dev"},
-                    },
-                }],
-            }
-            artifacts = {"artifacts": [{"name": f"agent-review-55-{head_sha}", "expired": False}]}
+            run, pull, merge_commit, jobs, artifacts = provenance_records(head_sha, "b" * 40)
+            run["created_at"] = protection_run["created_at"]
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(pull).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(merge_commit).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(jobs).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(applied_rules).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(ruleset).encode(), b""),
@@ -223,6 +312,9 @@ class TestRouteEvidence(unittest.TestCase):
             run["conclusion"] = "failure"
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(pull).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(merge_commit).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(jobs).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(applied_rules).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(ruleset).encode(), b""),
@@ -241,6 +333,67 @@ class TestRouteEvidence(unittest.TestCase):
             ):
                 self.assertNotEqual(main(), 0)
                 run_api.assert_not_called()
+
+    def test_merged_run_uses_stable_pr_and_exact_job_artifact_metadata(self) -> None:
+        head_sha = "a" * 40
+        base_sha = "b" * 40
+        run, applied, ruleset, protected_ci = protection_records()
+        github_run, pull, merge_commit, jobs, artifacts = provenance_records(head_sha, base_sha)
+
+        def validate(records: tuple[dict, dict, dict, dict, dict]) -> list[str]:
+            source_run, source_pull, source_merge, source_jobs, source_artifacts = records
+            responses = [
+                source_run, source_pull, source_merge, source_jobs, source_artifacts,
+                applied, ruleset,
+            ]
+            with mock.patch("route_evidence.github_json", side_effect=responses), mock.patch(
+                "route_evidence.protected_checkout_matches", return_value=True
+            ):
+                return validate_protected_provenance(123, 55, head_sha, base_sha, protected_ci)
+
+        self.assertEqual(validate((github_run, pull, merge_commit, jobs, artifacts)), [])
+        base_job = copy.deepcopy(jobs)
+        base_job["jobs"][0]["head_sha"] = base_sha
+        self.assertEqual(validate((github_run, pull, merge_commit, base_job, artifacts)), [])
+        base_artifact = copy.deepcopy(artifacts)
+        base_artifact["artifacts"][0]["workflow_run"]["head_sha"] = base_sha
+        self.assertEqual(validate((github_run, pull, merge_commit, jobs, base_artifact)), [])
+        advanced_pull = copy.deepcopy(pull)
+        advanced_pull["base"]["sha"] = "e" * 40
+        self.assertEqual(validate((github_run, advanced_pull, merge_commit, jobs, artifacts)), [])
+        mutations = []
+        for target, path, value in [
+            ("run", ("id",), 123.0),
+            ("run", ("workflow_id",), 1),
+            ("run", ("run_attempt",), True),
+            ("pull", ("head", "sha"), "d" * 40),
+            ("pull", ("state",), None),
+            ("pull", ("merged_at",), "2026-07-17T20:09:00Z"),
+            ("merge", ("parents", 0, "sha"), "e" * 40),
+            ("jobs", ("total_count",), True),
+            ("jobs", ("jobs", 0, "id"), 0),
+            ("jobs", ("jobs", 0, "run_attempt"), 2),
+            ("jobs", ("jobs", 0, "labels"), ["self-hosted"]),
+            ("jobs", ("jobs", 0, "steps"), jobs["jobs"][0]["steps"] + [{"name": "extra", "conclusion": "success"}]),
+            ("artifacts", ("total_count",), True),
+            ("artifacts", ("artifacts", 0, "id"), 789.0),
+            ("artifacts", ("artifacts", 0, "digest"), "sha256:bad"),
+            ("artifacts", ("artifacts", 0, "workflow_run", "id"), 999),
+        ]:
+            records = [
+                copy.deepcopy(item)
+                for item in (github_run, pull, merge_commit, jobs, artifacts)
+            ]
+            item = records[
+                {"run": 0, "pull": 1, "merge": 2, "jobs": 3, "artifacts": 4}[target]
+            ]
+            for key in path[:-1]:
+                item = item[key]
+            item[path[-1]] = value
+            mutations.append((target, path, tuple(records)))
+        for target, path, records in mutations:
+            with self.subTest(target=target, path=path):
+                self.assertTrue(validate(records))
 
     def test_protected_ci_snapshot_rejects_mutable_or_bypassable_rulesets(self) -> None:
         run, applied, ruleset, snapshot = protection_records()
@@ -279,6 +432,12 @@ class TestRouteEvidence(unittest.TestCase):
         extra_ruleset = copy.deepcopy(applied)
         extra_ruleset.append({"type": "required_status_checks", "ruleset_id": 2, "parameters": {}})
         self.assertIsNone(protected_ci_snapshot(123, run, extra_ruleset, ruleset))
+        confused_rules = copy.deepcopy(applied)
+        confused_rules[0]["ruleset_id"] = True
+        self.assertIsNone(protected_ci_snapshot(123, run, confused_rules, ruleset))
+        confused_ruleset = copy.deepcopy(ruleset)
+        confused_ruleset["rules"][2]["parameters"]["required_approving_review_count"] = False
+        self.assertIsNone(protected_ci_snapshot(123, run, applied, confused_ruleset))
 
     def test_malformed_retained_ruleset_identity_fails_closed(self) -> None:
         with mock.patch("route_evidence.github_json") as api:
@@ -292,6 +451,7 @@ class TestRouteEvidence(unittest.TestCase):
             subprocess.CompletedProcess([], 0, f"{base_sha}\n".encode(), b""),
             subprocess.CompletedProcess([], 1, b"", b""),
             subprocess.CompletedProcess([], 0, b"H governance/protected-dev-ruleset.json\nH scripts/governance/route_evidence.py\n", b""),
+            subprocess.CompletedProcess([], 0, b"", b""),
             subprocess.CompletedProcess([], 0, b"", b""),
             subprocess.CompletedProcess([], 0, b"", b""),
         ]
@@ -311,6 +471,7 @@ class TestRouteEvidence(unittest.TestCase):
                 subprocess.CompletedProcess([], tracked_status, tracked_paths if tracked_status == 0 else b"", b""),
                 subprocess.CompletedProcess([], 0, status, b""),
                 subprocess.CompletedProcess([], 0, b"", b""),
+                subprocess.CompletedProcess([], 0, b"", b""),
             ]
             with self.subTest(
                 revision=revision, branch_status=branch_status,
@@ -329,6 +490,7 @@ class TestRouteEvidence(unittest.TestCase):
                 subprocess.CompletedProcess([], 0, concealed, b""),
                 subprocess.CompletedProcess([], 0, b"", b""),
                 subprocess.CompletedProcess([], 0, b"", b""),
+                subprocess.CompletedProcess([], 0, b"", b""),
             ]
             with self.subTest(concealed=concealed), mock.patch(
                 "route_evidence.subprocess.run", side_effect=responses
@@ -339,9 +501,14 @@ class TestRouteEvidence(unittest.TestCase):
             subprocess.CompletedProcess([], 1, b"", b""),
             subprocess.CompletedProcess([], 0, tracked_paths, b""),
             subprocess.CompletedProcess([], 0, b"", b""),
+            subprocess.CompletedProcess([], 0, b"", b""),
             subprocess.CompletedProcess([], 0, f"refs/replace/{base_sha}\n".encode(), b""),
         ]
         with mock.patch("route_evidence.subprocess.run", side_effect=replacement):
+            self.assertFalse(protected_checkout_matches(base_sha))
+        ignored = clean.copy()
+        ignored[4] = subprocess.CompletedProcess([], 0, b"scripts/governance/json.pyc\n", b"")
+        with mock.patch("route_evidence.subprocess.run", side_effect=ignored):
             self.assertFalse(protected_checkout_matches(base_sha))
 
     def test_capture_adds_the_applicable_ruleset_to_retained_evidence(self) -> None:
@@ -383,15 +550,44 @@ class TestRouteEvidence(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            archive_file = io.BytesIO()
+            with zipfile.ZipFile(archive_file, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("agent-review-result.json", "{}")
+            archive_bytes = archive_file.getvalue()
+            _, pull, merge_commit, _, artifacts = provenance_records("a" * 40, "b" * 40)
+            artifact = artifacts["artifacts"][0]
+            artifact["size_in_bytes"] = len(archive_bytes)
+            artifact["digest"] = f"sha256:{hashlib.sha256(archive_bytes).hexdigest()}"
 
             def download(command, **_kwargs):
-                destination = Path(command[command.index("--dir") + 1])
-                (destination / "agent-review-result.json").write_text("{}", encoding="utf-8")
-                return subprocess.CompletedProcess(command, 0, b"", b"")
+                if command[-1].endswith("/pulls/55"):
+                    output = json.dumps(pull).encode()
+                elif "/commits/" in command[-1]:
+                    output = json.dumps(merge_commit).encode()
+                elif command[-1].endswith("/artifacts"):
+                    output = json.dumps(artifacts).encode()
+                else:
+                    output = archive_bytes
+                return subprocess.CompletedProcess(command, 0, output, b"")
 
             with mock.patch("route_evidence.subprocess.run", side_effect=download):
                 evidence = download_protected_evidence(123, 55, "a" * 40, root)
             self.assertEqual(evidence, root / "agent-review-result.json")
+            self.assertEqual(evidence.read_text(encoding="utf-8"), "{}")
+
+            artifact["workflow_run"]["head_sha"] = "b" * 40
+            with tempfile.TemporaryDirectory() as base_directory, mock.patch(
+                "route_evidence.subprocess.run", side_effect=download
+            ):
+                base_evidence = download_protected_evidence(
+                    123, 55, "a" * 40, Path(base_directory)
+                )
+                self.assertEqual(base_evidence.read_text(encoding="utf-8"), "{}")
+
+            artifact["digest"] = f"sha256:{'0' * 64}"
+            with mock.patch("route_evidence.subprocess.run", side_effect=download):
+                with self.assertRaisesRegex(ValueError, "digest does not match"):
+                    download_protected_evidence(123, 55, "a" * 40, root / "unused")
 
     def test_route_mutations_fail_closed(self) -> None:
         mutations = []

@@ -1,0 +1,32 @@
+[Unit]
+Description=noetic-dev protected-route attestation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=30min
+EnvironmentFile=%h/.config/noetic-dev/route-attestation.env
+ExecStart=/usr/bin/python3 -I /opt/noetic-dev-agent-review/current/scripts/governance/route_attestation.py --after-run-id ${NOETIC_ROUTE_AFTER_RUN_ID} --state-dir %h/.local/state/noetic-dev/route-attestations
+Environment=HOME=%h
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=GH_CONFIG_DIR=%h/.config/gh
+Environment=GIT_CONFIG_GLOBAL=/dev/null
+Environment=GIT_CONFIG_NOSYSTEM=1
+Environment=GIT_NO_REPLACE_OBJECTS=1
+UnsetEnvironment=GH_TOKEN GITHUB_TOKEN GH_ENTERPRISE_TOKEN GITHUB_ENTERPRISE_TOKEN GH_HOST PYTHONPATH PYTHONHOME LD_PRELOAD LD_LIBRARY_PATH GIT_DIR GIT_WORK_TREE GIT_CONFIG_COUNT HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE REQUESTS_CA_BUNDLE
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindReadOnlyPaths=%h/.config/gh
+BindPaths=%h/.local/state/noetic-dev/route-attestations
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true

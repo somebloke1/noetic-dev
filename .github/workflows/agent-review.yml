@@ -1,4 +1,5 @@
 name: Agent Review
+run-name: agent-review-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
 
 on:
   pull_request_target:

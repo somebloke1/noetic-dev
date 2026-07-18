@@ -68,6 +68,7 @@ REQUIRED = [
     "config/model-policy.json",
     "config/opencode-session-policy.json",
     "docs/model-routing-policy.md",
+    "docs/governance/route-attestation.md",
     "governance/schemas/model-policy.schema.json",
     "governance/schemas/opencode-session-policy.schema.json",
     "governance/schemas/route-evidence.schema.json",
@@ -102,7 +103,13 @@ REQUIRED = [
     "scripts/governance/request_agent_review.py",
     "scripts/governance/request_agent_review.py",
     "scripts/governance/route_evidence.py",
+    "scripts/governance/route_attestation.py",
+    "scripts/governance/capture_protected_ci.py",
     "deploy/install-agent-review.sh",
+    "deploy/install-route-attestation-user.sh",
+    "deploy/systemd/user/noetic-dev-route-attestation.service",
+    "deploy/systemd/user/noetic-dev-route-attestation.timer",
+    "governance/protected-dev-ruleset.json",
     "deploy/requirements-agent-review.txt",
     "deploy/requirements-agent-review.lock",
     "deploy/pi-agent/models.json",
@@ -115,6 +122,7 @@ REQUIRED = [
     "tests/governance/test_workflow_pinning.py",
     "tests/governance/test_run_isolated_pi.py",
     "tests/governance/test_agent_review.py",
+    "tests/governance/test_route_attestation.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

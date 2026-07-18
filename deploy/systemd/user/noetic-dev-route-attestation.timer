@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically attest completed noetic-dev protected-route runs
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=noetic-dev-route-attestation.service
+
+[Install]
+WantedBy=timers.target

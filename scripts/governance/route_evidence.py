@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -I
 """Validate protected genus-router/LiteLLM route evidence.
 
 This is a deterministic evidence contract only; it does not perform routing or
@@ -7,31 +7,49 @@ change broker runtime behavior.
 
 from __future__ import annotations
 
-import argparse
-import json
-import re
-import subprocess
 import sys
+
+if sys.path:
+    sys.path.pop(0)
+
+import argparse
+import hashlib
+import io
+import json
+import os
+import pwd
+import re
+import stat
+import subprocess
 import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+REPOSITORY = "somebloke1/noetic-dev"
+REPOSITORY_ID = 1_297_462_728
+AGENT_REVIEW_WORKFLOW_ID = 312_422_987
+GITHUB_ACTIONS_APP_ID = 15_368
 GENUS_ROUTER_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 DECISION_ID = re.compile(r"^d-[0-9]{8}-[0-9]{6}$")
 SHA256_HEX = re.compile(r"[a-f0-9]{64}")
+ARTIFACT_DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 STANDARD_MODELS = [
     "codex/gpt-5.6-sol",
     "codex/gpt-5.6-terra",
     "codex/gpt-5.6-luna",
 ]
 REQUIRED_PROTECTED_CHECKS = [
-    {"context": "agent-review", "integration_id": 15368},
-    {"context": "Repository validation (candidate)", "integration_id": 15368},
-    {"context": "Workflow pinning validation (candidate)", "integration_id": 15368},
-    {"context": "Genuine tests (candidate)", "integration_id": 15368},
-    {"context": "Bootstrap honesty (advisory, fail-closed)", "integration_id": 15368},
+    {"context": "agent-review", "integration_id": GITHUB_ACTIONS_APP_ID},
+    {"context": "Repository validation (candidate)", "integration_id": GITHUB_ACTIONS_APP_ID},
+    {"context": "Workflow pinning validation (candidate)", "integration_id": GITHUB_ACTIONS_APP_ID},
+    {"context": "Genuine tests (candidate)", "integration_id": GITHUB_ACTIONS_APP_ID},
+    {"context": "Bootstrap honesty (advisory, fail-closed)", "integration_id": GITHUB_ACTIONS_APP_ID},
 ]
 REQUIRED_PULL_REQUEST_PARAMETERS = {
     "required_approving_review_count": 0,
@@ -60,39 +78,113 @@ PROTECTED_REVIEW_CLASSIFICATION = {
     "high_value": False,
     "awaited": True,
 }
+EXPECTED_REVIEW_STEPS = [
+    "Set up job",
+    "Checkout protected policy SHA only",
+    "Enforce local-runner admission policy",
+    "Request immutable semantic review",
+    "Retain exact-SHA route evidence",
+    "Upload exact-SHA route evidence",
+    "Post Checkout protected policy SHA only",
+    "Complete job",
+]
+
+
+def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate object key: {key}")
+        result[key] = value
+    return result
+
+
+def parse_json_strict(raw: bytes | str) -> Any:
+    return json.loads(
+        raw,
+        object_pairs_hook=_no_duplicates,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            ValueError(f"non-deterministic JSON number: {value}")
+        ),
+    )
 
 
 def load_json_strict(path: Path) -> Any:
-    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError(f"duplicate object key: {key}")
-            result[key] = value
-        return result
-
     with path.open("r", encoding="utf-8") as handle:
-        return json.load(
-            handle,
-            object_pairs_hook=no_duplicates,
-            parse_constant=lambda value: (_ for _ in ()).throw(
-                ValueError(f"non-deterministic JSON number: {value}")
-            ),
-        )
+        return parse_json_strict(handle.read())
+
+
+def merged_base_sha(pull: Any, merge_commit: Any) -> str | None:
+    merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+    parents = merge_commit.get("parents") if isinstance(merge_commit, dict) else None
+    if (
+        not isinstance(merge_sha, str)
+        or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None
+        or not isinstance(merge_commit, dict)
+        or merge_commit.get("sha") != merge_sha
+        or not isinstance(parents, list)
+        or len(parents) != 1
+        or not isinstance(parents[0], dict)
+        or not isinstance(parents[0].get("sha"), str)
+        or re.fullmatch(r"[a-f0-9]{40}", parents[0]["sha"]) is None
+    ):
+        return None
+    return parents[0]["sha"]
 
 
 def github_json(path: str) -> Any:
+    result = _github_api(["/usr/bin/gh", "api", path], 1_048_576)
+    return parse_json_strict(result)
+
+
+def github_json_pages(path: str) -> list[Any]:
+    result = _github_api(
+        ["/usr/bin/gh", "api", "--paginate", "--slurp", path], 16_777_216
+    )
+    pages = parse_json_strict(result)
+    if not isinstance(pages, list):
+        raise ValueError("GitHub paginated provenance query is invalid")
+    return pages
+
+
+def github_environment() -> dict[str, str]:
+    home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return {
+        "HOME": str(home),
+        "GH_CONFIG_DIR": str(home / ".config/gh"),
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "NO_COLOR": "1",
+    }
+
+
+def _github_api(command: list[str], maximum: int) -> bytes:
     result = subprocess.run(
-        ["gh", "api", path],
+        command,
+        env=github_environment(),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         timeout=30,
         check=False,
     )
-    if result.returncode != 0 or len(result.stdout) > 1_048_576:
+    if result.returncode != 0 or len(result.stdout) > maximum:
         raise ValueError("GitHub provenance query failed")
-    return json.loads(result.stdout)
+    return result.stdout
+
+
+def git_environment() -> dict[str, str]:
+    home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return {
+        "HOME": str(home),
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+    }
 
 
 def protected_checkout_matches(base_sha: str) -> bool:
@@ -100,34 +192,45 @@ def protected_checkout_matches(base_sha: str) -> bool:
         "scripts/governance/route_evidence.py", "governance/protected-dev-ruleset.json",
     ]
     revision = subprocess.run(
-        ["git", "--no-replace-objects", "rev-parse", "HEAD"], cwd=REPO_ROOT,
+        ["/usr/bin/git", "--no-replace-objects", "rev-parse", "HEAD"], cwd=REPO_ROOT,
+        env=git_environment(),
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         timeout=10, check=False,
     )
     branch = subprocess.run(
-        ["git", "--no-replace-objects", "symbolic-ref", "-q", "HEAD"], cwd=REPO_ROOT,
+        ["/usr/bin/git", "--no-replace-objects", "symbolic-ref", "-q", "HEAD"], cwd=REPO_ROOT,
+        env=git_environment(),
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         timeout=10, check=False,
     )
     tracked = subprocess.run(
-        ["git", "--no-replace-objects", "ls-files", "-v"], cwd=REPO_ROOT,
+        ["/usr/bin/git", "--no-replace-objects", "ls-files", "-v"], cwd=REPO_ROOT,
+        env=git_environment(),
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         timeout=10, check=False,
     )
     status = subprocess.run(
         [
-            "git", "--no-replace-objects", "status", "--porcelain=v1",
+            "/usr/bin/git", "--no-replace-objects", "status", "--porcelain=v1",
             "--untracked-files=all",
         ],
-        cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        cwd=REPO_ROOT, env=git_environment(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, timeout=10, check=False,
+    )
+    ignored = subprocess.run(
+        [
+            "/usr/bin/git", "--no-replace-objects", "ls-files", "--others",
+            "--ignored", "--exclude-standard",
+        ],
+        cwd=REPO_ROOT, env=git_environment(), stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, check=False,
     )
     replacements = subprocess.run(
         [
-            "git", "--no-replace-objects", "for-each-ref", "--format=%(refname)",
+            "/usr/bin/git", "--no-replace-objects", "for-each-ref", "--format=%(refname)",
             "refs/replace/",
         ],
-        cwd=REPO_ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        cwd=REPO_ROOT, env=git_environment(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL, timeout=10, check=False,
     )
     return (
@@ -142,6 +245,8 @@ def protected_checkout_matches(base_sha: str) -> bool:
         )
         and status.returncode == 0
         and status.stdout == b""
+        and ignored.returncode == 0
+        and ignored.stdout == b""
         and replacements.returncode == 0
         and replacements.stdout == b""
     )
@@ -155,6 +260,7 @@ def protected_ci_snapshot(run_id: int, run: Any, applied_rules: Any, ruleset: An
         len(applied_rules) != 4
         or any(
             not isinstance(rule, dict)
+            or type(rule.get("ruleset_id")) is not int
             or rule.get("ruleset_id") != ruleset_id
             or not isinstance(rule.get("type"), str)
             for rule in applied_rules
@@ -193,14 +299,14 @@ def protected_ci_snapshot(run_id: int, run: Any, applied_rules: Any, ruleset: An
         or ruleset.get("conditions") != {
             "ref_name": {"exclude": [], "include": ["refs/heads/dev"]},
         }
-        or ruleset.get("rules") != REQUIRED_RULESET_RULES
+        or not _exact_json(ruleset.get("rules"), REQUIRED_RULESET_RULES)
         or set(rules_by_type) != {"deletion", "non_fast_forward", "pull_request", "required_status_checks"}
         or len(relevant) != 4
         or not isinstance(pull_rule, dict)
-        or pull_rule.get("parameters") != REQUIRED_PULL_REQUEST_PARAMETERS
+        or not _exact_json(pull_rule.get("parameters"), REQUIRED_PULL_REQUEST_PARAMETERS)
         or not isinstance(status_parameters, dict)
-        or status_parameters != REQUIRED_STATUS_PARAMETERS
-        or checks != REQUIRED_PROTECTED_CHECKS
+        or not _exact_json(status_parameters, REQUIRED_STATUS_PARAMETERS)
+        or not _exact_json(checks, REQUIRED_PROTECTED_CHECKS)
         or run_time.utcoffset() is None
         or created_time.utcoffset() is None
         or updated_time.utcoffset() is None
@@ -398,11 +504,23 @@ def _validate_model_ref(
         errors.append(f"{label} model reference is not a standard protected-review model")
 
 
+def bounded_ascii_id(maximum: int):
+    def parse(value: str) -> int:
+        if re.fullmatch(r"[1-9][0-9]*", value) is None:
+            raise argparse.ArgumentTypeError("identifier must be positive ASCII decimal")
+        parsed = int(value)
+        if parsed > maximum:
+            raise argparse.ArgumentTypeError("identifier is out of range")
+        return parsed
+
+    return parse
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate retained protected route evidence")
     parser.add_argument("--head-sha", required=True)
-    parser.add_argument("--pr-number", type=int, required=True)
-    parser.add_argument("--run-id", type=int, required=True)
+    parser.add_argument("--pr-number", type=bounded_ascii_id(2_147_483_647), required=True)
+    parser.add_argument("--run-id", type=bounded_ascii_id(9_223_372_036_854_775_807), required=True)
     args = parser.parse_args()
     if not re.fullmatch(r"[a-f0-9]{40}", args.head_sha):
         parser.error("--head-sha must be a full lowercase SHA-1")
@@ -441,76 +559,192 @@ def main() -> int:
 
 
 def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, directory: Path) -> Path:
+    if (
+        type(run_id) is not int
+        or not 1 <= run_id <= 9_223_372_036_854_775_807
+        or type(pr_number) is not int
+        or not 1 <= pr_number <= 2_147_483_647
+        or not isinstance(head_sha, str)
+        or re.fullmatch(r"[a-f0-9]{40}", head_sha) is None
+    ):
+        raise ValueError("protected evidence identifiers are invalid")
     artifact_name = f"agent-review-{pr_number}-{head_sha}"
-    result = subprocess.run(
-        [
-            "gh", "run", "download", str(run_id), "--repo", "somebloke1/noetic-dev",
-            "--name", artifact_name, "--dir", str(directory),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        timeout=60,
-        check=False,
-    )
-    if result.returncode != 0 or len(result.stdout) > 65_536:
-        raise ValueError("exact-SHA Agent Review artifact download failed")
+    pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
+    head = pull.get("head") if isinstance(pull, dict) else None
+    base = pull.get("base") if isinstance(pull, dict) else None
+    merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+    if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
+        raise ValueError("pull request does not identify an immutable merge commit")
+    merge_commit = github_json(f"repos/{REPOSITORY}/commits/{merge_sha}")
+    base_sha = merged_base_sha(pull, merge_commit)
+    if (
+        not isinstance(pull, dict)
+        or pull.get("number") != pr_number
+        or pull.get("state") != "closed"
+        or pull.get("merged") is not True
+        or not isinstance(head, dict)
+        or head.get("sha") != head_sha
+        or not isinstance(base, dict)
+        or base.get("ref") != "dev"
+        or not isinstance(base_sha, str)
+    ):
+        raise ValueError("pull request does not bind an exact protected base")
+    artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
+    listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
+    if (
+        not isinstance(artifacts, dict)
+        or type(artifacts.get("total_count")) is not int
+        or artifacts.get("total_count") != 1
+        or not isinstance(listed, list)
+        or len(listed) != 1
+        or not _valid_artifact(listed[0], run_id, head_sha, artifact_name, base_sha)
+    ):
+        raise ValueError("exact-SHA Agent Review artifact is unavailable or expired")
+    artifact = listed[0]
+    archive = _github_api([
+        "/usr/bin/gh", "api",
+        f"repos/{REPOSITORY}/actions/artifacts/{artifact['id']}/zip",
+    ], 1_048_576)
+    digest = f"sha256:{hashlib.sha256(archive).hexdigest()}"
+    if digest != artifact["digest"]:
+        raise ValueError("downloaded Agent Review artifact digest does not match GitHub metadata")
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            entries = bundle.infolist()
+            if len(entries) != 1:
+                raise ValueError("Agent Review artifact does not contain exactly one entry")
+            entry = entries[0]
+            mode = entry.external_attr >> 16
+            if (
+                entry.filename != "agent-review-result.json"
+                or entry.is_dir()
+                or entry.flag_bits & 1
+                or stat.S_ISLNK(mode)
+                or entry.file_size > 1_048_576
+            ):
+                raise ValueError("Agent Review artifact entry is unsafe")
+            with bundle.open(entry) as source:
+                evidence = source.read(1_048_577)
+    except (OSError, RuntimeError, zipfile.BadZipFile) as error:
+        raise ValueError("Agent Review artifact archive is invalid") from error
+    if len(evidence) > 1_048_576:
+        raise ValueError("Agent Review artifact evidence is too large")
     evidence_path = directory / "agent-review-result.json"
-    if not evidence_path.is_file():
-        raise ValueError("Agent Review artifact does not contain route evidence")
+    descriptor = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        written = 0
+        while written < len(evidence):
+            written += os.write(descriptor, evidence[written:])
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
     return evidence_path
 
 
 def validate_protected_provenance(
     run_id: int, pr_number: int, head_sha: str, base_sha: str, protected_ci: dict[str, Any]
 ) -> list[str]:
-    if not 1 <= run_id <= 9_223_372_036_854_775_807 or not 1 <= pr_number <= 2_147_483_647:
+    if (
+        type(run_id) is not int
+        or type(pr_number) is not int
+        or not 1 <= run_id <= 9_223_372_036_854_775_807
+        or not 1 <= pr_number <= 2_147_483_647
+    ):
         return ["protected run or PR identifier is invalid"]
     retained_ruleset = protected_ci.get("ruleset")
     if not isinstance(retained_ruleset, dict) or type(retained_ruleset.get("id")) is not int:
         return ["retained protected-CI ruleset identity is invalid"]
 
     try:
-        run = github_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}")
-        artifacts = github_json(f"repos/somebloke1/noetic-dev/actions/runs/{run_id}/artifacts")
-        applied_rules = github_json("repos/somebloke1/noetic-dev/rules/branches/dev")
+        run = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}")
+        pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
+        merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+        if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
+            raise ValueError("pull request does not identify an immutable merge commit")
+        merge_commit = github_json(f"repos/{REPOSITORY}/commits/{merge_sha}")
+        jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
+        artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
+        applied_rules = github_json(f"repos/{REPOSITORY}/rules/branches/dev")
         ruleset_id = retained_ruleset["id"]
-        ruleset = github_json(f"repos/somebloke1/noetic-dev/rulesets/{ruleset_id}")
+        ruleset = github_json(f"repos/{REPOSITORY}/rulesets/{ruleset_id}")
     except (OSError, subprocess.TimeoutExpired, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         return ["protected run provenance is unavailable"]
-    pull_requests = run.get("pull_requests") if isinstance(run, dict) else None
+    run_created_at = _timestamp(run.get("created_at")) if isinstance(run, dict) else None
+    pull_created_at = _timestamp(pull.get("created_at")) if isinstance(pull, dict) else None
+    merged_at = _timestamp(pull.get("merged_at")) if isinstance(pull, dict) and pull.get("merged_at") else None
+    head = pull.get("head") if isinstance(pull, dict) else None
+    base = pull.get("base") if isinstance(pull, dict) else None
     if (
-        run.get("id") != run_id
+        not isinstance(run, dict)
+        or type(run.get("id")) is not int
+        or run.get("id") != run_id
         or run.get("name") != "Agent Review"
         or run.get("path") != ".github/workflows/agent-review.yml"
+        or type(run.get("workflow_id")) is not int
+        or run.get("workflow_id") != AGENT_REVIEW_WORKFLOW_ID
+        or type(run.get("run_attempt")) is not int
+        or run.get("run_attempt") != 1
         or run.get("event") != "pull_request_target"
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
+        or run.get("display_title") != f"agent-review-{pr_number}-{head_sha}"
+        or not isinstance(run.get("head_sha"), str)
         or run.get("head_sha") not in {head_sha, base_sha}
+        or not isinstance(head, dict)
+        or run.get("head_branch") != head.get("ref")
         or not isinstance(run.get("repository"), dict)
-        or run["repository"].get("full_name") != "somebloke1/noetic-dev"
-        or not isinstance(pull_requests, list)
-        or not any(
-            isinstance(item, dict)
-            and item.get("number") == pr_number
-            and isinstance(item.get("head"), dict)
-            and item["head"].get("sha") == head_sha
-            and isinstance(item["head"].get("repo"), dict)
-            and item["head"]["repo"].get("url") == "https://api.github.com/repos/somebloke1/noetic-dev"
-            and isinstance(item.get("base"), dict)
-            and item["base"].get("ref") == "dev"
-            and item["base"].get("sha") == base_sha
-            and isinstance(item["base"].get("repo"), dict)
-            and item["base"]["repo"].get("url") == "https://api.github.com/repos/somebloke1/noetic-dev"
-            for item in pull_requests
-        )
+        or type(run["repository"].get("id")) is not int
+        or run["repository"].get("id") != REPOSITORY_ID
+        or run["repository"].get("full_name") != REPOSITORY
+        or not isinstance(run.get("head_repository"), dict)
+        or type(run["head_repository"].get("id")) is not int
+        or run["head_repository"].get("id") != REPOSITORY_ID
+        or run["head_repository"].get("full_name") != REPOSITORY
+        or not isinstance(pull, dict)
+        or type(pull.get("number")) is not int
+        or pull.get("number") != pr_number
+        or pull.get("draft") is not False
+        or pull.get("state") != "closed"
+        or pull.get("merged") is not True
+        or head.get("sha") != head_sha
+        or not isinstance(head.get("repo"), dict)
+        or type(head["repo"].get("id")) is not int
+        or head["repo"].get("id") != REPOSITORY_ID
+        or head["repo"].get("full_name") != REPOSITORY
+        or not isinstance(base, dict)
+        or base.get("ref") != "dev"
+        or not isinstance(base.get("repo"), dict)
+        or type(base["repo"].get("id")) is not int
+        or base["repo"].get("id") != REPOSITORY_ID
+        or base["repo"].get("full_name") != REPOSITORY
+        or run_created_at is None
+        or pull_created_at is None
+        or pull_created_at > run_created_at
+        or merged_at is None
+        or merged_at < run_created_at
+        or merged_base_sha(pull, merge_commit) != base_sha
     ):
         return ["GitHub run does not match the protected Agent Review candidate"]
+
+    listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
+    if (
+        not isinstance(jobs, dict)
+        or type(jobs.get("total_count")) is not int
+        or jobs.get("total_count") != 1
+        or not isinstance(listed_jobs, list)
+        or len(listed_jobs) != 1
+        or not _valid_review_job(listed_jobs[0], run_id, head_sha, base_sha)
+    ):
+        return ["GitHub run does not contain one exact protected Agent Review job"]
     expected_name = f"agent-review-{pr_number}-{head_sha}"
     listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
-    if not isinstance(listed, list) or not any(
-        isinstance(item, dict) and item.get("name") == expected_name and item.get("expired") is False
-        for item in listed
+    if (
+        not isinstance(artifacts, dict)
+        or type(artifacts.get("total_count")) is not int
+        or artifacts.get("total_count") != 1
+        or not isinstance(listed, list)
+        or len(listed) != 1
+        or not _valid_artifact(listed[0], run_id, head_sha, expected_name, base_sha)
     ):
         return ["exact-SHA Agent Review artifact is unavailable or expired"]
     try:
@@ -522,6 +756,78 @@ def validate_protected_provenance(
     if protected_ci_snapshot(run_id, run, applied_rules, ruleset) != protected_ci:
         return ["retained protected-CI ruleset evidence is absent, changed, or inapplicable"]
     return []
+
+
+def _timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.utcoffset() is not None else None
+
+
+def _exact_json(actual: Any, expected: Any) -> bool:
+    try:
+        return json.dumps(actual, sort_keys=True, separators=(",", ":")) == json.dumps(
+            expected, sort_keys=True, separators=(",", ":")
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _valid_review_job(
+    job: Any, run_id: int, head_sha: str, base_sha: str | None = None
+) -> bool:
+    if not isinstance(job, dict):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+        return False
+    step_names = [step.get("name") for step in steps]
+    return (
+        type(job.get("id")) is int
+        and job["id"] > 0
+        and type(job.get("run_id")) is int
+        and job.get("run_id") == run_id
+        and type(job.get("run_attempt")) is int
+        and job.get("run_attempt") == 1
+        and job.get("workflow_name") == "Agent Review"
+        and job.get("head_sha") in (head_sha, base_sha)
+        and job.get("status") == "completed"
+        and job.get("conclusion") == "success"
+        and job.get("name") == "agent-review"
+        and job.get("labels") == ["self-hosted", "noetic-dev", "terra-review"]
+        and step_names == EXPECTED_REVIEW_STEPS
+        and all(isinstance(step, dict) and step.get("conclusion") == "success" for step in steps)
+    )
+
+
+def _valid_artifact(
+    artifact: Any, run_id: int, head_sha: str, expected_name: str, base_sha: str
+) -> bool:
+    if not isinstance(artifact, dict):
+        return False
+    workflow_run = artifact.get("workflow_run")
+    return (
+        type(artifact.get("id")) is int
+        and artifact["id"] > 0
+        and artifact.get("name") == expected_name
+        and artifact.get("expired") is False
+        and type(artifact.get("size_in_bytes")) is int
+        and 0 < artifact["size_in_bytes"] <= 1_048_576
+        and isinstance(artifact.get("digest"), str)
+        and ARTIFACT_DIGEST.fullmatch(artifact["digest"]) is not None
+        and isinstance(workflow_run, dict)
+        and type(workflow_run.get("id")) is int
+        and workflow_run.get("id") == run_id
+        and type(workflow_run.get("repository_id")) is int
+        and workflow_run.get("repository_id") == REPOSITORY_ID
+        and type(workflow_run.get("head_repository_id")) is int
+        and workflow_run.get("head_repository_id") == REPOSITORY_ID
+        and workflow_run.get("head_sha") in {head_sha, base_sha}
+    )
 
 
 if __name__ == "__main__":
