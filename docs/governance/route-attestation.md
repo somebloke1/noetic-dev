@@ -21,6 +21,8 @@ deploy/install-route-attestation-user.sh <implementation-agent-review-run-id>
 
 The argument is the successful Agent Review run for the implementation PR itself. That bootstrap run used the previous protected-base validator and is deliberately excluded; only later canaries are eligible for automated receipts.
 
+The installer requires `loginctl` to report `Linger=yes` for the trusted operator account, so the user timer continues after logout. The oneshot service has a 30-minute start timeout, longer than its bounded network, clone, checkout, and validation operations while still preventing an indefinitely wedged invocation.
+
 The operator persists a private verified run cursor. It advances only across successful runs with valid receipts and refuses to continue if GitHub's bounded workflow-run inventory no longer contains that cursor. A long outage therefore becomes an explicit truncation failure rather than silently dropping eligible runs.
 
 Installation is an operator action, not an isolation boundary against the invoking Unix account. The script uses a fixed shell, refuses shell/loader injection variables, derives the account home from the passwd database, and sanitizes the GitHub authentication probe. Invoke it only from the trusted operator account; the recurring systemd service is the hardened runtime boundary.

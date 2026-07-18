@@ -11,6 +11,8 @@ esac
 after_run_id=$1
 test "$after_run_id" -gt 0
 home=$(/usr/bin/python3 -I -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)')
+user=$(id -un)
+test "$(loginctl show-user "$user" --property=Linger --value)" = yes
 release=/opt/noetic-dev-agent-review/current
 state_dir=$home/.local/state/noetic-dev/route-attestations
 unit_dir=$home/.config/systemd/user

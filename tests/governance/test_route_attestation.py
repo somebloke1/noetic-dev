@@ -322,6 +322,7 @@ class TestRouteAttestation(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("EnvironmentFile=%h/.config/noetic-dev/route-attestation.env", service)
         self.assertIn("--after-run-id ${NOETIC_ROUTE_AFTER_RUN_ID}", service)
+        self.assertIn("TimeoutStartSec=30min", service)
         self.assertIn("ProtectSystem=strict", service)
         self.assertIn("ProtectHome=tmpfs", service)
         self.assertIn("BindReadOnlyPaths=%h/.config/gh", service)
@@ -336,6 +337,7 @@ class TestRouteAttestation(unittest.TestCase):
         self.assertIn("''|0|0*|*[!0-9]*)", installer)
         self.assertIn("NOETIC_ROUTE_AFTER_RUN_ID=%s", installer)
         self.assertIn("env -i HOME=", installer)
+        self.assertIn('--property=Linger --value)" = yes', installer)
         self.assertIn("systemctl --user enable --now noetic-dev-route-attestation.timer", installer)
 
 
