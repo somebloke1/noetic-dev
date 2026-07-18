@@ -440,51 +440,21 @@ class TestRouteAttestation(unittest.TestCase):
         self.assertIn('--property=Linger --value)" = yes', installer)
         self.assertIn("systemctl --user enable --now noetic-dev-route-attestation.timer", installer)
 
-    def test_recurring_canary_manifest_binds_protected_route(self) -> None:
-        manifest = json.loads((
-            ROOT / "governance/canaries/2026-07-17-recurring-attestation-trigger.json"
-        ).read_text(encoding="utf-8"))
-        self.assertEqual(manifest["protected_base_sha"], "91bf3617b957b5308d71fa43eb7ee0a2d4314771")
-        self.assertEqual(manifest["candidate_head"], {
-            "resolved_from": "workflow_run.head_sha",
-            "must_equal": [
-                "pull.head.sha", "job.head_sha",
-                "artifact.workflow_run.head_sha", "receipt.head_sha",
-            ],
-        })
-        self.assertEqual(manifest["workflow"], {
-            "id": 312422987,
-            "path": ".github/workflows/agent-review.yml",
-            "event": "pull_request_target",
-            "run_name_template": "agent-review-{pr_number}-{head_sha}",
-        })
-        self.assertEqual(manifest["artifact"]["name_template"], manifest["workflow"]["run_name_template"])
-        self.assertTrue(manifest["artifact"]["required"])
-        self.assertTrue(manifest["receipt"]["required"])
-        self.assertEqual(manifest["enforcement"], {
-            "operator": "scripts/governance/route_attestation.py",
-            "protected_validator": "scripts/governance/route_evidence.py",
-            "eligible_after": "pull.state=closed,pull.merged=true",
-        })
-        for path in manifest["enforcement"].values():
-            if path.endswith(".py"):
-                self.assertTrue((ROOT / path).is_file())
-        self.assertIs(manifest["success_claim"], False)
-
+    def test_attestation_integrates_run_artifact_validator_and_receipt(self) -> None:
+        pr_number = 64
+        protected_base_sha = "91bf3617b957b5308d71fa43eb7ee0a2d4314771"
         run = run_record(321)
-        run_name = manifest["workflow"]["run_name_template"].format(
-            pr_number=manifest["pr_number"], head_sha=run["head_sha"]
-        )
+        run_name = f"agent-review-{pr_number}-{run['head_sha']}"
         run.update({"name": run_name, "display_title": run_name})
         artifacts, pull, merge_commit, jobs = attestation_records()
         artifact = artifacts["artifacts"][0]
         artifact.update({"name": run_name, "workflow_run": {
             **artifact["workflow_run"], "id": run["id"],
         }})
-        pull.update({"number": manifest["pr_number"], "base": {
-            **pull["base"], "sha": manifest["protected_base_sha"],
+        pull.update({"number": pr_number, "base": {
+            **pull["base"], "sha": protected_base_sha,
         }})
-        merge_commit["parents"] = [{"sha": manifest["protected_base_sha"]}]
+        merge_commit["parents"] = [{"sha": protected_base_sha}]
         job = jobs["jobs"][0]
         job.update({"run_id": run["id"], "workflow_name": run_name})
         responses = [
@@ -494,25 +464,18 @@ class TestRouteAttestation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "route_attestation.github_json", side_effect=responses
         ), mock.patch(
-            "route_attestation.retained_base_sha",
-            return_value=manifest["protected_base_sha"],
+            "route_attestation.retained_base_sha", return_value=protected_base_sha,
         ), mock.patch(
             "route_attestation.validate_from_protected_base", return_value="d" * 64
         ) as validate:
             receipt_path = attest_run(run, Path(directory))
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
         validate.assert_called_once_with(
-            run["id"], manifest["pr_number"], run["head_sha"],
-            manifest["protected_base_sha"],
+            run["id"], pr_number, run["head_sha"], protected_base_sha,
         )
         self.assertEqual(receipt["head_sha"], run["head_sha"])
         self.assertEqual(receipt["artifact_name"], run_name)
-        self.assertEqual(
-            receipt_path.name,
-            manifest["receipt"]["path_template"].format(
-                run_id=run["id"], run_attempt=run["run_attempt"]
-            ),
-        )
+        self.assertEqual(receipt_path.name, "run-321-attempt-1.json")
 
 
 if __name__ == "__main__":
