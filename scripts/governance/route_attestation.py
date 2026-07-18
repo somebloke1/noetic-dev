@@ -40,6 +40,7 @@ from route_evidence import (
     github_json,
     github_json_pages,
     load_json_strict,
+    merged_base_sha,
     parse_json_strict,
 )
 
@@ -391,6 +392,13 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         raise DeferredRun(f"pull request {pr_number} remains open")
     if isinstance(pull, dict) and pull.get("state") == "closed" and pull.get("merged") is False:
         raise IneligibleRun("closed-without-merge", pr_number)
+    merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+    if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
+        raise ValueError("merged pull request does not identify an immutable commit")
+    merge_commit = github_json(f"repos/{REPOSITORY}/commits/{merge_sha}")
+    historical_base_sha = merged_base_sha(pull, merge_commit)
+    if historical_base_sha is None:
+        raise ValueError("merged commit does not identify one immutable protected base")
     jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
     listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
     head = pull.get("head") if isinstance(pull, dict) else None
@@ -431,11 +439,11 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or head["repo"].get("full_name") != REPOSITORY
         or not isinstance(base, dict)
         or base.get("ref") != "dev"
-        or base.get("sha") != base_sha
         or not isinstance(base.get("repo"), dict)
         or type(base["repo"].get("id")) is not int
         or base["repo"].get("id") != REPOSITORY_ID
         or base["repo"].get("full_name") != REPOSITORY
+        or base_sha != historical_base_sha
         or run.get("head_branch") != head.get("ref")
         or not isinstance(run.get("head_sha"), str)
         or run.get("head_sha") not in {head_sha, base_sha}

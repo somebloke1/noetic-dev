@@ -126,7 +126,9 @@ def protection_records() -> tuple[dict, list, dict, dict]:
     return run, applied, ruleset, snapshot
 
 
-def provenance_records(head_sha: str, base_sha: str, pr_number: int = 55) -> tuple[dict, dict, dict, dict]:
+def provenance_records(
+    head_sha: str, base_sha: str, pr_number: int = 55
+) -> tuple[dict, dict, dict, dict, dict]:
     run = {
         "id": 123,
         "name": "Agent Review",
@@ -147,6 +149,7 @@ def provenance_records(head_sha: str, base_sha: str, pr_number: int = 55) -> tup
         "number": pr_number,
         "state": "closed",
         "merged": True,
+        "merge_commit_sha": "f" * 40,
         "merged_at": "2026-07-17T20:12:00Z",
         "created_at": "2026-07-17T20:00:00Z",
         "draft": False,
@@ -161,6 +164,7 @@ def provenance_records(head_sha: str, base_sha: str, pr_number: int = 55) -> tup
             "repo": {"id": 1297462728, "full_name": "somebloke1/noetic-dev"},
         },
     }
+    merge_commit = {"sha": "f" * 40, "parents": [{"sha": base_sha}]}
     jobs = {
         "total_count": 1,
         "jobs": [{
@@ -204,7 +208,7 @@ def provenance_records(head_sha: str, base_sha: str, pr_number: int = 55) -> tup
             },
         }],
     }
-    return run, pull, jobs, artifacts
+    return run, pull, merge_commit, jobs, artifacts
 
 
 class TestRouteEvidence(unittest.TestCase):
@@ -286,11 +290,12 @@ class TestRouteEvidence(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             evidence = Path(directory) / "agent-review-result.json"
             evidence.write_text(json.dumps(payload), encoding="utf-8")
-            run, pull, jobs, artifacts = provenance_records(head_sha, "b" * 40)
+            run, pull, merge_commit, jobs, artifacts = provenance_records(head_sha, "b" * 40)
             run["created_at"] = protection_run["created_at"]
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(pull).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(merge_commit).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(jobs).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(applied_rules).encode(), b""),
@@ -307,6 +312,7 @@ class TestRouteEvidence(unittest.TestCase):
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(pull).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(merge_commit).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(jobs).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(artifacts).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(applied_rules).encode(), b""),
@@ -331,26 +337,29 @@ class TestRouteEvidence(unittest.TestCase):
         head_sha = "a" * 40
         base_sha = "b" * 40
         run, applied, ruleset, protected_ci = protection_records()
-        github_run, pull, jobs, artifacts = provenance_records(head_sha, base_sha)
+        github_run, pull, merge_commit, jobs, artifacts = provenance_records(head_sha, base_sha)
 
-        def validate(records: tuple[dict, dict, dict, dict]) -> list[str]:
-            source_run, source_pull, source_jobs, source_artifacts = records
-            responses = [source_run, source_pull, source_jobs, source_artifacts, applied, ruleset]
+        def validate(records: tuple[dict, dict, dict, dict, dict]) -> list[str]:
+            source_run, source_pull, source_merge, source_jobs, source_artifacts = records
+            responses = [
+                source_run, source_pull, source_merge, source_jobs, source_artifacts,
+                applied, ruleset,
+            ]
             with mock.patch("route_evidence.github_json", side_effect=responses), mock.patch(
                 "route_evidence.protected_checkout_matches", return_value=True
             ):
                 return validate_protected_provenance(123, 55, head_sha, base_sha, protected_ci)
 
-        self.assertEqual(validate((github_run, pull, jobs, artifacts)), [])
+        self.assertEqual(validate((github_run, pull, merge_commit, jobs, artifacts)), [])
         base_job = copy.deepcopy(jobs)
         base_job["jobs"][0]["head_sha"] = base_sha
-        self.assertEqual(validate((github_run, pull, base_job, artifacts)), [])
+        self.assertEqual(validate((github_run, pull, merge_commit, base_job, artifacts)), [])
         base_artifact = copy.deepcopy(artifacts)
         base_artifact["artifacts"][0]["workflow_run"]["head_sha"] = base_sha
-        self.assertEqual(validate((github_run, pull, jobs, base_artifact)), [])
+        self.assertEqual(validate((github_run, pull, merge_commit, jobs, base_artifact)), [])
         advanced_pull = copy.deepcopy(pull)
         advanced_pull["base"]["sha"] = "e" * 40
-        self.assertTrue(validate((github_run, advanced_pull, jobs, artifacts)))
+        self.assertEqual(validate((github_run, advanced_pull, merge_commit, jobs, artifacts)), [])
         mutations = []
         for target, path, value in [
             ("run", ("id",), 123.0),
@@ -359,6 +368,7 @@ class TestRouteEvidence(unittest.TestCase):
             ("pull", ("head", "sha"), "d" * 40),
             ("pull", ("state",), None),
             ("pull", ("merged_at",), "2026-07-17T20:09:00Z"),
+            ("merge", ("parents", 0, "sha"), "e" * 40),
             ("jobs", ("total_count",), True),
             ("jobs", ("jobs", 0, "id"), 0),
             ("jobs", ("jobs", 0, "run_attempt"), 2),
@@ -369,8 +379,13 @@ class TestRouteEvidence(unittest.TestCase):
             ("artifacts", ("artifacts", 0, "digest"), "sha256:bad"),
             ("artifacts", ("artifacts", 0, "workflow_run", "id"), 999),
         ]:
-            records = [copy.deepcopy(item) for item in (github_run, pull, jobs, artifacts)]
-            item = records[{"run": 0, "pull": 1, "jobs": 2, "artifacts": 3}[target]]
+            records = [
+                copy.deepcopy(item)
+                for item in (github_run, pull, merge_commit, jobs, artifacts)
+            ]
+            item = records[
+                {"run": 0, "pull": 1, "merge": 2, "jobs": 3, "artifacts": 4}[target]
+            ]
             for key in path[:-1]:
                 item = item[key]
             item[path[-1]] = value
@@ -538,7 +553,7 @@ class TestRouteEvidence(unittest.TestCase):
             with zipfile.ZipFile(archive_file, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("agent-review-result.json", "{}")
             archive_bytes = archive_file.getvalue()
-            _, pull, _, artifacts = provenance_records("a" * 40, "b" * 40)
+            _, pull, merge_commit, _, artifacts = provenance_records("a" * 40, "b" * 40)
             artifact = artifacts["artifacts"][0]
             artifact["size_in_bytes"] = len(archive_bytes)
             artifact["digest"] = f"sha256:{hashlib.sha256(archive_bytes).hexdigest()}"
@@ -546,6 +561,8 @@ class TestRouteEvidence(unittest.TestCase):
             def download(command, **_kwargs):
                 if command[-1].endswith("/pulls/55"):
                     output = json.dumps(pull).encode()
+                elif "/commits/" in command[-1]:
+                    output = json.dumps(merge_commit).encode()
                 elif command[-1].endswith("/artifacts"):
                     output = json.dumps(artifacts).encode()
                 else:

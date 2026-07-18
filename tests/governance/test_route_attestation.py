@@ -44,7 +44,7 @@ def run_record(run_id: int = 123) -> dict:
     }
 
 
-def attestation_records() -> tuple[dict, dict, dict]:
+def attestation_records() -> tuple[dict, dict, dict, dict]:
     head_sha = "a" * 40
     artifacts = {
         "total_count": 1,
@@ -66,6 +66,7 @@ def attestation_records() -> tuple[dict, dict, dict]:
         "number": 55,
         "state": "closed",
         "merged": True,
+        "merge_commit_sha": "f" * 40,
         "draft": False,
         "head": {
             "ref": "issue-route-canary",
@@ -78,6 +79,7 @@ def attestation_records() -> tuple[dict, dict, dict]:
             "repo": {"id": 1297462728, "full_name": "somebloke1/noetic-dev"},
         },
     }
+    merge_commit = {"sha": "f" * 40, "parents": [{"sha": "b" * 40}]}
     jobs = {"total_count": 1, "jobs": [{
         "id": 456,
         "run_id": 123,
@@ -102,7 +104,7 @@ def attestation_records() -> tuple[dict, dict, dict]:
             ]
         ],
     }]}
-    return artifacts, pull, jobs
+    return artifacts, pull, merge_commit, jobs
 
 
 def valid_receipt(run_id: int = 123) -> dict:
@@ -246,10 +248,13 @@ class TestRouteAttestation(unittest.TestCase):
 
     def test_records_exact_run_artifact_pr_job_and_validator(self) -> None:
         run = run_record()
-        artifacts, pull, jobs = attestation_records()
+        artifacts, pull, merge_commit, jobs = attestation_records()
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "route_attestation.github_json",
-            side_effect=[run, artifacts, pull, jobs, run, artifacts, pull, jobs],
+            side_effect=[
+                run, artifacts, pull, merge_commit, jobs,
+                run, artifacts, pull, merge_commit, jobs,
+            ],
         ), mock.patch(
             "route_attestation.validate_from_protected_base", return_value="d" * 64
         ) as validate, mock.patch(
@@ -266,10 +271,13 @@ class TestRouteAttestation(unittest.TestCase):
 
     def test_metadata_must_remain_stable_across_protected_validation(self) -> None:
         run = run_record()
-        artifacts, pull, jobs = attestation_records()
+        artifacts, pull, merge_commit, jobs = attestation_records()
         changed = json.loads(json.dumps(artifacts))
         changed["artifacts"][0]["digest"] = f"sha256:{'e' * 64}"
-        responses = [run, artifacts, pull, jobs, run, changed, pull, jobs]
+        responses = [
+            run, artifacts, pull, merge_commit, jobs,
+            run, changed, pull, merge_commit, jobs,
+        ]
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "route_attestation.github_json", side_effect=responses
         ), mock.patch(
@@ -280,11 +288,11 @@ class TestRouteAttestation(unittest.TestCase):
 
     def test_closed_unmerged_run_is_classified_without_retained_artifact(self) -> None:
         run = run_record()
-        artifacts, pull, jobs = attestation_records()
+        artifacts, pull, merge_commit, jobs = attestation_records()
         artifacts["artifacts"][0]["expired"] = True
         pull.update({"state": "closed", "merged": False})
         with mock.patch(
-            "route_attestation.github_json", side_effect=[run, artifacts, pull, jobs]
+            "route_attestation.github_json", side_effect=[run, artifacts, pull, merge_commit, jobs]
         ), mock.patch("route_attestation.retained_base_sha") as retained:
             with self.assertRaises(IneligibleRun):
                 load_attestation_context(123)
@@ -292,14 +300,14 @@ class TestRouteAttestation(unittest.TestCase):
 
     def test_attestation_metadata_fails_closed(self) -> None:
         run = run_record()
-        artifacts, pull, jobs = attestation_records()
+        artifacts, pull, merge_commit, jobs = attestation_records()
         mutations = [
-            ({**artifacts, "total_count": 2}, pull, jobs),
-            ({**artifacts, "artifacts": [{**artifacts["artifacts"][0], "expired": True}]}, pull, jobs),
-            (artifacts, {**pull, "base": {"ref": "main", "sha": "b" * 40}}, jobs),
-            (artifacts, {**pull, "base": {**pull["base"], "sha": "e" * 40}}, jobs),
-            (artifacts, pull, {"total_count": 2, "jobs": jobs["jobs"]}),
-            (artifacts, {**pull, "state": "open", "merged": False}, jobs),
+            ({**artifacts, "total_count": 2}, pull, merge_commit, jobs),
+            ({**artifacts, "artifacts": [{**artifacts["artifacts"][0], "expired": True}]}, pull, merge_commit, jobs),
+            (artifacts, {**pull, "base": {"ref": "main", "sha": "b" * 40}}, merge_commit, jobs),
+            (artifacts, pull, {**merge_commit, "parents": [{"sha": "e" * 40}]}, jobs),
+            (artifacts, pull, merge_commit, {"total_count": 2, "jobs": jobs["jobs"]}),
+            (artifacts, {**pull, "state": "open", "merged": False}, merge_commit, jobs),
         ]
         for responses in mutations:
             with self.subTest(responses=responses), tempfile.TemporaryDirectory() as directory, mock.patch(

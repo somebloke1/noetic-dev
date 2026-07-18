@@ -114,6 +114,24 @@ def load_json_strict(path: Path) -> Any:
         return parse_json_strict(handle.read())
 
 
+def merged_base_sha(pull: Any, merge_commit: Any) -> str | None:
+    merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+    parents = merge_commit.get("parents") if isinstance(merge_commit, dict) else None
+    if (
+        not isinstance(merge_sha, str)
+        or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None
+        or not isinstance(merge_commit, dict)
+        or merge_commit.get("sha") != merge_sha
+        or not isinstance(parents, list)
+        or len(parents) != 1
+        or not isinstance(parents[0], dict)
+        or not isinstance(parents[0].get("sha"), str)
+        or re.fullmatch(r"[a-f0-9]{40}", parents[0]["sha"]) is None
+    ):
+        return None
+    return parents[0]["sha"]
+
+
 def github_json(path: str) -> Any:
     result = _github_api(["/usr/bin/gh", "api", path], 1_048_576)
     return parse_json_strict(result)
@@ -554,16 +572,21 @@ def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, dire
     pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
     head = pull.get("head") if isinstance(pull, dict) else None
     base = pull.get("base") if isinstance(pull, dict) else None
-    base_sha = base.get("sha") if isinstance(base, dict) else None
+    merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+    if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
+        raise ValueError("pull request does not identify an immutable merge commit")
+    merge_commit = github_json(f"repos/{REPOSITORY}/commits/{merge_sha}")
+    base_sha = merged_base_sha(pull, merge_commit)
     if (
         not isinstance(pull, dict)
         or pull.get("number") != pr_number
+        or pull.get("state") != "closed"
+        or pull.get("merged") is not True
         or not isinstance(head, dict)
         or head.get("sha") != head_sha
         or not isinstance(base, dict)
         or base.get("ref") != "dev"
         or not isinstance(base_sha, str)
-        or re.fullmatch(r"[a-f0-9]{40}", base_sha) is None
     ):
         raise ValueError("pull request does not bind an exact protected base")
     artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
@@ -635,6 +658,10 @@ def validate_protected_provenance(
     try:
         run = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}")
         pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
+        merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
+        if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
+            raise ValueError("pull request does not identify an immutable merge commit")
+        merge_commit = github_json(f"repos/{REPOSITORY}/commits/{merge_sha}")
         jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
         artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
         applied_rules = github_json(f"repos/{REPOSITORY}/rules/branches/dev")
@@ -676,11 +703,8 @@ def validate_protected_provenance(
         or type(pull.get("number")) is not int
         or pull.get("number") != pr_number
         or pull.get("draft") is not False
-        or type(pull.get("merged")) is not bool
-        or not (
-            (pull.get("state") == "open" and pull.get("merged") is False)
-            or (pull.get("state") == "closed" and pull.get("merged") is True)
-        )
+        or pull.get("state") != "closed"
+        or pull.get("merged") is not True
         or head.get("sha") != head_sha
         or not isinstance(head.get("repo"), dict)
         or type(head["repo"].get("id")) is not int
@@ -688,7 +712,6 @@ def validate_protected_provenance(
         or head["repo"].get("full_name") != REPOSITORY
         or not isinstance(base, dict)
         or base.get("ref") != "dev"
-        or base.get("sha") != base_sha
         or not isinstance(base.get("repo"), dict)
         or type(base["repo"].get("id")) is not int
         or base["repo"].get("id") != REPOSITORY_ID
@@ -696,7 +719,9 @@ def validate_protected_provenance(
         or run_created_at is None
         or pull_created_at is None
         or pull_created_at > run_created_at
-        or (pull.get("merged") is True and (merged_at is None or merged_at < run_created_at))
+        or merged_at is None
+        or merged_at < run_created_at
+        or merged_base_sha(pull, merge_commit) != base_sha
     ):
         return ["GitHub run does not match the protected Agent Review candidate"]
 
