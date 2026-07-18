@@ -9,7 +9,6 @@ import os
 import shutil
 import socket
 import struct
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -30,6 +29,7 @@ DECISION_ID = "d-20260718-000001"
 NONCE = "0123456789abcdef0123456789abcdef"
 PROMPT = f"Respond with exactly READY {NONCE} and nothing else."
 EXPECTED_TEXT = f"READY {NONCE}"
+ROUTER_IDENTITY = "1" * 64
 
 
 def model_ref(model: str) -> dict[str, str]:
@@ -59,6 +59,7 @@ def route_record() -> dict:
     return {
         "schema_version": "1",
         "component_sha": spike.COMPONENT_SHA,
+        "router_identity_sha256": ROUTER_IDENTITY,
         "classification": dict(spike.ROUTE_ARGUMENTS),
         "decision": route_decision(),
     }
@@ -141,6 +142,7 @@ def success_result() -> dict:
         {
             "execution_status": "success",
             "failure_code": None,
+            "router_identity_sha256": ROUTER_IDENTITY,
             "route_decision_id": DECISION_ID,
             "route_reference_sha256": "a" * 64,
             "routed_model": MODEL,
@@ -151,6 +153,7 @@ def success_result() -> dict:
             "config_sha256": "c" * 64,
             "json_event_log_sha256": "d" * 64,
             "upstream_response_sha256": "e" * 64,
+            "litellm_peer_identity_sha256": "9" * 64,
             "model_turn_count": 1,
             "bridge_request_count": 1,
             "upstream_request_count": 1,
@@ -257,6 +260,85 @@ class TestStrictContracts(unittest.TestCase):
             )
             config.chmod(0o400)
             spike.validate_pinned_route_policy(config, expected_uid=os.getuid())
+
+    def test_router_component_manifest_binds_command_config_table_and_interpreter(self):
+        command = b"router-command"
+        config = b"router-config"
+        table = b"router-table"
+        interpreter = b"python-runtime"
+        manifest = {
+            "component_sha": spike.COMPONENT_SHA,
+            "command_sha256": spike.sha256(command),
+            "config_sha256": spike.sha256(config),
+            "genus_table_sha256": spike.sha256(table),
+        }
+        raw_manifest = spike.canonical_json(manifest)
+        files = {
+            spike.ROUTER_ROOT / "component-manifest.json": raw_manifest,
+            spike.ROUTER_COMMAND: command,
+            spike.ROUTER_CONFIG: config,
+            spike.ROUTER_CONFIG.parent / "genus_models.csv": table,
+            Path("/usr/bin/python3.12"): interpreter,
+        }
+        with mock.patch(
+            "run_opencode_spike._root_owned_file_bytes",
+            side_effect=lambda path, **_kwargs: files[path],
+        ), mock.patch(
+            "run_opencode_spike._validate_root_owned_symlink",
+            return_value=Path("/usr/bin/python3.12"),
+        ):
+            identity = spike.validate_router_component_identity()
+            self.assertRegex(identity, r"^[a-f0-9]{64}$")
+            files[spike.ROUTER_COMMAND] = b"substituted"
+            with self.assertRaises(spike.SpikeError) as raised:
+                spike.validate_router_component_identity()
+        self.assertEqual(raised.exception.code, "router-manifest-digest-mismatch")
+
+    def test_litellm_peer_manifest_binds_all_root_owned_runtime_artifacts(self):
+        artifacts = {
+            spike.LITELLM_SERVICE_UNIT: b"unit",
+            spike.LITELLM_LAUNCHER: b"launcher",
+            spike.LITELLM_CONFIG: b"config",
+            Path("/usr/bin/python3.12"): b"python",
+        }
+        manifest = {
+            "schema_version": "1",
+            "service_unit": str(spike.LITELLM_SERVICE_UNIT),
+            "service_unit_sha256": spike.sha256(artifacts[spike.LITELLM_SERVICE_UNIT]),
+            "launcher": str(spike.LITELLM_LAUNCHER),
+            "launcher_sha256": spike.sha256(artifacts[spike.LITELLM_LAUNCHER]),
+            "config": str(spike.LITELLM_CONFIG),
+            "config_sha256": spike.sha256(artifacts[spike.LITELLM_CONFIG]),
+            "python": "/usr/bin/python3.12",
+            "python_sha256": spike.sha256(artifacts[Path("/usr/bin/python3.12")]),
+            "uid": 994,
+            "gid": 981,
+            "cgroup": spike.LITELLM_CGROUP,
+            "cmdline": [
+                "/opt/litellm/.venv/bin/python",
+                str(spike.LITELLM_LAUNCHER),
+                "--config",
+                str(spike.LITELLM_CONFIG),
+                "--host",
+                "0.0.0.0",
+                "--port",
+                str(spike.LITELLM_PORT),
+            ],
+            "host": spike.LITELLM_HOST,
+            "port": spike.LITELLM_PORT,
+        }
+        files = {spike.LITELLM_PEER_MANIFEST: spike.canonical_json(manifest), **artifacts}
+        with mock.patch(
+            "run_opencode_spike._root_owned_file_bytes",
+            side_effect=lambda path, **_kwargs: files[path],
+        ):
+            observed, digest = spike.validate_litellm_peer_manifest()
+            self.assertEqual(observed, manifest)
+            self.assertRegex(digest, r"^[a-f0-9]{64}$")
+            files[spike.LITELLM_CONFIG] = b"substituted"
+            with self.assertRaises(spike.SpikeError) as raised:
+                spike.validate_litellm_peer_manifest()
+        self.assertEqual(raised.exception.code, "litellm-peer-manifest-digest-mismatch")
 
     def test_child_body_requires_one_source_free_toolless_request(self):
         self.assertEqual(spike.validate_child_request_body(child_body(), MODEL, PROMPT), child_body())
@@ -546,31 +628,42 @@ class TestUpstreamAndEventValidation(unittest.TestCase):
                     expected_text=EXPECTED_TEXT,
                 )
 
-    @mock.patch("run_opencode_spike.subprocess.run")
-    def test_transport_requires_exact_kernel_local_route(self, run: mock.Mock):
-        run.return_value = subprocess.CompletedProcess(
-            [],
-            0,
-            stdout=b'[{"type":"local","dst":"172.22.10.160","dev":"lo","prefsrc":"172.22.10.160"}]',
+    def test_authenticated_transport_revalidates_pid_listener_owner_and_connected_peer(self):
+        pidfd, keepalive = os.pipe()
+        connected = mock.Mock()
+        connected.getpeername.return_value = (spike.LITELLM_HOST, spike.LITELLM_PORT)
+        connected.getsockname.return_value = (spike.LITELLM_HOST, 45_000)
+        manifest = {"uid": os.getuid()}
+        transport = spike.AuthenticatedLiteLLMTransport(
+            socket=connected,
+            pidfd=pidfd,
+            pid=123,
+            start_time=456,
+            listener_inode=789,
+            manifest=manifest,
+            identity_sha256="9" * 64,
         )
-        spike.validate_litellm_transport()
-        self.assertEqual(run.call_args.args[0], ["/usr/sbin/ip", "-j", "route", "get", "172.22.10.160"])
-        self.assertNotIn("CREDENTIALS_DIRECTORY", run.call_args.kwargs["env"])
-        for route in (
-            b"[]",
-            b'[{"type":"unicast","dst":"172.22.10.160","dev":"eth0","prefsrc":"172.22.10.2"}]',
-            b'[{"type":"local","dst":"172.22.10.161","dev":"lo","prefsrc":"172.22.10.161"}]',
-        ):
-            run.return_value = subprocess.CompletedProcess([], 0, stdout=route)
-            with self.subTest(route=route), self.assertRaises(spike.SpikeError):
-                spike.validate_litellm_transport()
+        try:
+            with mock.patch("run_opencode_spike._proc_identity", return_value=(123, 456)), mock.patch(
+                "run_opencode_spike._litellm_listener_inode", return_value=789
+            ), mock.patch("run_opencode_spike._process_owns_socket") as owns:
+                transport.revalidate()
+                owns.assert_called_once_with(123, 789)
+            with mock.patch("run_opencode_spike._proc_identity", return_value=(123, 456)), mock.patch(
+                "run_opencode_spike._litellm_listener_inode", return_value=790
+            ), self.assertRaises(spike.SpikeError) as raised:
+                transport.revalidate()
+            self.assertEqual(raised.exception.code, "litellm-listener-changed")
+        finally:
+            transport.close()
+            os.close(keepalive)
 
-    @mock.patch("run_opencode_spike.validate_litellm_transport")
     @mock.patch("run_opencode_spike.http.client.HTTPConnection")
+    @mock.patch("run_opencode_spike.open_authenticated_litellm_transport")
     def test_upstream_sender_has_one_fixed_destination_and_authorization_header(
         self,
+        transport_factory: mock.Mock,
         connection_type: mock.Mock,
-        transport: mock.Mock,
     ):
         body = spike.synthesize_clean_sse(MODEL, EXPECTED_TEXT)
 
@@ -589,11 +682,19 @@ class TestUpstreamAndEventValidation(unittest.TestCase):
                 self.sent = True
                 return body
 
+        transport = transport_factory.return_value
+        transport.socket = mock.Mock()
+        transport.identity_sha256 = "9" * 64
         connection = connection_type.return_value
+        events = []
+        transport.revalidate.side_effect = lambda: events.append("peer")
+        connection.endheaders.side_effect = lambda _body: events.append("send")
         connection.getresponse.return_value = Response()
         request = spike.canonical_upstream_request(MODEL, PROMPT)
         response = spike.forward_upstream(request, b"synthetic-secret")
-        transport.assert_called_once_with()
+        transport_factory.assert_called_once_with()
+        transport.revalidate.assert_called_once_with()
+        self.assertEqual(events, ["peer", "send"])
         connection_type.assert_called_once_with("172.22.10.160", 3333, timeout=spike.UPSTREAM_TIMEOUT_SECONDS)
         connection.putrequest.assert_called_once_with("POST", "/v1/responses", skip_host=True, skip_accept_encoding=True)
         self.assertIn(mock.call("Authorization", "Bearer synthetic-secret"), connection.putheader.call_args_list)
@@ -602,14 +703,16 @@ class TestUpstreamAndEventValidation(unittest.TestCase):
         connection.close.assert_called_once_with()
 
     @mock.patch("run_opencode_spike.time.monotonic", side_effect=[0.0, 61.0])
-    @mock.patch("run_opencode_spike.validate_litellm_transport")
     @mock.patch("run_opencode_spike.http.client.HTTPConnection")
+    @mock.patch("run_opencode_spike.open_authenticated_litellm_transport")
     def test_upstream_sender_enforces_total_deadline(
         self,
+        transport_factory: mock.Mock,
         connection_type: mock.Mock,
-        _transport: mock.Mock,
         _clock: mock.Mock,
     ):
+        transport_factory.return_value.socket = mock.Mock()
+        transport_factory.return_value.identity_sha256 = "9" * 64
         with self.assertRaises(spike.SpikeError) as raised:
             spike.forward_upstream(spike.canonical_upstream_request(MODEL, PROMPT), b"synthetic-secret")
         self.assertEqual(raised.exception.code, "upstream-timeout")
@@ -672,7 +775,12 @@ class TestPersistenceAndPhases(unittest.TestCase):
                 prompt = payload["input"][0]["content"][0]["text"]
                 text = prompt.removeprefix("Respond with exactly ").removesuffix(" and nothing else.")
                 clean = spike.synthesize_clean_sse(MODEL, text)
-                return spike.UpstreamHTTPResponse(200, [("Content-Type", "text/event-stream")], clean)
+                return spike.UpstreamHTTPResponse(
+                    200,
+                    [("Content-Type", "text/event-stream")],
+                    clean,
+                    peer_identity_sha256="9" * 64,
+                )
 
             with mock.patch.object(spike, "OPENCODE_PATH", binary), mock.patch.object(
                 spike, "CONTROLLER_PATH", controller
@@ -713,6 +821,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
                 decisions_path=decisions,
                 router_factory=factory,
                 policy_validator=lambda _path: None,
+                identity_validator=lambda *_args: ROUTER_IDENTITY,
                 environment={"HOME": "/nonexistent"},
             )
             self.assertEqual(result, route_record())
@@ -724,6 +833,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
                     decisions_path=decisions,
                     router_factory=factory,
                     policy_validator=lambda _path: None,
+                    identity_validator=lambda *_args: ROUTER_IDENTITY,
                     environment={"HOME": "/nonexistent"},
                 )
             self.assertEqual(len(router.calls), 1)
@@ -764,6 +874,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
             result.update(
                 {
                     "route_decision_id": DECISION_ID,
+                    "router_identity_sha256": ROUTER_IDENTITY,
                     "route_reference_sha256": spike.sha256(route_raw),
                     "routed_model": MODEL,
                     "failure_code": "credential-directory-invalid",
@@ -778,6 +889,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
                 state_dir=state,
                 outcomes_path=outcomes,
                 router_factory=factory,
+                identity_validator=lambda *_args: ROUTER_IDENTITY,
                 environment={"HOME": "/nonexistent"},
             )
             self.assertEqual(updated["outcome_status"], "reported")
@@ -790,6 +902,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
                     state_dir=state,
                     outcomes_path=outcomes,
                     router_factory=factory,
+                    identity_validator=lambda *_args: ROUTER_IDENTITY,
                     environment={"HOME": "/nonexistent"},
                 )
             self.assertEqual(len(router.calls), 1)

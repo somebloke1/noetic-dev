@@ -31,7 +31,7 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.assertIn("IPAddressDeny=any", self.execute)
         self.assertIn("IPAddressAllow=127.0.0.0/8", self.execute)
         self.assertIn("IPAddressAllow=172.22.10.160/32", self.execute)
-        self.assertIn("RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK", self.execute)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX AF_INET", self.execute)
 
     def test_route_execute_and_outcome_are_distinct_hardened_processes(self):
         self.assertIn("run_opencode_spike.py route ", self.route)
@@ -55,10 +55,14 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
             self.assertIn(f"--genus-router-sha {component}", unit)
         for unit in (self.route, self.execute, self.outcome):
             self.assertIn("/opt/noetic-dev-agent-review/opencode-spike-runtime/run_opencode_spike.py", unit)
+            self.assertNotIn("User=noetic-review-broker", unit)
+        for unit in (self.route, self.outcome):
             self.assertIn("User=noetic-opencode-spike", unit)
             self.assertIn("Group=noetic-opencode-spike", unit)
             self.assertIn("/var/lib/noetic-opencode-spike/state", unit)
-            self.assertNotIn("User=noetic-review-broker", unit)
+        self.assertIn("User=llm-svc", self.execute)
+        self.assertIn("Group=llm-svc", self.execute)
+        self.assertIn("/var/lib/noetic-opencode-spike/execute-state", self.execute)
 
     def test_root_orchestrator_is_serial_irreversible_and_reports_execute_failure(self):
         script = (ROOT / "deploy" / "run-opencode-spike.sh").read_text(encoding="utf-8")
@@ -73,6 +77,8 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.assertLess(execute, outcome)
         self.assertIn('start "$execute_unit" || execute_status=$?', script)
         self.assertIn('start "$outcome_unit" || outcome_status=$?', script)
+        self.assertIn('"$state/route.json" "$execute_state/route.json"', script)
+        self.assertIn('"$execute_state/result.json" "$state/result.json"', script)
         self.assertNotIn("rm -rf", script)
         completed = subprocess.run(["/bin/sh", "-n", str(ROOT / "deploy" / "run-opencode-spike.sh")], check=False)
         self.assertEqual(completed.returncode, 0)
@@ -88,8 +94,16 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.assertIn('install -o root -g root -m 0555 "$staged_opencode" "$opencode_runtime/opencode"', installer)
         self.assertIn('"$archive/scripts/governance/genus_router_mcp.py" "$runtime/genus_router_mcp.py"', installer)
         self.assertIn("router_client_sha256", installer)
+        self.assertIn("verify-router", installer)
+        self.assertIn("router_identity_sha256", installer)
+        self.assertIn("litellm-peer-manifest.json", installer)
+        self.assertIn("verify-peer", installer)
+        self.assertIn("litellm_peer_identity_sha256", installer)
+        self.assertIn("litellm_peer_manifest_sha256", installer)
+        self.assertIn("find /opt/litellm/.venv -xdev", installer)
         self.assertIn("useradd --system --gid noetic-opencode-spike", installer)
         self.assertIn('router_state=$spike_home/router-state', installer)
+        self.assertIn('execute_state=$spike_home/execute-state', installer)
         self.assertIn('install -o root -g root -m 0700', installer)
         self.assertIn("systemctl daemon-reload", installer)
         self.assertNotIn("systemctl start", installer)

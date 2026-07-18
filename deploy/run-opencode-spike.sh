@@ -15,6 +15,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
 state=/var/lib/noetic-opencode-spike/state
+execute_state=/var/lib/noetic-opencode-spike/execute-state
 router_state=/var/lib/noetic-opencode-spike/router-state
 route_unit=noetic-dev-opencode-spike-route.service
 execute_unit=noetic-dev-opencode-spike-execute.service
@@ -32,6 +33,12 @@ for artifact in route.claim route.json execute.claim result.json outcome.claim; 
         exit 1
     }
 done
+for artifact in route.json execute.claim result.json; do
+    test ! -e "$execute_state/$artifact" || {
+        printf '%s\n' "OpenCode spike execute state blocks replay" >&2
+        exit 1
+    }
+done
 for artifact in decisions.jsonl outcomes.jsonl; do
     test ! -e "$router_state/$artifact" || {
         printf '%s\n' "OpenCode spike router state blocks replay" >&2
@@ -43,14 +50,22 @@ done
 /usr/bin/systemctl start "$route_unit"
 test -f "$state/route.claim"
 test -f "$state/route.json"
+/usr/bin/install -o llm-svc -g llm-svc -m 0600 "$state/route.json" "$execute_state/route.json"
+/usr/bin/cmp -s "$state/route.json" "$execute_state/route.json"
 
 execute_status=0
 /usr/bin/systemctl start "$execute_unit" || execute_status=$?
+test -f "$execute_state/result.json"
+/usr/bin/install -o noetic-opencode-spike -g noetic-opencode-spike -m 0600 "$execute_state/result.json" "$state/result.json"
+/usr/bin/cmp -s "$execute_state/result.json" "$state/result.json"
+if test -f "$execute_state/execute.claim"; then
+    /usr/bin/install -o noetic-opencode-spike -g noetic-opencode-spike -m 0600 "$execute_state/execute.claim" "$state/execute.claim"
+    /usr/bin/cmp -s "$execute_state/execute.claim" "$state/execute.claim"
+fi
 
 outcome_status=0
 /usr/bin/systemctl start "$outcome_unit" || outcome_status=$?
 
-test -f "$state/result.json"
 if test "$execute_status" -ne 0 || test "$outcome_status" -ne 0; then
     exit 1
 fi

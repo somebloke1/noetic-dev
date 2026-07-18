@@ -12,6 +12,7 @@ import math
 import os
 import re
 import resource
+import select
 import secrets
 import shutil
 import signal
@@ -32,21 +33,27 @@ COMPONENT_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 RUNTIME_ROOT = Path("/opt/noetic-dev-agent-review")
 ROUTER_ROOT = RUNTIME_ROOT / "genus-router" / COMPONENT_SHA
 ROUTER_COMMAND = ROUTER_ROOT / "bin" / "genus-router"
+ROUTER_PYTHON = ROUTER_ROOT / "bin" / "python3"
 ROUTER_CONFIG = ROUTER_ROOT / "config" / "router.yaml"
 ROUTER_DECISIONS = ROUTER_ROOT / "state" / "decisions.jsonl"
 ROUTER_OUTCOMES = ROUTER_ROOT / "state" / "outcomes.jsonl"
 STATE_DIR = Path("/var/lib/noetic-opencode-spike/state")
+EXECUTE_STATE_DIR = Path("/var/lib/noetic-opencode-spike/execute-state")
 CONTROLLER_PATH = RUNTIME_ROOT / "opencode-spike-runtime" / "run_opencode_spike.py"
+LITELLM_PEER_MANIFEST = RUNTIME_ROOT / "opencode-spike-runtime" / "litellm-peer-manifest.json"
 OPENCODE_PATH = RUNTIME_ROOT / "opencode" / "1.17.20" / "opencode"
 BWRAP_PATH = Path("/usr/bin/bwrap")
 PYTHON_PATH = Path("/usr/bin/python3")
-IP_PATH = Path("/usr/sbin/ip")
 OPENCODE_VERSION = "1.17.20"
 OPENCODE_SHA256 = "373af49ceba30c1b64e964463a64f8065103f942f240933a955f6c461e1a67f6"
 LITELLM_HOST = "172.22.10.160"
 LITELLM_PORT = 3333
 LITELLM_BASE_URL = f"http://{LITELLM_HOST}:{LITELLM_PORT}"
 LITELLM_PATH = "/v1/responses"
+LITELLM_SERVICE_UNIT = Path("/etc/systemd/system/litellm.service")
+LITELLM_LAUNCHER = Path("/opt/litellm/.venv/bin/litellm")
+LITELLM_CONFIG = Path("/etc/litellm/config.yaml")
+LITELLM_CGROUP = "/system.slice/litellm.service"
 TOKEN_ENV = "LITELLM_API_KEY"
 CREDENTIAL_NAME = "litellm_api_key"
 PROTOCOL = "noetic-opencode-spike/1"
@@ -127,6 +134,7 @@ RESULT_FIELDS = {
     "execution_status",
     "failure_code",
     "component_sha",
+    "router_identity_sha256",
     "route_decision_id",
     "route_reference_sha256",
     "routed_model",
@@ -137,6 +145,7 @@ RESULT_FIELDS = {
     "config_sha256",
     "json_event_log_sha256",
     "upstream_response_sha256",
+    "litellm_peer_identity_sha256",
     "model_turn_count",
     "bridge_request_count",
     "upstream_request_count",
@@ -584,10 +593,11 @@ def validate_route_decision(decision: Any) -> dict[str, Any]:
 def validate_route_record(record: Any) -> dict[str, Any]:
     require(
         type(record) is dict
-        and set(record) == {"schema_version", "component_sha", "classification", "decision"},
+        and set(record) == {"schema_version", "component_sha", "router_identity_sha256", "classification", "decision"},
         "route-record-fields-invalid",
     )
     require(record["schema_version"] == "1" and record["component_sha"] == COMPONENT_SHA, "route-record-identity-invalid")
+    require(type(record["router_identity_sha256"]) is str and SHA256_HEX.fullmatch(record["router_identity_sha256"]), "route-record-identity-invalid")
     require(record["classification"] == ROUTE_ARGUMENTS, "route-classification-invalid")
     validate_route_decision(record["decision"])
     return record
@@ -606,6 +616,90 @@ def validate_router_arguments(command: Path, config: Path, component_sha: str) -
     require(command == ROUTER_COMMAND, "router-command-not-canonical")
     require(config == ROUTER_CONFIG, "router-config-not-canonical")
     require(component_sha == COMPONENT_SHA, "router-component-not-canonical")
+
+
+def _root_owned_file_bytes(path: Path, *, maximum: int, executable: bool = False) -> bytes:
+    _validate_immutable_ancestors(path)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+        metadata = os.fstat(descriptor)
+        require(
+            stat.S_ISREG(metadata.st_mode)
+            and metadata.st_uid == 0
+            and not metadata.st_mode & 0o022
+            and metadata.st_nlink == 1,
+            "root-identity-file-unsafe",
+        )
+        if executable:
+            require(bool(metadata.st_mode & 0o111), "root-identity-file-not-executable")
+        chunks: list[bytes] = []
+        remaining = maximum + 1
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        require(len(raw) <= maximum, "root-identity-file-oversized")
+        return raw
+    except SpikeError:
+        raise
+    except OSError as error:
+        raise SpikeError("root-identity-file-unavailable") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _validate_root_owned_symlink(path: Path) -> Path:
+    _validate_immutable_ancestors(path)
+    try:
+        metadata = os.lstat(path)
+        target = os.readlink(path)
+    except OSError as error:
+        raise SpikeError("root-identity-link-unavailable") from error
+    require(stat.S_ISLNK(metadata.st_mode) and metadata.st_uid == 0, "root-identity-link-unsafe")
+    resolved = (path.parent / target).resolve(strict=True) if not os.path.isabs(target) else Path(target).resolve(strict=True)
+    _validate_immutable_ancestors(resolved)
+    return resolved
+
+
+def validate_router_component_identity(
+    command: Path = ROUTER_COMMAND,
+    config: Path = ROUTER_CONFIG,
+    component_sha: str = COMPONENT_SHA,
+) -> str:
+    validate_router_arguments(command, config, component_sha)
+    manifest_path = ROUTER_ROOT / "component-manifest.json"
+    table_path = config.parent / "genus_models.csv"
+    manifest_raw = _root_owned_file_bytes(manifest_path, maximum=16_384)
+    manifest = strict_json_loads(manifest_raw)
+    require(
+        type(manifest) is dict
+        and set(manifest) == {"component_sha", "command_sha256", "config_sha256", "genus_table_sha256"}
+        and manifest["component_sha"] == component_sha,
+        "router-manifest-invalid",
+    )
+    command_raw = _root_owned_file_bytes(command, maximum=1_048_576, executable=True)
+    config_raw = _root_owned_file_bytes(config, maximum=1_048_576)
+    table_raw = _root_owned_file_bytes(table_path, maximum=1_048_576)
+    require(
+        manifest["command_sha256"] == sha256(command_raw)
+        and manifest["config_sha256"] == sha256(config_raw)
+        and manifest["genus_table_sha256"] == sha256(table_raw),
+        "router-manifest-digest-mismatch",
+    )
+    interpreter = _validate_root_owned_symlink(ROUTER_PYTHON)
+    interpreter_raw = _root_owned_file_bytes(interpreter, maximum=64 * 1024 * 1024, executable=True)
+    identity = {
+        "component_manifest_sha256": sha256(manifest_raw),
+        "component_sha": component_sha,
+        "interpreter_path": str(interpreter),
+        "interpreter_sha256": sha256(interpreter_raw),
+    }
+    return sha256(canonical_json(identity))
 
 
 def validate_pinned_route_policy(config: Path, *, expected_uid: int = 0) -> None:
@@ -645,10 +739,13 @@ def route_phase(
     decisions_path: Path = ROUTER_DECISIONS,
     router_factory: Callable[..., Any] = _router_factory,
     policy_validator: Callable[[Path], None] = validate_pinned_route_policy,
+    identity_validator: Callable[[Path, Path, str], str] = validate_router_component_identity,
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     assert_no_credential_environment(environment)
     validate_router_arguments(command, config, component_sha)
+    router_identity = identity_validator(command, config, component_sha)
+    require(type(router_identity) is str and SHA256_HEX.fullmatch(router_identity), "router-identity-invalid")
     policy_validator(config)
     route_path = state_dir / "route.json"
     atomic_create_json(
@@ -662,6 +759,7 @@ def route_phase(
     record = {
         "schema_version": "1",
         "component_sha": component_sha,
+        "router_identity_sha256": router_identity,
         "classification": dict(ROUTE_ARGUMENTS),
         "decision": decision,
     }
@@ -1295,6 +1393,7 @@ class UpstreamHTTPResponse:
     status: int
     headers: list[tuple[str, str]]
     body: bytes
+    peer_identity_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1634,6 +1733,203 @@ def validate_upstream_response(
     return ValidatedUpstream(text=text, clean_body=clean, upstream_sha256=sha256(response.body))
 
 
+def validate_litellm_peer_manifest(path: Path = LITELLM_PEER_MANIFEST) -> tuple[dict[str, Any], str]:
+    raw = _root_owned_file_bytes(path, maximum=65_536)
+    manifest = strict_json_loads(raw)
+    fields = {
+        "schema_version", "service_unit", "service_unit_sha256", "launcher", "launcher_sha256",
+        "config", "config_sha256", "python", "python_sha256", "uid", "gid", "cgroup",
+        "cmdline", "host", "port",
+    }
+    require(type(manifest) is dict and set(manifest) == fields, "litellm-peer-manifest-invalid")
+    require(
+        manifest["schema_version"] == "1"
+        and manifest["service_unit"] == str(LITELLM_SERVICE_UNIT)
+        and manifest["launcher"] == str(LITELLM_LAUNCHER)
+        and manifest["config"] == str(LITELLM_CONFIG)
+        and manifest["cgroup"] == LITELLM_CGROUP
+        and manifest["host"] == LITELLM_HOST
+        and manifest["port"] == LITELLM_PORT
+        and type(manifest["uid"]) is int
+        and type(manifest["gid"]) is int
+        and manifest["uid"] > 0
+        and manifest["gid"] > 0,
+        "litellm-peer-manifest-invalid",
+    )
+    expected_cmdline = [
+        "/opt/litellm/.venv/bin/python",
+        str(LITELLM_LAUNCHER),
+        "--config",
+        str(LITELLM_CONFIG),
+        "--host",
+        "0.0.0.0",
+        "--port",
+        str(LITELLM_PORT),
+    ]
+    require(manifest["cmdline"] == expected_cmdline, "litellm-peer-manifest-invalid")
+    python_path = Path(manifest["python"])
+    require(python_path.is_absolute(), "litellm-peer-manifest-invalid")
+    artifacts = (
+        (LITELLM_SERVICE_UNIT, "service_unit_sha256", False, 1_048_576),
+        (LITELLM_LAUNCHER, "launcher_sha256", True, 1_048_576),
+        (LITELLM_CONFIG, "config_sha256", False, 4_194_304),
+        (python_path, "python_sha256", True, 64 * 1024 * 1024),
+    )
+    for artifact, field, executable, maximum in artifacts:
+        digest = sha256(_root_owned_file_bytes(artifact, maximum=maximum, executable=executable))
+        require(manifest[field] == digest, "litellm-peer-manifest-digest-mismatch")
+    return manifest, sha256(canonical_json(manifest))
+
+
+def _proc_identity(pid: int, manifest: dict[str, Any]) -> tuple[int, int]:
+    proc = Path("/proc") / str(pid)
+    try:
+        metadata = os.stat(proc)
+        cmdline_raw = (proc / "cmdline").read_bytes()
+        cgroup_lines = (proc / "cgroup").read_text(encoding="ascii").splitlines()
+        stat_raw = (proc / "stat").read_text(encoding="ascii")
+        executable = os.readlink(proc / "exe")
+    except (OSError, UnicodeDecodeError) as error:
+        raise SpikeError("litellm-peer-process-unavailable") from error
+    try:
+        cmdline = [item.decode("utf-8", errors="strict") for item in cmdline_raw.rstrip(b"\0").split(b"\0")]
+    except UnicodeDecodeError as error:
+        raise SpikeError("litellm-peer-process-invalid") from error
+    require(
+        metadata.st_uid == manifest["uid"]
+        and metadata.st_gid == manifest["gid"]
+        and cmdline == manifest["cmdline"]
+        and f"0::{manifest['cgroup']}" in cgroup_lines
+        and Path(executable) == Path(manifest["python"]),
+        "litellm-peer-process-invalid",
+    )
+    try:
+        suffix = stat_raw.rsplit(")", 1)[1].split()
+        start_time = int(suffix[19])
+    except (IndexError, ValueError) as error:
+        raise SpikeError("litellm-peer-process-invalid") from error
+    require(start_time > 0, "litellm-peer-process-invalid")
+    return pid, start_time
+
+
+def _find_litellm_process(manifest: dict[str, Any]) -> tuple[int, int]:
+    matches: list[tuple[int, int]] = []
+    try:
+        entries = list(os.scandir("/proc"))
+    except OSError as error:
+        raise SpikeError("litellm-peer-process-unavailable") from error
+    for entry in entries:
+        if not entry.name.isascii() or not entry.name.isdecimal():
+            continue
+        try:
+            matches.append(_proc_identity(int(entry.name), manifest))
+        except SpikeError:
+            continue
+    require(len(matches) == 1, "litellm-peer-process-count-invalid")
+    return matches[0]
+
+
+def _litellm_listener_inode(expected_uid: int) -> int:
+    try:
+        lines = Path("/proc/net/tcp").read_text(encoding="ascii").splitlines()[1:]
+    except (OSError, UnicodeDecodeError) as error:
+        raise SpikeError("litellm-listener-unavailable") from error
+    port = f"{LITELLM_PORT:04X}"
+    allowed_addresses = {"00000000", "A00A16AC"}
+    matches: list[int] = []
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 10 or ":" not in fields[1]:
+            continue
+        address, observed_port = fields[1].split(":", 1)
+        try:
+            uid = int(fields[7])
+            inode = int(fields[9])
+        except ValueError:
+            continue
+        if fields[3] == "0A" and observed_port == port and address in allowed_addresses and uid == expected_uid:
+            matches.append(inode)
+    require(len(matches) == 1 and matches[0] > 0, "litellm-listener-count-invalid")
+    return matches[0]
+
+
+def _process_owns_socket(pid: int, inode: int) -> None:
+    target = f"socket:[{inode}]"
+    try:
+        observed = [os.readlink(entry.path) for entry in os.scandir(f"/proc/{pid}/fd")]
+    except OSError as error:
+        raise SpikeError("litellm-listener-owner-unavailable") from error
+    require(observed.count(target) == 1, "litellm-listener-owner-invalid")
+
+
+@dataclass
+class AuthenticatedLiteLLMTransport:
+    socket: socket.socket
+    pidfd: int
+    pid: int
+    start_time: int
+    listener_inode: int
+    manifest: dict[str, Any]
+    identity_sha256: str
+
+    def revalidate(self) -> None:
+        poller = select.poll()
+        poller.register(self.pidfd, select.POLLIN | select.POLLHUP | select.POLLERR)
+        require(not poller.poll(0), "litellm-peer-exited")
+        require(_proc_identity(self.pid, self.manifest) == (self.pid, self.start_time), "litellm-peer-process-changed")
+        require(_litellm_listener_inode(self.manifest["uid"]) == self.listener_inode, "litellm-listener-changed")
+        _process_owns_socket(self.pid, self.listener_inode)
+        require(
+            self.socket.getpeername() == (LITELLM_HOST, LITELLM_PORT)
+            and self.socket.getsockname()[0] == LITELLM_HOST,
+            "litellm-connected-peer-invalid",
+        )
+
+    def close(self) -> None:
+        try:
+            self.socket.close()
+        finally:
+            os.close(self.pidfd)
+
+
+def open_authenticated_litellm_transport() -> AuthenticatedLiteLLMTransport:
+    manifest, manifest_digest = validate_litellm_peer_manifest()
+    require(os.getuid() == manifest["uid"] and os.getgid() == manifest["gid"], "litellm-peer-identity-user-invalid")
+    pid, start_time = _find_litellm_process(manifest)
+    listener_inode = _litellm_listener_inode(manifest["uid"])
+    _process_owns_socket(pid, listener_inode)
+    try:
+        pidfd = os.pidfd_open(pid, 0)
+    except OSError as error:
+        raise SpikeError("litellm-peer-pidfd-unavailable") from error
+    connected = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        connected.settimeout(UPSTREAM_TIMEOUT_SECONDS)
+        connected.bind((LITELLM_HOST, 0))
+        connected.connect((LITELLM_HOST, LITELLM_PORT))
+        identity = sha256(canonical_json({
+            "listener_inode": listener_inode,
+            "manifest_sha256": manifest_digest,
+            "pid": pid,
+            "start_time": start_time,
+        }))
+        transport = AuthenticatedLiteLLMTransport(
+            socket=connected,
+            pidfd=pidfd,
+            pid=pid,
+            start_time=start_time,
+            listener_inode=listener_inode,
+            manifest=manifest,
+            identity_sha256=identity,
+        )
+        transport.revalidate()
+        return transport
+    except BaseException:
+        connected.close()
+        os.close(pidfd)
+        raise
+
+
 def forward_upstream(body: bytes, token: bytes) -> UpstreamHTTPResponse:
     validate_upstream_request_body(body)
     require(
@@ -1642,13 +1938,14 @@ def forward_upstream(body: bytes, token: bytes) -> UpstreamHTTPResponse:
         and all(byte >= 0x20 and byte != 0x7F for byte in token),
         "credential-invalid",
     )
-    validate_litellm_transport()
     try:
         token_text = token.decode("utf-8", errors="strict")
     except UnicodeDecodeError as error:
         raise SpikeError("credential-not-utf8") from error
     deadline = time.monotonic() + UPSTREAM_TIMEOUT_SECONDS
+    transport = open_authenticated_litellm_transport()
     connection = http.client.HTTPConnection(LITELLM_HOST, LITELLM_PORT, timeout=UPSTREAM_TIMEOUT_SECONDS)
+    connection.sock = transport.socket
     try:
         connection.putrequest("POST", LITELLM_PATH, skip_host=True, skip_accept_encoding=True)
         connection.putheader("Host", f"{LITELLM_HOST}:{LITELLM_PORT}")
@@ -1657,6 +1954,7 @@ def forward_upstream(body: bytes, token: bytes) -> UpstreamHTTPResponse:
         connection.putheader("Accept", "text/event-stream")
         connection.putheader("Content-Length", str(len(body)))
         connection.putheader("Connection", "close")
+        transport.revalidate()
         connection.endheaders(body)
         remaining = deadline - time.monotonic()
         require(remaining > 0, "upstream-timeout")
@@ -1677,7 +1975,12 @@ def forward_upstream(body: bytes, token: bytes) -> UpstreamHTTPResponse:
             total += len(chunk)
             require(total <= MAX_UPSTREAM_BODY_BYTES, "upstream-body-size-invalid")
             chunks.append(chunk)
-        return UpstreamHTTPResponse(status=response.status, headers=headers, body=b"".join(chunks))
+        return UpstreamHTTPResponse(
+            status=response.status,
+            headers=headers,
+            body=b"".join(chunks),
+            peer_identity_sha256=transport.identity_sha256,
+        )
     except SpikeError:
         raise
     except (socket.timeout, TimeoutError) as error:
@@ -1686,32 +1989,7 @@ def forward_upstream(body: bytes, token: bytes) -> UpstreamHTTPResponse:
         raise SpikeError("upstream-request-failed") from error
     finally:
         connection.close()
-
-
-def validate_litellm_transport() -> None:
-    try:
-        result = subprocess.run(
-            [str(IP_PATH), "-j", "route", "get", LITELLM_HOST],
-            env={"PATH": "/usr/sbin:/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise SpikeError("litellm-transport-check-failed") from error
-    require(result.returncode == 0, "litellm-transport-check-failed")
-    routes = strict_json_loads(result.stdout)
-    require(type(routes) is list and len(routes) == 1 and type(routes[0]) is dict, "litellm-transport-invalid")
-    route = routes[0]
-    require(
-        route.get("type") == "local"
-        and route.get("dev") == "lo"
-        and route.get("dst") == LITELLM_HOST
-        and route.get("prefsrc") == LITELLM_HOST,
-        "litellm-transport-not-loopback",
-    )
+        transport.close()
 
 
 def _recv_exact(sock: socket.socket, size: int) -> bytes:
@@ -2107,6 +2385,7 @@ def _base_result() -> dict[str, Any]:
         "execution_status": "failure",
         "failure_code": "execution-not-started",
         "component_sha": COMPONENT_SHA,
+        "router_identity_sha256": None,
         "route_decision_id": None,
         "route_reference_sha256": None,
         "routed_model": None,
@@ -2117,6 +2396,7 @@ def _base_result() -> dict[str, Any]:
         "config_sha256": None,
         "json_event_log_sha256": None,
         "upstream_response_sha256": None,
+        "litellm_peer_identity_sha256": None,
         "model_turn_count": 0,
         "bridge_request_count": 0,
         "upstream_request_count": 0,
@@ -2149,11 +2429,13 @@ def validate_result_record(result: Any) -> dict[str, Any]:
     require(result["failure_code"] is None or (type(result["failure_code"]) is str and re.fullmatch(r"[a-z0-9-]{1,80}", result["failure_code"])), "result-failure-code-invalid")
     for field in (
         "route_reference_sha256",
+        "router_identity_sha256",
         "opencode_sha256",
         "title_sha256",
         "config_sha256",
         "json_event_log_sha256",
         "upstream_response_sha256",
+        "litellm_peer_identity_sha256",
         "nonce_sha256",
         "report_outcome_acknowledgement_sha256",
     ):
@@ -2180,6 +2462,7 @@ def validate_result_record(result: Any) -> dict[str, Any]:
         require(result["failure_code"] is None, "result-success-failure-code")
         require(
             result["route_decision_id"] is not None
+            and result["router_identity_sha256"] is not None
             and result["route_reference_sha256"] is not None
             and result["routed_model"] is not None
             and result["opencode_version"] == OPENCODE_VERSION
@@ -2189,6 +2472,7 @@ def validate_result_record(result: Any) -> dict[str, Any]:
             and result["config_sha256"] is not None
             and result["json_event_log_sha256"] is not None
             and result["upstream_response_sha256"] is not None
+            and result["litellm_peer_identity_sha256"] is not None
             and result["nonce_sha256"] is not None
             and result["model_turn_count"] == 1
             and result["bridge_request_count"] == 1
@@ -2346,6 +2630,12 @@ def _sandbox_metrics(
         result["upstream_request_count"] = 1
         result["model_turn_count"] = 1
         response = upstream_sender(upstream_body, bytes(token))
+        require(
+            type(response.peer_identity_sha256) is str
+            and SHA256_HEX.fullmatch(response.peer_identity_sha256) is not None,
+            "litellm-peer-identity-missing",
+        )
+        result["litellm_peer_identity_sha256"] = response.peer_identity_sha256
         validated = validate_upstream_response(response, token=bytes(token), expected_model=model, expected_text=expected_text)
         result["parsed_upstream_completion"] = True
         result["upstream_response_sha256"] = validated.upstream_sha256
@@ -2418,7 +2708,7 @@ def _sandbox_metrics(
 
 def execute_phase(
     *,
-    state_dir: Path = STATE_DIR,
+    state_dir: Path = EXECUTE_STATE_DIR,
     environment: Mapping[str, str] | None = None,
     upstream_sender: Callable[[bytes, bytes], UpstreamHTTPResponse] = forward_upstream,
     expected_uid: int = 0,
@@ -2434,6 +2724,7 @@ def execute_phase(
         result.update(
             {
                 "route_decision_id": decision_id,
+                "router_identity_sha256": route["router_identity_sha256"],
                 "route_reference_sha256": sha256(route_raw),
                 "routed_model": decision["model"],
             }
@@ -2488,16 +2779,25 @@ def outcome_phase(
     component_sha: str = COMPONENT_SHA,
     outcomes_path: Path = ROUTER_OUTCOMES,
     router_factory: Callable[..., Any] = _router_factory,
+    identity_validator: Callable[[Path, Path, str], str] = validate_router_component_identity,
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     assert_no_credential_environment(environment)
     validate_router_arguments(command, config, component_sha)
+    router_identity = identity_validator(command, config, component_sha)
+    require(type(router_identity) is str and SHA256_HEX.fullmatch(router_identity), "router-identity-invalid")
     route, _route_raw = read_private_json(state_dir / "route.json")
     validate_route_record(route)
+    require(route["router_identity_sha256"] == router_identity, "router-identity-changed")
     result, _result_raw = read_private_json(state_dir / "result.json")
     validate_result_record(result)
     decision_id = route["decision"]["decision_id"]
-    require(result["route_decision_id"] == decision_id and result["outcome_status"] == "pending", "outcome-input-invalid")
+    require(
+        result["route_decision_id"] == decision_id
+        and result["router_identity_sha256"] == router_identity
+        and result["outcome_status"] == "pending",
+        "outcome-input-invalid",
+    )
     create_claim(state_dir / "outcome.claim", decision_id, "outcome")
     outcome = "success" if result["execution_status"] == "success" else "failure"
     notes = (
@@ -2536,6 +2836,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     subparsers.add_parser("execute")
     outcome_parser = subparsers.add_parser("outcome")
     _add_router_arguments(outcome_parser)
+    verify_router_parser = subparsers.add_parser("verify-router")
+    _add_router_arguments(verify_router_parser)
+    subparsers.add_parser("verify-peer")
     sandbox_parser = subparsers.add_parser("sandbox-relay", help=argparse.SUPPRESS)
     sandbox_parser.add_argument("--control-socket", type=Path, required=True)
     sandbox_parser.add_argument("--relay-port", type=int, required=True)
@@ -2560,6 +2863,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 config=args.genus_router_config,
                 component_sha=args.genus_router_sha,
             )
+            return 0
+        if args.mode == "verify-router":
+            print(validate_router_component_identity(
+                command=args.genus_router_command,
+                config=args.genus_router_config,
+                component_sha=args.genus_router_sha,
+            ))
+            return 0
+        if args.mode == "verify-peer":
+            _manifest, identity = validate_litellm_peer_manifest()
+            print(identity)
             return 0
         if args.mode == "sandbox-relay":
             return sandbox_relay_phase(args.control_socket, args.relay_port, args.model, args.title, args.prompt)
