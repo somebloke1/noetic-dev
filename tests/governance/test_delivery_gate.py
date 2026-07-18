@@ -54,12 +54,14 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertEqual(gate_type, "merge")
         self.assertIn("authoritative trusted runner", " ".join(errors).lower())
 
-    def test_publication_remains_blocked_by_bootstrap_freeze(self):
+    def test_publication_remains_blocked_by_missing_release_authority(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest, external_evidence=advisory_external(), phase="publication")
         self.assertFalse(passed)
         self.assertEqual(gate_type, "publication")
-        self.assertIn("existing-work freeze", "\n".join(errors))
+        joined = "\n".join(errors)
+        self.assertIn("publication blocked", joined)
+        self.assertNotIn("freeze/audit is still active", joined)
 
     def test_multigeneration_history_is_valid_except_external_authority(self):
         manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
@@ -538,7 +540,8 @@ class TestDeliveryGateCLI(unittest.TestCase):
             text=True,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("existing-work freeze", result.stderr)
+        self.assertIn("publication blocked", result.stderr)
+        self.assertNotIn("freeze/audit is still active", result.stderr)
 
     def test_cli_bootstrap_blocked_check_passes(self):
         result = subprocess.run(

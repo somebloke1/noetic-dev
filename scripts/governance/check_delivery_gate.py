@@ -1060,8 +1060,10 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
     """Return success only while bootstrap advisory mode remains honestly blocked."""
     errors: List[str] = []
     freeze = _protected_freeze()
-    if freeze.get("status") != "active" or freeze.get("blocks_publication") is not True:
-        errors.append("bootstrap publication freeze is not active")
+    if freeze.get("status") != "complete" or freeze.get("audit_completed") is not True:
+        errors.append("existing-work portfolio audit is not complete")
+    if freeze.get("blocks_publication") is not False:
+        errors.append("completed existing-work audit still claims to block publication")
     bootstrap_path = REPO_ROOT / "governance" / "bootstrap-status.json"
     if not bootstrap_path.exists():
         errors.append("governance/bootstrap-status.json missing")
@@ -1070,9 +1072,19 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
         gate = bootstrap.get("authoritative_delivery_gate", {})
         if gate.get("status") != "external_dependency_missing":
             errors.append("authoritative delivery gate dependency is not marked unresolved")
+        expected = {
+            "protected_policy_ref_established": False,
+            "trusted_runner_provenance_established": False,
+            "branch_protection_requires_governance": True,
+            "independent_agent_review_process_established": True,
+            "credential_broker_established": False,
+        }
         for field in BOOTSTRAP_AUTHORITY_FIELDS:
-            if gate.get(field) is not False:
-                errors.append(f"bootstrap dependency must remain false until verified: {field}")
+            if gate.get(field) is not expected[field]:
+                errors.append(
+                    f"bootstrap dependency state mismatch for {field}: "
+                    f"expected {expected[field]}"
+                )
     return not errors, errors
 
 

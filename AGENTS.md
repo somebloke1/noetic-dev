@@ -45,7 +45,7 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 
 ### Invariant operational constraints
 
-- **Git/GitHub.** Use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before PR merge, deliberate squash/rebase/merge policy, protected `main`, and never commit secrets or bypass governance. Full practice: `docs/development-practices.md`.
+- **Git/GitHub.** Use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before squash integration to protected `dev`, explicit owner approval before exact-SHA promotion to protected `main`, and never commit secrets or bypass governance. Full practice: `docs/development-practices.md`.
 - **Implementation:QA pairing.** For every implementation agent/pass, dispatch exactly one adversarial QA agent/pass; do not weaken this ratio through later mutation or convenience.
 - **Non-interactive sudo.** If elevation is genuinely required, first check `USER_PROVIDED_PASSWORD`; when present, pass it only through non-interactive stdin without printing, logging, or persisting it. If absent or rejected, record the blocker. Never ask for the password or trigger an interactive/GUI credential prompt.
 - **Superior re-instantiation.** Abstract the APM's deterministic invariants, contracts, tests, and lessons, then express a cleaner portable controller. Do not blindly lift the donor implementation.
@@ -74,7 +74,7 @@ A synthesis recommendation is acceptable only if it:
 ## 7. Results (current)
 
 - The system is named **noetic-dev**; this repository is its thin composition root.
-- `SYNTHESIS.md` — validated architecture: P1–P4 form; Telos teleological governance; a superior re-instantiation of APM lessons as deterministic executive governance; cognitive programs; event-driven observability/control; genus-router over LiteLLM/direct local inference.
+- `SYNTHESIS.md` — validated architecture: P1–P4 form; Telos teleological governance; a superior re-instantiation of APM lessons as deterministic executive governance; cognitive programs; event-driven observability/control; genus-router selection over mandatory LiteLLM access.
 - `docs/cognitive-backbone.md` — canonical P1–P4 notation reference.
 - `docs/development-practices.md` — git, worktree, issue, PR, CI, QA, and merge discipline.
 - `KNOWNS.md`, `DECISIONS.md`, `OPEN_QUESTIONS.md` — verified evidence, adjudicated judgments, and live uncertainty.

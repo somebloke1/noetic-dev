@@ -57,17 +57,17 @@ MIGRATION (scheme of recurrence): keep the stable base (telos + SMC + local infe
 <!-- governance-crud:end id=dec-20260711-0002 -->
 
 <!-- governance-crud:start id=dec-20260711-0003 -->
-## dec-20260711-0003: Canonical notation recommendation: P1-P4 + imperative gloss + optional ECN modal markers
+## dec-20260711-0003: Canonical notation proposal: P1-P4 + imperative gloss + optional ECN modal markers
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
-- Tags: notation,canonical,form,p1-p4,ecn,recommendation,awaiting-ratification
+- Updated: 2026-07-18
+- Tags: notation,canonical,form,p1-p4,ecn,recommendation,superseded
 - Confidence: 0.8
 
-Recommendation (confidence 0.8; awaits user P4 ratification). Drafted as docs/cognitive-backbone.md.
+Historical recommendation (confidence 0.8 at proposal time). Drafted as docs/cognitive-backbone.md and later ratified by dec-20260718-0002.
 
 RECOMMEND P1-P4 as the canonical, machine/structure-facing notation for the cognitional form, because: (1) noetic-pi already uses p1-p4 functional roles and cognitive-disciplines is built as a 'P1-P4 cycle' - zero migration for the largest surfaces; (2) language-neutral + identifier-safe (ECN letters A/I/R/D are English-specific and 'R' collides with the recursion operator R(...)); (3) numeric order encodes the presuppositional structure and composes (P2->P3); (4) names the operation not an English word, fitting a universal 'periodic table'.
 
@@ -77,7 +77,7 @@ FOLD ECN in as OPTIONAL modality annotation only: keep its genuinely-additive op
 
 The mapping is grounded in Lonergan Insight (the-notion-of-judgment: P2 = questions for intelligence What/Why/How-often; P3 = question for reflection 'Is it so?' answered yes/no, a personal commitment) and on_emergent_fidelity (imperatives + R(P1->P2->P3->P4->R), P4 governs recursively - which is why Telos/P4 is the governing spine).
 
-STATUS NOTE: this is a PROPOSED recommendation awaiting the user's irreducible P4 ratification - ratify P1-P4-canonical, or flip the primary surface to ECN letters / verbs; the crosswalk is unchanged either way.
+STATUS NOTE: superseded by the owner's ratification in dec-20260718-0002. The proposal is retained as the decision history.
 <!-- governance-crud:end id=dec-20260711-0003 -->
 
 <!-- governance-crud:start id=dec-20260711-0004 -->
@@ -108,14 +108,14 @@ NEW BUILD IMPLICATION: add a structured cognitional-event schema (the observabil
 <!-- governance-crud:end id=dec-20260711-0004 -->
 
 <!-- governance-crud:start id=dec-20260711-0005 -->
-## dec-20260711-0005: Consolidate model ACCESS to LiteLLM; keep model SELECTION in genus-router with endpoint pluralism preserved
+## dec-20260711-0005: Model-access proposal with endpoint pluralism preserved
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
-- Tags: litellm,genus-router,model-access,model-selection,substrate,recommendation
+- Updated: 2026-07-18
+- Tags: litellm,genus-router,model-access,model-selection,substrate,recommendation,superseded
 - Confidence: 0.82
 
 User question (2026-07-11): whether to consolidate model access to LiteLLM (substantial work already invested; single body to maintain). Verified from genus-router/config/router.yaml + genus_models.csv. Confidence 0.82.
@@ -132,6 +132,8 @@ RECOMMENDATION: YES - ratify LiteLLM as the primary model-ACCESS/normalization b
 NUANCE - local inference + non-chat interfaces: embeddings (snowflake-arctic-embed2) and ASR (Qwen3-ASR) are latency/throughput-sensitive and may be better DIRECT than proxied through LiteLLM. Recommend: route chat/completion through LiteLLM by default; make embeddings/ASR a measured config choice via the same endpoint abstraction (direct vs proxied), not a hard commitment. LiteLLM being up must not be a hard precondition for local embedding/ASR unless you accept that coupling.
 
 NET: consolidate ACCESS to LiteLLM (single body, already done), keep SELECTION in genus-router, and keep the escape hatch open. This is consistent with genus-router's design and adds one maintenance surface, not a new architectural boundary.
+
+STATUS NOTE: superseded by dec-20260718-0002, which makes LiteLLM mandatory for every noetic-dev model invocation, including embeddings and ASR.
 <!-- governance-crud:end id=dec-20260711-0005 -->
 
 <!-- governance-crud:start id=dec-20260711-0006 -->
@@ -273,3 +275,24 @@ Authority remains separated: AGENTS.md and accepted decisions govern invariants 
 
 GitHub issue #32 remains the portfolio coordination issue. Issue #5 and its roadmap branch are superseded as execution-order authority but retained as donor evidence. This decision does not silently resolve the dev/main branch-flow conflict, active existing-work freeze, notation ratification, model-access policy conflict, runtime selection, effect authority, licensing, or release trust root; ROADMAP stage D2 and later gates expose those unresolved conditions explicitly.
 <!-- governance-crud:end id=dec-20260718-0001 -->
+
+<!-- governance-crud:start id=dec-20260718-0002 -->
+## dec-20260718-0002: D2 authority, delivery, notation, model-access, and freeze convergence
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-18
+- Updated: 2026-07-18
+- Tags: D2,authority,dev,main,freeze,p1-p4,litellm,P4
+- Source: Repository-owner P4 adjudication on 2026-07-18; live GitHub snapshot at 2026-07-18T23:20:48Z; governance/audits/20260718-d2-portfolio/inventory.json
+- Confidence: high
+
+Adopt protected `dev` as the autonomous feature-integration branch. Feature PRs target current `dev`, pass required checks, receive exactly one independent adversarial QA pass per implementation/remediation generation, receive independent review, and integrate by squash. Protected `main` is the release branch. Promotion must use an exact validated dev SHA and requires explicit repository-owner approval before a bounded main-promotion PR may proceed through the stronger release gate.
+
+Ratify `P1`-`P4` as canonical notation with the fixed human gloss `P1 be attentive`, `P2 be intelligent`, `P3 be reasonable`, and `P4 be responsible`. ECN `^!` and `^?` remain optional modality markers; ECN letters and Lonergan verbs remain crosswalk descriptions rather than rival primary notations.
+
+Require every noetic-dev model invocation to access models through LiteLLM, including chat/completion, embeddings, and ASR. Genus-router retains model selection. Direct provider, llama.cpp, Ollama, embedding, or ASR access by noetic-dev callers is not an architectural escape hatch; infrastructure beneath LiteLLM may use provider-specific transports without exposing them to callers. This supersedes dec-20260711-0005.
+
+Accept the current D2 portfolio audit as the successor to the stale ten-PR freeze inventory and authorize exactly one bounded D2 governance-reconciliation PR to protected `dev`. Completing that audit does not authorize publication or main promotion. Issue #32 coordinates the portfolio; ROADMAP.md governs aggregate order and gates; issue labels govern lifecycle; Git, PR, checks, QA, and review records govern implementation evidence; goalchains carry continuity but do not override those tracked authorities.
+<!-- governance-crud:end id=dec-20260718-0002 -->

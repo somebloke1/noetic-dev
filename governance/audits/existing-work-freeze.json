@@ -1,12 +1,15 @@
 {
   "$schema": "../schemas/existing-work-freeze.schema.json",
   "schema_version": "1",
-  "status": "active",
-  "reason": "Bootstrap governance correction: ten pre-existing PRs/branches must be audited before publication or new PR opening is claimed.",
-  "known_open_pr_count": 10,
-  "blocks_publication": true,
-  "blocks_new_pr_opening_claims": true,
+  "status": "complete",
+  "reason": "The live D2 portfolio audit represents all 12 open PRs, 26 branches, and 20 open issues; one bounded D2 reconciliation PR was explicitly authorized.",
+  "known_open_pr_count": 12,
+  "blocks_publication": false,
+  "blocks_new_pr_opening_claims": false,
   "audit_required": true,
-  "audit_completed": false,
-  "publication_gate": "blocked"
+  "audit_completed": true,
+  "audit_artifact": "governance/audits/20260718-d2-portfolio/inventory.json",
+  "captured_at": "2026-07-18T23:20:48Z",
+  "review_gate": "one independent adversarial QA pass against the exact D2 candidate SHA",
+  "publication_gate": "not_blocked_by_existing_work_audit"
 }

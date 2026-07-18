@@ -4,7 +4,7 @@
 **Exact checkpoint:** `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` on 2026-07-18
 **Portfolio authority:** [GitHub issue #32](https://github.com/somebloke1/noetic-dev/issues/32)
 **Machine index:** [`governance/roadmap.json`](governance/roadmap.json)
-**Policy snapshot:** freeze=active; publication=blocked; delivery_gate=external_dependency_missing
+**Policy snapshot:** freeze=complete; publication=blocked; delivery_gate=external_dependency_missing
 
 This roadmap turns the architecture in [`SYNTHESIS.md`](SYNTHESIS.md) into a
 dependency-ordered delivery program with explicit exit gates. It supersedes issue
@@ -42,13 +42,13 @@ unknown or cyclic dependencies, checkpointed stages without evidence, a `next`
 stage whose prerequisites are not checkpointed, or drift between the JSON stage
 index and the headings below.
 
-Schema version 1 closes the stage, parallel-track, conflict, and checkpoint-evidence
+Schema version 2 closes the stage, parallel-track, unresolved-conflict, and checkpoint-evidence
 catalogs. Adding, removing, or reassigning one of those identities requires an
 explicit schema/validator successor and migration tests, not an in-place mutation.
 The machine index also pins the SHA-256 of this entire document, so scope,
 non-claims, and explanatory prose cannot drift outside the paired contract.
-While the recorded freeze and publication blockers remain active, schema version 1
-also pins the exact D2 and D9 policy gates rather than searching for keywords.
+The schema also pins the exact D2 and D9 policy gates rather than searching for
+keywords.
 
 ## 2. Status and completion semantics
 
@@ -66,10 +66,10 @@ per implementation generation, and any stage-specific evidence. A follow-up
 checkpoint change records the merged evidence; a candidate must not predict its
 own eventual squash or rebase SHA.
 
-The repository currently contains contradictory `dev` integration and `main`
-delivery rules. Until D2 resolves them, `checkpointed` means only that the
-bounded artifact is present at the exact `dev` baseline. It is not a publication
-or release claim.
+Protected `dev` is the feature-integration branch. Promotion of an exact validated
+`dev` SHA to protected `main` requires explicit repository-owner approval and the
+stronger release gate. `checkpointed` remains an integration claim, never a
+publication or release claim.
 
 ## 3. Exact checkpoint and non-claims
 
@@ -115,8 +115,8 @@ listed later are parallel but cannot silently satisfy a stage gate.
   `issue:https://github.com/somebloke1/noetic-dev/issues/32`.
 - **Bounded claim:** the thin composition root, governance vocabulary, validation,
   tests, and issue/PR practices exist at the exact baseline.
-- **Non-claim:** the active existing-work freeze and bootstrap publication record
-  are not thereby resolved.
+- **Non-claim:** the completed existing-work audit does not resolve the distinct
+  release trust root or establish publication authority.
 - **Exit gate:** Repository and governance artifacts are present at the exact
   baseline without claiming publication readiness.
 
@@ -153,14 +153,20 @@ listed later are parallel but cannot silently satisfy a stage gate.
 ### D2 - Governance and source convergence [next]
 
 - **Dependencies:** D0, D1a, D1b.
-- **Evidence refs:** none.
-- **Scope:** resolve rather than paper over current authority drift:
-  - autonomous `dev` integration versus the `main`-based delivery state machine;
-  - the active existing-work freeze and stale bootstrap-status record;
-  - P1-P4 decision metadata versus the still-unratified notation document;
-  - endpoint pluralism in decision 0005 versus mandatory LiteLLM machine policy;
-  - stale phase, routing, migration, and abeyant-plan statements;
-  - issue #32, this roadmap, issue labels, and goalchain precedence.
+- **Evidence refs:** `artifact:governance/audits/20260718-d2-portfolio/inventory.json`,
+  `issue:https://github.com/somebloke1/noetic-dev/issues/32`.
+- **Scope:** integrate the accepted convergence decisions and their machine/prose
+  projections:
+  - protected `dev` feature integration followed by owner-authorized promotion of
+    an exact validated dev SHA to protected `main`;
+  - completed 12-PR/26-branch/20-issue portfolio audit while publication remains
+    blocked by the distinct release trust root;
+  - ratified P1-P4 canonical notation with fixed human gloss and optional ECN
+    modality markers;
+  - mandatory LiteLLM access for every noetic-dev model invocation, including
+    embeddings and ASR, with genus-router retaining model selection;
+  - issue #32 as portfolio coordination, this roadmap as aggregate order, labels as
+    lifecycle state, and Git/PR/check/QA records as implementation evidence.
 - **Exit gate:** Accepted authority and branch-flow decisions, reviewed freeze
   disposition, consistent machine and prose policy, synchronized issue 32 and
   roadmap, green validation, and paired independent QA.
@@ -299,10 +305,6 @@ listed later are parallel but cannot silently satisfy a stage gate.
 
 The machine index records which stages these conflicts block:
 
-- **C1 - dev integration and main delivery policy disagree:** resolve in D2; blocks D3a, D9.
-- **C2 - active freeze and bootstrap records lag portfolio state:** resolve in D2; blocks D3a, D9.
-- **C3 - P1-P4 operational use lacks formal ratification:** resolve in D2; blocks D3a.
-- **C4 - endpoint pluralism conflicts with mandatory LiteLLM policy:** resolve in D2; blocks D3a, D4c.
 - **C5 - first production reference runtime is not selected:** resolve in D3a; blocks D4c, D5.
 - **C6 - principal effect persistence and event privacy semantics are undecided:** resolve in D3a; blocks D3b, D5, D7.
 - **C7 - privileged observability controls lack an authority model:** resolve in D3a; blocks none.

@@ -225,3 +225,18 @@ System systemd units noetic-dev-agent-review-broker.service and noetic-dev-actio
 
 GitHub Actions App integration 15368 identifies all repository Actions workflows, so integration-bound context names do not distinguish the protected workflow from a candidate-created same-name workflow. Native required-workflow rules are organization/enterprise controls and are unavailable for this user-owned public repository; public personal repositories also cannot use push file-path restrictions. Strong available alternatives are transfer to a Team organization or a separately credentialed GitHub App hosted outside candidate Actions. Sources: official GitHub ruleset/required-workflow/GitHub App docs and live repository API behavior.
 <!-- governance-crud:end id=k-20260717-0004 -->
+
+<!-- governance-crud:start id=k-20260718-0001 -->
+## k-20260718-0001: Live D2 portfolio and branch-protection snapshot
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-18
+- Updated: 2026-07-18
+- Tags: D2,github,portfolio,branch-protection,P1
+- Source: GitHub REST/GraphQL reads and local Git inspection captured at 2026-07-18T23:20:48Z
+- Confidence: high
+
+The repository default branch is `dev`. `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` is 29 commits ahead of `main@29196a67349537d6f8a8a711df11b86da0430857`. GitHub reports 12 open pull requests, 26 branch refs, and 20 open issues. `main` has classic protection with strict `validate`, one approval, stale-review dismissal, admin enforcement, resolved conversations, linear history, and no force-push/deletion. Active ruleset 19122088 protects `dev` with squash-only PRs, resolved threads, no deletion/non-fast-forward, strict updates, and five required GitHub Actions checks. The detailed inventory and dispositions are stored in `governance/audits/20260718-d2-portfolio/inventory.json`.
+<!-- governance-crud:end id=k-20260718-0001 -->

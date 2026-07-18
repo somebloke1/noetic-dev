@@ -17,7 +17,7 @@
   ],
   "properties": {
     "$schema": {"type": "string", "const": "./schemas/roadmap.schema.json"},
-    "schema_version": {"type": "string", "const": "1"},
+    "schema_version": {"type": "string", "const": "2"},
     "document_path": {"type": "string", "const": "ROADMAP.md"},
     "document_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "authority_issue": {"type": "integer", "const": 32},
@@ -60,8 +60,8 @@
     },
     "unresolved_conflicts": {
       "type": "array",
-      "minItems": 8,
-      "maxItems": 8,
+      "minItems": 4,
+      "maxItems": 4,
       "items": {"$ref": "#/definitions/conflict"}
     }
   },
@@ -175,7 +175,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "enum": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]
+          "enum": ["C5", "C6", "C7", "C8"]
         },
         "title": {"type": "string", "minLength": 1},
         "resolution_stage": {

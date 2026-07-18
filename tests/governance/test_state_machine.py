@@ -38,6 +38,11 @@ class TestStateMachine(unittest.TestCase):
             "REMEDIATING",
             "QA_PASSED",
             "INDEPENDENT_REVIEW_PENDING",
+            "READY_TO_INTEGRATE_DEV",
+            "MERGED_TO_DEV",
+            "POST_DEV_VALIDATING",
+            "MAIN_PROMOTION_PENDING",
+            "MAIN_PROMOTION_AUTHORIZED",
             "READY_TO_MERGE",
             "MERGED_TO_MAIN",
             "POST_MERGE_VALIDATING",
@@ -92,7 +97,7 @@ class TestStateMachine(unittest.TestCase):
     def test_role_authorities_are_complete(self):
         required_roles = [
             "reviewer", "orchestrator", "planner", "implementer",
-            "remediator", "validator", "qa", "publisher"
+            "remediator", "validator", "qa", "publisher", "owner"
         ]
         for role in required_roles:
             with self.subTest(role=role):
@@ -129,6 +134,13 @@ class TestStateMachine(unittest.TestCase):
         reviewer = self.sm["role_authorities"]["reviewer"]
         self.assertTrue(reviewer["can_approve"])
 
+    def test_only_owner_role_can_authorize_promotion_without_other_authority(self):
+        owner = self.sm["role_authorities"]["owner"]
+        self.assertTrue(owner["can_approve"])
+        self.assertFalse(owner["can_implement"])
+        self.assertFalse(owner["can_qa"])
+        self.assertFalse(owner["can_publish"])
+
     def test_blocked_is_terminal_by_default(self):
         """BLOCKED should not have any outgoing transitions except to itself."""
         blocked_transitions = [
@@ -140,8 +152,20 @@ class TestStateMachine(unittest.TestCase):
 
     def test_complete_implementation_path(self):
         """The full happy path should have valid transitions."""
-        happy_path = [
+        dev_path = [
             "IMPLEMENTING",
+            "CANDIDATE_PINNED",
+            "QA_RUNNING",
+            "QA_PASSED",
+            "INDEPENDENT_REVIEW_PENDING",
+            "READY_TO_INTEGRATE_DEV",
+            "MERGED_TO_DEV",
+            "POST_DEV_VALIDATING",
+            "MAIN_PROMOTION_PENDING",
+            "MAIN_PROMOTION_AUTHORIZED",
+            "CANDIDATE_PINNED",
+        ]
+        promotion_path = [
             "CANDIDATE_PINNED",
             "QA_RUNNING",
             "QA_PASSED",
@@ -152,18 +176,16 @@ class TestStateMachine(unittest.TestCase):
             "PUBLICATION_READY",
             "PUBLISHED",
         ]
-        transitions_from = {t["from"]: t for t in self.sm["transitions"] if t["from"] != "*"}
-        for i in range(len(happy_path) - 1):
-            current = happy_path[i]
-            next_state = happy_path[i + 1]
-            has_transition = any(
-                t["from"] == current and t["to"] == next_state
-                for t in self.sm["transitions"]
-            )
-            self.assertTrue(
-                has_transition,
-                f"No transition from {current} to {next_state}"
-            )
+        for path in (dev_path, promotion_path):
+            for current, next_state in zip(path, path[1:]):
+                has_transition = any(
+                    t["from"] == current and t["to"] == next_state
+                    for t in self.sm["transitions"]
+                )
+                self.assertTrue(
+                    has_transition,
+                    f"No transition from {current} to {next_state}",
+                )
 
 
 if __name__ == "__main__":

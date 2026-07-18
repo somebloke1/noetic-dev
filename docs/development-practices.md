@@ -1,6 +1,6 @@
 # noetic-dev development practices
 
-**Immutable summary:** use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before PR merge, deliberate squash/rebase/merge policy, protected `main`, and never commit secrets or bypass governance.
+**Immutable summary:** use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before squash integration to protected `dev`, explicit owner approval before promotion to protected `main`, and never commit secrets or bypass governance.
 
 ## 1. Sources of truth
 
@@ -12,7 +12,10 @@
 
 ## 2. Branches and worktrees
 
-- `main` is protected and kept releasable. Do not develop directly on it after bootstrap.
+- `dev` is the protected integration branch. Feature PRs target current `dev` and
+  merge by squash only after required checks, paired QA, and review pass.
+- `main` is the protected release branch. Do not develop directly on it; promote
+  only an exact validated `dev` SHA after explicit repository-owner approval.
 - Branch names: `issue-<number>-<short-slug>`; administrative branches may use `chore/<slug>`.
 - Create feature worktrees as siblings, never nested in this repository:
 

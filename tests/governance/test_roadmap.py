@@ -157,7 +157,7 @@ class TestRoadmap(unittest.TestCase):
         moved = mutated["stages"][2]["evidence"].pop(1)
         mutated["stages"][0]["evidence"].append(moved)
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "schema version 1 evidence catalog changed")
+        self.assert_has_error(errors, "schema version 2 evidence catalog changed")
 
     def test_next_stage_requires_checkpointed_dependencies(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -165,14 +165,13 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "next stage depends on non-checkpointed D1a")
 
-    def test_next_stage_cannot_skip_earlier_or_conflict_blocked_stage(self) -> None:
+    def test_next_stage_cannot_skip_earlier_stage(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["stages"][3]["status"] = "planned"
         mutated["stages"][4]["status"] = "next"
         mutated["stages"][4]["depends_on"] = ["D0", "D1a", "D1b"]
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "D3a: earlier stage D2 is not checkpointed")
-        self.assert_has_error(errors, "D3a: next stage is blocked")
 
     def test_exactly_one_next_stage_is_required(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -202,7 +201,7 @@ class TestRoadmap(unittest.TestCase):
 
     def test_conflict_blocks_must_be_unique(self) -> None:
         mutated = copy.deepcopy(self.state)
-        mutated["unresolved_conflicts"][0]["blocks"].append("D3a")
+        mutated["unresolved_conflicts"][0]["blocks"].append("D4c")
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "blocked stages must be unique")
 
@@ -210,7 +209,7 @@ class TestRoadmap(unittest.TestCase):
         mutated = copy.deepcopy(self.state)
         mutated["unresolved_conflicts"][0]["resolution_stage"] = "D9"
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "resolution stage D9 follows blocked D3a")
+        self.assert_has_error(errors, "resolution stage D9 follows blocked D4c")
 
     def test_unresolved_conflict_cannot_resolve_in_checkpointed_stage(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -278,15 +277,13 @@ class TestRoadmap(unittest.TestCase):
 
     def test_policy_snapshot_must_match_repository_files(self) -> None:
         mutated = copy.deepcopy(self.state)
-        mutated["policy_snapshot"]["existing_work_freeze"] = "complete"
+        mutated["policy_snapshot"]["existing_work_freeze"] = "active"
         errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
         self.assert_has_error(errors, "policy snapshot does not match repository")
 
-    def test_active_freeze_must_continue_to_block_d9(self) -> None:
-        mutated = copy.deepcopy(self.state)
-        mutated["unresolved_conflicts"][1]["blocks"].remove("D9")
-        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
-        self.assert_has_error(errors, "active freeze must be resolved in D2")
+    def test_resolved_d2_conflicts_are_absent(self) -> None:
+        conflict_ids = {item["id"] for item in self.state["unresolved_conflicts"]}
+        self.assertTrue({"C1", "C2", "C3", "C4"}.isdisjoint(conflict_ids))
 
     def test_d2_gate_cannot_negate_freeze_requirements(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -294,7 +291,7 @@ class TestRoadmap(unittest.TestCase):
             " Reviewed freeze disposition is not required."
         )
         errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
-        self.assert_has_error(errors, "exact schema-v1 D2 exit gate")
+        self.assert_has_error(errors, "exact schema-v2 D2 exit gate")
 
     def test_d9_gate_cannot_negate_trust_requirements(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -303,7 +300,7 @@ class TestRoadmap(unittest.TestCase):
             "distinct protected trust root are not required."
         )
         errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
-        self.assert_has_error(errors, "exact schema-v1 D9 exit gate")
+        self.assert_has_error(errors, "exact schema-v2 D9 exit gate")
 
     def test_policy_files_cannot_be_symlinks(self) -> None:
         policy_paths = (
@@ -388,7 +385,7 @@ class TestRoadmap(unittest.TestCase):
 
     def test_markdown_conflict_drift_fails(self) -> None:
         mutated = self.markdown.replace(
-            "resolve in D2; blocks D3a, D9.",
+            "resolve in D3a; blocks D4c, D5.",
             "resolve in D9; blocks D0.",
             1,
         )
@@ -399,21 +396,21 @@ class TestRoadmap(unittest.TestCase):
         mutated = copy.deepcopy(self.state)
         mutated["unresolved_conflicts"] = []
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "array has fewer than 8 items")
+        self.assert_has_error(errors, "array has fewer than 4 items")
 
-    def test_version_one_stage_catalog_is_closed(self) -> None:
+    def test_version_two_stage_catalog_is_closed(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["stages"][-1]["id"] = "D99"
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "expected one of")
 
-    def test_version_one_track_catalog_is_closed(self) -> None:
+    def test_version_two_track_catalog_is_closed(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["parallel_tracks"][-1]["id"] = "T99"
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "expected one of")
 
-    def test_version_one_conflict_catalog_is_closed(self) -> None:
+    def test_version_two_conflict_catalog_is_closed(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["unresolved_conflicts"][-1]["id"] = "C99"
         errors = validate_roadmap(mutated, self.schema, self.markdown)

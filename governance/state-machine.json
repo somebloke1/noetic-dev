@@ -59,8 +59,28 @@
       "description": "Candidate ready for independent high-reasoning Fable or Sol review.",
       "authorized_roles": ["reviewer"]
     },
+    "READY_TO_INTEGRATE_DEV": {
+      "description": "Feature candidate approved for squash integration into protected dev.",
+      "authorized_roles": ["publisher"]
+    },
+    "MERGED_TO_DEV": {
+      "description": "Feature candidate integrated into protected dev; post-integration validation pending.",
+      "authorized_roles": ["publisher"]
+    },
+    "POST_DEV_VALIDATING": {
+      "description": "Validation running against the exact protected dev integration SHA.",
+      "authorized_roles": ["validator"]
+    },
+    "MAIN_PROMOTION_PENDING": {
+      "description": "Validated dev work is eligible to request, but does not yet have, owner authorization for promotion to main.",
+      "authorized_roles": ["owner"]
+    },
+    "MAIN_PROMOTION_AUTHORIZED": {
+      "description": "The repository owner authorized a bounded promotion candidate from exact dev to main.",
+      "authorized_roles": ["owner", "orchestrator"]
+    },
     "READY_TO_MERGE": {
-      "description": "Independent high-reasoning reviewer approved; candidate ready to merge to main.",
+      "description": "The separately validated and reviewed promotion candidate is ready to merge to main.",
       "authorized_roles": ["publisher"]
     },
     "MERGED_TO_MAIN": {
@@ -112,8 +132,14 @@
     {"from": "QA_FAILED", "to": "REMEDIATING", "authorized_roles": ["orchestrator"], "conditions": ["remediation authorized"]},
     {"from": "REMEDIATING", "to": "CANDIDATE_PINNED", "authorized_roles": ["remediator"], "conditions": ["new implementation_pass_id", "new candidate SHA", "new qa_for_pass_id"]},
     {"from": "QA_PASSED", "to": "INDEPENDENT_REVIEW_PENDING", "authorized_roles": ["qa"], "conditions": ["all validations passed", "QA passed"]},
-    {"from": "INDEPENDENT_REVIEW_PENDING", "to": "READY_TO_MERGE", "authorized_roles": ["reviewer"], "conditions": ["independent Fable or Sol approval after candidate SHA", "high reasoning used", "not approved by PR author, implementer, or QA identity"]},
+    {"from": "INDEPENDENT_REVIEW_PENDING", "to": "READY_TO_INTEGRATE_DEV", "authorized_roles": ["reviewer"], "conditions": ["PR base is protected dev", "independent Fable or Sol approval after candidate SHA", "high reasoning used", "not approved by PR author, implementer, or QA identity"]},
+    {"from": "INDEPENDENT_REVIEW_PENDING", "to": "READY_TO_MERGE", "authorized_roles": ["reviewer"], "conditions": ["PR base is protected main", "owner promotion authorization exists for exact dev SHA", "independent Fable or Sol approval after candidate SHA", "high reasoning used", "not approved by PR author, implementer, or QA identity"]},
     {"from": "INDEPENDENT_REVIEW_PENDING", "to": "BLOCKED", "authorized_roles": ["reviewer"], "conditions": ["independent reviewer rejects candidate"]},
+    {"from": "READY_TO_INTEGRATE_DEV", "to": "MERGED_TO_DEV", "authorized_roles": ["publisher"], "conditions": ["squash merge to protected dev", "dev integration SHA recorded"]},
+    {"from": "MERGED_TO_DEV", "to": "POST_DEV_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-integration validation running against exact dev SHA"]},
+    {"from": "POST_DEV_VALIDATING", "to": "MAIN_PROMOTION_PENDING", "authorized_roles": ["validator"], "conditions": ["post-integration validations and tests pass", "exact dev SHA recorded"]},
+    {"from": "MAIN_PROMOTION_PENDING", "to": "MAIN_PROMOTION_AUTHORIZED", "authorized_roles": ["owner"], "conditions": ["repository owner explicitly approves promotion of exact dev SHA"]},
+    {"from": "MAIN_PROMOTION_AUTHORIZED", "to": "CANDIDATE_PINNED", "authorized_roles": ["orchestrator"], "conditions": ["promotion PR targets protected main", "promotion head equals authorized dev SHA", "new implementation_pass_id and qa_for_pass_id allocated"]},
     {"from": "READY_TO_MERGE", "to": "MERGED_TO_MAIN", "authorized_roles": ["publisher"], "conditions": ["squash/rebase merge to main", "merge_result_sha recorded"]},
     {"from": "MERGED_TO_MAIN", "to": "POST_MERGE_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-merge validation running against main SHA"]},
     {"from": "POST_MERGE_VALIDATING", "to": "PUBLICATION_READY", "authorized_roles": ["validator"], "conditions": ["post-merge validations and tests pass"]},
@@ -179,6 +205,13 @@
       "can_implement": false,
       "can_qa": false,
       "can_publish": true
+    },
+    "owner": {
+      "description": "Human repository owner; exclusively authorizes exact-SHA promotion from protected dev to protected main.",
+      "can_approve": true,
+      "can_implement": false,
+      "can_qa": false,
+      "can_publish": false
     }
   }
 }

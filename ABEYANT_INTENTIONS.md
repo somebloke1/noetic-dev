@@ -1,21 +1,21 @@
 # Abeyant Intentions
 
 <!-- governance-crud:start id=ai-20260711-0001 -->
-## ai-20260711-0001: Gated forward build plan (resume after user decisions)
+## ai-20260711-0001: Superseded gated forward build plan
 
 - Ledger: abeyant-intentions
-- Status: parked
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-07-18
 - Tags: forward-plan,gated,build,delegation-dispatcher,harvest
 - Confidence: 0.8
 
-Deferred until the user answers the two gated decisions. This is the P1-P3-ready forward plan; only the P4 authorizations are missing.
+Superseded by `ROADMAP.md` and dec-20260718-0002. The historical plan remains below as provenance; it is not current execution authority.
 
 GATING DECISIONS (from user):
 1. oq-20260711-0001 - client scope: which coding-assistant surfaces are first-class? ('any MCP client' confirms telos-spine/harvest-not-host; 'Pi only' licenses using noetic-pi mechanisms in place).
-2. dec-20260711-0003 - ratify canonical notation (P1-P4 default) or flip the primary surface.
+2. dec-20260711-0003 - resolved by ratification of canonical P1-P4 in dec-20260718-0002.
 
 FORWARD BUILD WORK (unlocks once decided; ordered per SYNTHESIS.md migration path):
 - Build the delegation dispatcher in telos: the enactment seam turning a 'delegated-pending' sub-goal into a dispatched unit of work against an MCP organ. Telos already has delegations/delegation_events schema + guard; the dispatcher is the single genuinely-new component (k-20260711-0004). This is also the user's stated 'make telos multi-agent' intent.

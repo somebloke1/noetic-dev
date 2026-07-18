@@ -6,7 +6,10 @@ Define the machine-readable delivery vocabulary, state/authority transitions, mo
 
 ## Scope
 
-All changes merged to `main` and published must pass through the governance pipeline. This document is the authoritative specification; the JSON policy files under `governance/` are the machine-readable enforcement.
+All changes first integrate through protected `dev`. Promotion from exact `dev` to
+protected `main` requires explicit repository-owner authorization and the stronger
+release governance pipeline. This document is the authoritative specification;
+the JSON policy files under `governance/` are the machine-readable enforcement.
 
 ## Vocabulary
 
@@ -27,7 +30,8 @@ All changes merged to `main` and published must pass through the governance pipe
 The delivery state machine is defined in `governance/state-machine.json`. Key states:
 
 - All work starts as `UNGOVERNED_EXISTING` and must be audited.
-- A candidate moves through `IMPLEMENTING → CANDIDATE_PINNED → VALIDATING + QA_RUNNING → QA_PASSED → INDEPENDENT_REVIEW_PENDING → READY_TO_MERGE → MERGED_TO_MAIN → PUBLICATION_READY → PUBLISHED`.
+- A feature candidate moves through `IMPLEMENTING → CANDIDATE_PINNED → VALIDATING + QA_RUNNING → QA_PASSED → INDEPENDENT_REVIEW_PENDING → READY_TO_INTEGRATE_DEV → MERGED_TO_DEV → POST_DEV_VALIDATING`.
+- Validated `dev` work then waits at `MAIN_PROMOTION_PENDING`. Only the repository owner may move an exact dev SHA to `MAIN_PROMOTION_AUTHORIZED`; the promotion candidate repeats pinning, validation, paired QA, and independent review before `READY_TO_MERGE → MERGED_TO_MAIN → PUBLICATION_READY → PUBLISHED`.
 - `BLOCKED`, `ABORTED`, and `ROLLED_BACK` are terminal or holding states.
 
 ## Authority model
@@ -41,6 +45,7 @@ The delivery state machine is defined in `governance/state-machine.json`. Key st
 | QA | Exactly one adversarial pass per generation. Read-only source mount; no tools until a credential broker exists. |
 | Independent reviewer | Fable or Sol through LiteLLM at high reasoning, separate from PR author, implementation, and QA identities. |
 | Publisher | Deterministic execution only after gates pass. |
+| Owner | Human repository owner; exclusively authorizes an exact dev SHA for promotion to main. |
 
 ## Implementation:QA pairing
 
@@ -53,13 +58,23 @@ Every implementation or remediation generation receives exactly one distinct adv
 
 ## Fail-closed gates
 
-### PR-head readiness gate
+### Protected dev integration gate
+
+A feature candidate may integrate to `dev` only when its linked issue is active,
+its PR targets current protected `dev`, the required ruleset checks pass against
+the exact head SHA, all review threads are resolved, exactly one independent
+adversarial QA pass exists for each implementation/remediation generation, and
+the independent reviewer accepts the final candidate. Integration is squash-only.
+This gate establishes integration evidence, not release or publication authority.
+
+### Main-promotion readiness gate
 
 A PR candidate is ready to merge only when ALL of the following hold:
 
 1. PR is not a draft.
 2. PR title does not begin with `[WIP]`, `WIP:`, `Draft:`, `Do not merge:`, or `Checkpoint:`.
-3. PR base is `main`.
+3. PR base is `main`, the promotion head is the exact owner-authorized `dev` SHA,
+   and that SHA passed protected post-integration validation on `dev`.
 4. Linked issue exists and has a canonical `status:*` label.
 5. Linked issue status is not `status:blocked` or `status:checkpointed`.
 6. Candidate SHA is a full 40-character SHA equal to PR head SHA.
@@ -93,7 +108,7 @@ Publication using a branch name (e.g., `main`, `latest`) is always forbidden. On
 
 ## Evidence manifest
 
-Every governed delivery produces an evidence manifest at `.governance/runs/<run_id>/manifest.json`. The schema is defined in `governance/schemas/evidence-manifest.schema.json`.
+Every governed main-promotion delivery produces an evidence manifest at `.governance/runs/<run_id>/manifest.json`. The schema is defined in `governance/schemas/evidence-manifest.schema.json`. Protected dev integration retains its exact-SHA PR, required-check, QA, review, and squash-merge records instead of claiming release authority.
 
 QA evidence is represented as `qa.records[]`, not as a single prose report. Each implementation/remediation pass ID must have exactly one QA record with distinct implementation and QA identities, matching that generation's candidate/base/tree bindings, a protected READY probe record hash, and a protected QA execution record hash. Earlier generations may bind to earlier candidate SHAs; the final pass must bind to `repo.candidate_sha`. The canonical manifest digest is `sha256(canonical_json(manifest_without_/policy/runner_attestation/artifact/manifest_sha256))`; no other fields are removed during hashing.
 
@@ -122,8 +137,8 @@ Before authoritative conditions exist:
 - Local validation/tests may produce diagnostics.
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
-- The credential broker, trusted integration, branch protection, and independent-agent-review process remain unresolved in `governance/bootstrap-status.json` until independently verified.
-- The existing-work freeze in `governance/audits/existing-work-freeze.json` blocks publication until an actual audit artifact is completed and reviewed.
+- Protected `dev` branch checks and the independent-agent-review process are established. The protected policy ref, trusted runner provenance, and credential broker remain unresolved in `governance/bootstrap-status.json` until independently verified.
+- The completed existing-work audit does not establish publication authority; the distinct protected trust root and post-main evidence remain mandatory.
 
 ## Model profiles
 

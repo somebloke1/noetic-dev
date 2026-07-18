@@ -10,9 +10,12 @@ governance/audits/<YYYYMMDD>-<topic>/
 
 ## Current freeze state
 
-- `existing-work-freeze.json` is active.
-- The bootstrap audit covers the ten pre-existing PRs/branches known when issue #23 began.
-- Until that audit is actually completed and verified, publication remains blocked and no new PR-opening/publication claim is authoritative.
+- `existing-work-freeze.json` is complete.
+- `20260718-d2-portfolio/` covers the 12 open PRs, 26 branches, and 20 open
+  issues captured at `2026-07-18T23:20:48Z`.
+- The owner authorized one bounded D2 reconciliation PR. Publication remains
+  blocked by the distinct release-trust requirements in `bootstrap-status.json`,
+  not by the completed existing-work audit.
 
 ## Audit procedure
 

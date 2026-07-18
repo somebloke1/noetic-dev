@@ -11,7 +11,7 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 3. **Executive governance:** a superior portable re-instantiation of the noetic-pi/pi2 APM lessons orders deterministic multi-agent work.
 4. **Cognitive programs:** disciplines and development pipelines run on the executive controller while semantic judgment remains with agents.
 5. **Observability/control:** structured cognitional events feed web and TUI renderers; tmux and browser PTYs are optional attach mechanisms.
-6. **Model substrate:** genus-router selects models; LiteLLM normalizes primary access; direct local endpoints remain possible.
+6. **Model substrate:** genus-router selects models; every noetic-dev model invocation accesses them through LiteLLM, including embeddings and ASR.
 
 ## Start here
 

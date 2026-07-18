@@ -69,7 +69,7 @@ EXPECTED_STAGE_IDS = (
     "D4c", "D4d", "D5", "D6", "D7", "D8", "D9",
 )
 EXPECTED_TRACK_IDS = ("T1", "T2", "T3", "T4")
-EXPECTED_CONFLICT_IDS = ("C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8")
+EXPECTED_CONFLICT_IDS = ("C5", "C6", "C7", "C8")
 EXPECTED_EVIDENCE_BY_STAGE = {
     "D0": (
         ("commit", "29196a67349537d6f8a8a711df11b86da0430857"),
@@ -90,6 +90,10 @@ EXPECTED_EVIDENCE_BY_STAGE = {
             "https://github.com/somebloke1/noetic-dev/actions/runs/29629152718",
         ),
         ("commit", "15b9ae66ff316abf28a5041c465e95baef5e82f9"),
+    ),
+    "D2": (
+        ("artifact", "governance/audits/20260718-d2-portfolio/inventory.json"),
+        ("issue", "https://github.com/somebloke1/noetic-dev/issues/32"),
     ),
 }
 EXPECTED_REMOTE_EVIDENCE = frozenset(
@@ -313,7 +317,7 @@ def _validate_evidence(
         )
         if actual_evidence != expected_evidence:
             errors.append(
-                f"{stage['id']}: schema version 1 evidence catalog changed"
+                f"{stage['id']}: schema version 2 evidence catalog changed"
             )
         seen: set[tuple[str, str]] = set()
         commit_count = 0
@@ -385,7 +389,7 @@ def _validate_evidence(
                 f"{stage['id']}: checkpointed stage requires baseline-ancestor commit evidence"
             )
     if remote_evidence != EXPECTED_REMOTE_EVIDENCE:
-        errors.append("schema version 1 remote evidence catalog changed")
+        errors.append("schema version 2 remote evidence catalog changed")
     return errors
 
 
@@ -436,18 +440,15 @@ def _validate_repository_policy(
     }
     d2 = stages["D2"]
     d9 = stages["D9"]
-    c2 = conflicts["C2"]
     c8 = conflicts["C8"]
+
+    if d2["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D2"]:
+        errors.append("D2 requires the exact schema-v2 D2 exit gate")
 
     if freeze.get("status") == "active" or freeze.get("blocks_publication") is True:
         if d2["status"] != "next":
             errors.append("active freeze requires D2 to remain the next stage")
-        if c2["resolution_stage"] != "D2" or not {"D3a", "D9"}.issubset(
-            c2["blocks"]
-        ):
-            errors.append("active freeze must be resolved in D2 and block D3a and D9")
-        if d2["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D2"]:
-            errors.append("active freeze requires the exact schema-v1 D2 exit gate")
+        errors.append("active freeze is incompatible with the schema-v2 D2 disposition")
 
     if bootstrap.get("publication", {}).get("status") == "blocked":
         if d9["status"] in {"checkpointed", "next"}:
@@ -461,7 +462,7 @@ def _validate_repository_policy(
         actual_snapshot["authoritative_delivery_gate"] == "external_dependency_missing"
         and d9["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D9"]
     ):
-        errors.append("missing trust root requires the exact schema-v1 D9 exit gate")
+        errors.append("missing trust root requires the exact schema-v2 D9 exit gate")
     return errors
 
 
@@ -483,7 +484,7 @@ def validate_roadmap(
     if len(stage_ids) != len(stage_set):
         errors.append("stage ids must be unique")
     if tuple(stage_ids) != EXPECTED_STAGE_IDS:
-        errors.append("schema version 1 stage catalog or order changed")
+        errors.append("schema version 2 stage catalog or order changed")
 
     positions = {stage_id: index for index, stage_id in enumerate(stage_ids)}
     statuses = {stage["id"]: stage["status"] for stage in stages}
@@ -518,7 +519,7 @@ def validate_roadmap(
     if len(conflict_ids) != len(set(conflict_ids)):
         errors.append("conflict ids must be unique")
     if tuple(conflict_ids) != EXPECTED_CONFLICT_IDS:
-        errors.append("schema version 1 conflict catalog or order changed")
+        errors.append("schema version 2 conflict catalog or order changed")
     named_blocks: set[str] = set()
     for conflict in state["unresolved_conflicts"]:
         if conflict["resolution_stage"] not in stage_set:
@@ -566,7 +567,7 @@ def validate_roadmap(
     if len(track_ids) != len(set(track_ids)):
         errors.append("parallel track ids must be unique")
     if tuple(track_ids) != EXPECTED_TRACK_IDS:
-        errors.append("schema version 1 parallel-track catalog or order changed")
+        errors.append("schema version 2 parallel-track catalog or order changed")
 
     errors.extend(_validate_evidence(state, root))
     errors.extend(_validate_markdown_projection(state, markdown, document_bytes))
