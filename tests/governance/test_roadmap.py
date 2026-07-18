@@ -193,6 +193,21 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(self.state, self.schema, mutated)
         self.assert_has_error(errors, "stage headings do not match")
 
+    def test_unstructured_markdown_claim_drift_fails_document_hash(self) -> None:
+        mutated = self.markdown.replace(
+            "These foundations do **not** establish a production Telos dispatcher",
+            "These foundations establish a production Telos dispatcher",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "ROADMAP.md SHA-256 does not match")
+
+    def test_machine_document_hash_drift_fails(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["document_sha256"] = "0" * 64
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "ROADMAP.md SHA-256 does not match")
+
     def test_markdown_checkpoint_line_drift_fails_even_if_sha_remains(self) -> None:
         mutated = self.markdown.replace(
             "**Exact checkpoint:** `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` "

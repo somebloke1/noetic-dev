@@ -44,6 +44,8 @@ index and the headings below.
 Schema version 1 closes the stage, parallel-track, conflict, and checkpoint-evidence
 catalogs. Adding, removing, or reassigning one of those identities requires an
 explicit schema/validator successor and migration tests, not an in-place mutation.
+The machine index also pins the SHA-256 of this entire document, so scope,
+non-claims, and explanatory prose cannot drift outside the paired contract.
 
 ## 2. Status and completion semantics
 

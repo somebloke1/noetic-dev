@@ -7,6 +7,7 @@
     "$schema",
     "schema_version",
     "document_path",
+    "document_sha256",
     "authority_issue",
     "baseline",
     "stages",
@@ -17,6 +18,7 @@
     "$schema": {"type": "string", "const": "./schemas/roadmap.schema.json"},
     "schema_version": {"type": "string", "const": "1"},
     "document_path": {"type": "string", "const": "ROADMAP.md"},
+    "document_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "authority_issue": {"type": "integer", "const": 32},
     "baseline": {
       "type": "object",

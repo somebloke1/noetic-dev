@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 import sys
@@ -162,6 +163,9 @@ def _validate_markdown_projection(
     markdown: str,
 ) -> list[str]:
     errors: list[str] = []
+    document_sha256 = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
+    if document_sha256 != state["document_sha256"]:
+        errors.append("ROADMAP.md SHA-256 does not match governance/roadmap.json")
     baseline_matches = list(BASELINE_RE.finditer(markdown))
     expected_baseline = state["baseline"]
     if len(baseline_matches) != 1:

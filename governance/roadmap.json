@@ -2,6 +2,7 @@
   "$schema": "./schemas/roadmap.schema.json",
   "schema_version": "1",
   "document_path": "ROADMAP.md",
+  "document_sha256": "8d7a1c73c9c93950069f4a7e11418de807472d4665e18c23fa1faab4deedbe26",
   "authority_issue": 32,
   "baseline": {
     "branch": "dev",
