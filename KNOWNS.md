@@ -166,3 +166,62 @@ These are ATTACH/VISIBILITY mechanisms, separable from the durable observability
 
 Verified 2026-07-11 from noetic-pi/packages/shared/src/apm-protocol/implementation.ts + packages/apm/src/implement.ts + implementer/*.ts:\n\nORDERING PRIMITIVES (how multi-agent orchestration is ordered):\n- WORK UNITS (WU) grouped into numbered WAVES (wave_number). Waves are SEQUENCED: a wave runs -> QA -> commit boundary (commit_hash per wave) -> advance to next wave. Wave N completes+commits before N+1.\n- TYPED DEPENDENCY ROLES per WU express ordering legality (not free-form): launch_required (branch-materialized inputs that gate launch), governing_context_refs (authority/contextual references), future_dependencies (produced by later execution - must NOT be required at launch), contextual_refs. Runtime tracks counts of each. This is the DAG/ordering contract; noetic-pi's 'dependency-ontology seam' + 'planner-procedure-total-compliance' campaigns were precisely hardening these so launch/continuity legality holds.\n- QA GATE per wave with remediation cycling (qa_pass, remediation_pass, qaIterations 0-3) and escalation on exhaustion.\n- ORDINAL delegation-tree identity places agents structurally.\n\nDETERMINISTIC / NON-DETERMINISTIC SPLIT (the crux the user flagged): APM does the DETERMINISTIC part - wave sequencing, dependency-role legality checks, spawn/retire, QA gating, commit boundaries (selective staging from WU outputs[]), model selection. AGENTS do the NON-DETERMINISTIC part - implementation, evaluation, escalation (the P1-P4 cognitive work). This matches cognitive-disciplines' own principle: keep deterministic harness mechanics separate from language-model cognitive judgment.\n\nCHARACTERIZATION: ordering is 'sequenced waves + typed dependency-role legality', not an arbitrary DAG scheduler. It is a deterministic executive STATE MACHINE. The user's correction is verified: APM is not an optional sidekick to the disciplines/pipeline tools - the disciplines and the design->implementation pipeline RUN ON it; it is the executive control plane.
 <!-- governance-crud:end id=k-20260711-0007 -->
+<!-- governance-crud:start id=k-20260717-0001 -->
+## k-20260717-0001: Protected dev and ruleset state after issue 51
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-17
+- Updated: 2026-07-17
+- Tags: protected-route,github,ruleset,P1
+- Source: GitHub REST API queried 2026-07-17
+- Confidence: high
+
+Observed 2026-07-17: GitHub API reports dev at cfd6a612491a777fc9aad3aa3cd68ca2cb348fe3 and protected=true. Repository ruleset 19122088 is active for refs/heads/dev, has no bypass actors, reports current_user_can_bypass=never, requires pull requests, blocks deletion/non-fast-forward, and requires agent-review plus four governance contexts bound to GitHub Actions integration 15368. Sources: GET /repos/somebloke1/noetic-dev/branches/dev, /rulesets/19122088, and /rules/branches/dev.
+<!-- governance-crud:end id=k-20260717-0001 -->
+
+<!-- governance-crud:start id=k-20260717-0002 -->
+## k-20260717-0002: Merged Agent Review runs lose embedded PR association
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-17
+- Updated: 2026-07-17
+- Tags: protected-route,artifact,provenance,P1
+- Source: GitHub REST GET actions/runs/29614049806, artifacts, pulls/56
+- Confidence: high
+
+Agent Review run 29614049806 remains completed/successful with exact head dafc54c5496cb09dce8dd3bb974d72b2dd2382df, workflow ID 312422987, attempt 1, and retained artifact 8419811231 digest sha256:ede829e6586cad1d4ed708e1c554451dd880435774cf146dc2c2e7d13e4f498c, but its run API now returns pull_requests: []. The stable PR endpoint /pulls/56 still returns exact historical head and base f0a5c02315eb1d1c26849545bc9fa459bdaf4ec0 after merge. The current validator depends on run.pull_requests and therefore cannot durably revalidate this run post-merge.
+<!-- governance-crud:end id=k-20260717-0002 -->
+
+<!-- governance-crud:start id=k-20260717-0003 -->
+## k-20260717-0003: Production review broker and router remain active
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-17
+- Updated: 2026-07-17
+- Tags: protected-route,runtime,genus-router,P1
+- Source: systemctl show/status/cat, readlink, stat, pip check, genus-router --check-config
+- Confidence: high
+
+System systemd units noetic-dev-agent-review-broker.service and noetic-dev-actions-runner.service were active/running with NRestarts=0 on 2026-07-17. /opt/noetic-dev-agent-review/current resolves to release ddda78670fc564f19b7bab3e02e06cb2b71387c9. Broker command pins genus-router component f2b839b0cfc737c4c1f0a46d3d519d414529545c; its manifest is root-owned/read-only, pip check passed, and genus-router --check-config reported ok with local-litellm and 20 genera.
+<!-- governance-crud:end id=k-20260717-0003 -->
+
+<!-- governance-crud:start id=k-20260717-0004 -->
+## k-20260717-0004: Personal repository lacks a native distinct workflow trust root
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-17
+- Updated: 2026-07-17
+- Tags: github,trust-boundary,check-source,P1
+- Source: Official GitHub documentation and live API research 2026-07-17
+- Confidence: high
+
+GitHub Actions App integration 15368 identifies all repository Actions workflows, so integration-bound context names do not distinguish the protected workflow from a candidate-created same-name workflow. Native required-workflow rules are organization/enterprise controls and are unavailable for this user-owned public repository; public personal repositories also cannot use push file-path restrictions. Strong available alternatives are transfer to a Team organization or a separately credentialed GitHub App hosted outside candidate Actions. Sources: official GitHub ruleset/required-workflow/GitHub App docs and live repository API behavior.
+<!-- governance-crud:end id=k-20260717-0004 -->

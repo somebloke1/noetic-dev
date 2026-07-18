@@ -225,3 +225,32 @@ Prompted by user correction (2026-07-11): 'the APM was not just an optional side
 
 Final user decision, 2026-07-11, superseding the brief provisional `abide` name before any remote was created. The composed system/product is named `noetic-dev`. The GitHub remote repository must be `somebloke1/noetic-dev`. The existing local composition-root directory remains `/home/dgk/workspace/synthesis` to preserve session and filesystem continuity; directory name and product/repository name need not match. GitHub Project should also be titled `noetic-dev`.
 <!-- governance-crud:end id=dec-20260711-0009 -->
+<!-- governance-crud:start id=dec-20260717-0001 -->
+## dec-20260717-0001: Automate route attestation with a trusted local operator
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-17
+- Updated: 2026-07-17
+- Tags: protected-route,attestation,automation,P3,P4
+- Source: Knowns k-20260717-0001 through k-20260717-0004 plus code inventory and GitHub API research
+- Confidence: high
+
+Adopt the smallest durable recurrence design: repair route_evidence.py to use the stable PR endpoint instead of run.pull_requests; add one operator that discovers completed Agent Review runs, derives exact PR/head/base/artifact identity, creates a fresh detached checkout of the GitHub-verified protected base, executes that base's existing validator, and writes an atomic canonical receipt; schedule it on the trusted local host using existing local gh authentication without storing a repository workflow credential. Reject a parallel validator and reject repository_dispatch. A workflow_run attester may be added later for OIDC receipt signatures but cannot currently establish administrator-visible no-bypass state.
+<!-- governance-crud:end id=dec-20260717-0001 -->
+
+<!-- governance-crud:start id=dec-20260717-0002 -->
+## dec-20260717-0002: Bound same-GitHub-Actions-App risk pending a distinct trust root
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-17
+- Updated: 2026-07-17
+- Tags: github,trust-boundary,residual-risk,P3
+- Source: Known k-20260717-0004 and official GitHub required workflow/check/App documentation
+- Confidence: high
+
+Do not claim that integration_id 15368 authenticates a workflow path. In this public user-owned repository, native required workflows and push path restrictions are unavailable. A strong resolution requires either transfer to a Team organization with required workflows or a separately hosted GitHub App with its private key outside candidate Actions and a required App-bound check. Defer app registration/service creation because it introduces a new high-value credential and operational service beyond the minimal recurrence repair; retain the risk as explicit and do not treat current required checks as cryptographic workflow provenance.
+<!-- governance-crud:end id=dec-20260717-0002 -->
