@@ -271,6 +271,8 @@ class TestRouteAttestation(unittest.TestCase):
         ):
             receipt_path = attest_run(run, Path(directory))
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt_path, Path(directory) / "run-123-attempt-1.json")
+            self.assertEqual(list(Path(directory).glob(".route-attestation-*")), [])
         validate.assert_called_once_with(123, 55, "a" * 40, "b" * 40)
         self.assertEqual(receipt["artifact_id"], 789)
         self.assertEqual(receipt["artifact_digest"], f"sha256:{'c' * 64}")
@@ -439,7 +441,6 @@ class TestRouteAttestation(unittest.TestCase):
         self.assertIn("env -i HOME=", installer)
         self.assertIn('--property=Linger --value)" = yes', installer)
         self.assertIn("systemctl --user enable --now noetic-dev-route-attestation.timer", installer)
-
 
 if __name__ == "__main__":
     unittest.main()
