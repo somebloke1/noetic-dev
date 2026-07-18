@@ -2,7 +2,7 @@
   "$schema": "./schemas/roadmap.schema.json",
   "schema_version": "1",
   "document_path": "ROADMAP.md",
-  "document_sha256": "7fa69f4e7a00f8639b4f515a31f26a71375de4f28341e5c2f310ae93172ec542",
+  "document_sha256": "78cf53403c27212f9917d35da66586df3bac976c9ae994c1b7c18e85e5c820cc",
   "authority_issue": 32,
   "policy_snapshot": {
     "existing_work_freeze": "active",

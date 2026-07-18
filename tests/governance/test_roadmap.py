@@ -288,11 +288,48 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
         self.assert_has_error(errors, "active freeze must be resolved in D2")
 
-    def test_release_gate_cannot_drop_trust_requirements(self) -> None:
+    def test_d2_gate_cannot_negate_freeze_requirements(self) -> None:
         mutated = copy.deepcopy(self.state)
-        mutated["stages"][-1]["exit_gate"] = "Release when convenient."
+        mutated["stages"][3]["exit_gate"] += (
+            " Reviewed freeze disposition is not required."
+        )
         errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
-        self.assert_has_error(errors, "D9 exit gate missing required policy phrase")
+        self.assert_has_error(errors, "exact schema-v1 D2 exit gate")
+
+    def test_d9_gate_cannot_negate_trust_requirements(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][-1]["exit_gate"] += (
+            " License, protected main, post-merge evidence, full main SHA, and the "
+            "distinct protected trust root are not required."
+        )
+        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
+        self.assert_has_error(errors, "exact schema-v1 D9 exit gate")
+
+    def test_policy_files_cannot_be_symlinks(self) -> None:
+        policy_paths = (
+            "governance/audits/existing-work-freeze.json",
+            "governance/bootstrap-status.json",
+        )
+        for symlinked in policy_paths:
+            with self.subTest(path=symlinked), tempfile.TemporaryDirectory() as directory:
+                temporary = Path(directory)
+                root = temporary / "repo"
+                outside = temporary / "outside.json"
+                outside.write_text("{}", encoding="utf-8")
+                for relative in policy_paths:
+                    target = root / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if relative == symlinked:
+                        target.symlink_to(outside)
+                    else:
+                        target.write_bytes((ROOT / relative).read_bytes())
+                errors = validate_roadmap(
+                    self.state,
+                    self.schema,
+                    self.markdown,
+                    root,
+                )
+                self.assert_has_error(errors, "policy file must not be a symlink")
 
     def test_markdown_checkpoint_line_drift_fails_even_if_sha_remains(self) -> None:
         mutated = self.markdown.replace(

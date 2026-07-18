@@ -102,6 +102,18 @@ EXPECTED_REMOTE_EVIDENCE = frozenset(
         ),
     }
 )
+EXPECTED_POLICY_EXIT_GATES = {
+    "D2": (
+        "Accepted authority and branch-flow decisions, reviewed freeze disposition, "
+        "consistent machine and prose policy, synchronized issue 32 and roadmap, "
+        "green validation, and paired independent QA."
+    ),
+    "D9": (
+        "License, audit, distinct protected trust root, protected main, post-merge "
+        "evidence, independent approval, rollback, and immutable tag bind one full "
+        "main SHA."
+    ),
+}
 FREEZE_PATH = Path("governance/audits/existing-work-freeze.json")
 BOOTSTRAP_STATUS_PATH = Path("governance/bootstrap-status.json")
 
@@ -382,9 +394,28 @@ def _validate_repository_policy(
     root: Path,
 ) -> list[str]:
     errors: list[str] = []
+
+    def load_policy(relative: Path) -> dict[str, Any]:
+        path = root.resolve() / relative
+        if path.is_symlink():
+            raise ValueError(f"{relative}: policy file must not be a symlink")
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError(f"{relative}: policy file does not resolve: {exc}") from exc
+        resolved_root = root.resolve()
+        if resolved_root not in resolved.parents:
+            raise ValueError(f"{relative}: policy file resolves outside repository")
+        if not resolved.is_file():
+            raise ValueError(f"{relative}: policy file must be a regular file")
+        value = load_json_strict(resolved)
+        if not isinstance(value, dict):
+            raise ValueError(f"{relative}: policy file must contain an object")
+        return value
+
     try:
-        freeze = load_json_strict(root / FREEZE_PATH)
-        bootstrap = load_json_strict(root / BOOTSTRAP_STATUS_PATH)
+        freeze = load_policy(FREEZE_PATH)
+        bootstrap = load_policy(BOOTSTRAP_STATUS_PATH)
     except (OSError, ValueError) as exc:
         return [f"roadmap policy files failed to load: {exc}"]
 
@@ -415,8 +446,8 @@ def _validate_repository_policy(
             c2["blocks"]
         ):
             errors.append("active freeze must be resolved in D2 and block D3a and D9")
-        if "reviewed freeze disposition" not in d2["exit_gate"].lower():
-            errors.append("D2 exit gate must retain reviewed freeze disposition")
+        if d2["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D2"]:
+            errors.append("active freeze requires the exact schema-v1 D2 exit gate")
 
     if bootstrap.get("publication", {}).get("status") == "blocked":
         if d9["status"] in {"checkpointed", "next"}:
@@ -426,18 +457,11 @@ def _validate_repository_policy(
         if "D2" not in d9["depends_on"]:
             errors.append("D9 must retain D2 governance convergence as a dependency")
 
-    if actual_snapshot["authoritative_delivery_gate"] == "external_dependency_missing":
-        required_gate_phrases = (
-            "license",
-            "distinct protected trust root",
-            "protected main",
-            "post-merge evidence",
-            "full main sha",
-        )
-        normalized_gate = d9["exit_gate"].lower()
-        for phrase in required_gate_phrases:
-            if phrase not in normalized_gate:
-                errors.append(f"D9 exit gate missing required policy phrase: {phrase}")
+    if (
+        actual_snapshot["authoritative_delivery_gate"] == "external_dependency_missing"
+        and d9["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D9"]
+    ):
+        errors.append("missing trust root requires the exact schema-v1 D9 exit gate")
     return errors
 
 

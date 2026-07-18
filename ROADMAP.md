@@ -47,6 +47,8 @@ catalogs. Adding, removing, or reassigning one of those identities requires an
 explicit schema/validator successor and migration tests, not an in-place mutation.
 The machine index also pins the SHA-256 of this entire document, so scope,
 non-claims, and explanatory prose cannot drift outside the paired contract.
+While the recorded freeze and publication blockers remain active, schema version 1
+also pins the exact D2 and D9 policy gates rather than searching for keywords.
 
 ## 2. Status and completion semantics
 
