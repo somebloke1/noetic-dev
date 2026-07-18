@@ -551,6 +551,21 @@ def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, dire
     ):
         raise ValueError("protected evidence identifiers are invalid")
     artifact_name = f"agent-review-{pr_number}-{head_sha}"
+    pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
+    head = pull.get("head") if isinstance(pull, dict) else None
+    base = pull.get("base") if isinstance(pull, dict) else None
+    base_sha = base.get("sha") if isinstance(base, dict) else None
+    if (
+        not isinstance(pull, dict)
+        or pull.get("number") != pr_number
+        or not isinstance(head, dict)
+        or head.get("sha") != head_sha
+        or not isinstance(base, dict)
+        or base.get("ref") != "dev"
+        or not isinstance(base_sha, str)
+        or re.fullmatch(r"[a-f0-9]{40}", base_sha) is None
+    ):
+        raise ValueError("pull request does not bind an exact protected base")
     artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
     listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
     if (
@@ -559,7 +574,7 @@ def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, dire
         or artifacts.get("total_count") != 1
         or not isinstance(listed, list)
         or len(listed) != 1
-        or not _valid_artifact(listed[0], run_id, head_sha, artifact_name)
+        or not _valid_artifact(listed[0], run_id, head_sha, artifact_name, base_sha)
     ):
         raise ValueError("exact-SHA Agent Review artifact is unavailable or expired")
     artifact = listed[0]
@@ -703,7 +718,7 @@ def validate_protected_provenance(
         or artifacts.get("total_count") != 1
         or not isinstance(listed, list)
         or len(listed) != 1
-        or not _valid_artifact(listed[0], run_id, head_sha, expected_name)
+        or not _valid_artifact(listed[0], run_id, head_sha, expected_name, base_sha)
     ):
         return ["exact-SHA Agent Review artifact is unavailable or expired"]
     try:
@@ -763,7 +778,9 @@ def _valid_review_job(
     )
 
 
-def _valid_artifact(artifact: Any, run_id: int, head_sha: str, expected_name: str) -> bool:
+def _valid_artifact(
+    artifact: Any, run_id: int, head_sha: str, expected_name: str, base_sha: str
+) -> bool:
     if not isinstance(artifact, dict):
         return False
     workflow_run = artifact.get("workflow_run")
@@ -783,7 +800,7 @@ def _valid_artifact(artifact: Any, run_id: int, head_sha: str, expected_name: st
         and workflow_run.get("repository_id") == REPOSITORY_ID
         and type(workflow_run.get("head_repository_id")) is int
         and workflow_run.get("head_repository_id") == REPOSITORY_ID
-        and workflow_run.get("head_sha") == head_sha
+        and workflow_run.get("head_sha") in {head_sha, base_sha}
     )
 
 

@@ -60,8 +60,9 @@ class DeferredRun(ValueError):
 
 
 class IneligibleRun(ValueError):
-    def __init__(self, pr_number: int):
-        super().__init__(f"pull request {pr_number} closed without merge")
+    def __init__(self, reason: str, pr_number: int | None = None):
+        super().__init__(reason.replace("-", " "))
+        self.reason = reason
         self.pr_number = pr_number
 
 
@@ -100,7 +101,9 @@ def main() -> int:
             else:
                 receipt = attest_run(run, args.state_dir)
         except IneligibleRun as error:
-            write_skip(args.state_dir, run["id"], error.pr_number)
+            write_skip(
+                args.state_dir, run["id"], run["run_attempt"], error.reason, error.pr_number
+            )
             print(f"Agent Review run {run['id']} is terminally ineligible: {error}")
             if not blocked:
                 progress = run["id"]
@@ -254,7 +257,9 @@ def write_cursor(state_dir: Path, run_id: int) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def write_skip(state_dir: Path, run_id: int, pr_number: int) -> None:
+def write_skip(
+    state_dir: Path, run_id: int, run_attempt: int, reason: str, pr_number: int | None
+) -> None:
     state_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
     os.chmod(state_dir, 0o700)
     destination = state_dir / f"skipped-run-{run_id}.json"
@@ -266,7 +271,7 @@ def write_skip(state_dir: Path, run_id: int, pr_number: int) -> None:
         os.fchmod(descriptor, 0o600)
         payload = json.dumps({
             "schema_version": "1", "repository": REPOSITORY, "run_id": run_id,
-            "pr_number": pr_number, "reason": "closed-without-merge",
+            "run_attempt": run_attempt, "pr_number": pr_number, "reason": reason,
         }, sort_keys=True, separators=(",", ":")).encode("ascii") + b"\n"
         os.write(descriptor, payload)
         os.fsync(descriptor)
@@ -282,8 +287,10 @@ def write_skip(state_dir: Path, run_id: int, pr_number: int) -> None:
 def attest_run(run: dict[str, Any], state_dir: Path) -> Path:
     if type(run.get("id")) is not int or run["id"] <= 0:
         raise ValueError("selected run identity is invalid")
-    if type(run.get("run_attempt")) is not int or run["run_attempt"] != 1:
+    if type(run.get("run_attempt")) is not int or run["run_attempt"] <= 0:
         raise ValueError("selected run attempt is invalid")
+    if run["run_attempt"] != 1:
+        raise IneligibleRun("unsupported-rerun-attempt")
     before = load_attestation_context(run["id"])
     if before["run_attempt"] != run["run_attempt"]:
         raise ValueError("selected run changed before attestation")
@@ -329,7 +336,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
     if isinstance(pull, dict) and pull.get("state") == "open" and pull.get("merged") is False:
         raise DeferredRun(f"pull request {pr_number} remains open")
     if isinstance(pull, dict) and pull.get("state") == "closed" and pull.get("merged") is False:
-        raise IneligibleRun(pr_number)
+        raise IneligibleRun("closed-without-merge", pr_number)
     jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
     listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
     head = pull.get("head") if isinstance(pull, dict) else None
@@ -384,7 +391,9 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or not isinstance(listed_jobs, list)
         or len(listed_jobs) != 1
         or not _valid_review_job(listed_jobs[0], run_id, head_sha, base_sha)
-        or not _valid_artifact(artifact, run_id, head_sha, f"agent-review-{pr_number}-{head_sha}")
+        or not _valid_artifact(
+            artifact, run_id, head_sha, f"agent-review-{pr_number}-{head_sha}", base_sha
+        )
     ):
         raise ValueError("run, PR, job, or artifact metadata is invalid")
     return {

@@ -23,7 +23,7 @@ The argument is the successful Agent Review run for the implementation PR itself
 
 The installer requires `loginctl` to report `Linger=yes` for the trusted operator account, so the user timer continues after logout. The oneshot service has a 30-minute start timeout, longer than its bounded network, clone, checkout, and validation operations while still preventing an indefinitely wedged invocation.
 
-The operator persists a private verified run cursor. Open PRs defer cursor advancement. Closed-unmerged PRs receive a durable `skipped-run-<run>.json` disposition, while merged successful runs require valid receipts. The operator refuses to continue if GitHub's bounded workflow-run inventory no longer contains the cursor, so a long outage becomes an explicit truncation failure rather than silently dropping eligible runs.
+The operator persists a private verified run cursor. Open PRs defer cursor advancement. Closed-unmerged PRs and successful rerun attempts receive a durable `skipped-run-<run>.json` disposition, while first-attempt merged runs require valid receipts. The operator refuses to continue if GitHub's bounded workflow-run inventory no longer contains the cursor, so a long outage becomes an explicit truncation failure rather than silently dropping eligible runs.
 
 Installation is an operator action, not an isolation boundary against the invoking Unix account. The script uses a fixed shell, refuses shell/loader injection variables, derives the account home from the passwd database, and sanitizes the GitHub authentication probe. Invoke it only from the trusted operator account; the recurring systemd service is the hardened runtime boundary.
 

@@ -345,6 +345,9 @@ class TestRouteEvidence(unittest.TestCase):
         base_job = copy.deepcopy(jobs)
         base_job["jobs"][0]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, base_job, artifacts)), [])
+        base_artifact = copy.deepcopy(artifacts)
+        base_artifact["artifacts"][0]["workflow_run"]["head_sha"] = base_sha
+        self.assertEqual(validate((github_run, pull, jobs, base_artifact)), [])
         advanced_pull = copy.deepcopy(pull)
         advanced_pull["base"]["sha"] = "e" * 40
         self.assertTrue(validate((github_run, advanced_pull, jobs, artifacts)))
@@ -535,19 +538,33 @@ class TestRouteEvidence(unittest.TestCase):
             with zipfile.ZipFile(archive_file, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("agent-review-result.json", "{}")
             archive_bytes = archive_file.getvalue()
-            _, _, _, artifacts = provenance_records("a" * 40, "b" * 40)
+            _, pull, _, artifacts = provenance_records("a" * 40, "b" * 40)
             artifact = artifacts["artifacts"][0]
             artifact["size_in_bytes"] = len(archive_bytes)
             artifact["digest"] = f"sha256:{hashlib.sha256(archive_bytes).hexdigest()}"
 
             def download(command, **_kwargs):
-                output = json.dumps(artifacts).encode() if command[-1].endswith("/artifacts") else archive_bytes
+                if command[-1].endswith("/pulls/55"):
+                    output = json.dumps(pull).encode()
+                elif command[-1].endswith("/artifacts"):
+                    output = json.dumps(artifacts).encode()
+                else:
+                    output = archive_bytes
                 return subprocess.CompletedProcess(command, 0, output, b"")
 
             with mock.patch("route_evidence.subprocess.run", side_effect=download):
                 evidence = download_protected_evidence(123, 55, "a" * 40, root)
             self.assertEqual(evidence, root / "agent-review-result.json")
             self.assertEqual(evidence.read_text(encoding="utf-8"), "{}")
+
+            artifact["workflow_run"]["head_sha"] = "b" * 40
+            with tempfile.TemporaryDirectory() as base_directory, mock.patch(
+                "route_evidence.subprocess.run", side_effect=download
+            ):
+                base_evidence = download_protected_evidence(
+                    123, 55, "a" * 40, Path(base_directory)
+                )
+                self.assertEqual(base_evidence.read_text(encoding="utf-8"), "{}")
 
             artifact["digest"] = f"sha256:{'0' * 64}"
             with mock.patch("route_evidence.subprocess.run", side_effect=download):

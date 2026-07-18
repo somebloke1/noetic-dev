@@ -193,6 +193,23 @@ class TestRouteAttestation(unittest.TestCase):
             self.assertEqual(main(), 1)
         self.assertEqual(attest.call_count, 2)
 
+    def test_successful_rerun_receives_terminal_disposition(self) -> None:
+        rerun = run_record(203)
+        rerun["run_attempt"] = 2
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            arguments = ["route_attestation.py", "--state-dir", directory]
+            with mock.patch.object(sys, "argv", arguments), mock.patch(
+                "route_attestation.select_runs", return_value=[rerun]
+            ), mock.patch("route_attestation.write_skip") as skip, mock.patch(
+                "route_attestation.write_cursor"
+            ) as cursor:
+                self.assertEqual(main(), 0)
+        skip.assert_called_once_with(
+            state, 203, 2, "unsupported-rerun-attempt", None
+        )
+        cursor.assert_called_once_with(state, 203)
+
     def test_records_exact_run_artifact_pr_job_and_validator(self) -> None:
         run = run_record()
         artifacts, pull, jobs = attestation_records()
