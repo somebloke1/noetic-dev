@@ -726,6 +726,7 @@ def validate_protected_provenance(
     ):
         return ["GitHub run does not match the protected Agent Review candidate"]
 
+    expected_name = f"agent-review-{pr_number}-{head_sha}"
     listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
     if (
         not isinstance(jobs, dict)
@@ -733,10 +734,11 @@ def validate_protected_provenance(
         or jobs.get("total_count") != 1
         or not isinstance(listed_jobs, list)
         or len(listed_jobs) != 1
-        or not _valid_review_job(listed_jobs[0], run_id, head_sha, base_sha)
+        or not _valid_review_job(
+            listed_jobs[0], run_id, head_sha, base_sha, expected_name
+        )
     ):
         return ["GitHub run does not contain one exact protected Agent Review job"]
-    expected_name = f"agent-review-{pr_number}-{head_sha}"
     listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
     if (
         not isinstance(artifacts, dict)
@@ -778,7 +780,7 @@ def _exact_json(actual: Any, expected: Any) -> bool:
 
 
 def _valid_review_job(
-    job: Any, run_id: int, head_sha: str, base_sha: str | None = None
+    job: Any, run_id: int, head_sha: str, base_sha: str, workflow_name: str
 ) -> bool:
     if not isinstance(job, dict):
         return False
@@ -793,7 +795,7 @@ def _valid_review_job(
         and job.get("run_id") == run_id
         and type(job.get("run_attempt")) is int
         and job.get("run_attempt") == 1
-        and job.get("workflow_name") == "Agent Review"
+        and job.get("workflow_name") == workflow_name
         and job.get("head_sha") in (head_sha, base_sha)
         and job.get("status") == "completed"
         and job.get("conclusion") == "success"
