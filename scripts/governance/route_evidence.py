@@ -13,12 +13,16 @@ if sys.path:
     sys.path.pop(0)
 
 import argparse
+import hashlib
+import io
 import json
 import os
 import pwd
 import re
+import stat
 import subprocess
 import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -547,29 +551,55 @@ def download_protected_evidence(run_id: int, pr_number: int, head_sha: str, dire
     ):
         raise ValueError("protected evidence identifiers are invalid")
     artifact_name = f"agent-review-{pr_number}-{head_sha}"
-    result = subprocess.run(
-        [
-            "/usr/bin/gh", "run", "download", str(run_id), "--repo", REPOSITORY,
-            "--name", artifact_name, "--dir", str(directory),
-        ],
-        env=github_environment(),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        timeout=60,
-        check=False,
-    )
-    if result.returncode != 0 or len(result.stdout) > 65_536:
-        raise ValueError("exact-SHA Agent Review artifact download failed")
-    evidence_path = directory / "agent-review-result.json"
-    entries = list(directory.iterdir())
+    artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
+    listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
     if (
-        entries != [evidence_path]
-        or evidence_path.is_symlink()
-        or not evidence_path.is_file()
-        or evidence_path.stat().st_size > 1_048_576
+        not isinstance(artifacts, dict)
+        or type(artifacts.get("total_count")) is not int
+        or artifacts.get("total_count") != 1
+        or not isinstance(listed, list)
+        or len(listed) != 1
+        or not _valid_artifact(listed[0], run_id, head_sha, artifact_name)
     ):
-        raise ValueError("Agent Review artifact does not contain route evidence")
+        raise ValueError("exact-SHA Agent Review artifact is unavailable or expired")
+    artifact = listed[0]
+    archive = _github_api([
+        "/usr/bin/gh", "api",
+        f"repos/{REPOSITORY}/actions/artifacts/{artifact['id']}/zip",
+    ], 1_048_576)
+    digest = f"sha256:{hashlib.sha256(archive).hexdigest()}"
+    if digest != artifact["digest"]:
+        raise ValueError("downloaded Agent Review artifact digest does not match GitHub metadata")
+    try:
+        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+            entries = bundle.infolist()
+            if len(entries) != 1:
+                raise ValueError("Agent Review artifact does not contain exactly one entry")
+            entry = entries[0]
+            mode = entry.external_attr >> 16
+            if (
+                entry.filename != "agent-review-result.json"
+                or entry.is_dir()
+                or entry.flag_bits & 1
+                or stat.S_ISLNK(mode)
+                or entry.file_size > 1_048_576
+            ):
+                raise ValueError("Agent Review artifact entry is unsafe")
+            with bundle.open(entry) as source:
+                evidence = source.read(1_048_577)
+    except (OSError, RuntimeError, zipfile.BadZipFile) as error:
+        raise ValueError("Agent Review artifact archive is invalid") from error
+    if len(evidence) > 1_048_576:
+        raise ValueError("Agent Review artifact evidence is too large")
+    evidence_path = directory / "agent-review-result.json"
+    descriptor = os.open(evidence_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        written = 0
+        while written < len(evidence):
+            written += os.write(descriptor, evidence[written:])
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
     return evidence_path
 
 

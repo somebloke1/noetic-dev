@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -528,15 +531,28 @@ class TestRouteEvidence(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            archive_file = io.BytesIO()
+            with zipfile.ZipFile(archive_file, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("agent-review-result.json", "{}")
+            archive_bytes = archive_file.getvalue()
+            _, _, _, artifacts = provenance_records("a" * 40, "b" * 40)
+            artifact = artifacts["artifacts"][0]
+            artifact["size_in_bytes"] = len(archive_bytes)
+            artifact["digest"] = f"sha256:{hashlib.sha256(archive_bytes).hexdigest()}"
 
             def download(command, **_kwargs):
-                destination = Path(command[command.index("--dir") + 1])
-                (destination / "agent-review-result.json").write_text("{}", encoding="utf-8")
-                return subprocess.CompletedProcess(command, 0, b"", b"")
+                output = json.dumps(artifacts).encode() if command[-1].endswith("/artifacts") else archive_bytes
+                return subprocess.CompletedProcess(command, 0, output, b"")
 
             with mock.patch("route_evidence.subprocess.run", side_effect=download):
                 evidence = download_protected_evidence(123, 55, "a" * 40, root)
             self.assertEqual(evidence, root / "agent-review-result.json")
+            self.assertEqual(evidence.read_text(encoding="utf-8"), "{}")
+
+            artifact["digest"] = f"sha256:{'0' * 64}"
+            with mock.patch("route_evidence.subprocess.run", side_effect=download):
+                with self.assertRaisesRegex(ValueError, "digest does not match"):
+                    download_protected_evidence(123, 55, "a" * 40, root / "unused")
 
     def test_route_mutations_fail_closed(self) -> None:
         mutations = []

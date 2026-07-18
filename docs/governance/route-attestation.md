@@ -4,13 +4,13 @@ The protected Agent Review workflow produces exact-run route evidence. A separat
 
 ## Operation
 
-`scripts/governance/route_attestation.py` discovers completed successful Agent Review runs for closed, merged pull requests after the configured bootstrap run. Open pull requests are ineligible because their live base SHA can advance after the reviewed run. For each unattested run it:
+`scripts/governance/route_attestation.py` discovers completed successful Agent Review runs after the configured bootstrap run. Open pull requests are deferred because their live base SHA can advance after the reviewed run, and closed-unmerged pull requests receive a terminal skip disposition. For each eligible unattested run it:
 
 1. requires one exact run attempt, retained artifact, stable pull-request record, and review job;
-2. derives the candidate and protected-base SHAs from the artifact name and stable PR endpoint;
+2. derives the candidate SHA from the artifact name and the protected-base SHA from the retained evidence;
 3. makes a fresh credential-free clone of `somebloke1/noetic-dev`;
 4. checks out the exact protected base in detached mode;
-5. executes that base's `route_evidence.py`, which downloads and validates the exact artifact and live ruleset; and
+5. executes that base's `route_evidence.py`, which verifies the downloaded archive against GitHub's artifact digest and validates its sole evidence file and the live ruleset; and
 6. writes a private atomic receipt under `~/.local/state/noetic-dev/route-attestations/`.
 
 The user systemd timer invokes the operator every ten minutes. Install it only after the implementation has merged and `/opt/noetic-dev-agent-review/current` points to that protected release:

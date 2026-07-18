@@ -17,7 +17,9 @@ if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
 from route_attestation import (  # noqa: E402
+    IneligibleRun,
     attest_run,
+    load_attestation_context,
     main,
     select_runs,
     validate_existing_receipt,
@@ -224,6 +226,18 @@ class TestRouteAttestation(unittest.TestCase):
         ), mock.patch("route_attestation.retained_base_sha", return_value="b" * 40):
             with self.assertRaisesRegex(ValueError, "changed during attestation"):
                 attest_run(run, Path(directory))
+
+    def test_closed_unmerged_run_is_classified_without_retained_artifact(self) -> None:
+        run = run_record()
+        artifacts, pull, jobs = attestation_records()
+        artifacts["artifacts"][0]["expired"] = True
+        pull.update({"state": "closed", "merged": False})
+        with mock.patch(
+            "route_attestation.github_json", side_effect=[run, artifacts, pull, jobs]
+        ), mock.patch("route_attestation.retained_base_sha") as retained:
+            with self.assertRaises(IneligibleRun):
+                load_attestation_context(123)
+        retained.assert_not_called()
 
     def test_attestation_metadata_fails_closed(self) -> None:
         run = run_record()

@@ -324,17 +324,17 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         raise ValueError("retained artifact name does not bind a PR and candidate SHA")
     pr_number = int(match.group(1))
     head_sha = match.group(2)
-    base_sha = retained_base_sha(run_id, pr_number, head_sha)
 
     pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
-    jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
-    listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
-    head = pull.get("head") if isinstance(pull, dict) else None
-    base = pull.get("base") if isinstance(pull, dict) else None
     if isinstance(pull, dict) and pull.get("state") == "open" and pull.get("merged") is False:
         raise DeferredRun(f"pull request {pr_number} remains open")
     if isinstance(pull, dict) and pull.get("state") == "closed" and pull.get("merged") is False:
         raise IneligibleRun(pr_number)
+    jobs = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/jobs?filter=latest")
+    listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
+    head = pull.get("head") if isinstance(pull, dict) else None
+    base = pull.get("base") if isinstance(pull, dict) else None
+    base_sha = retained_base_sha(run_id, pr_number, head_sha)
     if (
         not isinstance(run, dict)
         or type(run.get("id")) is not int
