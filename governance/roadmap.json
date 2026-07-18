@@ -19,18 +19,15 @@
       "evidence": [
         {
           "kind": "commit",
-          "reference": "29196a67349537d6f8a8a711df11b86da0430857",
-          "scope": "Composition-root bootstrap commit."
+          "reference": "29196a67349537d6f8a8a711df11b86da0430857"
         },
         {
           "kind": "commit",
-          "reference": "15b9ae66ff316abf28a5041c465e95baef5e82f9",
-          "scope": "Exact dev integration checkpoint for this roadmap."
+          "reference": "15b9ae66ff316abf28a5041c465e95baef5e82f9"
         },
         {
           "kind": "issue",
-          "reference": "https://github.com/somebloke1/noetic-dev/issues/32",
-          "scope": "Portfolio inventory and continuation authority."
+          "reference": "https://github.com/somebloke1/noetic-dev/issues/32"
         }
       ]
     },
@@ -43,23 +40,19 @@
       "evidence": [
         {
           "kind": "commit",
-          "reference": "f5efd668304a7dbade20bd20704ed4930cbecef9",
-          "scope": "Final integrated M0 reference trace."
+          "reference": "f5efd668304a7dbade20bd20704ed4930cbecef9"
         },
         {
           "kind": "commit",
-          "reference": "0ab63d8fac1ceadfaca72717e62ff1d564c81e0e",
-          "scope": "Integrated M1 bounded-remediation trace."
+          "reference": "0ab63d8fac1ceadfaca72717e62ff1d564c81e0e"
         },
         {
           "kind": "commit",
-          "reference": "38c2812eca31983e39f8705f7bc7aed05df31329",
-          "scope": "Final integrated development.verified-change/v1 adapter."
+          "reference": "38c2812eca31983e39f8705f7bc7aed05df31329"
         },
         {
           "kind": "commit",
-          "reference": "b846efa0392eda96a58e1b6d099c9e39385cac58",
-          "scope": "Integrated terminal status projection over the reference chain."
+          "reference": "b846efa0392eda96a58e1b6d099c9e39385cac58"
         }
       ]
     },
@@ -72,23 +65,19 @@
       "evidence": [
         {
           "kind": "commit",
-          "reference": "58c4c791d7f39c0a6eca0dc7b1ddfd8bb67d02b2",
-          "scope": "Integrated protected route-attestation operator."
+          "reference": "58c4c791d7f39c0a6eca0dc7b1ddfd8bb67d02b2"
         },
         {
           "kind": "pull_request",
-          "reference": "https://github.com/somebloke1/noetic-dev/pull/64",
-          "scope": "Retained recurring route-attestation canary."
+          "reference": "https://github.com/somebloke1/noetic-dev/pull/64"
         },
         {
           "kind": "workflow_run",
-          "reference": "https://github.com/somebloke1/noetic-dev/actions/runs/29629152718",
-          "scope": "Exact retained canary run; not a release signature."
+          "reference": "https://github.com/somebloke1/noetic-dev/actions/runs/29629152718"
         },
         {
           "kind": "commit",
-          "reference": "15b9ae66ff316abf28a5041c465e95baef5e82f9",
-          "scope": "Checkpoint containing the retained canary change."
+          "reference": "15b9ae66ff316abf28a5041c465e95baef5e82f9"
         }
       ]
     },
@@ -252,7 +241,7 @@
       "id": "C7",
       "title": "privileged observability controls lack an authority model",
       "resolution_stage": "D3a",
-      "blocks": ["D7"]
+      "blocks": []
     },
     {
       "id": "C8",

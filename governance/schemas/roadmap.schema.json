@@ -31,15 +31,20 @@
     },
     "stages": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 15,
+      "maxItems": 15,
       "items": {"$ref": "#/definitions/stage"}
     },
     "parallel_tracks": {
       "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
       "items": {"$ref": "#/definitions/parallel_track"}
     },
     "unresolved_conflicts": {
       "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
       "items": {"$ref": "#/definitions/conflict"}
     }
   },
@@ -47,19 +52,58 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "reference", "scope"],
+      "required": ["kind", "reference"],
       "properties": {
         "kind": {
           "type": "string",
           "enum": ["commit", "issue", "pull_request", "workflow_run", "artifact"]
         },
-        "reference": {"type": "string", "minLength": 1},
-        "scope": {"type": "string", "minLength": 1}
+        "reference": {"type": "string", "minLength": 1}
       },
       "allOf": [
         {
           "if": {"properties": {"kind": {"const": "commit"}}},
           "then": {"properties": {"reference": {"pattern": "^[0-9a-f]{40}$"}}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "issue"}}},
+          "then": {
+            "properties": {
+              "reference": {
+                "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/[1-9][0-9]*$"
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "pull_request"}}},
+          "then": {
+            "properties": {
+              "reference": {
+                "pattern": "^https://github\\.com/somebloke1/noetic-dev/pull/[1-9][0-9]*$"
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "workflow_run"}}},
+          "then": {
+            "properties": {
+              "reference": {
+                "pattern": "^https://github\\.com/somebloke1/noetic-dev/actions/runs/[1-9][0-9]*$"
+              }
+            }
+          }
+        },
+        {
+          "if": {"properties": {"kind": {"const": "artifact"}}},
+          "then": {
+            "properties": {
+              "reference": {
+                "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+              }
+            }
+          }
         }
       ]
     },
@@ -68,7 +112,13 @@
       "additionalProperties": false,
       "required": ["id", "title", "status", "depends_on", "exit_gate", "evidence"],
       "properties": {
-        "id": {"type": "string", "pattern": "^D[0-9]+[a-z]?$"},
+        "id": {
+          "type": "string",
+          "enum": [
+            "D0", "D1a", "D1b", "D2", "D3a", "D3b", "D4a", "D4b",
+            "D4c", "D4d", "D5", "D6", "D7", "D8", "D9"
+          ]
+        },
         "title": {"type": "string", "minLength": 1},
         "status": {
           "type": "string",
@@ -76,7 +126,13 @@
         },
         "depends_on": {
           "type": "array",
-          "items": {"type": "string", "pattern": "^D[0-9]+[a-z]?$"}
+          "items": {
+            "type": "string",
+            "enum": [
+              "D0", "D1a", "D1b", "D2", "D3a", "D3b", "D4a", "D4b",
+              "D4c", "D4d", "D5", "D6", "D7", "D8", "D9"
+            ]
+          }
         },
         "exit_gate": {"type": "string", "minLength": 1},
         "evidence": {
@@ -90,7 +146,7 @@
       "additionalProperties": false,
       "required": ["id", "title", "constraint"],
       "properties": {
-        "id": {"type": "string", "pattern": "^T[0-9]+$"},
+        "id": {"type": "string", "enum": ["T1", "T2", "T3", "T4"]},
         "title": {"type": "string", "minLength": 1},
         "constraint": {"type": "string", "minLength": 1}
       }
@@ -100,12 +156,27 @@
       "additionalProperties": false,
       "required": ["id", "title", "resolution_stage", "blocks"],
       "properties": {
-        "id": {"type": "string", "pattern": "^C[0-9]+$"},
+        "id": {
+          "type": "string",
+          "enum": ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]
+        },
         "title": {"type": "string", "minLength": 1},
-        "resolution_stage": {"type": "string", "pattern": "^D[0-9]+[a-z]?$"},
+        "resolution_stage": {
+          "type": "string",
+          "enum": [
+            "D0", "D1a", "D1b", "D2", "D3a", "D3b", "D4a", "D4b",
+            "D4c", "D4d", "D5", "D6", "D7", "D8", "D9"
+          ]
+        },
         "blocks": {
           "type": "array",
-          "items": {"type": "string", "pattern": "^D[0-9]+[a-z]?$"}
+          "items": {
+            "type": "string",
+            "enum": [
+              "D0", "D1a", "D1b", "D2", "D3a", "D3b", "D4a", "D4b",
+              "D4c", "D4d", "D5", "D6", "D7", "D8", "D9"
+            ]
+          }
         }
       }
     }

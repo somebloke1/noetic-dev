@@ -41,6 +41,10 @@ unknown or cyclic dependencies, checkpointed stages without evidence, a `next`
 stage whose prerequisites are not checkpointed, or drift between the JSON stage
 index and the headings below.
 
+Schema version 1 closes the stage, parallel-track, conflict, and checkpoint-evidence
+catalogs. Adding, removing, or reassigning one of those identities requires an
+explicit schema/validator successor and migration tests, not an in-place mutation.
+
 ## 2. Status and completion semantics
 
 - `checkpointed`: present at the exact baseline with bounded evidence. It does
@@ -101,49 +105,50 @@ listed later are parallel but cannot silently satisfy a stage gate.
 ### D0 - Repository and governance bootstrap [checkpointed]
 
 - **Dependencies:** none.
+- **Evidence refs:** `commit:29196a67349537d6f8a8a711df11b86da0430857`,
+  `commit:15b9ae66ff316abf28a5041c465e95baef5e82f9`,
+  `issue:https://github.com/somebloke1/noetic-dev/issues/32`.
 - **Bounded claim:** the thin composition root, governance vocabulary, validation,
   tests, and issue/PR practices exist at the exact baseline.
-- **Evidence:** bootstrap commit `29196a67349537d6f8a8a711df11b86da0430857`,
-  checkpoint commit `15b9ae66ff316abf28a5041c465e95baef5e82f9`,
-  and issue #32.
 - **Non-claim:** the active existing-work freeze and bootstrap publication record
   are not thereby resolved.
-- **Checkpoint gate:** repository artifacts and their bounded contracts are present
-  at the exact baseline; later governance convergence remains D2.
+- **Exit gate:** Repository and governance artifacts are present at the exact
+  baseline without claiming publication readiness.
 
 ### D1a - Fixed provider-free reference proofs [checkpointed]
 
 - **Dependencies:** D0.
+- **Evidence refs:** `commit:f5efd668304a7dbade20bd20704ed4930cbecef9`,
+  `commit:0ab63d8fac1ceadfaca72717e62ff1d564c81e0e`,
+  `commit:38c2812eca31983e39f8705f7bc7aed05df31329`,
+  `commit:b846efa0392eda96a58e1b6d099c9e39385cac58`.
 - **Bounded claim:** M0 direct-pass, M1 bounded remediation,
   `development.verified-change/v1`, and terminal observability/status projections
   are integrated as deterministic reference artifacts.
-- **Evidence:** integration commits `f5efd668304a7dbade20bd20704ed4930cbecef9`,
-  `0ab63d8fac1ceadfaca72717e62ff1d564c81e0e`,
-  `38c2812eca31983e39f8705f7bc7aed05df31329`, and
-  `b846efa0392eda96a58e1b6d099c9e39385cac58`.
 - **Non-claim:** no dispatch, scheduling, persistence, real authority, live state,
   tool effect, or crash recovery is proved.
-- **Checkpoint gate:** frozen contracts, fixtures, reducers, and read models are
-  present and retain their documented non-claims.
+- **Exit gate:** Frozen M0, M1, verified-change, and terminal projection contracts
+  remain present with all documented non-claims.
 
 ### D1b - Protected-review routing and attestation slice [checkpointed]
 
 - **Dependencies:** D0.
+- **Evidence refs:** `commit:58c4c791d7f39c0a6eca0dc7b1ddfd8bb67d02b2`,
+  `pull_request:https://github.com/somebloke1/noetic-dev/pull/64`,
+  `workflow_run:https://github.com/somebloke1/noetic-dev/actions/runs/29629152718`,
+  `commit:15b9ae66ff316abf28a5041c465e95baef5e82f9`.
 - **Bounded claim:** protected review can route through the external genus-router
   and LiteLLM policy, and a trusted local operator can retain bounded route
   attestation evidence.
-- **Evidence:** route-attestation integration commit
-  `58c4c791d7f39c0a6eca0dc7b1ddfd8bb67d02b2`, retained canary PR #64,
-  workflow run `29629152718`, and checkpoint commit
-  `15b9ae66ff316abf28a5041c465e95baef5e82f9`.
 - **Non-claim:** this is not general runtime migration, cryptographic workflow-path
   provenance, or publication authority.
-- **Checkpoint gate:** the bounded review route and attestation slice is present;
-  its residual trust limits remain explicit.
+- **Exit gate:** The bounded protected-review route and attestation slice is present
+  while its trust and runtime non-claims remain explicit.
 
 ### D2 - Governance and source convergence [next]
 
 - **Dependencies:** D0, D1a, D1b.
+- **Evidence refs:** none.
 - **Scope:** resolve rather than paper over current authority drift:
   - autonomous `dev` integration versus the `main`-based delivery state machine;
   - the active existing-work freeze and stale bootstrap-status record;
@@ -151,156 +156,152 @@ listed later are parallel but cannot silently satisfy a stage gate.
   - endpoint pluralism in decision 0005 versus mandatory LiteLLM machine policy;
   - stale phase, routing, migration, and abeyant-plan statements;
   - issue #32, this roadmap, issue labels, and goalchain precedence.
-- **Exit gate:** accepted decisions name one branch flow and authority matrix; the
-  audit freeze is completed or explicitly superseded with reviewed evidence;
-  machine policies and prose agree; unresolved choices are in
-  `OPEN_QUESTIONS.md`; issue #32 and the roadmap checkpoint agree; repository
-  validation and the generation's independent QA pass.
+- **Exit gate:** Accepted authority and branch-flow decisions, reviewed freeze
+  disposition, consistent machine and prose policy, synchronized issue 32 and
+  roadmap, green validation, and paired independent QA.
 
 ### D3a - Donor characterization and design decisions [planned]
 
 - **Dependencies:** D2.
+- **Evidence refs:** none.
 - **Scope:** pin donor and component SHAs; select conformance fixtures; decide the
   controller home and component-reference mechanism; choose the first reference
   runtime; define principal authentication, authorization, credential boundaries,
   independently bound QA identity, effect capabilities, expiry/revocation,
   persistence consistency, event privacy/redaction, and compatibility policy.
-- **Exit gate:** each choice has an accepted decision, falsifiers, rollback or
-  migration implications, and a pinned donor characterization suite. No controller
-  implementation starts from an unrecorded assumption.
+- **Exit gate:** Pinned donor characterization and accepted decisions cover
+  component homes, runtime, persistence, identity, effects, privacy, compatibility,
+  and rollback implications.
 
 ### D3b - Versioned connective contracts [planned]
 
 - **Dependencies:** D3a.
+- **Evidence refs:** none.
 - **Scope:** version controller state/transitions, work and typed dependency roles,
   delegation/result/cancellation, delivery/idempotency/reconciliation, authority,
   event envelope, storage/effect ports, and component pin manifests.
-- **Exit gate:** schemas and fixtures are versioned; invalid ordering, authority,
-  replay, cancellation, and compatibility cases fail closed; property/model tests
-  and independent adversarial QA pass; component homes and evolution rules are
-  explicit.
+- **Exit gate:** Versioned schemas, fixtures, evolution rules, property tests, and
+  adversarial QA cover controller, delegation, authority, event, effect, storage,
+  and pin contracts.
 
 ### D4a - Portable executive controller [planned]
 
 - **Dependencies:** D3b.
+- **Evidence refs:** none.
 - **Home:** an independently testable controller component referenced by this root.
 - **Scope:** deterministic wave sequencing, typed dependency legality, ordinal
   identity, QA/remediation accounting, effect and commit boundaries, controlled
   cancellation/exhaustion, durable journal/rebuild, and one reference persistence
   implementation with fault injection.
-- **Exit gate:** conformance against M0/M1 plus scheduling, duplicate, restart,
-  stale writer, cancellation, exhaustion, and recovery tests. Semantic judgment
-  remains attributed to agents rather than encoded as deterministic truth.
+- **Exit gate:** A durable reference controller passes conformance, scheduling,
+  duplicate, restart, stale-writer, cancellation, exhaustion, and recovery tests
+  without claiming deterministic semantic judgment.
 
 ### D4b - Telos delegation dispatcher [planned]
 
 - **Dependencies:** D3b.
+- **Evidence refs:** none.
 - **Home:** Telos, with a pinned interface consumed by this composition root.
 - **Scope:** at-least-once delivery with durable idempotency keys, deduplicated
   admission, replay-safe results, cancellation, retries, and reconciliation. Do
   not claim impossible cross-system exactly-once execution.
-- **Exit gate:** a `delegated-pending` goal can be admitted without duplicate work,
-  resumed after crash, cancelled under authority, and returned for separate Telos
-  adjudication; ambiguous effects reconcile or fail closed.
+- **Exit gate:** At-least-once delegated delivery is idempotently admitted,
+  replay-safe, cancellable, crash-resumable, reconcilable, and separately
+  adjudicable by Telos.
 
 ### D4c - Selected runtime and model adapters [planned]
 
 - **Dependencies:** D3b.
+- **Evidence refs:** none.
 - **Scope:** implement only the reference runtime, scoped tool/effect path,
   independently bound QA path, and policy-compliant model routes needed by D5.
   Broader OpenCode, Pi, embedding, and ASR migration remains separately tracked.
-- **Exit gate:** principal and credential boundaries are tested; every model call
-  follows the accepted route/invoke/outcome policy; direct bypass, model drift,
-  duplicate effect, expired capability, and outcome-report failure fail closed.
+- **Exit gate:** The selected runtime and scoped effect and QA paths enforce
+  principal, credential, routing, outcome, expiry, and duplicate-effect boundaries.
 
 ### D4d - Pinned integration skeleton [planned]
 
 - **Dependencies:** D4a, D4b, D4c.
+- **Evidence refs:** none.
 - **Home:** this composition root.
 - **Scope:** add the minimum `compose/` binding, exact component manifest, durable
   state/event journal, compatibility checks, cross-component contract tests, and
   rollback procedure needed before a live claim.
-- **Exit gate:** a clean environment resolves exact component revisions, starts the
-  bounded composition, rejects incompatible contracts, preserves/replays evidence,
-  and rolls back without losing the last known-good checkpoint.
+- **Exit gate:** A clean environment resolves exact compatible component pins,
+  preserves and replays durable evidence, passes cross-component contracts, and
+  rolls back to a known-good checkpoint.
 
 ### D5 - Authentic bounded vertical slice [planned]
 
 - **Dependencies:** D4d.
+- **Evidence refs:** none.
 - **Scope:** execute one bounded real effect from authenticated Telos delegation
   through dispatcher, controller, implementer, independent QA, replay-safe result,
   and separate Telos adjudication.
-- **Exit gate:** exact pins and principals are recorded; retries, duplicates,
-  crash/restart, cancellation, stale results, audit replay, and rollback are forced;
-  every effect is bounded and attributable; the final claim survives one paired
-  adversarial QA pass and the then-effective protected integration gates.
+- **Exit gate:** One bounded authenticated effect survives forced retries,
+  duplicates, crash/restart, cancellation, replay, QA, separate Telos adjudication,
+  and rollback under exact pins.
 
 ### D6 - Cognitive programs [planned]
 
 - **Dependencies:** D5.
+- **Evidence refs:** none.
 - **Scope:** independently version one cognitive discipline, then the general
   development pipeline over the controller. Preserve selected donor invariants and
   fixtures without importing donor runtime coupling.
-- **Exit gate:** program lifecycle, packets, evidence, recursion, semantic gates,
-  and QA/remediation mapping conform across a fake runtime and the D5 reference
-  runtime. `development.verified-change/v1` remains a bounded fixture adapter, not
-  the generic engine.
+- **Exit gate:** One discipline and then the development pipeline conform across
+  fake and reference runtimes without donor runtime coupling.
 
 ### D7 - Read-only live observability [planned]
 
 - **Dependencies:** D5, D6.
+- **Evidence refs:** none.
 - **Scope:** derive current state, causal history, readiness/blocking, critical
   path, agent census, and QA lineage from persisted cognitional events. Deliver a
   read-only web or TUI surface first.
-- **Exit gate:** reconnect/replay is deterministic; redaction and tenant/authority
-  boundaries are tested; views identify missing or contradictory events rather
-  than inventing state; no command authority is exposed. Privileged control needs
-  a separate accepted threat model and decision.
+- **Exit gate:** Read-only views replay real persisted events, explain causal state
+  and missing evidence, enforce privacy, and expose no command authority.
 
 ### D8 - Attach and composition hardening [planned]
 
 - **Dependencies:** D7.
+- **Evidence refs:** none.
 - **Scope:** reproduce the full composition from clean state, test upgrades and
   rollback, and add tmux-native attach as the default live-visibility adapter.
   Browser PTY remains optional and non-load-bearing.
-- **Exit gate:** clean install, restart, upgrade, rollback, identity, reconnect,
-  command-length, isolation, and security drills pass against exact component pins.
-  Attach loss cannot corrupt controller state or event evidence.
+- **Exit gate:** Clean install, restart, upgrade, rollback, identity, reconnect,
+  isolation, command-length, and security drills pass against exact pins.
 
 ### D9 - Release and publication [planned]
 
 - **Dependencies:** D2, D8.
+- **Evidence refs:** none.
 - **Scope:** resolve licensing, complete the final existing-work and security audit,
   establish the distinct protected trust root required by current governance,
   verify protected `main`, and publish only an exact post-merge SHA.
-- **Exit gate:** the authoritative delivery and publication gates pass without
-  advisory substitutions; post-merge validation, recovery and security evidence,
-  independent approval, artifact provenance, license, release notes, rollback, and
-  an immutable tag all bind the same full `main` SHA.
+- **Exit gate:** License, audit, distinct protected trust root, protected main,
+  post-merge evidence, independent approval, rollback, and immutable tag bind one
+  full main SHA.
 
 ## 6. Parallel non-gating tracks
 
-- **T1 - saeproj research:** improve model cognition and evaluation without gating
-  D2-D9.
-- **T2 - client trials:** compare OpenCode, Pi, and other candidates for usability;
-  changing the D3a reference runtime still requires an explicit decision.
-- **T3 - ContextForge:** retain as evidence and use only if a concrete multi-host
-  transport requirement survives comparison with plain MCP.
-- **T4 - issue #65:** preserve as a source-free, no-tools, non-evidence OpenCode
-  experiment. Merge does not promote it to runtime evidence; a successor must do so.
+- **T1 - saeproj research:** May improve models and evaluation but cannot gate D2-D9.
+- **T2 - Client trials:** May inform D3a; changing the selected reference runtime requires an accepted decision.
+- **T3 - ContextForge evaluation:** May advance only from a demonstrated multi-host requirement; plain MCP remains the default.
+- **T4 - Issue 65 OpenCode experiment:** Remains non-evidence even if merged; production readiness requires a separately scoped successor.
 
 ## 7. Explicit unresolved conflicts
 
 The machine index records which stages these conflicts block:
 
-1. `C1`: `dev` integration and `main` delivery policy disagree.
-2. `C2`: the active freeze/bootstrap records lag the represented portfolio state.
-3. `C3`: P1-P4 is operationally canonical but formally awaits ratification.
-4. `C4`: endpoint pluralism conflicts with mandatory LiteLLM access policy.
-5. `C5`: the first production reference runtime is not selected.
-6. `C6`: principal, effect, persistence, and event-privacy semantics are undecided.
-7. `C7`: privileged observability controls have no accepted authority model.
-8. `C8`: license and distinct release trust root remain unresolved.
+- **C1 - dev integration and main delivery policy disagree:** resolve in D2; blocks D3a, D9.
+- **C2 - active freeze and bootstrap records lag portfolio state:** resolve in D2; blocks D3a, D9.
+- **C3 - P1-P4 operational use lacks formal ratification:** resolve in D2; blocks D3a.
+- **C4 - endpoint pluralism conflicts with mandatory LiteLLM policy:** resolve in D2; blocks D3a, D4c.
+- **C5 - first production reference runtime is not selected:** resolve in D3a; blocks D4c, D5.
+- **C6 - principal effect persistence and event privacy semantics are undecided:** resolve in D3a; blocks D3b, D5, D7.
+- **C7 - privileged observability controls lack an authority model:** resolve in D3a; blocks none.
+- **C8 - license and distinct release trust root are unresolved:** resolve in D9; blocks D9.
 
 These are gates, not invitations to guess.
 

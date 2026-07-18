@@ -6,7 +6,7 @@ import copy
 import unittest
 from pathlib import Path
 
-from scripts.governance.check_roadmap import validate_roadmap
+from scripts.governance.check_roadmap import validate_roadmap, validate_roadmap_files
 from scripts.governance.json_schema import load_json_strict
 
 
@@ -29,7 +29,20 @@ class TestRoadmap(unittest.TestCase):
         )
 
     def test_exact_roadmap_contract_is_valid(self) -> None:
-        self.assertEqual(validate_roadmap(self.state, self.schema, self.markdown), [])
+        self.assertEqual(validate_roadmap(self.state, self.schema, self.markdown, ROOT), [])
+        self.assertEqual(validate_roadmap_files(ROOT), [])
+
+    def test_wrong_stage_container_type_fails(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"] = None
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "expected type array")
+
+    def test_document_path_is_closed_to_root_roadmap(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["document_path"] = "../../etc/passwd"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "expected constant 'ROADMAP.md'")
 
     def test_duplicate_stage_id_fails(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -41,7 +54,7 @@ class TestRoadmap(unittest.TestCase):
         mutated = copy.deepcopy(self.state)
         mutated["stages"][3]["depends_on"].append("D404")
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "unknown dependency D404")
+        self.assert_has_error(errors, "expected one of")
 
     def test_dependency_cycle_fails(self) -> None:
         mutated = copy.deepcopy(self.state)
@@ -61,6 +74,73 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "string does not match pattern")
 
+    def test_commit_evidence_rejects_trailing_newline(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"][0]["reference"] += "\n"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "invalid commit evidence")
+
+    def test_unknown_full_commit_fails_repository_validation(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"][0]["reference"] = "0" * 40
+        errors = validate_roadmap(mutated, self.schema, self.markdown, ROOT)
+        self.assert_has_error(errors, "evidence commit does not resolve")
+
+    def test_checkpoint_requires_commit_evidence(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"] = [
+            item for item in mutated["stages"][0]["evidence"]
+            if item["kind"] == "issue"
+        ]
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "requires baseline-ancestor commit evidence")
+
+    def test_non_authority_issue_cannot_be_checkpoint_evidence(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"][-1]["reference"] = (
+            "https://github.com/somebloke1/noetic-dev/issues/65"
+        )
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "issue evidence must be authority issue #32")
+
+    def test_malformed_remote_evidence_fails(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"][-1]["reference"] = "not-a-url"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "string does not match pattern")
+
+    def test_artifact_path_traversal_fails(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"][-1] = {
+            "kind": "artifact",
+            "reference": "../../etc/passwd",
+        }
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assertTrue(errors)
+
+    def test_unapproved_remote_evidence_fails_closed_catalog(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][2]["evidence"][1]["reference"] = (
+            "https://github.com/somebloke1/noetic-dev/pull/999"
+        )
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "remote evidence catalog changed")
+
+    def test_duplicate_evidence_fails(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][0]["evidence"].append(
+            copy.deepcopy(mutated["stages"][0]["evidence"][0])
+        )
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "duplicate evidence")
+
+    def test_evidence_cannot_move_between_stages(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        moved = mutated["stages"][2]["evidence"].pop(1)
+        mutated["stages"][0]["evidence"].append(moved)
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "schema version 1 evidence catalog changed")
+
     def test_next_stage_requires_checkpointed_dependencies(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["stages"][1]["status"] = "planned"
@@ -73,6 +153,38 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(mutated, self.schema, self.markdown)
         self.assert_has_error(errors, "expected exactly one next stage")
 
+    def test_checkpointed_stage_requires_checkpointed_dependencies(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        stage = mutated["stages"][10]
+        stage["status"] = "checkpointed"
+        stage["evidence"] = [copy.deepcopy(mutated["stages"][0]["evidence"][0])]
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "checkpointed stage depends on non-checkpointed D4d")
+
+    def test_blocked_stage_requires_named_conflict(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][6]["status"] = "blocked"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "D4a: blocked stage has no named conflict")
+
+    def test_conflict_cannot_block_checkpointed_stage(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"][0]["blocks"].append("D0")
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "unresolved conflict blocks checkpointed D0")
+
+    def test_conflict_blocks_must_be_unique(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"][0]["blocks"].append("D3a")
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "blocked stages must be unique")
+
+    def test_conflict_resolution_cannot_follow_blocked_stage(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"][0]["resolution_stage"] = "D9"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "resolution stage D9 follows blocked D3a")
+
     def test_markdown_heading_drift_fails(self) -> None:
         mutated = self.markdown.replace(
             "### D2 - Governance and source convergence [next]",
@@ -81,11 +193,99 @@ class TestRoadmap(unittest.TestCase):
         errors = validate_roadmap(self.state, self.schema, mutated)
         self.assert_has_error(errors, "stage headings do not match")
 
+    def test_markdown_checkpoint_line_drift_fails_even_if_sha_remains(self) -> None:
+        mutated = self.markdown.replace(
+            "**Exact checkpoint:** `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` "
+            "on 2026-07-18",
+            "**Exact checkpoint:** `main@0000000000000000000000000000000000000000` "
+            "on 2099-01-01",
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "checkpoint line does not match")
+
+    def test_markdown_authority_line_drift_fails_even_if_url_remains(self) -> None:
+        mutated = self.markdown.replace(
+            "[GitHub issue #32](https://github.com/somebloke1/noetic-dev/issues/32)",
+            "[GitHub issue #999](https://github.com/somebloke1/noetic-dev/issues/999)",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "authority line does not match")
+
+    def test_markdown_dependency_drift_fails(self) -> None:
+        mutated = self.markdown.replace(
+            "- **Dependencies:** D0, D1a, D1b.",
+            "- **Dependencies:** D9.",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "D2: Markdown dependencies do not match JSON")
+
+    def test_markdown_evidence_drift_fails(self) -> None:
+        mutated = self.markdown.replace(
+            "`commit:29196a67349537d6f8a8a711df11b86da0430857`",
+            "`commit:0000000000000000000000000000000000000000`",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "D0: Markdown evidence does not match JSON")
+
+    def test_markdown_exit_gate_drift_fails(self) -> None:
+        mutated = self.markdown.replace(
+            "baseline without claiming publication readiness.",
+            "baseline and proves publication readiness.",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "D0: Markdown exit gate does not match JSON")
+
+    def test_markdown_track_drift_fails(self) -> None:
+        mutated = self.markdown.replace(
+            "May improve models and evaluation but cannot gate D2-D9.",
+            "Gates every delivery stage.",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "parallel tracks do not match")
+
+    def test_markdown_conflict_drift_fails(self) -> None:
+        mutated = self.markdown.replace(
+            "resolve in D2; blocks D3a, D9.",
+            "resolve in D9; blocks D0.",
+            1,
+        )
+        errors = validate_roadmap(self.state, self.schema, mutated)
+        self.assert_has_error(errors, "conflicts do not match")
+
+    def test_machine_conflict_catalog_cannot_be_removed(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"] = []
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "array has fewer than 8 items")
+
+    def test_version_one_stage_catalog_is_closed(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["stages"][-1]["id"] = "D99"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "expected one of")
+
+    def test_version_one_track_catalog_is_closed(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["parallel_tracks"][-1]["id"] = "T99"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "expected one of")
+
+    def test_version_one_conflict_catalog_is_closed(self) -> None:
+        mutated = copy.deepcopy(self.state)
+        mutated["unresolved_conflicts"][-1]["id"] = "C99"
+        errors = validate_roadmap(mutated, self.schema, self.markdown)
+        self.assert_has_error(errors, "expected one of")
+
     def test_unknown_conflict_stage_fails(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["unresolved_conflicts"][0]["blocks"].append("D404")
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "unknown blocked stage D404")
+        self.assert_has_error(errors, "expected one of")
 
 
 if __name__ == "__main__":
