@@ -1,0 +1,39 @@
+[Unit]
+Description=noetic-dev credential-owning OpenCode spike execute phase
+After=noetic-dev-opencode-spike-route.service network-online.target
+Before=noetic-dev-opencode-spike-outcome.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=noetic-opencode-spike
+Group=noetic-opencode-spike
+WorkingDirectory=/opt/noetic-dev-agent-review/opencode-spike-runtime
+ExecStart=/usr/bin/python3 -I /opt/noetic-dev-agent-review/opencode-spike-runtime/run_opencode_spike.py execute
+Environment=HOME=/var/lib/noetic-opencode-spike
+Environment=PATH=/usr/sbin:/usr/bin:/bin
+UnsetEnvironment=LITELLM_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY GOOGLE_API_KEY XAI_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AZURE_OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN PYTHONPATH PYTHONHOME LD_PRELOAD LD_LIBRARY_PATH HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+LoadCredential=litellm_api_key
+UMask=0077
+TimeoutStartSec=3min
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/noetic-opencode-spike/state
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_NETLINK
+IPAddressAllow=127.0.0.0/8
+IPAddressAllow=172.22.10.160/32
+IPAddressDeny=any
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+CapabilityBoundingSet=
+AmbientCapabilities=

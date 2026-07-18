@@ -75,6 +75,17 @@ REQUIRED = [
     "tests/governance/test_model_policy.py",
     "tests/governance/test_opencode_session_policy.py",
     "tests/governance/test_route_evidence.py",
+    # Inert, non-evidence OpenCode credential-isolation spike (issue #65)
+    "docs/governance/opencode-credential-isolation-spike.md",
+    "governance/schemas/opencode-spike-record.schema.json",
+    "scripts/governance/run_opencode_spike.py",
+    "deploy/install-opencode-spike.sh",
+    "deploy/run-opencode-spike.sh",
+    "deploy/systemd/noetic-dev-opencode-spike-route.service",
+    "deploy/systemd/noetic-dev-opencode-spike-execute.service",
+    "deploy/systemd/noetic-dev-opencode-spike-outcome.service",
+    "tests/governance/test_opencode_spike.py",
+    "tests/governance/test_opencode_spike_systemd.py",
     # Governance files (issue #23)
     "docs/governance/delivery-governance.md",
     "governance/state-machine.json",

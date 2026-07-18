@@ -1,0 +1,36 @@
+[Unit]
+Description=noetic-dev tokenless OpenCode spike route phase
+Before=noetic-dev-opencode-spike-execute.service
+
+[Service]
+Type=oneshot
+User=noetic-opencode-spike
+Group=noetic-opencode-spike
+WorkingDirectory=/opt/noetic-dev-agent-review/opencode-spike-runtime
+ExecStart=/opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/python3 -I /opt/noetic-dev-agent-review/opencode-spike-runtime/run_opencode_spike.py route --genus-router-command /opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin/genus-router --genus-router-config /opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/config/router.yaml --genus-router-sha f2b839b0cfc737c4c1f0a46d3d519d414529545c
+Environment=HOME=/var/lib/noetic-opencode-spike
+Environment=PATH=/opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/bin:/usr/bin:/bin
+UnsetEnvironment=CREDENTIALS_DIRECTORY LITELLM_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY GOOGLE_API_KEY XAI_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AZURE_OPENAI_API_KEY GH_TOKEN GITHUB_TOKEN PYTHONPATH PYTHONHOME LD_PRELOAD LD_LIBRARY_PATH HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+UMask=0077
+TimeoutStartSec=30s
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/noetic-opencode-spike/state /var/lib/noetic-opencode-spike/router-state
+BindPaths=/var/lib/noetic-opencode-spike/router-state:/opt/noetic-dev-agent-review/genus-router/f2b839b0cfc737c4c1f0a46d3d519d414529545c/state
+InaccessiblePaths=-/etc/credstore -/run/credentials
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+CapabilityBoundingSet=
+AmbientCapabilities=
