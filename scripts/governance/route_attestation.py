@@ -369,6 +369,9 @@ def attest_run(run: dict[str, Any], state_dir: Path) -> Path:
 
 def load_attestation_context(run_id: int) -> dict[str, Any]:
     run = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}")
+    workflow = github_json(
+        f"repos/{REPOSITORY}/actions/workflows/{AGENT_REVIEW_WORKFLOW_ID}"
+    )
     display_title = run.get("display_title") if isinstance(run, dict) else None
     match = ARTIFACT_NAME.fullmatch(display_title) if isinstance(display_title, str) else None
     if match is None:
@@ -414,11 +417,17 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or run.get("run_attempt") != 1
         or type(run.get("workflow_id")) is not int
         or run.get("workflow_id") != AGENT_REVIEW_WORKFLOW_ID
+        or run.get("name") != f"agent-review-{pr_number}-{head_sha}"
         or run.get("path") != ".github/workflows/agent-review.yml"
         or run.get("event") != "pull_request_target"
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
         or run.get("display_title") != f"agent-review-{pr_number}-{head_sha}"
+        or not isinstance(workflow, dict)
+        or workflow.get("id") != AGENT_REVIEW_WORKFLOW_ID
+        or workflow.get("name") != "Agent Review"
+        or workflow.get("path") != ".github/workflows/agent-review.yml"
+        or workflow.get("state") != "active"
         or not isinstance(run.get("repository"), dict)
         or type(run["repository"].get("id")) is not int
         or run["repository"].get("id") != REPOSITORY_ID
@@ -455,7 +464,10 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or jobs.get("total_count") != 1
         or not isinstance(listed_jobs, list)
         or len(listed_jobs) != 1
-        or not _valid_review_job(listed_jobs[0], run_id, head_sha, base_sha)
+        or not _valid_review_job(
+            listed_jobs[0], run_id, head_sha, base_sha,
+            run["name"],
+        )
         or not _valid_artifact(
             artifact, run_id, head_sha, f"agent-review-{pr_number}-{head_sha}", base_sha
         )

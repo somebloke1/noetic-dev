@@ -31,6 +31,10 @@ Installation is an operator action, not an isolation boundary against the invoki
 
 The unit stores no token. It uses the operator account's existing GitHub CLI authentication to read Actions artifacts and administrator-visible ruleset state. The repository-scoped self-hosted runner cannot read that account's home or receipt directory.
 
+### GitHub name fields
+
+GitHub Cloud run `29627031616` is the production contract fixture for workflows that set `run-name`. On 2026-07-17, both API versions `2022-11-28` and `2026-03-10` returned `agent-review-60-9f2a9a6664b920e2c2cbecda764e6e2de389d43a` for the run's `name` and `display_title` and job `88033368879`'s `workflow_name`. The workflow endpoint independently returned ID `312422987`, name `Agent Review`, path `.github/workflows/agent-review.yml`, and state `active`. The validator therefore binds the dynamic fields to the exact PR/head identity and the static definition through the workflow endpoint; it does not infer undocumented static semantics for run or job fields. The complete run and job API response SHA-256 digests were respectively `23803ee167909425fd090919472e59d20ca14fd8bb22bf5b1c878103805f7e4b` and `2ba9cebf909b688e052d501d83998407e07482d270c94295aaf9be79fccf6019`.
+
 ## Trust Boundary
 
 The receipt records that the identified protected-base validator accepted a specific repository, workflow, run attempt, review job, PR, candidate/base pair, and artifact ID/name/digest after checking the retained route evidence and live ruleset. It does not embed the artifact or ruleset snapshot: independent replay remains limited by the artifact's 90-day retention and mutable GitHub API availability. The receipt is therefore an atomic local acceptance record, not post-expiry proof, a GitHub merge check, or an artifact signature.

@@ -33,6 +33,7 @@ def run_record(run_id: int = 123) -> dict:
         "id": run_id,
         "run_attempt": 1,
         "workflow_id": 312422987,
+        "name": f"agent-review-55-{'a' * 40}",
         "path": ".github/workflows/agent-review.yml",
         "event": "pull_request_target",
         "status": "completed",
@@ -85,7 +86,7 @@ def attestation_records() -> tuple[dict, dict, dict, dict]:
         "id": 456,
         "run_id": 123,
         "run_attempt": 1,
-        "workflow_name": "Agent Review",
+        "workflow_name": f"agent-review-55-{head_sha}",
         "head_sha": head_sha,
         "status": "completed",
         "conclusion": "success",
@@ -106,6 +107,13 @@ def attestation_records() -> tuple[dict, dict, dict, dict]:
         ],
     }]}
     return artifacts, pull, merge_commit, jobs
+
+
+def workflow_record() -> dict:
+    return {
+        "id": 312422987, "name": "Agent Review",
+        "path": ".github/workflows/agent-review.yml", "state": "active",
+    }
 
 
 def valid_receipt(run_id: int = 123) -> dict:
@@ -253,8 +261,8 @@ class TestRouteAttestation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "route_attestation.github_json",
             side_effect=[
-                run, pull, artifacts, merge_commit, jobs,
-                run, pull, artifacts, merge_commit, jobs,
+                run, workflow_record(), pull, artifacts, merge_commit, jobs,
+                run, workflow_record(), pull, artifacts, merge_commit, jobs,
             ],
         ), mock.patch(
             "route_attestation.validate_from_protected_base", return_value="d" * 64
@@ -276,8 +284,8 @@ class TestRouteAttestation(unittest.TestCase):
         changed = json.loads(json.dumps(artifacts))
         changed["artifacts"][0]["digest"] = f"sha256:{'e' * 64}"
         responses = [
-            run, pull, artifacts, merge_commit, jobs,
-            run, pull, changed, merge_commit, jobs,
+            run, workflow_record(), pull, artifacts, merge_commit, jobs,
+            run, workflow_record(), pull, changed, merge_commit, jobs,
         ]
         with tempfile.TemporaryDirectory() as directory, mock.patch(
             "route_attestation.github_json", side_effect=responses
@@ -293,7 +301,7 @@ class TestRouteAttestation(unittest.TestCase):
         artifacts = {"total_count": 0, "artifacts": []}
         pull.update({"state": "closed", "merged": False})
         with mock.patch(
-            "route_attestation.github_json", side_effect=[run, pull]
+            "route_attestation.github_json", side_effect=[run, workflow_record(), pull]
         ), mock.patch("route_attestation.retained_base_sha") as retained:
             with self.assertRaises(IneligibleRun):
                 load_attestation_context(123)
@@ -303,13 +311,20 @@ class TestRouteAttestation(unittest.TestCase):
         run = run_record()
         artifacts, pull, merge_commit, jobs = attestation_records()
         mutations = [
-            (pull, {**artifacts, "total_count": 2}, merge_commit, jobs),
-            (pull, {**artifacts, "artifacts": [{**artifacts["artifacts"][0], "expired": True}]}, merge_commit, jobs),
-            ({**pull, "base": {"ref": "main", "sha": "b" * 40}}, artifacts, merge_commit, jobs),
-            (pull, artifacts, {**merge_commit, "parents": [{"sha": "e" * 40}]}, jobs),
-            (pull, artifacts, merge_commit, {"total_count": 2, "jobs": jobs["jobs"]}),
-            ({**pull, "state": "open", "merged": False}, artifacts, merge_commit, jobs),
+            (workflow_record(), pull, {**artifacts, "total_count": 2}, merge_commit, jobs),
+            (workflow_record(), pull, {**artifacts, "artifacts": [{**artifacts["artifacts"][0], "expired": True}]}, merge_commit, jobs),
+            (workflow_record(), {**pull, "base": {"ref": "main", "sha": "b" * 40}}, artifacts, merge_commit, jobs),
+            (workflow_record(), pull, artifacts, {**merge_commit, "parents": [{"sha": "e" * 40}]}, jobs),
+            (workflow_record(), pull, artifacts, merge_commit, {"total_count": 2, "jobs": jobs["jobs"]}),
+            (workflow_record(), {**pull, "state": "open", "merged": False}, artifacts, merge_commit, jobs),
         ]
+        for key, value in [
+            ("id", 1), ("name", "Other Workflow"),
+            ("path", ".github/workflows/other.yml"), ("state", "disabled_manually"),
+        ]:
+            workflow = workflow_record()
+            workflow[key] = value
+            mutations.append((workflow, pull, artifacts, merge_commit, jobs))
         for responses in mutations:
             with self.subTest(responses=responses), tempfile.TemporaryDirectory() as directory, mock.patch(
                 "route_attestation.github_json", side_effect=[run, *responses]
