@@ -15,6 +15,7 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.route = (SYSTEMD / "noetic-dev-opencode-spike-route.service").read_text(encoding="utf-8")
         self.execute = (SYSTEMD / "noetic-dev-opencode-spike-execute.service").read_text(encoding="utf-8")
         self.outcome = (SYSTEMD / "noetic-dev-opencode-spike-outcome.service").read_text(encoding="utf-8")
+        self.installer = (ROOT / "deploy" / "install-opencode-spike.sh").read_text(encoding="utf-8")
 
     def test_only_execute_process_receives_the_systemd_credential(self):
         self.assertNotIn("LoadCredential=", self.route)
@@ -25,7 +26,7 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
             self.assertIn("IPAddressDeny=any", unit)
             self.assertIn("RestrictAddressFamilies=AF_UNIX", unit)
             self.assertIn("UnsetEnvironment=CREDENTIALS_DIRECTORY LITELLM_API_KEY", unit)
-            self.assertIn("BindPaths=/var/lib/noetic-opencode-spike/router-state:", unit)
+            self.assertIn("BindPaths=/var/lib/noetic-opencode-spike/non-evidence-router-state:", unit)
         self.assertIn("IPAddressDeny=any", self.execute)
         self.assertIn("IPAddressAllow=127.0.0.0/8", self.execute)
         self.assertIn("IPAddressAllow=172.22.10.160/32", self.execute)
@@ -46,6 +47,12 @@ class TestOpenCodeSpikeDeployment(unittest.TestCase):
         self.assertIn("User=llm-svc", self.execute)
         self.assertIn("Group=llm-svc", self.execute)
         self.assertIn("/var/lib/noetic-opencode-spike/execute-state", self.execute)
+
+    def test_router_state_has_a_root_owned_non_evidence_classifier(self):
+        classifier = '{"evidence_class":"non-evidence","policy_status":"contract-only","runtime_adapter_ready":false,"schema_version":"1","storage_scope":"isolated-spike-only"}'
+        self.assertIn(classifier, self.installer)
+        self.assertIn('install -d -o root -g root -m 0755 "$router_state"', self.installer)
+        self.assertIn('chmod 0444 "$router_state/classification.json"', self.installer)
 
 if __name__ == "__main__":
     unittest.main()

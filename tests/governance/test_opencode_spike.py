@@ -28,6 +28,7 @@ NONCE = "0123456789abcdef0123456789abcdef"
 PROMPT = f"Respond with exactly READY {NONCE} and nothing else."
 EXPECTED_TEXT = f"READY {NONCE}"
 ROUTER_IDENTITY = "1" * 64
+ROUTER_CLASSIFICATION = "2" * 64
 
 
 def model_ref(model: str) -> dict[str, str]:
@@ -58,6 +59,7 @@ def route_record() -> dict:
         "schema_version": "1",
         "component_sha": spike.COMPONENT_SHA,
         "router_identity_sha256": ROUTER_IDENTITY,
+        "router_state_classification_sha256": ROUTER_CLASSIFICATION,
         "classification": dict(spike.ROUTE_ARGUMENTS),
         "decision": route_decision(),
     }
@@ -167,10 +169,23 @@ def success_result() -> dict:
     return result
 
 
+def failure_result() -> dict:
+    result = spike._base_result()
+    result.update({"route_decision_id": DECISION_ID, "router_identity_sha256": ROUTER_IDENTITY, "route_reference_sha256": "a" * 64, "routed_model": MODEL, "failure_code": "credential-directory-invalid", "claim_state": "claimed"})
+    return result
+
+
+def append_outcome(path: Path, arguments: dict) -> None:
+    record = {"decision": {"decision_id": DECISION_ID}, "decision_id": DECISION_ID, "notes": arguments["notes"], "outcome": arguments["outcome"], "ts": "2026-07-18T00:00:00+00:00"}
+    with path.open("ab") as handle:
+        handle.write(spike.canonical_json(record) + b"\n")
+
+
 class FakeRouter:
-    def __init__(self, route: dict | None = None, acknowledgement: dict | None = None) -> None:
+    def __init__(self, route: dict | None = None, acknowledgement: dict | None = None, outcomes_path: Path | None = None) -> None:
         self.route = route
         self.acknowledgement = acknowledgement or {"recorded": True}
+        self.outcomes_path = outcomes_path
         self.calls: list[tuple[str, dict]] = []
 
     def __enter__(self):
@@ -185,6 +200,8 @@ class FakeRouter:
             if self.route is None:
                 raise AssertionError("unexpected route call")
             return copy.deepcopy(self.route)
+        if self.outcomes_path is not None:
+            append_outcome(self.outcomes_path, arguments)
         return copy.deepcopy(self.acknowledgement)
 
 
@@ -632,6 +649,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
                 router_factory=factory,
                 policy_validator=lambda _path: None,
                 identity_validator=lambda *_args: ROUTER_IDENTITY,
+                classification_validator=lambda _path: ROUTER_CLASSIFICATION,
                 environment={"HOME": "/nonexistent"},
             )
             self.assertEqual(result, route_record())
@@ -644,6 +662,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
                     router_factory=factory,
                     policy_validator=lambda _path: None,
                     identity_validator=lambda *_args: ROUTER_IDENTITY,
+                    classification_validator=lambda _path: ROUTER_CLASSIFICATION,
                     environment={"HOME": "/nonexistent"},
                 )
             self.assertEqual(len(router.calls), 1)
@@ -665,7 +684,7 @@ class TestPersistenceAndPhases(unittest.TestCase):
             state = Path(directory)
             spike.atomic_create_json(state / "route.json", route_record())
             spike.create_claim(state / "execute.claim", DECISION_ID, "execute")
-            spike.mark_request_issued(state / "execute.claim", DECISION_ID)
+            spike.mark_claim_issued(state / "execute.claim", DECISION_ID, "execute")
             result = spike.execute_phase(state_dir=state, environment={}, expected_uid=os.getuid())
             self.assertEqual(result["failure_code"], "execute-replay-blocked")
             self.assertEqual(result["claim_state"], "request-issued")
@@ -675,36 +694,30 @@ class TestPersistenceAndPhases(unittest.TestCase):
             self.assertEqual(result["upstream_request_count"], 1)
 
     def test_outcome_is_tokenless_at_most_once_and_updates_record(self):
-        router = FakeRouter(acknowledgement={"recorded": True})
-        factory = RouterFactory(router)
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"
             route_raw = spike.atomic_create_json(state / "route.json", route_record())
-            result = spike._base_result()
-            result.update(
-                {
-                    "route_decision_id": DECISION_ID,
-                    "router_identity_sha256": ROUTER_IDENTITY,
-                    "route_reference_sha256": spike.sha256(route_raw),
-                    "routed_model": MODEL,
-                    "failure_code": "credential-directory-invalid",
-                    "claim_state": "claimed",
-                }
-            )
+            result = failure_result()
+            result["route_reference_sha256"] = spike.sha256(route_raw)
             spike.atomic_create_json(state / "result.json", result)
             outcomes = Path(directory) / "outcomes.jsonl"
-            outcomes.write_text("{}\n", encoding="ascii")
+            outcomes.touch()
             outcomes.chmod(0o600)
+            router = FakeRouter(acknowledgement={"recorded": True}, outcomes_path=outcomes)
+            factory = RouterFactory(router)
             updated = spike.outcome_phase(
                 state_dir=state,
                 outcomes_path=outcomes,
                 router_factory=factory,
                 identity_validator=lambda *_args: ROUTER_IDENTITY,
+                classification_validator=lambda _path: ROUTER_CLASSIFICATION,
                 environment={"HOME": "/nonexistent"},
             )
             self.assertEqual(updated["outcome_status"], "reported")
             self.assertTrue(updated["report_outcome_acknowledged"])
+            self.assertIsNotNone(updated["report_outcome_record_sha256"])
             self.assertIsNone(updated["report_outcome_id"])
+            self.assertEqual(spike.claim_states(state / "outcome.claim", "outcome", DECISION_ID), ["claimed", "report-issued"])
             self.assertEqual(router.calls[0][0], "report_outcome")
             self.assertEqual(router.calls[0][1]["outcome"], "failure")
             with self.assertRaises(spike.SpikeError):
@@ -713,9 +726,38 @@ class TestPersistenceAndPhases(unittest.TestCase):
                     outcomes_path=outcomes,
                     router_factory=factory,
                     identity_validator=lambda *_args: ROUTER_IDENTITY,
+                    classification_validator=lambda _path: ROUTER_CLASSIFICATION,
                     environment={"HOME": "/nonexistent"},
                 )
             self.assertEqual(len(router.calls), 1)
+
+    def test_outcome_reconciles_exact_log_without_retry_and_rejects_missing_log(self):
+        for recorded in (True, False):
+            with self.subTest(recorded=recorded), tempfile.TemporaryDirectory() as directory:
+                state = Path(directory) / "state"
+                route_raw = spike.atomic_create_json(state / "route.json", route_record())
+                result = failure_result()
+                result["route_reference_sha256"] = spike.sha256(route_raw)
+                result["outcome_status"] = "report-issued"
+                spike.atomic_create_json(state / "result.json", result)
+                spike.create_claim(state / "outcome.claim", DECISION_ID, "outcome")
+                spike.mark_claim_issued(state / "outcome.claim", DECISION_ID, "outcome")
+                outcomes = Path(directory) / "outcomes.jsonl"
+                outcomes.touch()
+                outcomes.chmod(0o600)
+                if recorded:
+                    append_outcome(outcomes, {"outcome": "failure", "notes": "OpenCode credential-isolated non-evidence spike failed: credential-directory-invalid"})
+                router = FakeRouter()
+                arguments = {"state_dir": state, "outcomes_path": outcomes, "router_factory": RouterFactory(router), "identity_validator": lambda *_args: ROUTER_IDENTITY, "classification_validator": lambda _path: ROUTER_CLASSIFICATION, "environment": {"HOME": "/nonexistent"}}
+                if recorded:
+                    updated = spike.outcome_phase(**arguments)
+                    self.assertEqual(updated["outcome_status"], "reconciled")
+                    self.assertFalse(updated["report_outcome_acknowledged"])
+                    self.assertIsNotNone(updated["report_outcome_record_sha256"])
+                else:
+                    with self.assertRaisesRegex(spike.SpikeError, "outcome-report-unresolved"):
+                        spike.outcome_phase(**arguments)
+                self.assertEqual(router.calls, [])
 
     def test_result_validator_and_schema_preserve_non_evidence(self):
         schema = load_json_strict(ROOT / "governance" / "schemas" / "opencode-spike-record.schema.json")
@@ -727,6 +769,8 @@ class TestPersistenceAndPhases(unittest.TestCase):
         for field, value in (
             ("runtime_adapter_ready", True),
             ("evidence_class", "evidence"),
+            ("outcome_status", "reconciled"),
+            ("report_outcome_record_sha256", "a" * 64),
             ("report_outcome_id", "claimed-id"),
             ("model_turn_count", 2),
             ("output_text", "WRONG"),

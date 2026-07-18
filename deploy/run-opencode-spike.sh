@@ -16,7 +16,7 @@ export PATH
 
 state=/var/lib/noetic-opencode-spike/state
 execute_state=/var/lib/noetic-opencode-spike/execute-state
-router_state=/var/lib/noetic-opencode-spike/router-state
+router_state=/var/lib/noetic-opencode-spike/non-evidence-router-state
 route_unit=noetic-dev-opencode-spike-route.service
 execute_unit=noetic-dev-opencode-spike-execute.service
 outcome_unit=noetic-dev-opencode-spike-outcome.service
@@ -40,7 +40,7 @@ for artifact in route.json execute.claim result.json; do
     }
 done
 for artifact in decisions.jsonl outcomes.jsonl; do
-    test ! -e "$router_state/$artifact" || {
+    test -f "$router_state/$artifact" && test ! -s "$router_state/$artifact" || {
         printf '%s\n' "OpenCode spike router state blocks replay" >&2
         exit 1
     }

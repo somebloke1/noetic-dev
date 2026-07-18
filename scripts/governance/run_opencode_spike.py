@@ -37,6 +37,7 @@ ROUTER_PYTHON = ROUTER_ROOT / "bin" / "python3"
 ROUTER_CONFIG = ROUTER_ROOT / "config" / "router.yaml"
 ROUTER_DECISIONS = ROUTER_ROOT / "state" / "decisions.jsonl"
 ROUTER_OUTCOMES = ROUTER_ROOT / "state" / "outcomes.jsonl"
+ROUTER_STATE_CLASSIFICATION = ROUTER_ROOT / "state" / "classification.json"
 STATE_DIR = Path("/var/lib/noetic-opencode-spike/state")
 EXECUTE_STATE_DIR = Path("/var/lib/noetic-opencode-spike/execute-state")
 CONTROLLER_PATH = RUNTIME_ROOT / "opencode-spike-runtime" / "run_opencode_spike.py"
@@ -100,6 +101,13 @@ ROUTE_ARGUMENTS = {
     "exclude_models": [],
     "task_summary": "OpenCode source-free one-turn non-evidence spike",
 }
+NON_EVIDENCE_ROUTER_STATE = {
+    "evidence_class": "non-evidence",
+    "policy_status": "contract-only",
+    "runtime_adapter_ready": False,
+    "schema_version": "1",
+    "storage_scope": "isolated-spike-only",
+}
 DECISION_FIELDS = {
     "availability",
     "decision_id",
@@ -159,6 +167,7 @@ RESULT_FIELDS = {
     "outcome_status",
     "report_outcome_acknowledged",
     "report_outcome_acknowledgement_sha256",
+    "report_outcome_record_sha256",
     "report_outcome_id",
 }
 ISOLATION_FIELDS = {
@@ -455,6 +464,8 @@ def create_claim(path: Path, decision_id: str, kind: str) -> None:
 
 
 def claim_states(path: Path, kind: str, decision_id: str) -> list[str]:
+    issued_state = {"execute": "request-issued", "outcome": "report-issued"}.get(kind)
+    require(issued_state is not None, "claim-kind-invalid")
     raw = read_private_bytes(path, 8_192)
     require(raw.endswith(b"\n"), "claim-framing-invalid")
     records = [strict_json_loads(line) for line in raw.splitlines()]
@@ -465,16 +476,17 @@ def claim_states(path: Path, kind: str, decision_id: str) -> list[str]:
             and set(record) == {"decision_id", "kind", "state"}
             and record["decision_id"] == decision_id
             and record["kind"] == kind
-            and record["state"] in {"claimed", "request-issued"},
+            and record["state"] in {"claimed", issued_state},
             "claim-invalid",
         )
         states.append(record["state"])
-    require(states in (["claimed"], ["claimed", "request-issued"]), "claim-state-invalid")
+    require(states in (["claimed"], ["claimed", issued_state]), "claim-state-invalid")
     return states
 
 
-def mark_request_issued(path: Path, decision_id: str) -> None:
-    require(claim_states(path, "execute", decision_id) == ["claimed"], "claim-state-invalid")
+def mark_claim_issued(path: Path, decision_id: str, kind: str) -> None:
+    issued_state = {"execute": "request-issued", "outcome": "report-issued"}.get(kind)
+    require(issued_state is not None and claim_states(path, kind, decision_id) == ["claimed"], "claim-state-invalid")
     directory = _open_private_directory(path.parent)
     descriptor: int | None = None
     try:
@@ -491,7 +503,7 @@ def mark_request_issued(path: Path, decision_id: str) -> None:
             and metadata.st_nlink == 1,
             "claim-invalid",
         )
-        record = {"decision_id": decision_id, "kind": "execute", "state": "request-issued"}
+        record = {"decision_id": decision_id, "kind": kind, "state": issued_state}
         _write_all(descriptor, canonical_json(record) + b"\n")
         os.fsync(descriptor)
         os.fsync(directory)
@@ -593,11 +605,12 @@ def validate_route_decision(decision: Any) -> dict[str, Any]:
 def validate_route_record(record: Any) -> dict[str, Any]:
     require(
         type(record) is dict
-        and set(record) == {"schema_version", "component_sha", "router_identity_sha256", "classification", "decision"},
+        and set(record) == {"schema_version", "component_sha", "router_identity_sha256", "router_state_classification_sha256", "classification", "decision"},
         "route-record-fields-invalid",
     )
     require(record["schema_version"] == "1" and record["component_sha"] == COMPONENT_SHA, "route-record-identity-invalid")
     require(type(record["router_identity_sha256"]) is str and SHA256_HEX.fullmatch(record["router_identity_sha256"]), "route-record-identity-invalid")
+    require(type(record["router_state_classification_sha256"]) is str and SHA256_HEX.fullmatch(record["router_state_classification_sha256"]), "route-record-identity-invalid")
     require(record["classification"] == ROUTE_ARGUMENTS, "route-classification-invalid")
     validate_route_decision(record["decision"])
     return record
@@ -651,6 +664,13 @@ def _root_owned_file_bytes(path: Path, *, maximum: int, executable: bool = False
     finally:
         if descriptor is not None:
             os.close(descriptor)
+
+
+def validate_non_evidence_router_state(path: Path = ROUTER_STATE_CLASSIFICATION) -> str:
+    raw = _root_owned_file_bytes(path, maximum=1_024)
+    require(raw.endswith(b"\n") and raw.count(b"\n") == 1, "router-state-classification-invalid")
+    require(strict_json_loads(raw[:-1]) == NON_EVIDENCE_ROUTER_STATE, "router-state-classification-invalid")
+    return sha256(raw)
 
 
 def _validate_root_owned_symlink(path: Path) -> Path:
@@ -740,12 +760,15 @@ def route_phase(
     router_factory: Callable[..., Any] = _router_factory,
     policy_validator: Callable[[Path], None] = validate_pinned_route_policy,
     identity_validator: Callable[[Path, Path, str], str] = validate_router_component_identity,
+    classification_validator: Callable[[Path], str] = validate_non_evidence_router_state,
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     assert_no_credential_environment(environment)
     validate_router_arguments(command, config, component_sha)
     router_identity = identity_validator(command, config, component_sha)
     require(type(router_identity) is str and SHA256_HEX.fullmatch(router_identity), "router-identity-invalid")
+    classification_sha = classification_validator(ROUTER_STATE_CLASSIFICATION)
+    require(type(classification_sha) is str and SHA256_HEX.fullmatch(classification_sha), "router-state-classification-invalid")
     policy_validator(config)
     route_path = state_dir / "route.json"
     atomic_create_json(
@@ -760,6 +783,7 @@ def route_phase(
         "schema_version": "1",
         "component_sha": component_sha,
         "router_identity_sha256": router_identity,
+        "router_state_classification_sha256": classification_sha,
         "classification": dict(ROUTE_ARGUMENTS),
         "decision": decision,
     }
@@ -2410,6 +2434,7 @@ def _base_result() -> dict[str, Any]:
         "outcome_status": "pending",
         "report_outcome_acknowledged": False,
         "report_outcome_acknowledgement_sha256": None,
+        "report_outcome_record_sha256": None,
         "report_outcome_id": None,
     }
 
@@ -2438,6 +2463,7 @@ def validate_result_record(result: Any) -> dict[str, Any]:
         "litellm_peer_identity_sha256",
         "nonce_sha256",
         "report_outcome_acknowledgement_sha256",
+        "report_outcome_record_sha256",
     ):
         require(result[field] is None or (type(result[field]) is str and SHA256_HEX.fullmatch(result[field])), "result-digest-invalid")
     require(result["route_decision_id"] is None or (type(result["route_decision_id"]) is str and DECISION_ID.fullmatch(result["route_decision_id"])), "result-decision-id-invalid")
@@ -2452,10 +2478,26 @@ def validate_result_record(result: Any) -> dict[str, Any]:
     require(type(result["isolation"]) is dict and set(result["isolation"]) == ISOLATION_FIELDS and all(type(value) is bool for value in result["isolation"].values()), "result-isolation-invalid")
     require(result["claim_state"] in {"none", "claimed", "request-issued"}, "result-claim-state-invalid")
     require(result["request_issued"] is (result["claim_state"] == "request-issued"), "result-request-state-invalid")
-    require(result["outcome_status"] in {"pending", "reported"}, "result-outcome-status-invalid")
+    require(result["outcome_status"] in {"pending", "report-issued", "reported", "reconciled"}, "result-outcome-status-invalid")
     require(
-        (result["report_outcome_acknowledged"] is False and result["report_outcome_acknowledgement_sha256"] is None and result["outcome_status"] == "pending")
-        or (result["report_outcome_acknowledged"] is True and type(result["report_outcome_acknowledgement_sha256"]) is str and result["outcome_status"] == "reported"),
+        (
+            result["outcome_status"] in {"pending", "report-issued"}
+            and result["report_outcome_acknowledged"] is False
+            and result["report_outcome_acknowledgement_sha256"] is None
+            and result["report_outcome_record_sha256"] is None
+        )
+        or (
+            result["outcome_status"] == "reported"
+            and result["report_outcome_acknowledged"] is True
+            and type(result["report_outcome_acknowledgement_sha256"]) is str
+            and type(result["report_outcome_record_sha256"]) is str
+        )
+        or (
+            result["outcome_status"] == "reconciled"
+            and result["report_outcome_acknowledged"] is False
+            and result["report_outcome_acknowledgement_sha256"] is None
+            and type(result["report_outcome_record_sha256"]) is str
+        ),
         "result-outcome-ack-invalid",
     )
     if result["execution_status"] == "success":
@@ -2624,7 +2666,7 @@ def _sandbox_metrics(
         child_payload = strict_json_loads(child_body)
         validate_child_request_body(child_payload, model, prompt)
         upstream_body = canonical_upstream_request(model, prompt)
-        mark_request_issued(claim_path, decision_id)
+        mark_claim_issued(claim_path, decision_id, "execute")
         result["claim_state"] = "request-issued"
         result["request_issued"] = True
         result["upstream_request_count"] = 1
@@ -2771,6 +2813,31 @@ def execute_phase(
     return result
 
 
+def isolated_outcome_record_sha256(path: Path, decision_id: str, outcome: str, notes: str) -> str | None:
+    try:
+        raw = read_private_bytes(path, MAX_ROUTER_LOG_BYTES)
+    except SpikeError as error:
+        if error.code == "state-file-missing":
+            return None
+        raise
+    if raw == b"":
+        return None
+    require(raw.endswith(b"\n") and raw.count(b"\n") == 1, "outcome-log-invalid")
+    record = strict_json_loads(raw[:-1])
+    require(
+        type(record) is dict
+        and set(record) == {"decision", "decision_id", "notes", "outcome", "ts"}
+        and record["decision_id"] == decision_id
+        and type(record["decision"]) is dict
+        and record["decision"].get("decision_id") == decision_id
+        and record["outcome"] == outcome
+        and record["notes"] == notes
+        and _valid_bounded_text(record["ts"], 128),
+        "outcome-log-invalid",
+    )
+    return sha256(raw)
+
+
 def outcome_phase(
     *,
     state_dir: Path = STATE_DIR,
@@ -2780,25 +2847,31 @@ def outcome_phase(
     outcomes_path: Path = ROUTER_OUTCOMES,
     router_factory: Callable[..., Any] = _router_factory,
     identity_validator: Callable[[Path, Path, str], str] = validate_router_component_identity,
+    classification_validator: Callable[[Path], str] = validate_non_evidence_router_state,
     environment: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     assert_no_credential_environment(environment)
     validate_router_arguments(command, config, component_sha)
     router_identity = identity_validator(command, config, component_sha)
     require(type(router_identity) is str and SHA256_HEX.fullmatch(router_identity), "router-identity-invalid")
+    classification_sha = classification_validator(ROUTER_STATE_CLASSIFICATION)
+    require(type(classification_sha) is str and SHA256_HEX.fullmatch(classification_sha), "router-state-classification-invalid")
     route, _route_raw = read_private_json(state_dir / "route.json")
     validate_route_record(route)
-    require(route["router_identity_sha256"] == router_identity, "router-identity-changed")
+    require(
+        route["router_identity_sha256"] == router_identity
+        and route["router_state_classification_sha256"] == classification_sha,
+        "router-identity-changed",
+    )
     result, _result_raw = read_private_json(state_dir / "result.json")
     validate_result_record(result)
     decision_id = route["decision"]["decision_id"]
     require(
         result["route_decision_id"] == decision_id
         and result["router_identity_sha256"] == router_identity
-        and result["outcome_status"] == "pending",
+        and result["outcome_status"] in {"pending", "report-issued"},
         "outcome-input-invalid",
     )
-    create_claim(state_dir / "outcome.claim", decision_id, "outcome")
     outcome = "success" if result["execution_status"] == "success" else "failure"
     notes = (
         "OpenCode credential-isolated non-evidence spike completed"
@@ -2806,6 +2879,23 @@ def outcome_phase(
         else f"OpenCode credential-isolated non-evidence spike failed: {result['failure_code']}"
     )
     require(_valid_bounded_text(notes, 1_000), "outcome-notes-invalid")
+    claim_path = state_dir / "outcome.claim"
+    if result["outcome_status"] == "report-issued":
+        require(claim_states(claim_path, "outcome", decision_id) == ["claimed", "report-issued"], "claim-state-invalid")
+        record_sha = isolated_outcome_record_sha256(outcomes_path, decision_id, outcome, notes)
+        require(record_sha is not None, "outcome-report-unresolved")
+        fsync_router_log(outcomes_path)
+        require(isolated_outcome_record_sha256(outcomes_path, decision_id, outcome, notes) == record_sha, "outcome-log-changed")
+        result["outcome_status"] = "reconciled"
+        result["report_outcome_record_sha256"] = record_sha
+        validate_result_record(result)
+        atomic_replace_json(state_dir / "result.json", result)
+        return result
+    create_claim(claim_path, decision_id, "outcome")
+    mark_claim_issued(claim_path, decision_id, "outcome")
+    result["outcome_status"] = "report-issued"
+    validate_result_record(result)
+    atomic_replace_json(state_dir / "result.json", result)
     with router_factory(command, config, component_sha, litellm_token=None) as router:
         acknowledgement = router.call_tool(
             "report_outcome",
@@ -2813,9 +2903,12 @@ def outcome_phase(
         )
     require(type(acknowledgement) is dict and acknowledgement == {"recorded": True}, "outcome-ack-invalid")
     fsync_router_log(outcomes_path)
+    record_sha = isolated_outcome_record_sha256(outcomes_path, decision_id, outcome, notes)
+    require(record_sha is not None, "outcome-log-invalid")
     result["outcome_status"] = "reported"
     result["report_outcome_acknowledged"] = True
     result["report_outcome_acknowledgement_sha256"] = sha256(canonical_json(acknowledgement))
+    result["report_outcome_record_sha256"] = record_sha
     result["report_outcome_id"] = None
     validate_result_record(result)
     atomic_replace_json(state_dir / "result.json", result)

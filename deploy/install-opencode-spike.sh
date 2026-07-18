@@ -21,7 +21,7 @@ opencode_runtime=$root/opencode/1.17.20
 spike_home=/var/lib/noetic-opencode-spike
 state=$spike_home/state
 execute_state=$spike_home/execute-state
-router_state=$spike_home/router-state
+router_state=$spike_home/non-evidence-router-state
 router=$root/genus-router/$component_sha
 litellm_unit=/etc/systemd/system/litellm.service
 litellm_launcher=/opt/litellm/.venv/bin/litellm
@@ -75,7 +75,7 @@ done
 for artifact in route.json execute.claim result.json; do
   [[ ! -e $execute_state/$artifact ]]
 done
-for artifact in decisions.jsonl outcomes.jsonl; do
+for artifact in classification.json decisions.jsonl outcomes.jsonl; do
   [[ ! -e $router_state/$artifact ]]
 done
 [[ ! -L $root && ! -L $runtime && ! -L $opencode_runtime && ! -L $spike_home && ! -L $state && ! -L $execute_state && ! -L $router_state ]]
@@ -89,7 +89,14 @@ id noetic-opencode-spike >/dev/null 2>&1 || useradd --system --gid noetic-openco
 
 install -d -o root -g root -m 0755 "$root" "$runtime" "$root/opencode" "$opencode_runtime"
 install -d -o root -g root -m 0755 "$spike_home"
-install -d -o noetic-opencode-spike -g noetic-opencode-spike -m 0700 "$state" "$router_state"
+install -d -o noetic-opencode-spike -g noetic-opencode-spike -m 0700 "$state"
+install -d -o root -g root -m 0755 "$router_state"
+printf '%s\n' '{"evidence_class":"non-evidence","policy_status":"contract-only","runtime_adapter_ready":false,"schema_version":"1","storage_scope":"isolated-spike-only"}' >"$router_state/classification.json"
+chown root:root "$router_state/classification.json"
+chmod 0444 "$router_state/classification.json"
+for artifact in decisions.jsonl outcomes.jsonl; do
+  install -o noetic-opencode-spike -g noetic-opencode-spike -m 0600 /dev/null "$router_state/$artifact"
+done
 install -d -o llm-svc -g llm-svc -m 0700 "$execute_state"
 install -o root -g root -m 0555 "$archive/scripts/governance/run_opencode_spike.py" "$runtime/run_opencode_spike.py"
 install -o root -g root -m 0444 "$archive/scripts/governance/genus_router_mcp.py" "$runtime/genus_router_mcp.py"

@@ -67,9 +67,18 @@
       "then": {
         "properties": {
           "report_outcome_acknowledged": {"const": true},
-          "report_outcome_acknowledgement_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"}
+          "report_outcome_acknowledgement_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"},
+          "report_outcome_record_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"}
         }
       }
+    },
+    {
+      "if": {"properties": {"outcome_status": {"enum": ["pending", "report-issued"]}}},
+      "then": {"properties": {"report_outcome_acknowledged": {"const": false}, "report_outcome_acknowledgement_sha256": {"type": "null"}, "report_outcome_record_sha256": {"type": "null"}}}
+    },
+    {
+      "if": {"properties": {"outcome_status": {"const": "reconciled"}}},
+      "then": {"properties": {"report_outcome_acknowledged": {"const": false}, "report_outcome_acknowledgement_sha256": {"type": "null"}, "report_outcome_record_sha256": {"pattern": "^[a-f0-9]{64}$", "type": "string"}}}
     },
     {
       "else": {
@@ -124,12 +133,13 @@
     "nonce_sha256": {"pattern": "^[a-f0-9]{64}$", "type": ["string", "null"]},
     "opencode_sha256": {"pattern": "^[a-f0-9]{64}$", "type": ["string", "null"]},
     "opencode_version": {"enum": [null, "1.17.20"]},
-    "outcome_status": {"enum": ["pending", "reported"], "type": "string"},
+    "outcome_status": {"enum": ["pending", "report-issued", "reported", "reconciled"], "type": "string"},
     "output_text": {"maxLength": 128, "type": ["string", "null"]},
     "parsed_upstream_completion": {"type": "boolean"},
     "policy_status": {"const": "contract-only"},
     "report_outcome_acknowledged": {"type": "boolean"},
     "report_outcome_acknowledgement_sha256": {"pattern": "^[a-f0-9]{64}$", "type": ["string", "null"]},
+    "report_outcome_record_sha256": {"pattern": "^[a-f0-9]{64}$", "type": ["string", "null"]},
     "report_outcome_id": {"type": "null"},
     "request_issued": {"type": "boolean"},
     "route_decision_id": {"pattern": "^d-[0-9]{8}-[0-9]{6}$", "type": ["string", "null"]},
@@ -142,7 +152,7 @@
     "upstream_request_count": {"enum": [0, 1], "type": "integer"},
     "upstream_response_sha256": {"pattern": "^[a-f0-9]{64}$", "type": ["string", "null"]}
   },
-  "required": ["schema_version", "evidence_class", "runtime_adapter_ready", "policy_status", "execution_status", "failure_code", "component_sha", "router_identity_sha256", "route_decision_id", "route_reference_sha256", "routed_model", "opencode_version", "opencode_sha256", "static_title", "title_sha256", "config_sha256", "json_event_log_sha256", "upstream_response_sha256", "litellm_peer_identity_sha256", "model_turn_count", "bridge_request_count", "upstream_request_count", "parsed_upstream_completion", "output_text", "nonce_sha256", "nonce_matched", "isolation", "claim_state", "request_issued", "outcome_status", "report_outcome_acknowledged", "report_outcome_acknowledgement_sha256", "report_outcome_id"],
+  "required": ["schema_version", "evidence_class", "runtime_adapter_ready", "policy_status", "execution_status", "failure_code", "component_sha", "router_identity_sha256", "route_decision_id", "route_reference_sha256", "routed_model", "opencode_version", "opencode_sha256", "static_title", "title_sha256", "config_sha256", "json_event_log_sha256", "upstream_response_sha256", "litellm_peer_identity_sha256", "model_turn_count", "bridge_request_count", "upstream_request_count", "parsed_upstream_completion", "output_text", "nonce_sha256", "nonce_matched", "isolation", "claim_state", "request_issued", "outcome_status", "report_outcome_acknowledged", "report_outcome_acknowledgement_sha256", "report_outcome_record_sha256", "report_outcome_id"],
   "title": "Noetic Dev OpenCode Spike Non-Evidence Record",
   "type": "object"
 }

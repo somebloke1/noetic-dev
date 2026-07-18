@@ -1,10 +1,10 @@
 # OpenCode Credential-Isolation Spike
 
-Issue #65 defines one bounded, source-free OpenCode model turn. This repository slice supplies an inert deployment contract and synthetic validation surface. It does not execute the turn, establish recurring behavior, promote an adapter, or produce protected-delivery evidence.
+Issue #65 permits one bounded, source-free OpenCode model turn. This inert slice neither executes it nor establishes recurring behavior, adapter readiness, or delivery evidence.
 
 ## Honesty Boundary
 
-The canonical policy remains `runtime_adapter_ready=false` and `status=contract-only` in `config/opencode-session-policy.json`. Every result is permanently labeled `evidence_class=non-evidence`, uses `report_outcome_id=null`, and is validated by `governance/schemas/opencode-spike-record.schema.json`. A successful experiment could inform later work, but neither its record nor these artifacts may be cited as readiness evidence.
+`config/opencode-session-policy.json` remains `runtime_adapter_ready=false` and `status=contract-only`. The result schema enforces `evidence_class=non-evidence` and `report_outcome_id=null`; no spike artifact is readiness evidence.
 
 The controller pins:
 
@@ -13,7 +13,7 @@ The controller pins:
 - LiteLLM `http://172.22.10.160:3333/v1/responses`, reached only through a pidfd- and listener-bound connection to the pinned `litellm.service` process; and
 - the standard-model set from `config/model-policy.json` and the pinned router's sophistication-dependent ordering.
 
-The source-free request is classified honestly as `test`, `trivial`, and `isolated`. The pinned router's `trivial` sophistication pool orders Luna, Terra, Sol, so the controller requires Luna as the selected model and Terra then Sol as fallbacks. `route-policy-order-conflict` fails before `route_task` if that pinned ordering changes, while `route-model-order-invalid` rejects a decision that does not implement it. The controller does not reinterpret the repository's standard-model set as a universal ranking or change classification to force a preferred model.
+The request is `test`, `trivial`, and `isolated`. The pinned trivial pool orders Luna, Terra, Sol; policy drift fails before `route_task`, and decision drift fails before execution. Classification is never changed to force a model.
 
 ## Phase Separation
 
@@ -23,23 +23,23 @@ The only supported order is:
 tokenless route process -> credential-owning execute parent -> tokenless outcome process
 ```
 
-`deploy/systemd/noetic-dev-opencode-spike-route.service` and `deploy/systemd/noetic-dev-opencode-spike-outcome.service` cannot access systemd credentials, deny IP networking, and launch the exact external router component. Only `deploy/systemd/noetic-dev-opencode-spike-execute.service` declares `LoadCredential=litellm_api_key`.
+Route and outcome units deny IP networking and credential access. Only the execute unit declares `LoadCredential=litellm_api_key`.
 
-Route and outcome use the dedicated `noetic-opencode-spike` identity rather than the persistent review broker's credential-bearing identity. Execute uses the non-login `llm-svc` identity so it can bind the connected socket to the exact LiteLLM process without granting process-inspection authority to OpenCode. The root orchestrator copies the immutable route into a separate mode-0700 execute-state directory, then copies the non-secret result back for tokenless outcome reporting. It runs the phases serially with `KillMode=control-group`, so no process from one phase remains when the next phase starts. Route and outcome bind a private router-state directory over the pinned component's canonical state path inside their mount namespaces; this preserves the component identity while preventing the spike from reading or changing the production router log.
+`noetic-opencode-spike` runs tokenless phases; non-login `llm-svc` runs execute. The root orchestrator serializes phases across separate mode-0700 state. Router phases bind `non-evidence-router-state`, whose root-owned classifier enforces non-evidence, contract-only, not-ready storage separate from production.
 
-The execute parent opens and hashes immutable OpenCode and controller files, then binds those open file descriptors into Bubblewrap. Bubblewrap clears the environment, unshares user, PID, IPC, UTS, and network namespaces, disables nested user namespaces, mounts private `/proc`, `/tmp`, HOME, XDG, and `/work` filesystems, and mounts no project source. OpenCode receives only a dummy relay authorization value. Its private network contains a single loopback listener connected to the trusted parent by an authenticated AF_UNIX control channel.
+The execute parent hashes and fd-binds immutable binaries into Bubblewrap. It clears the environment, unshares user/PID/IPC/UTS/network namespaces, disables nested user namespaces, mounts private runtime filesystems and no source, and gives OpenCode only a dummy loopback relay authorization.
 
-The parent accepts one exact OpenCode `/v1/responses` request. It rejects extra fields, tools, sources, a wrong model, a noncanonical system prompt, a maximum-step reminder, replay, ambiguous HTTP framing, and more than one request. It then constructs a new source-free upstream request rather than forwarding the OpenCode body. Before buffering the authorization header, it validates a root-owned LiteLLM peer manifest, identifies exactly one `llm-svc` process with the pinned command line, executable, config, systemd cgroup, and start time, proves that process owns the only expected listening-socket inode, opens a pidfd, and connects from the canonical local address. Immediately before flushing the bearer, it revalidates the live pidfd, process identity, listener ownership, and connected peer. A replacement listener cannot inherit the already connected socket. The peer-identity digest is retained in the non-evidence record.
+The parent accepts one exact `/v1/responses` request, rejects drift/tools/replay/extra requests, and constructs a fresh upstream body. Before buffering and flushing authorization it verifies the root-owned LiteLLM artifacts, process/cgroup/start time, listener inode, pidfd, address, and connected peer.
 
-The upstream SSE stream must form one contiguous, completed response with one assistant text item, no refusal or tool item, the routed model, and the exact nonce. The parent removes reasoning and provider metadata by synthesizing a minimal validated SSE stream for OpenCode. OpenCode's JSONL must independently contain exactly `step_start`, `text`, and `step_finish` for one message and the same nonce.
+Upstream SSE must contain one completed assistant text item, no refusal/tool, the routed model, and exact nonce. A sanitized stream and OpenCode's exact three JSON events must independently agree.
 
-OpenCode uses `steps=2` because version 1.17.20 computes `isLastStep` before its first model request; `steps=1` injects `CRITICAL - MAXIMUM STEPS REACHED` into that request. A network-observation probe with a synthetic local response showed one request and the expected three JSON events at `steps=2`, but also attempted unrelated Cloudflare connections. That probe used no real credential or model endpoint. It must not be rerun outside the network-unshared sandbox; the deployment contract blocks those external attempts.
+OpenCode uses `steps=2`; version 1.17.20 injects a maximum-step warning at `steps=1`. A credential-free probe confirmed one request and three events but attempted unrelated Cloudflare egress, so execution must remain network-unshared.
 
 ## Irreversibility
 
-Private atomic claims are created before routing, execution, upstream issuance, and outcome reporting. Existing state blocks replay. If a process crashes after an irreversible boundary, a later execute attempt records conservative `request-issued` residue when possible but never retries the turn. Outcome reporting is at-most-once because the external router has no transactional idempotency key. Operators must preserve failed state for diagnosis rather than deleting it and pretending the spike did not occur.
+Atomic claims precede irreversible actions and existing state blocks replay. Execute residue is conservative and never retries the turn. Outcome durably reaches `report-issued` before the call; later invocations never call again, instead reconciling one exact isolated-log record or failing `outcome-report-unresolved`. Observed acknowledgements are `reported`; log recovery is `reconciled`. Preserve all failed state.
 
-The root-only `deploy/run-opencode-spike.sh` serializes the three oneshot units. It always attempts the outcome phase after a controlled execute failure. The installer places immutable runtime files and units but deliberately neither enables nor starts them.
+The root-only orchestrator serializes three oneshot units and attempts outcome after controlled execute failure. Installation starts nothing.
 
 ## Installation Contract
 
@@ -49,8 +49,8 @@ After merge and all protected gates pass, a trusted root operator can install an
 sudo deploy/install-opencode-spike.sh <noetic-source> <40-character-noetic-sha> <opencode-1.17.20-binary>
 ```
 
-Installation verifies the Git object, OpenCode version and digest, the external router's root-owned manifest plus command/config/table/interpreter identities, Bubblewrap, the root-owned LiteLLM unit/config/launcher/interpreter and runtime permissions, system identities, the active LiteLLM service, and an existing nonempty systemd credential. It writes a root-owned peer manifest, installs and hashes the controller and its router client together, writes no credential, and performs no model, router, or spike service operation. The installed `/usr/local/sbin/noetic-dev-opencode-spike` is mode `0700`; invoking it is a separate, explicit one-time operation.
+Installation verifies the Git object; pinned OpenCode, router, and LiteLLM identities; runtime permissions; active service; and existing systemd credential. It writes no credential and performs no model/router call. The mode-0700 orchestrator is a separate one-time invocation.
 
 ## Synthetic Validation
 
-`tests/governance/test_opencode_spike.py` uses only local files, socket pairs, fake router objects, synthetic SSE, and mocked subprocess/network boundaries by default. An opt-in test runs the exact pinned OpenCode binary inside Bubblewrap against an in-process fake upstream by setting `NOETIC_OPENCODE_TEST_BINARY`; it has no credential and no external network. `tests/governance/test_opencode_spike_systemd.py` checks static credential and process separation. No test calls genus-router, LiteLLM, systemd, or an external network endpoint.
+Default tests use local fakes only. `NOETIC_OPENCODE_TEST_BINARY` opts into the pinned binary inside Bubblewrap against a fake upstream, without credential or external network. No test calls genus-router, LiteLLM, or systemd.
