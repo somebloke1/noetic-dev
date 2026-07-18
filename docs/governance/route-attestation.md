@@ -31,6 +31,6 @@ The unit stores no token. It uses the operator account's existing GitHub CLI aut
 
 ## Trust Boundary
 
-The receipt proves that the protected-base validator accepted a specific repository, workflow ID/path, run attempt, review job, PR, candidate SHA, base SHA, artifact ID/name/digest, ruleset snapshot, router component, LiteLLM invocation, and acknowledged outcome. It is local durable evidence, not a GitHub merge check and not an artifact signature.
+The receipt records that the identified protected-base validator accepted a specific repository, workflow, run attempt, review job, PR, candidate/base pair, and artifact ID/name/digest after checking the retained route evidence and live ruleset. It does not embed the artifact or ruleset snapshot: independent replay remains limited by the artifact's 90-day retention and mutable GitHub API availability. The receipt is therefore an atomic local acceptance record, not post-expiry proof, a GitHub merge check, or an artifact signature.
 
 GitHub Actions App ID `15368` is shared by every Actions workflow in the repository. Binding required contexts to that App does not authenticate a workflow path. This public user-owned repository cannot use native required-workflow or push-path rules. A distinct merge-gate trust root requires either an organization required workflow or a separately hosted GitHub App whose private key is unavailable to candidate Actions.
