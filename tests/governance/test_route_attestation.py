@@ -137,7 +137,7 @@ class TestRouteAttestation(unittest.TestCase):
             response = {"workflow_runs": [run_record(125), run_record(124), run_record(100)]}
             with mock.patch("route_attestation.github_json_pages", return_value=[response]):
                 selected = select_runs(None, 100, state)
-            self.assertEqual([item["id"] for item in selected], [124])
+            self.assertEqual([item["id"] for item in selected], [124, 125])
 
             with mock.patch(
                 "route_attestation.github_json_pages",
@@ -145,17 +145,32 @@ class TestRouteAttestation(unittest.TestCase):
             ):
                 self.assertEqual(select_runs(None, 100, state), [])
 
-            duplicate = {"workflow_runs": [run_record(126), run_record(126)]}
+            duplicate = {"workflow_runs": [run_record(126), run_record(126), run_record(100)]}
             with mock.patch("route_attestation.github_json_pages", return_value=[duplicate]):
                 self.assertEqual(
                     [item["id"] for item in select_runs(None, 100, state)], [126]
                 )
 
-            malformed = {"workflow_runs": [{"id": "bad", "run_attempt": 1}, run_record(127)]}
+            malformed = {
+                "workflow_runs": [
+                    {"id": "bad", "run_attempt": 1}, run_record(127), run_record(100),
+                ]
+            }
             with mock.patch("route_attestation.github_json_pages", return_value=[malformed]):
                 self.assertEqual(
                     [item["id"] for item in select_runs(None, 100, state)], [127]
                 )
+
+            in_flight = run_record(128)
+            in_flight["status"] = "in_progress"
+            in_flight["conclusion"] = None
+            out_of_order = {
+                "workflow_runs": [run_record(100), in_flight, run_record(129)]
+            }
+            with mock.patch(
+                "route_attestation.github_json_pages", return_value=[out_of_order]
+            ):
+                self.assertEqual(select_runs(None, 100, state), [])
 
     def test_discovery_paginates_and_one_failure_does_not_starve_later_runs(self) -> None:
         failed = [{**run_record(1000 - index), "conclusion": "failure"} for index in range(100)]
@@ -172,7 +187,7 @@ class TestRouteAttestation(unittest.TestCase):
             "route_attestation.select_runs", return_value=runs
         ), mock.patch(
             "route_attestation.attest_run", side_effect=[ValueError("bad run"), Path("receipt.json")]
-        ) as attest:
+        ) as attest, mock.patch("route_attestation.write_cursor"):
             self.assertEqual(main(), 1)
         self.assertEqual(attest.call_count, 2)
 

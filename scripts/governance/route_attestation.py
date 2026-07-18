@@ -16,6 +16,7 @@ import json
 import os
 import pwd
 import re
+import secrets
 import stat
 import subprocess
 import tempfile
@@ -48,7 +49,7 @@ RECEIPT_FIELDS = {
     "artifact_digest", "artifact_size", "run_head_sha", "run_head_branch", "pr_state",
     "pr_merged", "validator_sha256", "result", "validated_at",
 }
-AT_EMPTY_PATH = 0x1000
+RENAME_NOREPLACE = 1
 LIBC = ctypes.CDLL(None, use_errno=True)
 
 
@@ -117,7 +118,7 @@ def select_runs(run_id: int | None, after_run_id: int, state_dir: Path) -> list[
         conflicted: set[tuple[int, int]] = set()
         pages = github_json_pages(
             f"repos/{REPOSITORY}/actions/workflows/{AGENT_REVIEW_WORKFLOW_ID}/runs"
-            "?status=completed&per_page=100"
+            "?per_page=100"
         )
         for response in pages:
             page_runs = response.get("workflow_runs") if isinstance(response, dict) else None
@@ -146,11 +147,21 @@ def select_runs(run_id: int | None, after_run_id: int, state_dir: Path) -> list[
         ):
             raise ValueError("Agent Review inventory is truncated before the verified cursor")
     selected = []
-    for run in candidates:
+    ordered = sorted(candidates, key=lambda item: item.get("id", 0))
+    pending = [
+        run["id"] for run in ordered
+        if type(run.get("id")) is int
+        and run["id"] > after_run_id
+        and run.get("status") != "completed"
+    ]
+    terminal_ceiling = min(pending) if pending else None
+    for run in ordered:
         if not isinstance(run, dict) or type(run.get("id")) is not int:
             print("skipping malformed Agent Review run", file=sys.stderr)
             continue
         if run["id"] <= after_run_id:
+            continue
+        if terminal_ceiling is not None and run["id"] >= terminal_ceiling:
             continue
         attempt = run.get("run_attempt")
         if type(attempt) is not int or attempt <= 0:
@@ -165,7 +176,7 @@ def select_runs(run_id: int | None, after_run_id: int, state_dir: Path) -> list[
             and run.get("conclusion") == "success"
         ):
             selected.append(run)
-    return sorted(selected, key=lambda item: item["id"])
+    return selected
 
 
 def load_cursor(state_dir: Path, bootstrap: int) -> int:
@@ -541,6 +552,7 @@ def write_receipt(path: Path, receipt: dict[str, Any]) -> None:
     lock_descriptor: int | None = None
     lock_acquired = False
     receipt_descriptor: int | None = None
+    temporary_name: str | None = None
     try:
         parent = os.fstat(directory)
         if (
@@ -582,8 +594,12 @@ def write_receipt(path: Path, receipt: dict[str, Any]) -> None:
             pass
         else:
             raise ValueError("attestation receipt path appeared during locking")
+        temporary_name = f".route-attestation-{secrets.token_hex(16)}"
         receipt_descriptor = os.open(
-            ".", os.O_RDWR | os.O_TMPFILE, 0o600, dir_fd=directory
+            temporary_name,
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=directory,
         )
         raw = json.dumps(
             receipt, ensure_ascii=True, sort_keys=True, separators=(",", ":")
@@ -592,9 +608,13 @@ def write_receipt(path: Path, receipt: dict[str, Any]) -> None:
         while written < len(raw):
             written += os.write(receipt_descriptor, raw[written:])
         os.fsync(receipt_descriptor)
-        _link_descriptor(receipt_descriptor, directory, path.name)
-        published = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
+        temporary = os.stat(temporary_name, dir_fd=directory, follow_symlinks=False)
         anonymous = os.fstat(receipt_descriptor)
+        if (temporary.st_dev, temporary.st_ino) != (anonymous.st_dev, anonymous.st_ino):
+            raise ValueError("attestation receipt temporary file changed")
+        _rename_noreplace(directory, temporary_name, path.name)
+        temporary_name = None
+        published = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
         current_parent = os.lstat(path.parent)
         if (
             (published.st_dev, published.st_ino) != (anonymous.st_dev, anonymous.st_ino)
@@ -610,6 +630,11 @@ def write_receipt(path: Path, receipt: dict[str, Any]) -> None:
     finally:
         if receipt_descriptor is not None:
             os.close(receipt_descriptor)
+        if temporary_name is not None:
+            try:
+                os.unlink(temporary_name, dir_fd=directory)
+            except FileNotFoundError:
+                pass
         if lock_descriptor is not None:
             if lock_acquired:
                 try:
@@ -620,14 +645,15 @@ def write_receipt(path: Path, receipt: dict[str, Any]) -> None:
         os.close(directory)
 
 
-def _link_descriptor(descriptor: int, directory: int, name: str) -> None:
-    result = LIBC.linkat(
-        ctypes.c_int(descriptor), ctypes.c_char_p(b""), ctypes.c_int(directory),
-        ctypes.c_char_p(os.fsencode(name)), ctypes.c_int(AT_EMPTY_PATH),
+def _rename_noreplace(directory: int, source: str, destination: str) -> None:
+    result = LIBC.renameat2(
+        ctypes.c_int(directory), ctypes.c_char_p(os.fsencode(source)),
+        ctypes.c_int(directory), ctypes.c_char_p(os.fsencode(destination)),
+        ctypes.c_uint(RENAME_NOREPLACE),
     )
     if result != 0:
         error = ctypes.get_errno()
-        raise OSError(error, os.strerror(error), name)
+        raise OSError(error, os.strerror(error), destination)
 
 
 if __name__ == "__main__":
