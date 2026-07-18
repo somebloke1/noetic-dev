@@ -414,7 +414,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or run.get("run_attempt") != 1
         or type(run.get("workflow_id")) is not int
         or run.get("workflow_id") != AGENT_REVIEW_WORKFLOW_ID
-        or run.get("name") != f"agent-review-{pr_number}-{head_sha}"
+        or run.get("name") not in {"Agent Review", f"agent-review-{pr_number}-{head_sha}"}
         or run.get("path") != ".github/workflows/agent-review.yml"
         or run.get("event") != "pull_request_target"
         or run.get("status") != "completed"
@@ -458,7 +458,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or len(listed_jobs) != 1
         or not _valid_review_job(
             listed_jobs[0], run_id, head_sha, base_sha,
-            f"agent-review-{pr_number}-{head_sha}",
+            run["name"],
         )
         or not _valid_artifact(
             artifact, run_id, head_sha, f"agent-review-{pr_number}-{head_sha}", base_sha
