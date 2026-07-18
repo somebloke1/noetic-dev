@@ -55,6 +55,16 @@ RENAME_NOREPLACE = 1
 LIBC = ctypes.CDLL(None, use_errno=True)
 
 
+class DeferredRun(ValueError):
+    pass
+
+
+class IneligibleRun(ValueError):
+    def __init__(self, pr_number: int):
+        super().__init__(f"pull request {pr_number} closed without merge")
+        self.pr_number = pr_number
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", type=bounded_ascii_id)
@@ -89,6 +99,14 @@ def main() -> int:
                 validate_existing_receipt(receipt, run["id"], run["run_attempt"])
             else:
                 receipt = attest_run(run, args.state_dir)
+        except IneligibleRun as error:
+            write_skip(args.state_dir, run["id"], error.pr_number)
+            print(f"Agent Review run {run['id']} is terminally ineligible: {error}")
+            if not blocked:
+                progress = run["id"]
+        except DeferredRun as error:
+            blocked = True
+            print(f"Agent Review run {run['id']} is deferred: {error}")
         except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired) as error:
             failed = True
             blocked = True
@@ -236,6 +254,31 @@ def write_cursor(state_dir: Path, run_id: int) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def write_skip(state_dir: Path, run_id: int, pr_number: int) -> None:
+    state_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(state_dir, 0o700)
+    destination = state_dir / f"skipped-run-{run_id}.json"
+    if destination.exists():
+        return
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".skip-", dir=state_dir)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        payload = json.dumps({
+            "schema_version": "1", "repository": REPOSITORY, "run_id": run_id,
+            "pr_number": pr_number, "reason": "closed-without-merge",
+        }, sort_keys=True, separators=(",", ":")).encode("ascii") + b"\n"
+        os.write(descriptor, payload)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, destination)
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+
+
 def attest_run(run: dict[str, Any], state_dir: Path) -> Path:
     if type(run.get("id")) is not int or run["id"] <= 0:
         raise ValueError("selected run identity is invalid")
@@ -288,6 +331,10 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
     listed_jobs = jobs.get("jobs") if isinstance(jobs, dict) else None
     head = pull.get("head") if isinstance(pull, dict) else None
     base = pull.get("base") if isinstance(pull, dict) else None
+    if isinstance(pull, dict) and pull.get("state") == "open" and pull.get("merged") is False:
+        raise DeferredRun(f"pull request {pr_number} remains open")
+    if isinstance(pull, dict) and pull.get("state") == "closed" and pull.get("merged") is False:
+        raise IneligibleRun(pr_number)
     if (
         not isinstance(run, dict)
         or type(run.get("id")) is not int
