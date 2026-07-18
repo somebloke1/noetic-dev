@@ -138,6 +138,7 @@ def provenance_records(
         "event": "pull_request_target",
         "status": "completed",
         "conclusion": "success",
+        "display_title": f"agent-review-{pr_number}-{head_sha}",
         "head_branch": "issue-route-canary",
         "head_sha": head_sha,
         "created_at": "2026-07-17T20:10:00Z",

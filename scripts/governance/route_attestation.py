@@ -369,6 +369,20 @@ def attest_run(run: dict[str, Any], state_dir: Path) -> Path:
 
 def load_attestation_context(run_id: int) -> dict[str, Any]:
     run = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}")
+    display_title = run.get("display_title") if isinstance(run, dict) else None
+    match = ARTIFACT_NAME.fullmatch(display_title) if isinstance(display_title, str) else None
+    if match is None:
+        raise ValueError("workflow run title does not bind a PR and candidate SHA")
+    pr_number = int(match.group(1))
+    if pr_number > 2_147_483_647:
+        raise ValueError("workflow run title contains an out-of-range PR number")
+    head_sha = match.group(2)
+
+    pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
+    if isinstance(pull, dict) and pull.get("state") == "open" and pull.get("merged") is False:
+        raise DeferredRun(f"pull request {pr_number} remains open")
+    if isinstance(pull, dict) and pull.get("state") == "closed" and pull.get("merged") is False:
+        raise IneligibleRun("closed-without-merge", pr_number)
     artifacts = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}/artifacts")
     listed = artifacts.get("artifacts") if isinstance(artifacts, dict) else None
     if (
@@ -380,18 +394,6 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
     ):
         raise ValueError("run does not have exactly one retained artifact")
     artifact = listed[0]
-    artifact_name = artifact.get("name") if isinstance(artifact, dict) else None
-    match = ARTIFACT_NAME.fullmatch(artifact_name) if isinstance(artifact_name, str) else None
-    if match is None:
-        raise ValueError("retained artifact name does not bind a PR and candidate SHA")
-    pr_number = int(match.group(1))
-    head_sha = match.group(2)
-
-    pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
-    if isinstance(pull, dict) and pull.get("state") == "open" and pull.get("merged") is False:
-        raise DeferredRun(f"pull request {pr_number} remains open")
-    if isinstance(pull, dict) and pull.get("state") == "closed" and pull.get("merged") is False:
-        raise IneligibleRun("closed-without-merge", pr_number)
     merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
     if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
         raise ValueError("merged pull request does not identify an immutable commit")
@@ -416,6 +418,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or run.get("event") != "pull_request_target"
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
+        or run.get("display_title") != f"agent-review-{pr_number}-{head_sha}"
         or not isinstance(run.get("repository"), dict)
         or type(run["repository"].get("id")) is not int
         or run["repository"].get("id") != REPOSITORY_ID

@@ -6,7 +6,7 @@ The protected Agent Review workflow produces exact-run route evidence. A separat
 
 `scripts/governance/route_attestation.py` discovers completed successful Agent Review runs after the configured bootstrap run. Open pull requests are deferred because their live base SHA can advance after the reviewed run, and closed-unmerged pull requests receive a terminal skip disposition. For each eligible unattested run it:
 
-1. requires one exact run attempt, retained artifact, stable pull-request record, and review job;
+1. resolves the PR and candidate from protected workflow-run metadata before classifying its live terminal state, then requires one exact run attempt, retained artifact, stable pull-request record, and review job for merged candidates;
 2. derives the candidate SHA from the artifact name and requires the retained protected-base SHA to equal the immutable sole parent of GitHub's merged squash commit;
 3. makes a fresh credential-free clone of `somebloke1/noetic-dev`;
 4. checks out the exact protected base in detached mode;

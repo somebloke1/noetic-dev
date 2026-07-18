@@ -687,6 +687,7 @@ def validate_protected_provenance(
         or run.get("event") != "pull_request_target"
         or run.get("status") != "completed"
         or run.get("conclusion") != "success"
+        or run.get("display_title") != f"agent-review-{pr_number}-{head_sha}"
         or not isinstance(run.get("head_sha"), str)
         or run.get("head_sha") not in {head_sha, base_sha}
         or not isinstance(head, dict)
