@@ -147,6 +147,13 @@ class TestRouteAttestation(unittest.TestCase):
             ):
                 self.assertEqual(select_runs(None, 100, state), [])
 
+            with mock.patch(
+                "route_attestation.github_json_pages",
+                return_value=[{"workflow_runs": [run_record(200)]}],
+            ):
+                with self.assertRaisesRegex(ValueError, "inventory is truncated"):
+                    select_runs(None, 100, state)
+
             duplicate = {"workflow_runs": [run_record(126), run_record(126), run_record(100)]}
             with mock.patch("route_attestation.github_json_pages", return_value=[duplicate]):
                 self.assertEqual(
@@ -209,6 +216,33 @@ class TestRouteAttestation(unittest.TestCase):
             state, 203, 2, "unsupported-rerun-attempt", None
         )
         cursor.assert_called_once_with(state, 203)
+
+    def test_recovery_attests_new_run_and_advances_truncated_cursor(self) -> None:
+        recovery = run_record(300)
+        arguments = [
+            "route_attestation.py", "--state-dir", "/tmp/state", "--recover-run-id", "300",
+        ]
+        truncated = ValueError("Agent Review inventory is truncated before the verified cursor")
+        with mock.patch.object(sys, "argv", arguments), mock.patch(
+            "route_attestation.load_cursor", return_value=100
+        ), mock.patch(
+            "route_attestation.select_runs", side_effect=[truncated, [recovery]]
+        ), mock.patch(
+            "route_attestation.attest_run", return_value=Path("receipt.json")
+        ), mock.patch(
+            "route_attestation.write_cursor_recovery"
+        ) as recovery_record, mock.patch("route_attestation.write_cursor") as cursor:
+            self.assertEqual(main(), 0)
+        recovery_record.assert_called_once_with(Path("/tmp/state"), 100, 300, 1)
+        cursor.assert_called_once_with(Path("/tmp/state"), 300)
+
+        with mock.patch.object(sys, "argv", arguments), mock.patch(
+            "route_attestation.load_cursor", return_value=100
+        ), mock.patch("route_attestation.select_runs", return_value=[]), mock.patch(
+            "route_attestation.attest_run"
+        ) as attest:
+            self.assertEqual(main(), 1)
+        attest.assert_not_called()
 
     def test_records_exact_run_artifact_pr_job_and_validator(self) -> None:
         run = run_record()

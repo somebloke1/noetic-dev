@@ -25,6 +25,8 @@ The installer requires `loginctl` to report `Linger=yes` for the trusted operato
 
 The operator persists a private verified run cursor. Open PRs defer cursor advancement. Closed-unmerged PRs and successful rerun attempts receive a durable `skipped-run-<run>.json` disposition, while first-attempt merged runs require valid receipts. The operator refuses to continue if GitHub's bounded workflow-run inventory no longer contains the cursor, so a long outage becomes an explicit truncation failure rather than silently dropping eligible runs.
 
+Recover only after that explicit truncation failure by creating and merging a fresh canary, then running `scripts/governance/route_attestation.py --recover-run-id <run-id>`. Recovery is rejected while the old cursor remains in inventory, for a run at or behind the cursor, or unless the exact new run passes full attestation. Success writes both its normal receipt and a durable `cursor-recovery-<old>-<new>.json` gap record before advancing the cursor; runs in the inaccessible interval remain explicitly unattested.
+
 Installation is an operator action, not an isolation boundary against the invoking Unix account. The script uses a fixed shell, refuses shell/loader injection variables, derives the account home from the passwd database, and sanitizes the GitHub authentication probe. Invoke it only from the trusted operator account; the recurring systemd service is the hardened runtime boundary.
 
 The unit stores no token. It uses the operator account's existing GitHub CLI authentication to read Actions artifacts and administrator-visible ruleset state. The repository-scoped self-hosted runner cannot read that account's home or receipt directory.

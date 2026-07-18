@@ -68,7 +68,9 @@ class IneligibleRun(ValueError):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", type=bounded_ascii_id)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--run-id", type=bounded_ascii_id)
+    selection.add_argument("--recover-run-id", type=bounded_ascii_id)
     parser.add_argument("--after-run-id", type=bounded_ascii_id, default=0)
     parser.add_argument(
         "--state-dir",
@@ -76,15 +78,27 @@ def main() -> int:
         default=Path.home() / ".local/state/noetic-dev/route-attestations",
     )
     args = parser.parse_args()
-    if args.run_id is not None and args.run_id <= 0:
-        parser.error("--run-id must be positive")
     if args.after_run_id < 0:
         parser.error("--after-run-id cannot be negative")
 
+    recovering = args.recover_run_id is not None
+    selected_run_id = args.recover_run_id if recovering else args.run_id
     try:
         cursor = load_cursor(args.state_dir, args.after_run_id) if args.run_id is None else 0
-        runs = select_runs(args.run_id, cursor, args.state_dir)
+        if recovering:
+            if cursor <= 0 or args.recover_run_id <= cursor:
+                raise ValueError("cursor recovery run must be newer than an existing cursor")
+            try:
+                select_runs(None, cursor, args.state_dir)
+            except ValueError as error:
+                if str(error) != "Agent Review inventory is truncated before the verified cursor":
+                    raise
+            else:
+                raise ValueError("cursor recovery requires a confirmed truncated inventory")
+        runs = select_runs(selected_run_id, cursor, args.state_dir)
         if not runs:
+            if recovering:
+                raise ValueError("cursor recovery run is not a successful attestation candidate")
             print("No unattested successful Agent Review run")
             return 0
     except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired) as error:
@@ -105,10 +119,14 @@ def main() -> int:
                 args.state_dir, run["id"], run["run_attempt"], error.reason, error.pr_number
             )
             print(f"Agent Review run {run['id']} is terminally ineligible: {error}")
-            if not blocked:
+            if recovering:
+                failed = True
+                blocked = True
+            elif not blocked:
                 progress = run["id"]
         except DeferredRun as error:
             blocked = True
+            failed = failed or recovering
             print(f"Agent Review run {run['id']} is deferred: {error}")
         except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired) as error:
             failed = True
@@ -118,7 +136,12 @@ def main() -> int:
             print(f"Protected route attestation recorded: {receipt}")
             if not blocked:
                 progress = run["id"]
-    if args.run_id is None and progress > cursor:
+    if recovering and not failed and not blocked and progress == args.recover_run_id:
+        write_cursor_recovery(
+            args.state_dir, cursor, args.recover_run_id, runs[0]["run_attempt"]
+        )
+        write_cursor(args.state_dir, progress)
+    elif args.run_id is None and not recovering and progress > cursor:
         write_cursor(args.state_dir, progress)
     return 1 if failed else 0
 
@@ -251,6 +274,37 @@ def write_cursor(state_dir: Path, run_id: int) -> None:
         os.close(descriptor)
         descriptor = -1
         os.replace(temporary, state_dir / "cursor.json")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+
+
+def write_cursor_recovery(
+    state_dir: Path, previous_run_id: int, recovery_run_id: int, run_attempt: int
+) -> None:
+    state_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(state_dir, 0o700)
+    destination = state_dir / f"cursor-recovery-{previous_run_id}-{recovery_run_id}.json"
+    payload = {
+        "schema_version": "1", "repository": REPOSITORY,
+        "previous_run_id": previous_run_id, "recovery_run_id": recovery_run_id,
+        "run_attempt": run_attempt, "reason": "workflow-inventory-truncation",
+    }
+    if os.path.lexists(destination):
+        if load_json_strict(destination) != payload:
+            raise ValueError("cursor recovery record conflicts with existing state")
+        return
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".recovery-", dir=state_dir)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("ascii") + b"\n"
+        os.write(descriptor, raw)
+        os.fsync(descriptor)
+        os.close(descriptor)
+        descriptor = -1
+        os.replace(temporary, destination)
     finally:
         if descriptor >= 0:
             os.close(descriptor)
