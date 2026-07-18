@@ -470,12 +470,15 @@ class TestRouteAttestation(unittest.TestCase):
         ) as validate:
             receipt_path = attest_run(run, Path(directory))
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt_path, Path(directory) / "run-321-attempt-1.json")
+            self.assertTrue(receipt_path.is_file())
+            self.assertEqual(list(Path(directory).glob(".route-attestation-*")), [])
         validate.assert_called_once_with(
             run["id"], pr_number, run["head_sha"], protected_base_sha,
         )
         self.assertEqual(receipt["head_sha"], run["head_sha"])
         self.assertEqual(receipt["artifact_name"], run_name)
-        self.assertEqual(receipt_path.name, "run-321-attempt-1.json")
+        self.assertEqual(receipt["validator_sha256"], "d" * 64)
 
 
 if __name__ == "__main__":
