@@ -5,6 +5,15 @@
   "issue_number": 63,
   "pr_number": 64,
   "protected_base_sha": "91bf3617b957b5308d71fa43eb7ee0a2d4314771",
+  "candidate_head": {
+    "resolved_from": "workflow_run.head_sha",
+    "must_equal": [
+      "pull.head.sha",
+      "job.head_sha",
+      "artifact.workflow_run.head_sha",
+      "receipt.head_sha"
+    ]
+  },
   "workflow": {
     "id": 312422987,
     "path": ".github/workflows/agent-review.yml",
@@ -18,6 +27,11 @@
   "receipt": {
     "path_template": "run-{run_id}-attempt-{run_attempt}.json",
     "required": true
+  },
+  "enforcement": {
+    "operator": "scripts/governance/route_attestation.py",
+    "protected_validator": "scripts/governance/route_evidence.py",
+    "eligible_after": "pull.state=closed,pull.merged=true"
   },
   "success_claim": false
 }

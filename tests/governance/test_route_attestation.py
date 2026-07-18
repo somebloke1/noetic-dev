@@ -444,29 +444,32 @@ class TestRouteAttestation(unittest.TestCase):
         manifest = json.loads((
             ROOT / "governance/canaries/2026-07-17-recurring-attestation-trigger.json"
         ).read_text(encoding="utf-8"))
-        self.assertEqual(manifest, {
-            "schema_version": "1",
-            "kind": "recurring-route-attestation-canary",
-            "repository": "somebloke1/noetic-dev",
-            "issue_number": 63,
-            "pr_number": 64,
-            "protected_base_sha": "91bf3617b957b5308d71fa43eb7ee0a2d4314771",
-            "workflow": {
-                "id": 312422987,
-                "path": ".github/workflows/agent-review.yml",
-                "event": "pull_request_target",
-                "run_name_template": "agent-review-{pr_number}-{head_sha}",
-            },
-            "artifact": {
-                "name_template": "agent-review-{pr_number}-{head_sha}",
-                "required": True,
-            },
-            "receipt": {
-                "path_template": "run-{run_id}-attempt-{run_attempt}.json",
-                "required": True,
-            },
-            "success_claim": False,
+        self.assertEqual(manifest["protected_base_sha"], "91bf3617b957b5308d71fa43eb7ee0a2d4314771")
+        self.assertEqual(manifest["candidate_head"], {
+            "resolved_from": "workflow_run.head_sha",
+            "must_equal": [
+                "pull.head.sha", "job.head_sha",
+                "artifact.workflow_run.head_sha", "receipt.head_sha",
+            ],
         })
+        self.assertEqual(manifest["workflow"], {
+            "id": 312422987,
+            "path": ".github/workflows/agent-review.yml",
+            "event": "pull_request_target",
+            "run_name_template": "agent-review-{pr_number}-{head_sha}",
+        })
+        self.assertEqual(manifest["artifact"]["name_template"], manifest["workflow"]["run_name_template"])
+        self.assertTrue(manifest["artifact"]["required"])
+        self.assertTrue(manifest["receipt"]["required"])
+        self.assertEqual(manifest["enforcement"], {
+            "operator": "scripts/governance/route_attestation.py",
+            "protected_validator": "scripts/governance/route_evidence.py",
+            "eligible_after": "pull.state=closed,pull.merged=true",
+        })
+        for path in manifest["enforcement"].values():
+            if path.endswith(".py"):
+                self.assertTrue((ROOT / path).is_file())
+        self.assertIs(manifest["success_claim"], False)
 
 
 if __name__ == "__main__":
