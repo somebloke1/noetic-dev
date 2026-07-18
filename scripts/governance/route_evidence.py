@@ -657,6 +657,9 @@ def validate_protected_provenance(
 
     try:
         run = github_json(f"repos/{REPOSITORY}/actions/runs/{run_id}")
+        workflow = github_json(
+            f"repos/{REPOSITORY}/actions/workflows/{AGENT_REVIEW_WORKFLOW_ID}"
+        )
         pull = github_json(f"repos/{REPOSITORY}/pulls/{pr_number}")
         merge_sha = pull.get("merge_commit_sha") if isinstance(pull, dict) else None
         if not isinstance(merge_sha, str) or re.fullmatch(r"[a-f0-9]{40}", merge_sha) is None:
@@ -678,7 +681,7 @@ def validate_protected_provenance(
         not isinstance(run, dict)
         or type(run.get("id")) is not int
         or run.get("id") != run_id
-        or run.get("name") != "Agent Review"
+        or run.get("name") != f"agent-review-{pr_number}-{head_sha}"
         or run.get("path") != ".github/workflows/agent-review.yml"
         or type(run.get("workflow_id")) is not int
         or run.get("workflow_id") != AGENT_REVIEW_WORKFLOW_ID
@@ -690,6 +693,11 @@ def validate_protected_provenance(
         or run.get("display_title") != f"agent-review-{pr_number}-{head_sha}"
         or not isinstance(run.get("head_sha"), str)
         or run.get("head_sha") not in {head_sha, base_sha}
+        or not isinstance(workflow, dict)
+        or workflow.get("id") != AGENT_REVIEW_WORKFLOW_ID
+        or workflow.get("name") != "Agent Review"
+        or workflow.get("path") != ".github/workflows/agent-review.yml"
+        or workflow.get("state") != "active"
         or not isinstance(head, dict)
         or run.get("head_branch") != head.get("ref")
         or not isinstance(run.get("repository"), dict)
@@ -795,7 +803,7 @@ def _valid_review_job(
         and job.get("run_id") == run_id
         and type(job.get("run_attempt")) is int
         and job.get("run_attempt") == 1
-        and job.get("workflow_name") in {"Agent Review", workflow_name}
+        and job.get("workflow_name") == workflow_name
         and job.get("head_sha") in (head_sha, base_sha)
         and job.get("status") == "completed"
         and job.get("conclusion") == "success"

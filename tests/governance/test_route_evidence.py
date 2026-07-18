@@ -131,7 +131,7 @@ def provenance_records(
 ) -> tuple[dict, dict, dict, dict, dict]:
     run = {
         "id": 123,
-        "name": "Agent Review",
+        "name": f"agent-review-{pr_number}-{head_sha}",
         "path": ".github/workflows/agent-review.yml",
         "workflow_id": 312422987,
         "run_attempt": 1,
@@ -172,7 +172,7 @@ def provenance_records(
             "id": 456,
             "run_id": 123,
             "run_attempt": 1,
-            "workflow_name": "Agent Review",
+            "workflow_name": f"agent-review-{pr_number}-{head_sha}",
             "head_sha": head_sha,
             "status": "completed",
             "conclusion": "success",
@@ -210,6 +210,13 @@ def provenance_records(
         }],
     }
     return run, pull, merge_commit, jobs, artifacts
+
+
+def workflow_record() -> dict:
+    return {
+        "id": 312422987, "name": "Agent Review",
+        "path": ".github/workflows/agent-review.yml", "state": "active",
+    }
 
 
 class TestRouteEvidence(unittest.TestCase):
@@ -295,6 +302,7 @@ class TestRouteEvidence(unittest.TestCase):
             run["created_at"] = protection_run["created_at"]
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(workflow_record()).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(pull).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(merge_commit).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(jobs).encode(), b""),
@@ -312,6 +320,7 @@ class TestRouteEvidence(unittest.TestCase):
             run["conclusion"] = "failure"
             responses = [
                 subprocess.CompletedProcess([], 0, json.dumps(run).encode(), b""),
+                subprocess.CompletedProcess([], 0, json.dumps(workflow_record()).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(pull).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(merge_commit).encode(), b""),
                 subprocess.CompletedProcess([], 0, json.dumps(jobs).encode(), b""),
@@ -343,7 +352,8 @@ class TestRouteEvidence(unittest.TestCase):
         def validate(records: tuple[dict, dict, dict, dict, dict]) -> list[str]:
             source_run, source_pull, source_merge, source_jobs, source_artifacts = records
             responses = [
-                source_run, source_pull, source_merge, source_jobs, source_artifacts,
+                source_run, workflow_record(), source_pull, source_merge,
+                source_jobs, source_artifacts,
                 applied, ruleset,
             ]
             with mock.patch("route_evidence.github_json", side_effect=responses), mock.patch(
@@ -355,9 +365,6 @@ class TestRouteEvidence(unittest.TestCase):
         base_job = copy.deepcopy(jobs)
         base_job["jobs"][0]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, merge_commit, base_job, artifacts)), [])
-        dynamic_job = copy.deepcopy(jobs)
-        dynamic_job["jobs"][0]["workflow_name"] = f"agent-review-55-{head_sha}"
-        self.assertEqual(validate((github_run, pull, merge_commit, dynamic_job, artifacts)), [])
         base_artifact = copy.deepcopy(artifacts)
         base_artifact["artifacts"][0]["workflow_run"]["head_sha"] = base_sha
         self.assertEqual(validate((github_run, pull, merge_commit, jobs, base_artifact)), [])
@@ -376,7 +383,7 @@ class TestRouteEvidence(unittest.TestCase):
             ("jobs", ("total_count",), True),
             ("jobs", ("jobs", 0, "id"), 0),
             ("jobs", ("jobs", 0, "run_attempt"), 2),
-            ("jobs", ("jobs", 0, "workflow_name"), "Other Workflow"),
+            ("jobs", ("jobs", 0, "workflow_name"), "Agent Review"),
             ("jobs", ("jobs", 0, "labels"), ["self-hosted"]),
             ("jobs", ("jobs", 0, "steps"), jobs["jobs"][0]["steps"] + [{"name": "extra", "conclusion": "success"}]),
             ("artifacts", ("total_count",), True),
