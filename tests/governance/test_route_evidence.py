@@ -339,6 +339,9 @@ class TestRouteEvidence(unittest.TestCase):
                 return validate_protected_provenance(123, 55, head_sha, base_sha, protected_ci)
 
         self.assertEqual(validate((github_run, pull, jobs, artifacts)), [])
+        base_job = copy.deepcopy(jobs)
+        base_job["jobs"][0]["head_sha"] = base_sha
+        self.assertEqual(validate((github_run, pull, base_job, artifacts)), [])
         mutations = []
         for target, path, value in [
             ("run", ("id",), 123.0),

@@ -337,7 +337,7 @@ def load_attestation_context(run_id: int) -> dict[str, Any]:
         or jobs.get("total_count") != 1
         or not isinstance(listed_jobs, list)
         or len(listed_jobs) != 1
-        or not _valid_review_job(listed_jobs[0], run_id, head_sha)
+        or not _valid_review_job(listed_jobs[0], run_id, head_sha, base["sha"])
         or not _valid_artifact(artifact, run_id, head_sha, f"agent-review-{pr_number}-{head_sha}")
     ):
         raise ValueError("run, PR, job, or artifact metadata is invalid")
