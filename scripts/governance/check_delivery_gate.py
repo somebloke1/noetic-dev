@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -47,6 +50,9 @@ REPOSITORY_OWNER = "somebloke1"
 QA_TOOL_ALLOWLIST: set[str] = set()
 ALLOWED_MERGE_METHODS = {"squash", "rebase"}
 LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE = False
+PROTECTED_ATTESTATION_VERIFIER = Path(
+    "/usr/local/libexec/noetic-dev/verify-delivery-attestation"
+)
 BOOTSTRAP_AUTHORITY_FIELDS = [
     "protected_policy_ref_established",
     "trusted_runner_provenance_established",
@@ -396,6 +402,56 @@ def _authenticated_github_response(
     return response
 
 
+def _trusted_root_executable(path: Path) -> bool:
+    try:
+        current = path
+        while True:
+            metadata = os.lstat(current)
+            if stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+                return False
+            if current == path and (
+                not stat.S_ISREG(metadata.st_mode) or metadata.st_mode & 0o111 == 0
+            ):
+                return False
+            if current.parent == current:
+                return True
+            current = current.parent
+    except OSError:
+        return False
+
+
+def _verify_protected_attestation_receipt(
+    receipt: Any,
+    expected_claims: Dict[str, Any],
+) -> bool:
+    if not isinstance(receipt, dict) or not _trusted_root_executable(PROTECTED_ATTESTATION_VERIFIER):
+        return False
+    challenge = json.dumps(
+        {
+            "schema_version": "1",
+            "receipt": receipt,
+            "expected_claims": expected_claims,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if len(challenge) > 1_048_576:
+        return False
+    try:
+        result = subprocess.run(
+            [str(PROTECTED_ATTESTATION_VERIFIER)],
+            input=challenge,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+            env={"PATH": "/usr/bin:/bin"},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0
+
+
 def _check_owner_promotion_authorization(
     manifest: Dict[str, Any],
     errors: List[str],
@@ -540,7 +596,7 @@ def _check_owner_promotion_authorization(
     if (
         authorized_at is None
         or pinned_at is None
-        or any(captured is None or captured < authorized_at or captured >= pinned_at for captured in capture_times)
+        or any(captured is None or captured <= authorized_at or captured >= pinned_at for captured in capture_times)
     ):
         errors.append("protected dev API captures must follow authorization and precede candidate pinning")
 
@@ -880,10 +936,10 @@ def verify_authoritative_provenance(
         errors.append("external provenance evidence must be schema_version=1 protected-external")
 
     mode = external_evidence.get("mode")
-    if mode not in {"github_api", "github_artifact_attestation"}:
-        errors.append("trusted runner provenance must be verified by GitHub API or artifact attestation")
+    if mode not in {"github_api", "protected_integration_receipt"}:
+        errors.append("trusted runner provenance must use GitHub diagnostics or a protected integration receipt")
     if mode == "github_api":
-        errors.append("github_api mode is diagnostic only for review authority; signed artifact attestation is required")
+        errors.append("github_api mode is diagnostic only; a protected integration receipt is required")
     if external_evidence.get("verification_status") != "verified":
         errors.append("trusted runner provenance verification_status is not verified")
 
@@ -1013,28 +1069,27 @@ def verify_authoritative_provenance(
     if branch_protection.get("requires_governance") is not True:
         errors.append("branch protection does not require governance checks")
 
-    if mode == "github_artifact_attestation":
-        signed = external_evidence.get("signed_attestation", {})
-        subject = signed.get("subject", {})
-        claims = signed.get("claims", {})
-        if signed.get("verified") is not True:
-            errors.append("GitHub artifact attestation is not verified")
-        if subject.get("digest") != artifact_digest:
-            errors.append("artifact attestation subject digest mismatch")
-        for label, expected in [
-            ("repository", REPO_FULL_NAME),
-            ("workflow_sha", policy.get("sha")),
-            ("head_sha", repo.get("candidate_sha")),
-            ("run_id", run.get("id")),
-            ("job_id", job.get("id")),
-            ("event", "pull_request"),
-            ("review_evidence_sha256", review_evidence_digest),
-            ("promotion_authorization_sha256", promotion_authorization_digest),
-            ("freeze_review_sha256", freeze_review_digest),
-            ("freeze_review_pr_api_sha256", freeze_review_pr_api_digest),
-        ]:
-            if claims.get(label) != expected:
-                errors.append(f"artifact attestation claim mismatch: {label}")
+    if mode == "protected_integration_receipt":
+        receipt = external_evidence.get("protected_attestation_receipt", {})
+        expected_claims = {
+            "repository": REPO_FULL_NAME,
+            "workflow_sha": policy.get("sha"),
+            "head_sha": repo.get("candidate_sha"),
+            "run_id": run.get("id"),
+            "job_id": job.get("id"),
+            "event": "pull_request",
+            "artifact_digest": artifact_digest,
+            "manifest_sha256": computed_manifest_digest,
+            "review_evidence_sha256": review_evidence_digest,
+            "promotion_authorization_sha256": promotion_authorization_digest,
+            "dev_provenance_sha256": canonical_json_sha256(
+                external_evidence.get("promotion_authorization", {}).get("dev_provenance", {})
+            ),
+            "freeze_review_sha256": freeze_review_digest,
+            "freeze_review_pr_api_sha256": freeze_review_pr_api_digest,
+        }
+        if not _verify_protected_attestation_receipt(receipt, expected_claims):
+            errors.append("protected integration attestation receipt is not independently verified")
 
     return errors
 

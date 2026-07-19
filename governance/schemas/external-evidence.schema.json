@@ -38,7 +38,7 @@
   "properties": {
     "schema_version": {"type": "string", "const": "1"},
     "evidence_class": {"type": "string", "const": "protected-external"},
-    "mode": {"type": "string", "enum": ["github_api", "github_artifact_attestation"]},
+    "mode": {"type": "string", "enum": ["github_api", "protected_integration_receipt"]},
     "verification_status": {"type": "string", "const": "verified", "description": "Advisory until captured or attested by a separately protected required integration."},
     "repository": {"type": "object"},
     "workflow": {"type": "object"},
@@ -240,7 +240,31 @@
         "reviewed_at": {"type": "string", "minLength": 1}
       }
     },
-    "signed_attestation": {"type": "object"},
+    "protected_attestation_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "receipt_id", "provider", "issued_at", "expires_at", "subject", "claims", "proof"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "1"},
+        "receipt_id": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "const": "protected-integration"},
+        "issued_at": {"type": "string", "minLength": 1},
+        "expires_at": {"type": "string", "minLength": 1},
+        "subject": {"type": "object"},
+        "claims": {"type": "object"},
+        "proof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "key_id", "payload_sha256", "signature"],
+          "properties": {
+            "format": {"type": "string", "const": "protected-integration-receipt-v1"},
+            "key_id": {"type": "string", "minLength": 1},
+            "payload_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "signature": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
     "post_merge": {"type": "object"}
   }
 }

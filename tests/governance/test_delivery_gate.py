@@ -15,6 +15,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
+import check_delivery_gate as delivery_gate
 from check_delivery_gate import (
     check_bootstrap_blocked,
     check_delivery,
@@ -84,6 +85,43 @@ def github_api_response(request_url: str, response) -> dict:
 
 def resign_response(envelope: dict) -> None:
     envelope["response_sha256"] = canonical_json_sha256(envelope["response"])
+
+
+def protected_attestation_receipt() -> dict:
+    return {
+        "schema_version": "1",
+        "receipt_id": "receipt-1",
+        "provider": "protected-integration",
+        "issued_at": "2026-07-11T11:59:59.600000+00:00",
+        "expires_at": "2026-07-11T12:04:59.600000+00:00",
+        "subject": {"digest": "sha256:" + "9" * 64},
+        "claims": {"repository": "somebloke1/noetic-dev"},
+        "proof": {
+            "format": "protected-integration-receipt-v1",
+            "key_id": "protected-delivery-v1",
+            "payload_sha256": "8" * 64,
+            "signature": "opaque-verifier-proof",
+        },
+    }
+
+
+def bind_external_evidence(manifest: dict, external: dict) -> None:
+    promotion = external.get("promotion_authorization", {})
+    freeze = external.get("freeze_review", {})
+    external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
+    external["artifact"]["promotion_authorization_sha256"] = canonical_json_sha256(promotion)
+    external["artifact"]["freeze_review_sha256"] = canonical_json_sha256(freeze)
+    external["artifact"]["freeze_review_pr_api_sha256"] = canonical_json_sha256(
+        freeze.get("pr_api_response", {})
+    )
+    external["artifact"]["review_evidence_sha256"] = canonical_json_sha256(
+        {
+            "agent_identities": external.get("agent_identities", []),
+            "approvals": external.get("approvals", []),
+            "promotion_authorization": promotion,
+            "freeze_review": freeze,
+        }
+    )
 
 
 def promotion_authorization(manifest: dict) -> dict:
@@ -291,6 +329,13 @@ class TestDeliveryGatePositive(unittest.TestCase):
 
         external = advisory_external()
         external["promotion_authorization"] = promotion_authorization(manifest)
+        envelope = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]
+        envelope["fetched_at"] = external["promotion_authorization"]["authorized_at"]
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("captures must follow authorization", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
         provenance = external["promotion_authorization"]["dev_provenance"]
         self.assertEqual(provenance["branch_api_response"]["response"]["commit"]["sha"], candidate_sha)
         self.assertEqual(
@@ -403,7 +448,81 @@ class TestDeliveryGatePositive(unittest.TestCase):
         manifest = load_fixture("valid_advisory_manifest.json")
         passed, errors, _ = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
-        self.assertIn("signed artifact attestation is required", "\n".join(errors))
+        self.assertIn("protected integration receipt is required", "\n".join(errors))
+
+    def test_self_consistent_outer_evidence_requires_independent_receipt_verification(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["mode"] = "protected_integration_receipt"
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        bind_external_evidence(manifest, external)
+
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("receipt is not independently verified", "\n".join(errors))
+        expected_claims = verifier.call_args.args[1]
+        self.assertEqual(expected_claims["head_sha"], manifest["repo"]["candidate_sha"])
+        self.assertEqual(
+            expected_claims["dev_provenance_sha256"],
+            canonical_json_sha256(external["promotion_authorization"]["dev_provenance"]),
+        )
+
+        external["promotion_authorization"]["dev_sha"] = "0" * 40
+        external["protected_attestation_receipt"]["claims"]["head_sha"] = "0" * 40
+        external["protected_attestation_receipt"]["proof"]["payload_sha256"] = "7" * 64
+        bind_external_evidence(manifest, external)
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ):
+            errors = verify_authoritative_provenance(manifest, external)
+        joined = "\n".join(errors)
+        self.assertIn("receipt is not independently verified", joined)
+        self.assertNotIn("promotion authorization evidence digest mismatch", joined)
+
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ):
+            errors = verify_authoritative_provenance(manifest, external)
+        self.assertNotIn("receipt is not independently verified", "\n".join(errors))
+
+    def test_protected_receipt_verifier_protocol_fails_closed(self):
+        receipt = protected_attestation_receipt()
+        expected_claims = {"head_sha": "d" * 40}
+        with mock.patch.object(
+            delivery_gate,
+            "PROTECTED_ATTESTATION_VERIFIER",
+            Path("/definitely/missing/verify-delivery-attestation"),
+        ):
+            self.assertFalse(
+                delivery_gate._verify_protected_attestation_receipt(receipt, expected_claims)
+            )
+
+        completed = subprocess.CompletedProcess([], 0)
+        with mock.patch(
+            "check_delivery_gate._trusted_root_executable", return_value=True
+        ), mock.patch("check_delivery_gate.subprocess.run", return_value=completed) as run:
+            self.assertTrue(
+                delivery_gate._verify_protected_attestation_receipt(receipt, expected_claims)
+            )
+        challenge = json.loads(run.call_args.kwargs["input"])
+        self.assertEqual(challenge["receipt"], receipt)
+        self.assertEqual(challenge["expected_claims"], expected_claims)
+        self.assertEqual(run.call_args.kwargs["stdout"], subprocess.DEVNULL)
+        self.assertEqual(run.call_args.kwargs["stderr"], subprocess.DEVNULL)
+        self.assertEqual(run.call_args.kwargs["timeout"], 30)
+
+        with mock.patch(
+            "check_delivery_gate._trusted_root_executable", return_value=True
+        ), mock.patch(
+            "check_delivery_gate.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 1),
+        ):
+            self.assertFalse(
+                delivery_gate._verify_protected_attestation_receipt(receipt, expected_claims)
+            )
 
     def test_valid_advisory_is_blocked_without_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")

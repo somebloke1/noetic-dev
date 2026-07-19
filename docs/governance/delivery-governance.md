@@ -22,7 +22,7 @@ the JSON policy files under `governance/` are the machine-readable enforcement.
 | Candidate SHA | The full 40-character SHA of the commit to be reviewed and merged. |
 | Evidence manifest | A machine-readable record of all evidence for a delivery decision. |
 | Publication SHA | The full 40-character main SHA after merging a candidate. |
-| Trusted runner | A runner whose provenance is verified from evidence outside the candidate manifest through authenticated GitHub APIs and/or signed attestations. |
+| Trusted runner | A runner whose provenance is verified from authenticated GitHub API captures and an independently verified protected-integration receipt outside the candidate manifest. |
 | External protected evidence | Runner-captured GitHub, approval, freeze, and post-merge evidence supplied by a separately protected required integration; caller-supplied JSON is advisory during bootstrap. |
 
 ## State machine
@@ -96,6 +96,18 @@ validation SHA/time, authenticated GitHub comment ID/source, author and `OWNER`
 association, exact affirmative body, comment creation time, and the exact dev SHA.
 Authorization must strictly follow dev validation and strictly precede
 main-promotion candidate pinning. The executable mode is `--gate-mode main-promotion`.
+The protected integration captures authenticated branch, applied-rules, ruleset,
+and validation-run API response envelopes after authorization and before pinning.
+Their response digests and derived claims are bound into a strict
+`protected_attestation_receipt`. The repository gate never trusts a receipt
+`verified` flag: it sends the receipt and independently recomputed expected claims
+as canonical JSON to the fixed
+`/usr/local/libexec/noetic-dev/verify-delivery-attestation` verifier. Every path
+component and the executable must be root-owned and non-writable by group/other;
+missing, unsafe, oversized, timed-out, failed, or nonzero verification blocks the
+gate. The verifier is a separately deployed protected-integration dependency and
+must verify the receipt proof, issuer/key, validity interval, and exact expected
+claims before returning zero. Its absence remains an explicit bootstrap blocker.
 
 ### Publication gate
 
@@ -105,7 +117,7 @@ Publication requires ALL of the following:
 2. `merge_result_sha` recorded.
 3. Post-merge validation and tests pass against main.
 4. `publication_sha` is the full 40-char main SHA.
-5. Trusted runner provenance verified from external protected evidence (GitHub artifact attestation or authenticated API), not from manifest assertions.
+5. Trusted runner provenance verified from authenticated API captures and an independently verified protected-integration receipt, not from manifest assertions.
 6. Independent high-reasoning Fable or Sol approval exists in external protected evidence.
 7. Protected post-merge push-to-main evidence binds the command outputs to the main SHA and merge method.
 8. The protected existing-work freeze artifact is complete; the manifest cannot override it.
@@ -124,8 +136,8 @@ without those GitHub API bindings are rejected.
 The protected integration must retain an authenticated GitHub PR API response
 envelope with request URL/status/ID, capture time, protected principal, canonical
 response digest, and normalized response body. Review fields are derived from that
-body, and the envelope digest is an explicit signed-attestation claim.
-The protected artifact and signed-attestation claim digest include owner promotion
+body, and the envelope digest is an explicit protected-receipt claim.
+The protected artifact and protected-receipt claim digest include owner promotion
 authorization and freeze-review objects, so either object is substitution-evident.
 
 ### Branch-name publication
@@ -145,7 +157,7 @@ Authoritative mode requires:
 1. Protected policy ref exists and is independently protected.
 2. Delivery gate runs from protected policy checkout.
 3. Candidate checkout is separate from policy checkout.
-4. Runner provenance verified through GitHub API and/or signed artifact attestations.
+4. Runner provenance verified through authenticated GitHub API captures plus the fixed protected-integration receipt verifier.
 5. Artifact digest and canonical manifest digest verified.
 6. Protected QA execution record generated outside QA/model control.
 7. Probe and QA execution records match, with no QA tools until a credential broker exists.
