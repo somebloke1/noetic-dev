@@ -35,6 +35,15 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "required": ["mode"],
+        "properties": {"mode": {"const": "protected_integration_receipt"}}
+      },
+      "then": {"required": ["protected_attestation_receipt"]}
+    }
+  ],
   "properties": {
     "schema_version": {"type": "string", "const": "1"},
     "evidence_class": {"type": "string", "const": "protected-external"},
@@ -266,5 +275,6 @@
       }
     },
     "post_merge": {"type": "object"}
-  }
+  },
+  "additionalProperties": false
 }

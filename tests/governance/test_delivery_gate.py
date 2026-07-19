@@ -488,6 +488,39 @@ class TestDeliveryGatePositive(unittest.TestCase):
             errors = verify_authoritative_provenance(manifest, external)
         self.assertNotIn("receipt is not independently verified", "\n".join(errors))
 
+    def test_receipt_mode_rejects_omitted_malformed_and_legacy_receipts_before_verifier(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["mode"] = "protected_integration_receipt"
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        bind_external_evidence(manifest, external)
+
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ) as verifier:
+            errors = verify_authoritative_provenance(manifest, external)
+        joined = "\n".join(errors)
+        self.assertIn("missing required property protected_attestation_receipt", joined)
+        self.assertIn("protected attestation receipt schema", joined)
+        verifier.assert_not_called()
+
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        external["protected_attestation_receipt"].pop("proof")
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ) as verifier:
+            errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("protected attestation receipt schema", "\n".join(errors))
+        verifier.assert_not_called()
+
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        external["signed_attestation"] = {"verified": True}
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ):
+            errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("additional property not allowed: signed_attestation", "\n".join(errors))
+
     def test_protected_receipt_verifier_protocol_fails_closed(self):
         receipt = protected_attestation_receipt()
         expected_claims = {"head_sha": "d" * 40}
@@ -523,6 +556,20 @@ class TestDeliveryGatePositive(unittest.TestCase):
             self.assertFalse(
                 delivery_gate._verify_protected_attestation_receipt(receipt, expected_claims)
             )
+
+        for value in [float("nan"), float("inf"), float("-inf")]:
+            with self.subTest(non_finite=value):
+                attacked = copy.deepcopy(receipt)
+                attacked["claims"]["non_finite"] = value
+                with mock.patch(
+                    "check_delivery_gate._trusted_root_executable", return_value=True
+                ), mock.patch("check_delivery_gate.subprocess.run") as run:
+                    self.assertFalse(
+                        delivery_gate._verify_protected_attestation_receipt(
+                            attacked, expected_claims
+                        )
+                    )
+                run.assert_not_called()
 
     def test_valid_advisory_is_blocked_without_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")

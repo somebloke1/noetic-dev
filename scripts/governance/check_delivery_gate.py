@@ -37,7 +37,7 @@ from check_evidence_manifest import (  # noqa: E402
     normalize_qa_records,
     pass_records_by_id,
 )
-from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
+from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
 from route_evidence import protected_ci_snapshot  # noqa: E402
 
@@ -426,15 +426,16 @@ def _verify_protected_attestation_receipt(
 ) -> bool:
     if not isinstance(receipt, dict) or not _trusted_root_executable(PROTECTED_ATTESTATION_VERIFIER):
         return False
-    challenge = json.dumps(
-        {
-            "schema_version": "1",
-            "receipt": receipt,
-            "expected_claims": expected_claims,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    try:
+        challenge = canonical_json(
+            {
+                "schema_version": "1",
+                "receipt": receipt,
+                "expected_claims": expected_claims,
+            }
+        ).encode("utf-8")
+    except (TypeError, ValueError, OverflowError):
+        return False
     if len(challenge) > 1_048_576:
         return False
     try:
@@ -1088,7 +1089,15 @@ def verify_authoritative_provenance(
             "freeze_review_sha256": freeze_review_digest,
             "freeze_review_pr_api_sha256": freeze_review_pr_api_digest,
         }
-        if not _verify_protected_attestation_receipt(receipt, expected_claims):
+        receipt_schema = _load_schema("governance/schemas/external-evidence.schema.json")[
+            "properties"
+        ]["protected_attestation_receipt"]
+        receipt_errors = validate_schema(receipt, receipt_schema)
+        if receipt_errors:
+            errors.extend(
+                f"protected attestation receipt schema: {error}" for error in receipt_errors
+            )
+        elif not _verify_protected_attestation_receipt(receipt, expected_claims):
             errors.append("protected integration attestation receipt is not independently verified")
 
     return errors
