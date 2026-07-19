@@ -1195,7 +1195,7 @@ def verify_authoritative_provenance(
         invalid_digest_claims = [
             key
             for key in required_digest_claims
-            if not isinstance(expected_claims.get(key), str)
+            if type(expected_claims.get(key)) is not str
             or re.fullmatch(r"[a-f0-9]{64}", expected_claims[key]) is None
         ]
         if receipt_errors:

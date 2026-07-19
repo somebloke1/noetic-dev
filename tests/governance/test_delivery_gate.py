@@ -652,7 +652,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "freeze_review_pr_api_sha256": "protected freeze review PR API evidence",
         }
         original = delivery_gate._external_canonical_sha256
-        invalid_values = [None, "A" * 64, "a" * 8, 1]
+        invalid_values = [None, "A" * 64, "a" * 8, 1, StringSubclass("a" * 64)]
         for claim, target_label in labels.items():
             for invalid in invalid_values:
                 with self.subTest(claim=claim, invalid=invalid):
