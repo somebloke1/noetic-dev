@@ -155,6 +155,10 @@ def promotion_authorization(manifest: dict) -> dict:
         "authorized_by": "somebloke1",
         "dev_sha": candidate_sha,
         "dev_validation_sha": candidate_sha,
+        "promotion_method": "fast-forward",
+        "source_ref": "refs/heads/dev",
+        "target_ref": "refs/heads/main",
+        "expected_main_sha": candidate_sha,
         "dev_provenance": {
             "branch_api_response": github_api_response(
                 "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev",
@@ -220,6 +224,21 @@ class TestDeliveryGatePositive(unittest.TestCase):
         joined = "\n".join(errors)
         self.assertIn("must follow protected dev validation", joined)
         self.assertIn("exact affirmative record", joined)
+
+        for field, value in [
+            ("promotion_method", "squash"),
+            ("source_ref", "refs/heads/feature"),
+            ("target_ref", "refs/heads/dev"),
+            ("expected_main_sha", "0" * 40),
+        ]:
+            with self.subTest(promotion_field=field):
+                attacked = advisory_external()
+                attacked["promotion_authorization"] = promotion_authorization(manifest)
+                attacked["promotion_authorization"][field] = value
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=attacked
+                )
+                self.assertIn("exact dev-to-main fast-forward", "\n".join(errors))
 
     def test_main_promotion_requires_authenticated_protected_dev_validation(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -1075,7 +1094,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "ref": "refs/heads/main",
             "sha": publication_sha,
             "merge_result_sha": publication_sha,
-            "merge_method": "squash",
+            "merge_method": "fast-forward",
             "main_contains_sha": True,
         }
         return manifest, external
@@ -1094,6 +1113,44 @@ class TestPublicationBindingFailures(unittest.TestCase):
         passed, errors, _ = check_delivery(manifest, external_evidence=external, phase="publication")
         self.assertFalse(passed)
         self.assertIn("refs/heads/main", "\n".join(errors))
+
+    def test_main_promotion_rejects_sha_changing_merge_methods_and_results(self):
+        manifest, external = self._publication_candidate()
+        candidate_sha = manifest["repo"]["candidate_sha"]
+        manifest["publication"]["merge_result_sha"] = candidate_sha
+        manifest["publication"]["publication_sha"] = candidate_sha
+        external["post_merge"].update(
+            {
+                "sha": candidate_sha,
+                "merge_result_sha": candidate_sha,
+                "merge_method": "fast-forward",
+            }
+        )
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=external, phase="publication"
+        )
+        joined = "\n".join(errors)
+        self.assertNotIn("preserve the exact owner-authorized dev SHA", joined)
+        self.assertNotIn("exact fast-forward", joined)
+
+        for method in ["squash", "rebase", "merge", None]:
+            with self.subTest(method=method):
+                external["post_merge"]["merge_method"] = method
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=external, phase="publication"
+                )
+                self.assertIn("exact fast-forward", "\n".join(errors))
+
+        external["post_merge"]["merge_method"] = "fast-forward"
+        different_sha = "e" * 40
+        manifest["publication"]["merge_result_sha"] = different_sha
+        manifest["publication"]["publication_sha"] = different_sha
+        external["post_merge"]["sha"] = different_sha
+        external["post_merge"]["merge_result_sha"] = different_sha
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=external, phase="publication"
+        )
+        self.assertIn("preserve the exact owner-authorized dev SHA", "\n".join(errors))
 
 
 class TestQaBindingFailures(unittest.TestCase):

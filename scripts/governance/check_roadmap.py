@@ -17,6 +17,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.governance.json_schema import load_json_strict, validate_schema  # noqa: E402
+from scripts.governance.hash_tree import canonical_json_sha256  # noqa: E402
+from scripts.governance.check_delivery_gate import (  # noqa: E402
+    _authenticated_github_response,
+    _verify_protected_attestation_receipt,
+)
 
 
 STATE_PATH = Path("governance/roadmap.json")
@@ -122,6 +127,8 @@ EXPECTED_POLICY_EXIT_GATES = {
 }
 FREEZE_PATH = Path("governance/audits/existing-work-freeze.json")
 FREEZE_SCHEMA_PATH = Path("governance/schemas/existing-work-freeze.schema.json")
+D2_REVIEW_PATH = Path("governance/audits/d2-protected-freeze-review.json")
+D2_REVIEW_SCHEMA_PATH = Path("governance/schemas/d2-freeze-review.schema.json")
 BOOTSTRAP_STATUS_PATH = Path("governance/bootstrap-status.json")
 AUDIT_PATH = Path("governance/audits/20260718-d2-portfolio/inventory.json")
 AUDIT_SCHEMA_PATH = Path("governance/schemas/d2-portfolio-audit.schema.json")
@@ -151,6 +158,114 @@ def _parse_instant(value: Any) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else None
+
+
+def _validate_d2_protected_review(
+    root: Path,
+    freeze: dict[str, Any],
+    d2: dict[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    if freeze.get("protected_review_artifact") != str(D2_REVIEW_PATH):
+        errors.append("complete freeze must bind the canonical protected D2 review artifact")
+        return errors
+    path = root / D2_REVIEW_PATH
+    if path.is_symlink():
+        return ["protected D2 freeze review artifact must not be a symlink"]
+    try:
+        raw = path.read_bytes()
+        review = load_json_strict(path)
+        schema = load_json_strict(root / D2_REVIEW_SCHEMA_PATH)
+    except (OSError, ValueError) as exc:
+        return [f"protected D2 freeze review failed to load: {exc}"]
+    review_sha256 = hashlib.sha256(raw).hexdigest()
+    if freeze.get("protected_review_sha256") != review_sha256:
+        errors.append("protected D2 freeze review artifact digest mismatch")
+    schema_errors = validate_schema(review, schema)
+    errors.extend(f"protected D2 freeze review: {error}" for error in schema_errors)
+    if schema_errors:
+        return errors
+
+    pr_envelope = review["pr_api_response"]
+    pr_response = _authenticated_github_response(
+        pr_envelope, errors, "D2 freeze review PR", dict
+    )
+    expected_pr_url = (
+        f"https://api.github.com/repos/somebloke1/noetic-dev/pulls/{review['pull_request']}"
+    )
+    if pr_envelope.get("request_url") != expected_pr_url:
+        errors.append("D2 freeze review PR API request URL is invalid")
+    if (
+        pr_response.get("number") != review["pull_request"]
+        or pr_response.get("head_ref") != "issue-32-canonical-roadmap"
+        or pr_response.get("base_ref") != "dev"
+        or pr_response.get("head_sha") != review["reviewed_candidate_sha"]
+        or pr_response.get("linked_issues") != [32]
+    ):
+        errors.append("D2 freeze review is not derived from the authenticated PR response")
+
+    dev_envelope = review["dev_branch_api_response"]
+    dev_response = _authenticated_github_response(
+        dev_envelope, errors, "D2 protected dev branch", dict
+    )
+    dev_commit = dev_response.get("commit")
+    if (
+        dev_envelope.get("request_url")
+        != "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev"
+        or dev_response.get("name") != "dev"
+        or dev_response.get("protected") is not True
+        or not isinstance(dev_commit, dict)
+        or dev_commit.get("sha") != review["dev_integration_sha"]
+    ):
+        errors.append("D2 integration SHA is not the authenticated protected dev head")
+
+    for key in (
+        "audit_sha256",
+        "reviewed_candidate_sha",
+        "pull_request",
+        "dev_integration_sha",
+        "reviewed_at",
+        "evidence_url",
+    ):
+        freeze_key = "review_evidence_url" if key == "evidence_url" else (
+            "reviewed_pull_request" if key == "pull_request" else key
+        )
+        if review.get(key) != freeze.get(freeze_key):
+            errors.append(f"protected D2 freeze review does not match freeze field {freeze_key}")
+
+    reviewed_at = _parse_instant(review.get("reviewed_at"))
+    pr_fetched_at = _parse_instant(pr_envelope.get("fetched_at"))
+    dev_fetched_at = _parse_instant(dev_envelope.get("fetched_at"))
+    if reviewed_at is None or pr_fetched_at is None or pr_fetched_at >= reviewed_at:
+        errors.append("D2 freeze review must strictly follow authenticated PR capture")
+    if reviewed_at is None or dev_fetched_at is None or dev_fetched_at <= reviewed_at:
+        errors.append("D2 protected dev capture must strictly follow freeze review")
+
+    evidence_commits = {
+        item.get("reference")
+        for item in d2.get("evidence", [])
+        if item.get("kind") == "commit"
+    }
+    if review["dev_integration_sha"] not in evidence_commits:
+        errors.append("D2 checkpoint evidence must include the exact dev integration SHA")
+
+    review_claims = {key: value for key, value in review.items() if key != "protected_attestation_receipt"}
+    expected_claims = {
+        "purpose": "d2-freeze-completion",
+        "repository": "somebloke1/noetic-dev",
+        "audit_sha256": review["audit_sha256"],
+        "reviewed_candidate_sha": review["reviewed_candidate_sha"],
+        "pull_request": review["pull_request"],
+        "pr_api_response_sha256": pr_envelope["response_sha256"],
+        "dev_integration_sha": review["dev_integration_sha"],
+        "dev_branch_api_response_sha256": dev_envelope["response_sha256"],
+        "freeze_review_claims_sha256": canonical_json_sha256(review_claims),
+    }
+    if not _verify_protected_attestation_receipt(
+        review["protected_attestation_receipt"], expected_claims
+    ):
+        errors.append("protected D2 freeze review receipt is not independently verified")
+    return errors
 
 
 def _find_cycles(stages: list[dict[str, Any]]) -> list[str]:
@@ -580,6 +695,7 @@ def _validate_repository_policy(
             errors.append("complete freeze requires an exact review comment URL")
         if d2["status"] != "checkpointed" or "C2" in conflicts:
             errors.append("complete freeze requires checkpointed D2 with C2 removed")
+        errors.extend(_validate_d2_protected_review(root.resolve(), freeze, d2))
 
     if bootstrap.get("publication", {}).get("status") == "blocked":
         if d9["status"] in {"checkpointed", "next"}:
@@ -705,6 +821,9 @@ def validate_roadmap(
     if tuple(track_ids) != EXPECTED_TRACK_IDS:
         errors.append("schema version 2 parallel-track catalog or order changed")
 
+    d2_stage = next((stage for stage in state["stages"] if stage["id"] == "D2"), None)
+    if isinstance(d2_stage, dict) and d2_stage.get("status") == "checkpointed" and root is None:
+        errors.append("D2 checkpoint requires protected repository evidence")
     errors.extend(_validate_evidence(state, root))
     errors.extend(_validate_markdown_projection(state, markdown, document_bytes))
     if root is not None:

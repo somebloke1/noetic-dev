@@ -48,7 +48,7 @@ WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
 REPO_FULL_NAME = "somebloke1/noetic-dev"
 REPOSITORY_OWNER = "somebloke1"
 QA_TOOL_ALLOWLIST: set[str] = set()
-ALLOWED_MERGE_METHODS = {"squash", "rebase"}
+ALLOWED_MERGE_METHODS = {"fast-forward"}
 LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE = False
 PROTECTED_ATTESTATION_VERIFIER = Path(
     "/usr/local/libexec/noetic-dev/verify-delivery-attestation"
@@ -476,6 +476,13 @@ def _check_owner_promotion_authorization(
         errors.append("owner-authorized dev SHA does not equal the promotion candidate SHA")
     if authorization.get("dev_validation_sha") != candidate_sha:
         errors.append("protected dev validation SHA does not equal the promotion candidate SHA")
+    if (
+        authorization.get("promotion_method") != "fast-forward"
+        or authorization.get("source_ref") != "refs/heads/dev"
+        or authorization.get("target_ref") != "refs/heads/main"
+        or authorization.get("expected_main_sha") != candidate_sha
+    ):
+        errors.append("owner authorization does not require an exact dev-to-main fast-forward")
     provenance = authorization.get("dev_provenance")
     if not isinstance(provenance, dict):
         errors.append("authenticated protected dev provenance is missing")
@@ -1262,6 +1269,9 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             errors.append("publication blocked: publication_sha missing")
     if merge_sha and publication_sha and merge_sha != publication_sha:
         errors.append("publication_sha must equal merge_result_sha for this composition-root publication")
+    candidate_sha = manifest.get("repo", {}).get("candidate_sha", "")
+    if merge_sha and merge_sha != candidate_sha:
+        errors.append("publication blocked: main must preserve the exact owner-authorized dev SHA")
 
     post_merge = (external_evidence or {}).get("post_merge", {})
     if not post_merge:
@@ -1274,7 +1284,7 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         if post_merge.get("main_contains_sha") is not True:
             errors.append("publication blocked: publication SHA is not verified on main")
         if post_merge.get("merge_method") not in ALLOWED_MERGE_METHODS:
-            errors.append("publication blocked: merge method must be squash or rebase")
+            errors.append("publication blocked: main promotion must be an exact fast-forward")
 
     successful_post = _successful_registered_command_ids(manifest, "post_merge", commit_sha=publication_sha if _is_sha(publication_sha) else None)
     for required in registry.get("rules", {}).get("required_post_merge_validations", []):

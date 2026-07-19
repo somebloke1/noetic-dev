@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts.governance.check_roadmap import (
     _parse_instant,
+    _validate_d2_protected_review,
     validate_roadmap,
     validate_roadmap_files,
 )
+from scripts.governance.hash_tree import canonical_json_sha256
 from scripts.governance.json_schema import load_json_strict, validate_schema
 
 
@@ -85,10 +89,163 @@ class TestRoadmap(unittest.TestCase):
         transitioned["document_sha256"] = hashlib.sha256(
             markdown.encode("utf-8")
         ).hexdigest()
-        self.assertEqual(
+        self.assert_has_error(
             validate_roadmap(transitioned, self.schema, markdown),
-            [],
+            "D2 checkpoint requires protected repository evidence",
         )
+
+    def test_d2_checkpoint_requires_authenticated_protected_review_and_integration_sha(self) -> None:
+        freeze = load_json_strict(
+            ROOT / "governance/audits/existing-work-freeze.json"
+        )
+        candidate_sha = "c" * 40
+        integration_sha = "d" * 40
+
+        def envelope(url: str, fetched_at: str, response) -> dict:
+            return {
+                "request_url": url,
+                "status": 200,
+                "request_id": "request-1",
+                "fetched_at": fetched_at,
+                "authentication": {
+                    "verified": True,
+                    "source": "protected-integration",
+                    "principal": "noetic-dev-delivery-app",
+                },
+                "response_sha256": canonical_json_sha256(response),
+                "response": response,
+            }
+
+        review = {
+            "schema_version": "1",
+            "audit_sha256": freeze["audit_sha256"],
+            "reviewed_candidate_sha": candidate_sha,
+            "pull_request": 67,
+            "pr_api_response": envelope(
+                "https://api.github.com/repos/somebloke1/noetic-dev/pulls/67",
+                "2026-07-19T00:00:00+00:00",
+                {
+                    "number": 67,
+                    "state": "open",
+                    "head_ref": "issue-32-canonical-roadmap",
+                    "head_sha": candidate_sha,
+                    "base_ref": "dev",
+                    "linked_issues": [32],
+                },
+            ),
+            "dev_integration_sha": integration_sha,
+            "dev_branch_api_response": envelope(
+                "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev",
+                "2026-07-19T00:02:00+00:00",
+                {"name": "dev", "protected": True, "commit": {"sha": integration_sha}},
+            ),
+            "issue": 32,
+            "head": "issue-32-canonical-roadmap",
+            "base": "dev",
+            "evidence_url": "https://github.com/somebloke1/noetic-dev/pull/67#issuecomment-1",
+            "reviewed_at": "2026-07-19T00:01:00+00:00",
+            "protected_attestation_receipt": {
+                "schema_version": "1",
+                "receipt_id": "receipt-1",
+                "provider": "protected-integration",
+                "issued_at": "2026-07-19T00:02:01+00:00",
+                "expires_at": "2026-07-19T00:07:01+00:00",
+                "subject": {"purpose": "d2-freeze-completion"},
+                "claims": {},
+                "proof": {
+                    "format": "protected-integration-receipt-v1",
+                    "key_id": "protected-delivery-v1",
+                    "payload_sha256": "e" * 64,
+                    "signature": "opaque-verifier-proof",
+                },
+            },
+        }
+        completed_freeze = copy.deepcopy(freeze)
+        completed_freeze.update(
+            {
+                "status": "complete",
+                "independent_review_completed": True,
+                "blocks_publication": False,
+                "reviewed_candidate_sha": candidate_sha,
+                "reviewed_pull_request": 67,
+                "dev_integration_sha": integration_sha,
+                "reviewed_at": review["reviewed_at"],
+                "review_evidence_url": review["evidence_url"],
+                "protected_review_artifact": "governance/audits/d2-protected-freeze-review.json",
+            }
+        )
+        d2 = copy.deepcopy(self.state["stages"][3])
+        d2["evidence"].append({"kind": "commit", "reference": integration_sha})
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "governance/audits").mkdir(parents=True)
+            (root / "governance/schemas").mkdir(parents=True)
+            schema_source = ROOT / "governance/schemas/d2-freeze-review.schema.json"
+            (root / "governance/schemas/d2-freeze-review.schema.json").write_bytes(
+                schema_source.read_bytes()
+            )
+            review_path = root / "governance/audits/d2-protected-freeze-review.json"
+
+            def write_review(payload: dict) -> None:
+                review_path.write_text(json.dumps(payload), encoding="utf-8")
+                completed_freeze["protected_review_sha256"] = hashlib.sha256(
+                    review_path.read_bytes()
+                ).hexdigest()
+
+            write_review(review)
+
+            with mock.patch(
+                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                return_value=True,
+            ):
+                self.assertEqual(
+                    _validate_d2_protected_review(root, completed_freeze, d2), []
+                )
+
+            with mock.patch(
+                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                return_value=False,
+            ):
+                errors = _validate_d2_protected_review(root, completed_freeze, d2)
+            self.assert_has_error(errors, "receipt is not independently verified")
+
+            attacked_review = copy.deepcopy(review)
+            attacked_review["pr_api_response"]["response"]["head_sha"] = "f" * 40
+            attacked_review["pr_api_response"]["response_sha256"] = canonical_json_sha256(
+                attacked_review["pr_api_response"]["response"]
+            )
+            write_review(attacked_review)
+            with mock.patch(
+                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                return_value=True,
+            ):
+                errors = _validate_d2_protected_review(root, completed_freeze, d2)
+            self.assert_has_error(errors, "not derived from the authenticated PR response")
+
+            attacked_review = copy.deepcopy(review)
+            attacked_review["dev_branch_api_response"]["response"]["commit"]["sha"] = "f" * 40
+            attacked_review["dev_branch_api_response"]["response_sha256"] = canonical_json_sha256(
+                attacked_review["dev_branch_api_response"]["response"]
+            )
+            write_review(attacked_review)
+            with mock.patch(
+                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                return_value=True,
+            ):
+                errors = _validate_d2_protected_review(root, completed_freeze, d2)
+            self.assert_has_error(errors, "not the authenticated protected dev head")
+
+            write_review(review)
+
+            attacked = copy.deepcopy(d2)
+            attacked["evidence"][-1]["reference"] = "f" * 40
+            with mock.patch(
+                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                return_value=True,
+            ):
+                errors = _validate_d2_protected_review(root, completed_freeze, attacked)
+            self.assert_has_error(errors, "exact dev integration SHA")
 
     def test_portfolio_audit_is_schema_valid_and_digest_bound(self) -> None:
         audit_path = ROOT / "governance" / "audits" / "20260718-d2-portfolio" / "inventory.json"

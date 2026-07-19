@@ -107,12 +107,16 @@
     "promotion_authorization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "dev_provenance", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "authorization_url", "authorized_at", "dev_validated_at"],
+      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "dev_provenance", "promotion_method", "source_ref", "target_ref", "expected_main_sha", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "authorization_url", "authorized_at", "dev_validated_at"],
       "properties": {
         "authorized": {"type": "boolean", "const": true},
         "authorized_by": {"type": "string", "const": "somebloke1"},
         "dev_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "dev_validation_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "promotion_method": {"type": "string", "const": "fast-forward"},
+        "source_ref": {"type": "string", "const": "refs/heads/dev"},
+        "target_ref": {"type": "string", "const": "refs/heads/main"},
+        "expected_main_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "dev_provenance": {
           "type": "object",
           "additionalProperties": false,

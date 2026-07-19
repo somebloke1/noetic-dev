@@ -94,6 +94,9 @@ The owner authorization is not a manifest boolean. Protected external evidence
 must bind repository owner `somebloke1`, an exact issue #32 comment, protected-dev
 validation SHA/time, authenticated GitHub comment ID/source, author and `OWNER`
 association, exact affirmative body, comment creation time, and the exact dev SHA.
+The same protected authorization record fixes the operation to
+`fast-forward`, source `refs/heads/dev`, target `refs/heads/main`, and an expected
+main SHA identical to the authorized dev SHA before any ref update is attempted.
 Authorization must strictly follow dev validation and strictly precede
 main-promotion candidate pinning. The executable mode is `--gate-mode main-promotion`.
 The protected integration captures authenticated branch, applied-rules, ruleset,
@@ -113,7 +116,7 @@ claims before returning zero. Its absence remains an explicit bootstrap blocker.
 
 Publication requires ALL of the following:
 
-1. PR merged to main via squash/rebase.
+1. Protected main is fast-forwarded to the exact owner-authorized, validated dev SHA; squash, rebase, and merge commits are forbidden.
 2. `merge_result_sha` recorded.
 3. Post-merge validation and tests pass against main.
 4. `publication_sha` is the full 40-char main SHA.
@@ -139,6 +142,13 @@ response digest, and normalized response body. Review fields are derived from th
 body, and the envelope digest is an explicit protected-receipt claim.
 The protected artifact and protected-receipt claim digest include owner promotion
 authorization and freeze-review objects, so either object is substitution-evident.
+The roadmap may checkpoint D2 and remove conflict C2 only when the completed freeze
+hash-binds `governance/audits/d2-protected-freeze-review.json`. That artifact must
+derive the reviewed candidate from an authenticated PR response, derive the exact
+integration SHA from a later authenticated protected-`dev` branch response, include
+that integration SHA in D2 commit evidence, and pass the fixed protected receipt
+verifier. Local freeze, roadmap, evidence-list, or digest edits alone cannot advance
+the transition.
 
 ### Branch-name publication
 

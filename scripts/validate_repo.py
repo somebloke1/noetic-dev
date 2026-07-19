@@ -94,6 +94,7 @@ REQUIRED = [
     "governance/schemas/qa-execution-record.schema.json",
     "governance/schemas/qa-probe-record.schema.json",
     "governance/schemas/existing-work-freeze.schema.json",
+    "governance/schemas/d2-freeze-review.schema.json",
     "governance/schemas/d2-portfolio-audit.schema.json",
     "governance/audits/README.md",
     "governance/audits/existing-work-freeze.json",
