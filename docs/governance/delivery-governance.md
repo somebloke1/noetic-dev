@@ -92,9 +92,10 @@ A PR candidate is ready to merge only when ALL of the following hold:
 
 The owner authorization is not a manifest boolean. Protected external evidence
 must bind repository owner `somebloke1`, an exact issue #32 comment, protected-dev
-validation time, authorization time, and the exact dev SHA. Authorization must
-follow dev validation and precede main-promotion candidate pinning. The executable
-mode is `--gate-mode main-promotion`.
+validation SHA/time, authenticated GitHub comment ID/source, author and `OWNER`
+association, exact affirmative body, comment creation time, and the exact dev SHA.
+Authorization must strictly follow dev validation and strictly precede
+main-promotion candidate pinning. The executable mode is `--gate-mode main-promotion`.
 
 ### Publication gate
 
@@ -114,6 +115,9 @@ Freeze completion additionally requires protected external review evidence whose
 audit digest matches `existing-work-freeze.json`, whose verdict is `pass`, and
 whose reviewed candidate SHA and evidence URL are explicit. A locally asserted
 `complete` value or caller-controlled manifest cannot satisfy this gate.
+The complete freeze artifact must record the same exact review-comment URL and
+review time; publication compares both to the protected evidence and requires the
+review time to follow inventory capture.
 The protected artifact and signed-attestation claim digest include owner promotion
 authorization and freeze-review objects, so either object is substitution-evident.
 

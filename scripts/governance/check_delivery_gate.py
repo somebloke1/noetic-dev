@@ -380,25 +380,45 @@ def _check_owner_promotion_authorization(
         errors.append("promotion was not authorized by the repository owner")
     if authorization.get("dev_sha") != candidate_sha:
         errors.append("owner-authorized dev SHA does not equal the promotion candidate SHA")
+    if authorization.get("dev_validation_sha") != candidate_sha:
+        errors.append("protected dev validation SHA does not equal the promotion candidate SHA")
     if authorization.get("issue") != 32:
         errors.append("owner promotion authorization must be recorded on issue 32")
+    comment_id = authorization.get("comment_id")
     url = authorization.get("authorization_url", "")
+    expected_url = (
+        f"https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-{comment_id}"
+        if isinstance(comment_id, int)
+        else ""
+    )
     if re.fullmatch(
         r"https://github\.com/somebloke1/noetic-dev/issues/32#issuecomment-[1-9][0-9]*",
         url,
-    ) is None:
+    ) is None or url != expected_url:
         errors.append("owner promotion authorization URL is invalid")
+    if authorization.get("comment_source") != "github_api" or authorization.get("comment_verified") is not True:
+        errors.append("owner promotion authorization comment is not authenticated GitHub API evidence")
+    if authorization.get("comment_author") != REPOSITORY_OWNER:
+        errors.append("owner promotion authorization comment author is not the repository owner")
+    if authorization.get("comment_author_association") != "OWNER":
+        errors.append("owner promotion authorization comment lacks OWNER association")
+    expected_body = f"noetic-dev-main-promotion: authorize {candidate_sha}"
+    if authorization.get("comment_body") != expected_body:
+        errors.append("owner promotion authorization comment body is not the exact affirmative record")
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
+    comment_created_at = _parse_time(authorization.get("comment_created_at", ""))
     dev_validated_at = _parse_time(authorization.get("dev_validated_at", ""))
     pinned_at = _parse_time(manifest.get("repo", {}).get("candidate_pinned_at", ""))
     if authorized_at is None:
         errors.append("owner promotion authorization timestamp is invalid")
+    elif comment_created_at is None or comment_created_at != authorized_at:
+        errors.append("owner promotion authorization time does not match authenticated comment creation")
     elif dev_validated_at is None:
         errors.append("protected dev validation timestamp is invalid")
-    elif authorized_at < dev_validated_at:
-        errors.append("owner promotion authorization predates protected dev validation")
-    elif pinned_at is not None and authorized_at > pinned_at:
-        errors.append("owner promotion authorization postdates candidate pinning")
+    elif authorized_at <= dev_validated_at:
+        errors.append("owner promotion authorization must follow protected dev validation")
+    elif pinned_at is not None and authorized_at >= pinned_at:
+        errors.append("owner promotion authorization must precede candidate pinning")
 
 def _profile_for(profile_id: str) -> Optional[Dict[str, Any]]:
     return _model_profiles().get("profiles", {}).get(profile_id)
@@ -1104,10 +1124,15 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             evidence_url,
         ) is None:
             errors.append("publication blocked: freeze review evidence URL is invalid")
+        if evidence_url != freeze.get("review_evidence_url"):
+            errors.append("publication blocked: freeze review evidence URL mismatch")
         reviewed_at = _parse_time(freeze_review.get("reviewed_at", ""))
         captured_at = _parse_time(freeze.get("captured_at", ""))
-        if reviewed_at is None or captured_at is None or reviewed_at < captured_at:
-            errors.append("publication blocked: freeze review timestamp predates audit capture")
+        local_reviewed_at = _parse_time(freeze.get("reviewed_at", ""))
+        if reviewed_at is None or reviewed_at != local_reviewed_at:
+            errors.append("publication blocked: freeze review timestamp mismatch")
+        if reviewed_at is None or captured_at is None or reviewed_at <= captured_at:
+            errors.append("publication blocked: freeze review timestamp must follow audit capture")
     if (
         freeze.get("status") != "complete"
         or freeze.get("independent_review_completed") is not True

@@ -102,6 +102,15 @@ class TestRoadmap(unittest.TestCase):
         del thin["open_issues"][0]["title"]
         self.assertNotEqual(validate_schema(thin, audit_schema), [])
 
+        freeze_schema = load_json_strict(
+            ROOT / "governance" / "schemas" / "existing-work-freeze.schema.json"
+        )
+        unbound_complete = copy.deepcopy(freeze)
+        unbound_complete["status"] = "complete"
+        unbound_complete["independent_review_completed"] = True
+        unbound_complete["blocks_publication"] = False
+        self.assertNotEqual(validate_schema(unbound_complete, freeze_schema), [])
+
     def test_wrong_stage_container_type_fails(self) -> None:
         mutated = copy.deepcopy(self.state)
         mutated["stages"] = None

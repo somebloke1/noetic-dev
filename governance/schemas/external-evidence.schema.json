@@ -86,12 +86,20 @@
     "promotion_authorization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authorized", "authorized_by", "dev_sha", "issue", "authorization_url", "authorized_at", "dev_validated_at"],
+      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "authorization_url", "authorized_at", "dev_validated_at"],
       "properties": {
         "authorized": {"type": "boolean", "const": true},
         "authorized_by": {"type": "string", "const": "somebloke1"},
         "dev_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "dev_validation_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "issue": {"type": "integer", "const": 32},
+        "comment_id": {"type": "integer", "minimum": 1},
+        "comment_source": {"type": "string", "const": "github_api"},
+        "comment_verified": {"type": "boolean", "const": true},
+        "comment_author": {"type": "string", "const": "somebloke1"},
+        "comment_author_association": {"type": "string", "const": "OWNER"},
+        "comment_body": {"type": "string", "minLength": 1},
+        "comment_created_at": {"type": "string", "minLength": 1},
         "authorization_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/32#issuecomment-[1-9][0-9]*$"},
         "authorized_at": {"type": "string", "minLength": 1},
         "dev_validated_at": {"type": "string", "minLength": 1}

@@ -404,7 +404,9 @@ def _check_commands(manifest: Dict[str, Any], errors: List[str]) -> None:
             _parse_time(command["finished_at"], f"command {command.get('command_id')}.finished_at", errors)
 
 
-def _check_state_transitions(manifest: Dict[str, Any], errors: List[str]) -> None:
+def _check_state_transitions(
+    manifest: Dict[str, Any], errors: List[str], target_branch: str
+) -> None:
     sm = _load_state_machine()
     state_ids = set(sm.get("states", {}))
     transition_specs = sm.get("transitions", [])
@@ -454,7 +456,10 @@ def _check_state_transitions(manifest: Dict[str, Any], errors: List[str]) -> Non
         ("CANDIDATE_PINNED", "QA_RUNNING"),
         ("QA_RUNNING", "QA_PASSED"),
         ("QA_PASSED", "INDEPENDENT_REVIEW_PENDING"),
-        ("INDEPENDENT_REVIEW_PENDING", "READY_TO_MERGE"),
+        (
+            "INDEPENDENT_REVIEW_PENDING",
+            "READY_TO_INTEGRATE_DEV" if target_branch == "dev" else "READY_TO_MERGE",
+        ),
     }
     for source, target in sorted(required_edges - observed_edges):
         errors.append(f"required state_transition missing: {source}->{target}")
@@ -529,7 +534,7 @@ def check(
     _check_passes(manifest, errors)
     _check_qa(manifest, errors)
     _check_commands(manifest, errors)
-    _check_state_transitions(manifest, errors)
+    _check_state_transitions(manifest, errors, target_branch)
     _check_publication(manifest, errors)
 
     return errors

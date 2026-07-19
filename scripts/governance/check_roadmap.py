@@ -558,6 +558,15 @@ def _validate_repository_policy(
             errors.append("complete freeze requires dev_integration_sha")
         if not isinstance(freeze.get("reviewed_pull_request"), int):
             errors.append("complete freeze requires reviewed_pull_request")
+        reviewed_at = freeze.get("reviewed_at", "")
+        captured_at = freeze.get("captured_at", "")
+        if not isinstance(reviewed_at, str) or reviewed_at <= captured_at:
+            errors.append("complete freeze review time must follow audit capture")
+        if re.fullmatch(
+            r"https://github\.com/somebloke1/noetic-dev/(?:issues/32|pull/[1-9][0-9]*)#issuecomment-[1-9][0-9]*",
+            freeze.get("review_evidence_url", ""),
+        ) is None:
+            errors.append("complete freeze requires an exact review comment URL")
         if d2["status"] != "checkpointed" or "C2" in conflicts:
             errors.append("complete freeze requires checkpointed D2 with C2 removed")
 

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
@@ -46,10 +47,18 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "authorized": True,
             "authorized_by": "somebloke1",
             "dev_sha": manifest["repo"]["candidate_sha"],
+            "dev_validation_sha": manifest["repo"]["candidate_sha"],
             "issue": 32,
+            "comment_id": 1,
+            "comment_source": "github_api",
+            "comment_verified": True,
+            "comment_author": "somebloke1",
+            "comment_author_association": "OWNER",
+            "comment_body": f"noetic-dev-main-promotion: authorize {manifest['repo']['candidate_sha']}",
+            "comment_created_at": "2026-07-11T11:59:59+00:00",
             "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
-            "authorized_at": manifest["repo"]["candidate_pinned_at"],
-            "dev_validated_at": "2026-07-11T11:59:59+00:00",
+            "authorized_at": "2026-07-11T11:59:59+00:00",
+            "dev_validated_at": "2026-07-11T11:59:58+00:00",
         }
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertNotIn("owner promotion authorization missing", "\n".join(errors))
@@ -60,9 +69,19 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertIn("owner-authorized dev SHA", "\n".join(errors))
 
         external["promotion_authorization"]["dev_sha"] = manifest["repo"]["candidate_sha"]
-        external["promotion_authorization"]["authorized_at"] = "2026-07-11T11:59:58+00:00"
+        external["promotion_authorization"]["authorized_at"] = "2026-07-11T11:59:57+00:00"
+        external["promotion_authorization"]["comment_created_at"] = "2026-07-11T11:59:57+00:00"
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
-        self.assertIn("predates protected dev validation", "\n".join(errors))
+        self.assertIn("must follow protected dev validation", "\n".join(errors))
+
+        external["promotion_authorization"]["authorized_at"] = "2026-07-11T11:59:59+00:00"
+        external["promotion_authorization"]["comment_created_at"] = "2026-07-11T11:59:59+00:00"
+        external["promotion_authorization"]["dev_validated_at"] = "2026-07-11T11:59:59+00:00"
+        external["promotion_authorization"]["comment_body"] = "unrelated checkpoint"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        joined = "\n".join(errors)
+        self.assertIn("must follow protected dev validation", joined)
+        self.assertIn("exact affirmative record", joined)
 
     def test_dev_integration_mode_accepts_dev_shape_until_external_authority_gate(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -117,10 +136,18 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "authorized": True,
             "authorized_by": "somebloke1",
             "dev_sha": manifest["repo"]["candidate_sha"],
+            "dev_validation_sha": manifest["repo"]["candidate_sha"],
             "issue": 32,
+            "comment_id": 1,
+            "comment_source": "github_api",
+            "comment_verified": True,
+            "comment_author": "somebloke1",
+            "comment_author_association": "OWNER",
+            "comment_body": f"noetic-dev-main-promotion: authorize {manifest['repo']['candidate_sha']}",
+            "comment_created_at": "2026-07-11T11:59:59+00:00",
             "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
-            "authorized_at": manifest["repo"]["candidate_pinned_at"],
-            "dev_validated_at": "2026-07-11T11:59:59+00:00",
+            "authorized_at": "2026-07-11T11:59:59+00:00",
+            "dev_validated_at": "2026-07-11T11:59:58+00:00",
         }
         promotion_digest = canonical_json_sha256(external["promotion_authorization"])
         freeze_digest = canonical_json_sha256({})
@@ -198,6 +225,55 @@ class TestDeliveryGatePositive(unittest.TestCase):
             phase="publication",
         )
         self.assertIn("freeze review audit digest mismatch", "\n".join(errors))
+
+    def test_publication_binds_freeze_review_url_and_time_to_local_completion(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        local_freeze = load_fixture("advisory_external_evidence.json")["freeze"]
+        local_freeze.update(
+            {
+                "status": "complete",
+                "blocks_publication": False,
+                "independent_review_completed": True,
+                "audit_sha256": "a" * 64,
+                "reviewed_candidate_sha": "1" * 40,
+                "reviewed_pull_request": 67,
+                "dev_integration_sha": "2" * 40,
+                "reviewed_at": "2026-07-19T00:10:00Z",
+                "review_evidence_url": "https://github.com/somebloke1/noetic-dev/pull/67#issuecomment-10",
+                "captured_at": "2026-07-18T23:46:09Z",
+                "authorized_repair": {
+                    "issue": 32,
+                    "head": "issue-32-canonical-roadmap",
+                    "base": "dev",
+                    "max_pull_requests": 1,
+                },
+            }
+        )
+        external["freeze"] = copy.deepcopy(local_freeze)
+        external["freeze_review"] = {
+            "verdict": "pass",
+            "independent": True,
+            "audit_sha256": "a" * 64,
+            "reviewed_candidate_sha": "1" * 40,
+            "pull_request": 67,
+            "dev_integration_sha": "2" * 40,
+            "dev_contains_integration_sha": True,
+            "issue": 32,
+            "head": "issue-32-canonical-roadmap",
+            "base": "dev",
+            "evidence_url": "https://github.com/somebloke1/noetic-dev/pull/67#issuecomment-11",
+            "reviewed_at": "2026-07-19T00:11:00Z",
+        }
+        with mock.patch("check_delivery_gate._protected_freeze", return_value=local_freeze):
+            _passed, errors, _gate_type = check_delivery(
+                manifest,
+                external_evidence=external,
+                phase="publication",
+            )
+        joined = "\n".join(errors)
+        self.assertIn("freeze review evidence URL mismatch", joined)
+        self.assertIn("freeze review timestamp mismatch", joined)
 
     def test_multigeneration_history_is_valid_except_external_authority(self):
         manifest = load_fixture("valid_multigeneration_advisory_manifest.json")

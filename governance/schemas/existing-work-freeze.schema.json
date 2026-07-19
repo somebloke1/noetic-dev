@@ -34,5 +34,17 @@
         "max_pull_requests": {"type": "integer", "const": 1}
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "complete"}}},
+      "then": {
+        "required": ["reviewed_candidate_sha", "reviewed_pull_request", "dev_integration_sha", "reviewed_at", "review_evidence_url"],
+        "properties": {
+          "independent_review_completed": {"const": true},
+          "blocks_publication": {"const": false}
+        }
+      }
+    }
+  ]
 }
