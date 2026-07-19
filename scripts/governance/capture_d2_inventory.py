@@ -10,7 +10,9 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -178,6 +180,19 @@ def _graphql(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
     return envelope, response["data"]
 
 
+def _graphql_after(
+    name: str, previous_date: datetime | None
+) -> tuple[dict[str, Any], dict[str, Any], datetime]:
+    for attempt in range(4):
+        if attempt:
+            time.sleep(1.05)
+        envelope, data = _graphql(name)
+        response_date = parsedate_to_datetime(envelope["response_headers"]["date"])
+        if previous_date is None or response_date > previous_date:
+            return envelope, data, response_date
+    raise RuntimeError("GitHub response Date did not advance strictly")
+
+
 def _with_pagination(
     envelope: dict[str, Any], connection: dict[str, Any]
 ) -> dict[str, Any]:
@@ -231,10 +246,18 @@ def _repository(data: dict[str, Any]) -> dict[str, Any]:
 
 def capture(previous: dict[str, Any]) -> dict[str, Any]:
     started_at = _now()
-    principal_envelope, principal_data = _graphql("principal")
-    pulls_envelope, pulls_data = _graphql("open_pull_requests")
-    branches_envelope, branches_data = _graphql("branches")
-    issues_envelope, issues_data = _graphql("open_issues")
+    principal_envelope, principal_data, principal_date = _graphql_after(
+        "principal", None
+    )
+    pulls_envelope, pulls_data, pulls_date = _graphql_after(
+        "open_pull_requests", principal_date
+    )
+    branches_envelope, branches_data, branches_date = _graphql_after(
+        "branches", pulls_date
+    )
+    issues_envelope, issues_data, _issues_date = _graphql_after(
+        "open_issues", branches_date
+    )
     completed_at = _now()
 
     viewer = principal_data.get("viewer")
@@ -295,6 +318,7 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
         labels_connection = item["labels"]
         if (
             labels_connection["pageInfo"]["hasNextPage"] is not False
+            or type(labels_connection.get("totalCount")) is not int
             or labels_connection["totalCount"] != len(labels_connection["nodes"])
         ):
             raise RuntimeError(f"issue {item['number']} label inventory is incomplete")

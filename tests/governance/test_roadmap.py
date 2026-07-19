@@ -10,6 +10,8 @@ import json
 import subprocess
 import tempfile
 import unittest
+from datetime import timedelta
+from email.utils import format_datetime, parsedate_to_datetime
 from pathlib import Path
 from unittest import mock
 
@@ -702,6 +704,42 @@ class TestRoadmap(unittest.TestCase):
             _validate_d2_inventory(wrong_type), "counts are not derived"
         )
 
+        label_bool_int_confusion = copy.deepcopy(audit)
+
+        def confuse_label_count(response: dict) -> None:
+            labels = response["data"]["repository"]["issues"]["nodes"][0]["labels"]
+            labels["nodes"] = labels["nodes"][:1]
+            labels["totalCount"] = True
+
+        mutate_response(label_bool_int_confusion, "open_issues", confuse_label_count)
+        response = json.loads(
+            gzip.decompress(
+                base64.b64decode(
+                    label_bool_int_confusion["capture"]["source_envelopes"][
+                        "open_issues"
+                    ]["response_gzip_base64"]
+                )
+            )
+        )
+        first_issue = response["data"]["repository"]["issues"]["nodes"][0]
+        projected = next(
+            item
+            for item in label_bool_int_confusion["open_issues"]
+            if item["number"] == first_issue["number"]
+        )
+        projected["labels"] = [first_issue["labels"]["nodes"][0]["name"]]
+        status_labels = [
+            label for label in projected["labels"] if label.startswith("status:")
+        ]
+        projected["status"] = (
+            status_labels[0].removeprefix("status:")
+            if len(status_labels) == 1
+            else "missing"
+        )
+        self.assert_has_error(
+            _validate_d2_inventory(label_bool_int_confusion), "labels are incomplete"
+        )
+
         reversed_chronology = copy.deepcopy(audit)
         principal = reversed_chronology["capture"]["source_envelopes"]["principal"]
         principal["fetched_at"] = reversed_chronology["capture"]["completed_at"]
@@ -711,6 +749,37 @@ class TestRoadmap(unittest.TestCase):
         refresh_claims(reversed_chronology)
         self.assert_has_error(
             _validate_d2_inventory(reversed_chronology), "capture chronology"
+        )
+
+        equal_server_dates = copy.deepcopy(audit)
+        equal_envelopes = equal_server_dates["capture"]["source_envelopes"]
+        equal_envelopes["open_pull_requests"]["response_headers"]["date"] = (
+            equal_envelopes["principal"]["response_headers"]["date"]
+        )
+        pulls = equal_envelopes["open_pull_requests"]
+        pulls["response_sha256"] = canonical_json_sha256(
+            {key: value for key, value in pulls.items() if key != "response_sha256"}
+        )
+        refresh_claims(equal_server_dates)
+        self.assert_has_error(
+            _validate_d2_inventory(equal_server_dates), "capture chronology"
+        )
+
+        reversed_server_dates = copy.deepcopy(audit)
+        reversed_envelopes = reversed_server_dates["capture"]["source_envelopes"]
+        principal_date = parsedate_to_datetime(
+            reversed_envelopes["principal"]["response_headers"]["date"]
+        )
+        reversed_envelopes["open_pull_requests"]["response_headers"]["date"] = (
+            format_datetime(principal_date - timedelta(seconds=1), usegmt=True)
+        )
+        pulls = reversed_envelopes["open_pull_requests"]
+        pulls["response_sha256"] = canonical_json_sha256(
+            {key: value for key, value in pulls.items() if key != "response_sha256"}
+        )
+        refresh_claims(reversed_server_dates)
+        self.assert_has_error(
+            _validate_d2_inventory(reversed_server_dates), "capture chronology"
         )
 
         fake_receipt = copy.deepcopy(audit)

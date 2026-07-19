@@ -1568,6 +1568,22 @@ def _check_complete_freeze_readiness(
         if inventory.get("verification", {}).get("status") != "protected_receipt_verified":
             errors.append("existing-work inventory lacks a verified protected receipt")
             return
+        inventory_path = (
+            REPO_ROOT
+            / "governance/audits/20260718-d2-portfolio/inventory.json"
+        )
+        if (
+            freeze.get("audit_artifact")
+            != "governance/audits/20260718-d2-portfolio/inventory.json"
+            or freeze.get("audit_sha256") != sha256_file(inventory_path)
+            or freeze.get("captured_at") != inventory.get("captured_at")
+            or freeze.get("candidate_open_pr_count")
+            != inventory.get("counts", {}).get("open_pull_requests")
+        ):
+            errors.append(
+                "existing-work complete freeze does not bind the verified inventory"
+            )
+            return
         inventory_errors = _validate_d2_inventory(inventory)
         if inventory_errors:
             errors.extend(

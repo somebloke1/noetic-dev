@@ -413,6 +413,7 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
             or type(page_info) is not dict
             or set(labels_connection) != {"totalCount", "pageInfo", "nodes"}
             or set(page_info) != {"hasNextPage", "endCursor"}
+            or type(labels_connection.get("totalCount")) is not int
             or labels_connection.get("totalCount") != len(label_nodes)
             or len(label_nodes) > 100
             or page_info.get("hasNextPage") is not False
@@ -477,6 +478,10 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
             or response_date > fetched
             or (fetched - response_date).total_seconds() > 300
             for response_date, fetched in zip(response_dates, fetched_at)
+        )
+        or any(
+            left >= right
+            for left, right in zip(response_dates, response_dates[1:])
         )
         or audit.get("captured_at") != capture.get("completed_at")
         or len({envelopes[source].get("request_id") for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER}) != len(EXPECTED_D2_INVENTORY_SOURCE_ORDER)

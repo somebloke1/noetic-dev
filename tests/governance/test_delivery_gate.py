@@ -758,6 +758,29 @@ class TestDeliveryGatePositive(unittest.TestCase):
         delivery_gate._check_complete_freeze_readiness(freeze, errors)
         self.assertIn("inventory lacks a verified protected receipt", "\n".join(errors))
 
+        freeze_attacks = [
+            ("audit_artifact", "governance/audits/substitute.json"),
+            ("audit_sha256", "0" * 64),
+            ("captured_at", "2026-07-19T00:00:00+00:00"),
+            ("candidate_open_pr_count", 999),
+        ]
+        for field, value in freeze_attacks:
+            attacked = copy.deepcopy(freeze)
+            attacked[field] = value
+            errors = []
+            with self.subTest(complete_freeze_binding=field), mock.patch(
+                "check_delivery_gate._load_repo_json",
+                side_effect=load_with_verified_inventory,
+            ), mock.patch(
+                "check_roadmap._validate_d2_inventory", return_value=[]
+            ) as inventory_review, mock.patch(
+                "check_roadmap._validate_d2_protected_review", return_value=[]
+            ) as review:
+                delivery_gate._check_complete_freeze_readiness(attacked, errors)
+            self.assertIn("does not bind the verified inventory", "\n".join(errors))
+            inventory_review.assert_not_called()
+            review.assert_not_called()
+
         freeze["independent_review_completed"] = False
         errors = []
         delivery_gate._check_complete_freeze_readiness(freeze, errors)
