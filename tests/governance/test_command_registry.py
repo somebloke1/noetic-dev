@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -71,6 +74,9 @@ class TestCommandRegistry(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("$EUID -ne 0", installer)
+        self.assertTrue(installer.startswith("#!/usr/bin/bash -p\n"))
+        self.assertIn("$- != *p*", installer)
+        self.assertIn("unset BASH_ENV ENV", installer)
         self.assertIn("/usr/local/sbin/noetic-dev-install-main-publisher", installer)
         self.assertIn('$(/usr/bin/readlink -f "$0") != "$stage0"', installer)
         self.assertNotIn("NOETIC_SOURCE", installer)
@@ -82,6 +88,8 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("verify-delivery-attestation", installer)
         self.assertIn("trusted_executable_path", installer)
         self.assertIn("trusted_private_key_path", installer)
+        self.assertIn("trusted_or_absent_directory_path", installer)
+        self.assertIn("trusted_directory_path", installer)
         self.assertIn("/etc/noetic-dev/main-publisher/deploy-key", installer)
         self.assertIn("$mode -eq 8#400", installer)
         self.assertIn("/usr/bin/ssh-keygen -y -P ''", installer)
@@ -103,13 +111,14 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("verifier_sha256", installer)
         self.assertIn("authorization_receipt_sha256", installer)
         self.assertIn("publisher-installation-receipt.json", installer)
-        self.assertIn("chown -R root:root \"$staging\"", installer)
-        self.assertIn("chmod -R go-w \"$staging\"", installer)
+        self.assertIn("chown -R root:root \"$installation_staging\"", installer)
+        self.assertIn("chmod -R go-w \"$installation_staging\"", installer)
         self.assertIn("-m 0700", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
         self.assertIn("policy-releases", launcher)
         self.assertIn("NOETIC_PUBLISHER_INSTALLATION", launcher)
         self.assertIn("publisher-installation-receipt.json", launcher)
+        self.assertIn("$release/repository/scripts/governance/promote_main.py", launcher)
         self.assertIn("/usr/bin/id -u", launcher)
         self.assertIn("exec /usr/bin/env -i", launcher)
         self.assertIn("HOME=/root", launcher)
@@ -118,6 +127,50 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertNotIn("key_path", " ".join(command["argv"]))
         self.assertFalse((REPO_ROOT / "deploy/noetic-dev-promote-main").is_symlink())
         self.assertFalse((REPO_ROOT / "scripts/governance/promote_main.py").is_symlink())
+
+    def test_stage0_direct_execution_ignores_path_and_bash_env_startup_code(self):
+        installer = REPO_ROOT / "deploy/install-main-publisher.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            marker = temporary / "startup-code-ran"
+            fake_bash = temporary / "bash"
+            fake_bash.write_text(
+                f"#!/bin/sh\n/usr/bin/touch {marker}\nexec /usr/bin/bash \"$@\"\n",
+                encoding="utf-8",
+            )
+            fake_bash.chmod(0o755)
+            bash_env = temporary / "bash-env"
+            bash_env.write_text(f"/usr/bin/touch {marker}\n", encoding="utf-8")
+            env = dict(os.environ)
+            env.update({"PATH": f"{temporary}:/usr/bin:/bin", "BASH_ENV": str(bash_env)})
+            result = subprocess.run(
+                [str(installer)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+                env=env,
+            )
+            marker_exists = marker.exists()
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("usage:", result.stderr)
+        self.assertFalse(marker_exists)
+
+    def test_stage0_validates_publisher_root_before_install_or_move(self):
+        installer = (REPO_ROOT / "deploy/install-main-publisher.sh").read_text(
+            encoding="utf-8"
+        )
+        validation = installer.index('trusted_or_absent_directory_path "$root"')
+        root_install = installer.index(
+            '/usr/bin/install -d -o root -g root -m 0755 "$root"'
+        )
+        parent_recheck = installer.index(
+            'trusted_directory_path "$root/policy-releases/$policy_sha"',
+            root_install,
+        )
+        release_move = installer.index('/usr/bin/mv "$installation_staging" "$release"')
+        self.assertLess(validation, root_install)
+        self.assertLess(parent_recheck, release_move)
 
     def test_registry_rules_prevent_false_equivalences(self):
         rules = self.registry["rules"]

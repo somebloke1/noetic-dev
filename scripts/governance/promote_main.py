@@ -130,6 +130,25 @@ def _trusted_root_regular_file(path: Path, *, maximum_size: int = 10_485_760) ->
         return False
 
 
+def _trusted_root_directory(path: Path) -> bool:
+    try:
+        current = path
+        while True:
+            metadata = os.lstat(current)
+            if (
+                stat.S_ISLNK(metadata.st_mode)
+                or metadata.st_uid != 0
+                or metadata.st_mode & 0o022
+                or not stat.S_ISDIR(metadata.st_mode)
+            ):
+                return False
+            if current.parent == current:
+                return True
+            current = current.parent
+    except OSError:
+        return False
+
+
 def _exact_sha(value: Any) -> bool:
     return type(value) is str and len(value) == 40 and all(
         character in "0123456789abcdef" for character in value
@@ -140,6 +159,53 @@ def _exact_digest(value: Any) -> bool:
     return type(value) is str and len(value) == 64 and all(
         character in "0123456789abcdef" for character in value
     )
+
+
+def _reconstruct_policy_tree(repository: Path) -> str:
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": "/root",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+        "SHELL": "/bin/sh",
+    }
+    with tempfile.TemporaryDirectory(prefix="noetic-policy-tree-") as temporary:
+        temporary_root = Path(temporary)
+        git_dir = temporary_root / "repository.git"
+        index = temporary_root / "index"
+
+        def run(*args: str, use_work_tree: bool = True) -> str:
+            command = [GIT, "--no-replace-objects"]
+            if use_work_tree:
+                command.extend(
+                    [f"--git-dir={git_dir}", f"--work-tree={repository}"]
+                )
+            command.extend(args)
+            command_env = dict(env)
+            command_env["GIT_INDEX_FILE"] = str(index)
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=repository,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                    env=command_env,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise RuntimeError("protected policy tree reconstruction failed") from exc
+            if result.returncode != 0:
+                raise RuntimeError("protected policy tree reconstruction failed")
+            return result.stdout.strip()
+
+        run("init", "--bare", "--quiet", str(git_dir), use_work_tree=False)
+        run("read-tree", "--empty")
+        run("add", "-A")
+        return run("write-tree")
 
 
 def _load_publisher_installation(
@@ -188,11 +254,16 @@ def _load_publisher_installation(
         raise RuntimeError("publisher policy/candidate binding is invalid")
 
     release = PUBLISHER_ROOT / "policy-releases" / policy_sha / candidate_sha
+    repository = release / "repository"
     if (
         installation_path != release / "publisher-installation.json"
-        or POLICY_ENTRYPOINT != release / "scripts/governance/promote_main.py"
+        or POLICY_ENTRYPOINT != repository / "scripts/governance/promote_main.py"
     ):
         raise RuntimeError("publisher policy and installation use mixed release paths")
+    if not _trusted_root_directory(repository):
+        raise RuntimeError("publisher policy repository is not root-owned and immutable")
+    if _reconstruct_policy_tree(repository) != claims["policy_tree_sha"]:
+        raise RuntimeError("publisher protected policy tree digest mismatch")
 
     installer = claims.get("installer")
     verifier = claims.get("verifier")
@@ -220,7 +291,7 @@ def _load_publisher_installation(
         raise RuntimeError("publisher critical policy digest set is invalid")
     for relative in POLICY_FILES:
         expected_digest = policy_files.get(relative)
-        policy_file = release / relative
+        policy_file = repository / relative
         if (
             not _exact_digest(expected_digest)
             or not _trusted_root_regular_file(policy_file)

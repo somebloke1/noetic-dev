@@ -39,4 +39,4 @@ if [ ! -f "$installation" ] || [ -L "$installation" ] || \
 fi
 exec /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
   NOETIC_PUBLISHER_INSTALLATION="$installation" \
-  /usr/bin/python3 -I "$release/scripts/governance/promote_main.py" "$@"
+  /usr/bin/python3 -I "$release/repository/scripts/governance/promote_main.py" "$@"

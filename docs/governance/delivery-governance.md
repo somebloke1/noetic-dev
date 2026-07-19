@@ -135,7 +135,9 @@ hashes alone are never accepted as proof that the push occurred.
 installer `/usr/local/sbin/noetic-dev-install-main-publisher`; a candidate checkout
 must never be executed directly as root. The stage-0 executable must itself be
 installed from a separately protected policy SHA before use. It rejects every
-other invocation path, fetches the canonical repository's full current protected
+other invocation path and requires direct privileged Bash mode (`/usr/bin/bash -p`),
+whose absolute interpreter and privileged startup ignore `PATH` and `BASH_ENV`
+injection before script checks. It fetches the canonical repository's full current protected
 `dev` history into a fresh bare repository, requires the requested candidate to be
 the exact current `dev` head, and requires the pinned policy SHA to be a distinct
 ancestor of that candidate. It archive-extracts only the policy SHA. Candidate
@@ -148,19 +150,23 @@ the stage-0 installer path and digest; verifier path and digest; and digests of 
 launcher, publisher, delivery gate, and every direct policy dependency. Every path
 component from the installer, verifier, key, and installed files through `/` is
 checked with non-dereferencing metadata and must be root-owned, non-symlink, and
-non-writable by group or other. The executable leaves must also be regular and
+non-writable by group or other. Existing and absent publisher-root ancestors are
+validated non-dereferentially before every directory creation, release move, or
+launcher installation. The executable leaves must also be regular and
 executable. A candidate-controlled digest, same policy/candidate SHA, non-ancestor
 policy, mixed release, or invalid receipt blocks before installation.
 
 The installer reconstructs the policy commit's exact Git tree, rejects all
 symlinks, and stores the protected policy at
 `/opt/noetic-dev-main-publisher/policy-releases/<policy-sha>/<candidate-sha>` with
-the authorization receipt and canonical installation manifest. It then installs
+the exact Git archive under `repository/` and the authorization receipt and
+canonical installation manifest outside that tree. It then installs
 the policy launcher mode `0700` and atomically selects that policy/candidate pair.
 At every invocation the launcher accepts only this two-SHA release shape, starts
 isolated Python with an empty environment, and supplies the fixed installation
-manifest path itself. The protected publisher re-hashes the stage-0 installer,
-verifier, fixed launcher, policy entrypoint, gate, and direct dependencies; proves
+manifest path itself. The protected publisher reconstructs and compares the complete
+receipt-bound Git policy tree, then re-hashes the stage-0 installer, verifier,
+fixed launcher, policy entrypoint, gate, and direct dependencies; proves
 the manifest candidate equals the promotion candidate; and re-verifies the stored
 authorization receipt before running any candidate-supplied gate inputs. It never
 accepts an installation path, SSH key path, or agent socket from its caller.

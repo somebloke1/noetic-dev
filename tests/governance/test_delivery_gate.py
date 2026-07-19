@@ -1795,17 +1795,20 @@ class TestPublicationBindingFailures(unittest.TestCase):
         policy_sha = "a" * 40
         candidate_sha = manifest["repo"]["candidate_sha"]
         release = root / "policy-releases" / policy_sha / candidate_sha
+        repository = release / "repository"
         for relative in promote_main.POLICY_FILES:
-            target = release / relative
+            target = repository / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(f"protected policy: {relative}\n", encoding="utf-8")
+        omitted_dependency = repository / "scripts/governance/check_roadmap.py"
+        omitted_dependency.write_text("protected roadmap gate\n", encoding="utf-8")
         stage0 = root / "fixed" / "noetic-dev-install-main-publisher"
         verifier = root / "fixed" / "verify-delivery-attestation"
         launcher = root / "fixed" / "promote-main"
         for target, content in (
-            (stage0, (release / "deploy/install-main-publisher.sh").read_text(encoding="utf-8")),
+            (stage0, (repository / "deploy/install-main-publisher.sh").read_text(encoding="utf-8")),
             (verifier, "verifier\n"),
-            (launcher, (release / "deploy/noetic-dev-promote-main").read_text(encoding="utf-8")),
+            (launcher, (repository / "deploy/noetic-dev-promote-main").read_text(encoding="utf-8")),
         ):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content, encoding="utf-8")
@@ -1823,12 +1826,12 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "candidate_tree_sha": "c" * 40,
             "installer": {"path": str(stage0), "sha256": digest(stage0)},
             "policy_files_sha256": {
-                relative: digest(release / relative)
+                relative: digest(repository / relative)
                 for relative in promote_main.POLICY_FILES
             },
             "policy_sha": policy_sha,
             "policy_source_ref": "refs/heads/dev",
-            "policy_tree_sha": "b" * 40,
+            "policy_tree_sha": promote_main._reconstruct_policy_tree(repository),
             "purpose": "install-main-publisher",
             "repository": "somebloke1/noetic-dev",
             "verifier": {"path": str(verifier), "sha256": digest(verifier)},
@@ -1845,7 +1848,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "installation": installation,
             "installation_path": installation_path,
             "launcher": launcher,
-            "policy_entrypoint": release / "scripts/governance/promote_main.py",
+            "omitted_dependency": omitted_dependency,
+            "policy_entrypoint": repository / "scripts/governance/promote_main.py",
+            "repository": repository,
             "receipt_path": receipt_path,
             "stage0": stage0,
             "verifier": verifier,
@@ -1862,6 +1867,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 PROTECTED_PUBLISHER=fixture["launcher"],
             ),
             mock.patch("promote_main._trusted_root_regular_file", return_value=True),
+            mock.patch("promote_main._trusted_root_directory", return_value=True),
             mock.patch("promote_main._trusted_root_executable", return_value=True),
             mock.patch(
                 "promote_main._verify_protected_attestation_receipt", return_value=True
@@ -1874,7 +1880,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
             root = Path(directory)
             fixture = self._publisher_installation_fixture(root, manifest)
             patches = self._publisher_installation_patches(root, fixture)
-            with patches[0], patches[1], patches[2], patches[3] as verifier:
+            with patches[0], patches[1], patches[2], patches[3], patches[4] as verifier:
                 installation = promote_main._load_publisher_installation(
                     fixture["installation_path"], manifest
                 )
@@ -1894,7 +1900,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
             attacked["expected_claims"]["policy_sha"] = manifest["repo"]["candidate_sha"]
             fixture["installation_path"].write_text(canonical_json(attacked), encoding="utf-8")
             patches = self._publisher_installation_patches(root, fixture)
-            with patches[0], patches[1], patches[2], patches[3]:
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
                 with self.assertRaisesRegex(RuntimeError, "policy/candidate binding"):
                     promote_main._load_publisher_installation(
                         fixture["installation_path"], manifest
@@ -1903,7 +1909,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
             fixture = self._publisher_installation_fixture(root, manifest)
             fixture["policy_entrypoint"] = root / "candidate/promote_main.py"
             patches = self._publisher_installation_patches(root, fixture)
-            with patches[0], patches[1], patches[2], patches[3]:
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
                 with self.assertRaisesRegex(RuntimeError, "mixed release paths"):
                     promote_main._load_publisher_installation(
                         fixture["installation_path"], manifest
@@ -1920,7 +1926,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ] = "0" * 64
             fixture["installation_path"].write_text(canonical_json(attacked), encoding="utf-8")
             patches = self._publisher_installation_patches(root, fixture)
-            with patches[0], patches[1], patches[2], patches[3]:
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
                 with self.assertRaisesRegex(RuntimeError, "critical policy digest mismatch"):
                     promote_main._load_publisher_installation(
                         fixture["installation_path"], manifest
@@ -1928,10 +1934,25 @@ class TestPublicationBindingFailures(unittest.TestCase):
 
             fixture = self._publisher_installation_fixture(root, manifest)
             patches = self._publisher_installation_patches(root, fixture)
-            with patches[0], patches[1], patches[2], mock.patch(
+            with patches[0], patches[1], patches[2], patches[3], mock.patch(
                 "promote_main._verify_protected_attestation_receipt", return_value=False
             ):
                 with self.assertRaisesRegex(RuntimeError, "receipt verification failed"):
+                    promote_main._load_publisher_installation(
+                        fixture["installation_path"], manifest
+                    )
+
+    def test_publisher_installation_rejects_omitted_dependency_tree_tamper(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = self._publisher_installation_fixture(root, manifest)
+            fixture["omitted_dependency"].write_text(
+                "candidate-substituted roadmap gate\n", encoding="utf-8"
+            )
+            patches = self._publisher_installation_patches(root, fixture)
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                with self.assertRaisesRegex(RuntimeError, "policy tree digest mismatch"):
                     promote_main._load_publisher_installation(
                         fixture["installation_path"], manifest
                     )
@@ -2421,6 +2442,38 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 self.assertFalse(check(leaf_metadata, parent_metadata))
         with mock.patch("promote_main.os.lstat", side_effect=OSError("missing")):
             self.assertFalse(promote_main._trusted_root_private_key(leaf))
+
+    def test_policy_repository_requires_root_owned_non_writable_directories(self):
+        leaf = Path("/opt/noetic-dev-main-publisher/policy-releases")
+
+        def metadata(mode: int, uid: int = 0):
+            return types.SimpleNamespace(st_mode=mode, st_uid=uid, st_size=0)
+
+        safe = metadata(stat.S_IFDIR | 0o755)
+
+        def check(leaf_metadata, unsafe_parent=None):
+            def fake_lstat(path):
+                if path == leaf:
+                    return leaf_metadata
+                if unsafe_parent is not None and path == leaf.parent:
+                    return unsafe_parent
+                return safe
+
+            with mock.patch("promote_main.os.lstat", side_effect=fake_lstat):
+                return promote_main._trusted_root_directory(leaf)
+
+        self.assertTrue(check(safe))
+        for leaf_metadata, parent_metadata in [
+            (metadata(stat.S_IFLNK | 0o755), None),
+            (metadata(stat.S_IFREG | 0o755), None),
+            (metadata(stat.S_IFDIR | 0o775), None),
+            (metadata(stat.S_IFDIR | 0o755, uid=1000), None),
+            (safe, metadata(stat.S_IFLNK | 0o755)),
+            (safe, metadata(stat.S_IFDIR | 0o775)),
+            (safe, metadata(stat.S_IFDIR | 0o755, uid=1000)),
+        ]:
+            with self.subTest(leaf=leaf_metadata, parent=parent_metadata):
+                self.assertFalse(check(leaf_metadata, parent_metadata))
 
     def test_publisher_rejects_non_root_or_mismatched_actual_deploy_key_before_git(self):
         manifest = load_fixture("valid_advisory_manifest.json")
