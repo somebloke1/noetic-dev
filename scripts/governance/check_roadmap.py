@@ -209,15 +209,50 @@ def _validate_d2_protected_review(
         dev_envelope, errors, "D2 protected dev branch", dict
     )
     dev_commit = dev_response.get("commit")
+    dev_head_sha = dev_commit.get("sha") if isinstance(dev_commit, dict) else ""
     if (
         dev_envelope.get("request_url")
         != "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev"
         or dev_response.get("name") != "dev"
         or dev_response.get("protected") is not True
         or not isinstance(dev_commit, dict)
-        or dev_commit.get("sha") != review["dev_integration_sha"]
+        or re.fullmatch(r"[a-f0-9]{40}", dev_head_sha) is None
     ):
-        errors.append("D2 integration SHA is not the authenticated protected dev head")
+        errors.append("D2 containment evidence is not bound to an authenticated protected dev head")
+
+    compare_envelope = review["dev_compare_api_response"]
+    comparison = _authenticated_github_response(
+        compare_envelope, errors, "D2 protected dev ancestry", dict
+    )
+    integration_sha = review["dev_integration_sha"]
+    expected_compare_url = (
+        "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
+        f"{integration_sha}...{dev_head_sha}"
+    )
+    base_commit = comparison.get("base_commit")
+    merge_base = comparison.get("merge_base_commit")
+    ahead_by = comparison.get("ahead_by")
+    behind_by = comparison.get("behind_by")
+    identical = dev_head_sha == integration_sha
+    if (
+        compare_envelope.get("request_url") != expected_compare_url
+        or not isinstance(base_commit, dict)
+        or base_commit.get("sha") != integration_sha
+        or not isinstance(merge_base, dict)
+        or merge_base.get("sha") != integration_sha
+        or type(ahead_by) is not int
+        or type(behind_by) is not int
+        or behind_by != 0
+        or (
+            identical
+            and (comparison.get("status") != "identical" or ahead_by != 0)
+        )
+        or (
+            not identical
+            and (comparison.get("status") != "ahead" or ahead_by <= 0)
+        )
+    ):
+        errors.append("D2 integration SHA is not an authenticated ancestor of protected dev")
 
     for key in (
         "audit_sha256",
@@ -236,10 +271,22 @@ def _validate_d2_protected_review(
     reviewed_at = _parse_instant(review.get("reviewed_at"))
     pr_fetched_at = _parse_instant(pr_envelope.get("fetched_at"))
     dev_fetched_at = _parse_instant(dev_envelope.get("fetched_at"))
+    compare_fetched_at = _parse_instant(compare_envelope.get("fetched_at"))
+    receipt_issued_at = _parse_instant(
+        review["protected_attestation_receipt"].get("issued_at")
+    )
     if reviewed_at is None or pr_fetched_at is None or pr_fetched_at >= reviewed_at:
         errors.append("D2 freeze review must strictly follow authenticated PR capture")
     if reviewed_at is None or dev_fetched_at is None or dev_fetched_at <= reviewed_at:
         errors.append("D2 protected dev capture must strictly follow freeze review")
+    if (
+        dev_fetched_at is None
+        or compare_fetched_at is None
+        or compare_fetched_at <= dev_fetched_at
+        or receipt_issued_at is None
+        or receipt_issued_at < compare_fetched_at
+    ):
+        errors.append("D2 protected dev ancestry capture chronology is invalid")
 
     evidence_commits = {
         item.get("reference")
@@ -251,14 +298,16 @@ def _validate_d2_protected_review(
 
     review_claims = {key: value for key, value in review.items() if key != "protected_attestation_receipt"}
     expected_claims = {
-        "purpose": "d2-freeze-completion",
+        "purpose": "d2-freeze-completion-v2",
         "repository": "somebloke1/noetic-dev",
         "audit_sha256": review["audit_sha256"],
         "reviewed_candidate_sha": review["reviewed_candidate_sha"],
         "pull_request": review["pull_request"],
         "pr_api_response_sha256": pr_envelope["response_sha256"],
         "dev_integration_sha": review["dev_integration_sha"],
+        "contained_dev_head_sha": dev_head_sha,
         "dev_branch_api_response_sha256": dev_envelope["response_sha256"],
+        "dev_compare_api_response_sha256": compare_envelope["response_sha256"],
         "freeze_review_claims_sha256": canonical_json_sha256(review_claims),
     }
     if not _verify_protected_attestation_receipt(

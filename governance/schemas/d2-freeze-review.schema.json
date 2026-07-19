@@ -1,9 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "D2 Protected Freeze Review Evidence",
+  "title": "D2 Protected Freeze Review Evidence v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "audit_sha256", "reviewed_candidate_sha", "pull_request", "pr_api_response", "dev_integration_sha", "dev_branch_api_response", "issue", "head", "base", "evidence_url", "reviewed_at", "protected_attestation_receipt"],
+  "required": ["schema_version", "audit_sha256", "reviewed_candidate_sha", "pull_request", "pr_api_response", "dev_integration_sha", "dev_branch_api_response", "dev_compare_api_response", "issue", "head", "base", "evidence_url", "reviewed_at", "protected_attestation_receipt"],
   "definitions": {
     "authentication": {
       "type": "object",
@@ -42,7 +42,7 @@
     }
   },
   "properties": {
-    "schema_version": {"type": "string", "const": "1"},
+    "schema_version": {"type": "string", "const": "2"},
     "audit_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "reviewed_candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "pull_request": {"type": "integer", "minimum": 1},
@@ -84,7 +84,58 @@
         "fetched_at": {"type": "string", "minLength": 1},
         "authentication": {"$ref": "#/definitions/authentication"},
         "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-        "response": {"type": "object"}
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "protected", "commit"],
+          "properties": {
+            "name": {"type": "string", "const": "dev"},
+            "protected": {"type": "boolean", "const": true},
+            "commit": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sha"],
+              "properties": {
+                "sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "dev_compare_api_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+      "properties": {
+        "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/compare/[a-f0-9]{40}\\.\\.\\.[a-f0-9]{40}$"},
+        "status": {"type": "integer", "const": 200},
+        "request_id": {"type": "string", "minLength": 1},
+        "fetched_at": {"type": "string", "minLength": 1},
+        "authentication": {"$ref": "#/definitions/authentication"},
+        "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "ahead_by", "behind_by", "base_commit", "merge_base_commit"],
+          "properties": {
+            "status": {"type": "string", "enum": ["ahead", "identical"]},
+            "ahead_by": {"type": "integer"},
+            "behind_by": {"type": "integer"},
+            "base_commit": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sha"],
+              "properties": {"sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}}
+            },
+            "merge_base_commit": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sha"],
+              "properties": {"sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}}
+            }
+          }
+        }
       }
     },
     "issue": {"type": "integer", "const": 32},

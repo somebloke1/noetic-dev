@@ -219,7 +219,7 @@ class TestRoadmap(unittest.TestCase):
             }
 
         review = {
-            "schema_version": "1",
+            "schema_version": "2",
             "audit_sha256": freeze["audit_sha256"],
             "reviewed_candidate_sha": candidate_sha,
             "pull_request": 67,
@@ -241,6 +241,18 @@ class TestRoadmap(unittest.TestCase):
                 "2026-07-19T00:02:00+00:00",
                 {"name": "dev", "protected": True, "commit": {"sha": integration_sha}},
             ),
+            "dev_compare_api_response": envelope(
+                "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
+                f"{integration_sha}...{integration_sha}",
+                "2026-07-19T00:02:00.500000+00:00",
+                {
+                    "status": "identical",
+                    "ahead_by": 0,
+                    "behind_by": 0,
+                    "base_commit": {"sha": integration_sha},
+                    "merge_base_commit": {"sha": integration_sha},
+                },
+            ),
             "issue": 32,
             "head": "issue-32-canonical-roadmap",
             "base": "dev",
@@ -252,7 +264,7 @@ class TestRoadmap(unittest.TestCase):
                 "provider": "protected-integration",
                 "issued_at": "2026-07-19T00:02:01+00:00",
                 "expires_at": "2026-07-19T00:07:01+00:00",
-                "subject": {"purpose": "d2-freeze-completion"},
+                "subject": {"purpose": "d2-freeze-completion-v2"},
                 "claims": {},
                 "proof": {
                     "format": "protected-integration-receipt-v1",
@@ -300,10 +312,17 @@ class TestRoadmap(unittest.TestCase):
             with mock.patch(
                 "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
                 return_value=True,
-            ):
+            ) as verifier:
                 self.assertEqual(
                     _validate_d2_protected_review(root, completed_freeze, d2), []
                 )
+            claims = verifier.call_args.args[1]
+            self.assertEqual(claims["contained_dev_head_sha"], integration_sha)
+            self.assertEqual(claims["purpose"], "d2-freeze-completion-v2")
+            self.assertEqual(
+                claims["dev_compare_api_response_sha256"],
+                review["dev_compare_api_response"]["response_sha256"],
+            )
 
             with mock.patch(
                 "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
@@ -325,18 +344,93 @@ class TestRoadmap(unittest.TestCase):
                 errors = _validate_d2_protected_review(root, completed_freeze, d2)
             self.assert_has_error(errors, "not derived from the authenticated PR response")
 
-            attacked_review = copy.deepcopy(review)
-            attacked_review["dev_branch_api_response"]["response"]["commit"]["sha"] = "f" * 40
-            attacked_review["dev_branch_api_response"]["response_sha256"] = canonical_json_sha256(
-                attacked_review["dev_branch_api_response"]["response"]
+            for successor_stage in range(3, 10):
+                successor_review = copy.deepcopy(review)
+                successor_sha = f"{successor_stage:040x}"
+                successor_branch = successor_review["dev_branch_api_response"]
+                successor_branch["response"]["commit"]["sha"] = successor_sha
+                successor_branch["response_sha256"] = canonical_json_sha256(
+                    successor_branch["response"]
+                )
+                successor_compare = successor_review["dev_compare_api_response"]
+                successor_compare["request_url"] = (
+                    "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
+                    f"{integration_sha}...{successor_sha}"
+                )
+                successor_compare["response"] = {
+                    "status": "ahead",
+                    "ahead_by": successor_stage - 2,
+                    "behind_by": 0,
+                    "base_commit": {"sha": integration_sha},
+                    "merge_base_commit": {"sha": integration_sha},
+                }
+                successor_compare["response_sha256"] = canonical_json_sha256(
+                    successor_compare["response"]
+                )
+                write_review(successor_review)
+                with self.subTest(successor=f"D{successor_stage}"), mock.patch(
+                    "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                    return_value=True,
+                ):
+                    errors = _validate_d2_protected_review(
+                        root, completed_freeze, d2
+                    )
+                    self.assertEqual(errors, [])
+
+            ancestry_attacks = []
+            wrong_branch = copy.deepcopy(successor_review)
+            wrong_branch["dev_branch_api_response"]["response"]["name"] = "main"
+            wrong_branch["dev_branch_api_response"]["response_sha256"] = canonical_json_sha256(
+                wrong_branch["dev_branch_api_response"]["response"]
             )
-            write_review(attacked_review)
-            with mock.patch(
-                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
-                return_value=True,
-            ):
-                errors = _validate_d2_protected_review(root, completed_freeze, d2)
-            self.assert_has_error(errors, "not the authenticated protected dev head")
+            ancestry_attacks.append(("wrong-branch", wrong_branch))
+            wrong_merge_base = copy.deepcopy(successor_review)
+            wrong_merge_base["dev_compare_api_response"]["response"]["merge_base_commit"]["sha"] = "f" * 40
+            wrong_merge_base["dev_compare_api_response"]["response_sha256"] = canonical_json_sha256(
+                wrong_merge_base["dev_compare_api_response"]["response"]
+            )
+            ancestry_attacks.append(("non-descendant", wrong_merge_base))
+            rewritten = copy.deepcopy(successor_review)
+            rewritten["dev_compare_api_response"]["response"]["behind_by"] = 1
+            rewritten["dev_compare_api_response"]["response_sha256"] = canonical_json_sha256(
+                rewritten["dev_compare_api_response"]["response"]
+            )
+            ancestry_attacks.append(("rewritten-history", rewritten))
+            reversed_compare = copy.deepcopy(successor_review)
+            reversed_compare["dev_compare_api_response"]["request_url"] = (
+                "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
+                f"{successor_sha}...{integration_sha}"
+            )
+            ancestry_attacks.append(("reversed-compare", reversed_compare))
+            stale = copy.deepcopy(successor_review)
+            stale["dev_compare_api_response"]["fetched_at"] = "2026-07-19T00:02:00+00:00"
+            ancestry_attacks.append(("stale-capture", stale))
+            confused = copy.deepcopy(successor_review)
+            confused["dev_compare_api_response"]["response"]["ahead_by"] = True
+            confused["dev_compare_api_response"]["response_sha256"] = canonical_json_sha256(
+                confused["dev_compare_api_response"]["response"]
+            )
+            ancestry_attacks.append(("bool-int-confusion", confused))
+            digest_attack = copy.deepcopy(successor_review)
+            digest_attack["dev_compare_api_response"]["response"]["ahead_by"] = 8
+            ancestry_attacks.append(("digest-substitution", digest_attack))
+            extra_data = copy.deepcopy(successor_review)
+            extra_data["dev_compare_api_response"]["response"]["commits"] = []
+            extra_data["dev_compare_api_response"]["response_sha256"] = canonical_json_sha256(
+                extra_data["dev_compare_api_response"]["response"]
+            )
+            ancestry_attacks.append(("type-surface", extra_data))
+            for attack, attacked_review in ancestry_attacks:
+                with self.subTest(ancestry_attack=attack):
+                    write_review(attacked_review)
+                    with mock.patch(
+                        "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                        return_value=True,
+                    ):
+                        errors = _validate_d2_protected_review(
+                            root, completed_freeze, d2
+                        )
+                    self.assertTrue(errors, attack)
 
             write_review(review)
 
