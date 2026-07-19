@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 PATH=/usr/bin:/bin
+umask 077
 
 if [[ $EUID -ne 0 || $# -ne 2 ]]; then
   echo "usage: sudo bash $0 AUTHORIZED_DEV_SHA PROTECTED_AUTHORIZATION_RECEIPT_JSON" >&2
@@ -13,6 +14,7 @@ root=/opt/noetic-dev-main-publisher
 release=$root/releases/$authorized_sha
 canonical_remote=https://github.com/somebloke1/noetic-dev.git
 verifier=/usr/local/libexec/noetic-dev/verify-delivery-attestation
+publisher_key=/etc/noetic-dev/main-publisher/deploy-key
 
 trusted_executable_path() {
   local current=$1 mode owner
@@ -32,10 +34,33 @@ trusted_executable_path() {
   done
 }
 
+trusted_private_key_path() {
+  local current=$1 mode owner size
+  while true; do
+    [[ ! -L $current ]]
+    owner=$(/usr/bin/stat -c %u "$current")
+    mode=$((8#$(/usr/bin/stat -c %a "$current")))
+    [[ $owner -eq 0 ]]
+    (( (mode & 8#022) == 0 ))
+    if [[ $current == "$1" ]]; then
+      [[ -f $current && $mode -eq 8#400 ]]
+      size=$(/usr/bin/stat -c %s "$current")
+      (( size > 0 && size <= 16384 ))
+    else
+      [[ -d $current ]]
+    fi
+    [[ $current == / ]] && break
+    current=$(/usr/bin/dirname "$current")
+  done
+}
+
 [[ $authorized_sha =~ ^[0-9a-f]{40}$ ]]
 [[ -f $authorization_receipt && ! -L $authorization_receipt ]]
 [[ $(/usr/bin/stat -c %s "$authorization_receipt") -le 1048576 ]]
 trusted_executable_path "$verifier"
+trusted_private_key_path "$publisher_key"
+/usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
+  /usr/bin/ssh-keygen -y -P '' -f "$publisher_key" </dev/null >/dev/null
 challenge=$(
   /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root /usr/bin/python3 -I -c '
 import json, sys
@@ -80,7 +105,7 @@ actual_tree=$(
 [[ $actual_tree == "$expected_tree" ]]
 chown -R root:root "$release"
 chmod -R go-w "$release"
-install -o root -g root -m 0755 \
+install -o root -g root -m 0700 \
   "$release/deploy/noetic-dev-promote-main" \
   /usr/local/libexec/noetic-dev/promote-main
 ln -sfn "$release" "$root/current.new"

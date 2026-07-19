@@ -538,12 +538,19 @@ def _check_main_publisher_capability(
     }
     if any(capability.get(key) != value for key, value in expected.items()):
         errors.append("protected main publisher capability does not permit the exact fast-forward")
-    if capability.get("principal_type") not in {"Integration", "DeployKey"}:
+    if capability.get("principal_type") != "DeployKey":
         errors.append("protected main publisher principal type is not authorized")
     if type(capability.get("principal_id")) is not int or capability.get("principal_id", 0) <= 0:
         errors.append("protected main publisher principal ID is invalid")
     if capability.get("protection_source") not in {"ruleset", "branch_protection"}:
         errors.append("protected main publisher protection source is invalid")
+    fingerprint = capability.get("ssh_public_key_fingerprint")
+    if capability.get("write_access") is not True:
+        errors.append("protected main publisher DeployKey is not write-enabled")
+    if type(fingerprint) is not str or re.fullmatch(
+        r"SHA256:[A-Za-z0-9+/]{43}", fingerprint
+    ) is None:
+        errors.append("protected main publisher DeployKey fingerprint is invalid")
     captured_at = _parse_time(capability.get("captured_at", ""))
     authorized_at = _parse_time(
         (external_evidence or {}).get("promotion_authorization", {}).get("authorized_at", "")
@@ -563,6 +570,8 @@ def _check_main_publisher_capability(
         "expected_old_main_sha": manifest.get("repo", {}).get("base_sha"),
         "principal_type": capability.get("principal_type"),
         "principal_id": capability.get("principal_id"),
+        "write_access": capability.get("write_access"),
+        "ssh_public_key_fingerprint": capability.get("ssh_public_key_fingerprint"),
         "capability_sha256": canonical_json_sha256(
             {
                 key: value
@@ -1634,6 +1643,7 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
     ):
         errors.append("publication blocked: exact protected main ref-update command evidence missing")
     execution = (external_evidence or {}).get("promotion_execution", {})
+    capability = (external_evidence or {}).get("main_publisher_capability", {})
     command = promotion_records[0] if len(promotion_records) == 1 else {}
     execution_started = _parse_time(
         execution.get("started_at") if isinstance(execution, dict) else None
@@ -1649,6 +1659,25 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         or execution.get("publisher") != "/usr/local/libexec/noetic-dev/promote-main"
         or execution.get("authorized_dev_sha") != candidate_sha
         or execution.get("expected_old_main_sha") != expected_old_main_sha
+        or type(execution.get("effective_uid")) is not int
+        or execution.get("effective_uid") != 0
+        or execution.get("principal_type") != "DeployKey"
+        or type(execution.get("principal_id")) is not int
+        or execution.get("principal_id", 0) <= 0
+        or not isinstance(capability, dict)
+        or capability.get("principal_type") != "DeployKey"
+        or type(capability.get("principal_id")) is not int
+        or capability.get("principal_id", 0) <= 0
+        or capability.get("write_access") is not True
+        or type(execution.get("ssh_public_key_fingerprint")) is not str
+        or re.fullmatch(
+            r"SHA256:[A-Za-z0-9+/]{43}",
+            execution.get("ssh_public_key_fingerprint", ""),
+        )
+        is None
+        or execution.get("principal_id") != capability.get("principal_id")
+        or execution.get("ssh_public_key_fingerprint")
+        != capability.get("ssh_public_key_fingerprint")
         or execution.get("git_argv") != expected_git_argv
         or execution.get("exit_code") != 0
         or not isinstance(execution.get("stdout_sha256"), str)

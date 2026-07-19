@@ -1,11 +1,11 @@
 {
-  "$schema": "./schemas/roadmap-v2.schema.json",
-  "schema_version": "2",
+  "$schema": "./schemas/roadmap.schema.json",
+  "schema_version": "1",
   "document_path": "ROADMAP.md",
-  "document_sha256": "3668c964ef0a323b2da5d02447aa726b2bf6198b5c6356df1cdd94240eb5af2c",
+  "document_sha256": "78cf53403c27212f9917d35da66586df3bac976c9ae994c1b7c18e85e5c820cc",
   "authority_issue": 32,
   "policy_snapshot": {
-    "existing_work_freeze": "repair_authorized",
+    "existing_work_freeze": "active",
     "publication": "blocked",
     "authoritative_delivery_gate": "external_dependency_missing"
   },
@@ -93,16 +93,7 @@
       "status": "next",
       "depends_on": ["D0", "D1a", "D1b"],
       "exit_gate": "Accepted authority and branch-flow decisions, reviewed freeze disposition, consistent machine and prose policy, synchronized issue 32 and roadmap, green validation, and paired independent QA.",
-      "evidence": [
-        {
-          "kind": "artifact",
-          "reference": "governance/audits/20260718-d2-portfolio/inventory.json"
-        },
-        {
-          "kind": "issue",
-          "reference": "https://github.com/somebloke1/noetic-dev/issues/32"
-        }
-      ]
+      "evidence": []
     },
     {
       "id": "D3a",
@@ -217,10 +208,28 @@
   ],
   "unresolved_conflicts": [
     {
-      "id": "C2",
-      "title": "D2 portfolio audit awaits protected independent review and integration",
+      "id": "C1",
+      "title": "dev integration and main delivery policy disagree",
       "resolution_stage": "D2",
       "blocks": ["D3a", "D9"]
+    },
+    {
+      "id": "C2",
+      "title": "active freeze and bootstrap records lag portfolio state",
+      "resolution_stage": "D2",
+      "blocks": ["D3a", "D9"]
+    },
+    {
+      "id": "C3",
+      "title": "P1-P4 operational use lacks formal ratification",
+      "resolution_stage": "D2",
+      "blocks": ["D3a"]
+    },
+    {
+      "id": "C4",
+      "title": "endpoint pluralism conflicts with mandatory LiteLLM policy",
+      "resolution_stage": "D2",
+      "blocks": ["D3a", "D4c"]
     },
     {
       "id": "C5",

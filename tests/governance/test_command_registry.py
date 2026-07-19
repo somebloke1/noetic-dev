@@ -25,12 +25,14 @@ class TestCommandRegistry(unittest.TestCase):
     def test_required_commands_registered(self):
         for command_id in [
             "repo.validate",
+            "roadmap.migration_v1_v2",
             "workflow.pinning",
             "tests.all",
             "governance.manifest",
             "governance.delivery_gate",
             "postmerge.validate",
             "postmerge.tests",
+            "main.promote_exact",
         ]:
             with self.subTest(command_id=command_id):
                 self.assertIn(command_id, self.registry["commands"])
@@ -75,6 +77,10 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("install-main-publisher", installer)
         self.assertIn("verify-delivery-attestation", installer)
         self.assertIn("trusted_executable_path", installer)
+        self.assertIn("trusted_private_key_path", installer)
+        self.assertIn("/etc/noetic-dev/main-publisher/deploy-key", installer)
+        self.assertIn("$mode -eq 8#400", installer)
+        self.assertIn("/usr/bin/ssh-keygen -y -P ''", installer)
         self.assertIn("[[ ! -L $current ]]", installer)
         self.assertIn("[[ $owner -eq 0 ]]", installer)
         self.assertIn("(mode & 8#022) == 0", installer)
@@ -88,8 +94,14 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("! -L $release/scripts/governance/promote_main.py", installer)
         self.assertIn("chown -R root:root \"$release\"", installer)
         self.assertIn("chmod -R go-w \"$release\"", installer)
+        self.assertIn("-m 0700", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
-        self.assertIn("exec /usr/bin/python3", launcher)
+        self.assertIn("/usr/bin/id -u", launcher)
+        self.assertIn("exec /usr/bin/env -i", launcher)
+        self.assertIn("HOME=/root", launcher)
+        self.assertIn("/usr/bin/python3 -I", launcher)
+        self.assertNotIn("SSH_AUTH_SOCK", launcher)
+        self.assertNotIn("key_path", " ".join(command["argv"]))
         self.assertFalse((REPO_ROOT / "deploy/noetic-dev-promote-main").is_symlink())
         self.assertFalse((REPO_ROOT / "scripts/governance/promote_main.py").is_symlink())
 

@@ -113,6 +113,7 @@ REQUIRED = [
     "scripts/governance/route_evidence.py",
     "scripts/governance/route_attestation.py",
     "scripts/governance/check_roadmap.py",
+    "scripts/governance/migrate_roadmap.py",
     "scripts/governance/capture_protected_ci.py",
     "deploy/install-agent-review.sh",
     "deploy/install-main-publisher.sh",
@@ -135,6 +136,8 @@ REQUIRED = [
     "tests/governance/test_agent_review.py",
     "tests/governance/test_route_attestation.py",
     "tests/governance/test_roadmap.py",
+    "tests/governance/fixtures/canonical_roadmap_v1.json",
+    "tests/governance/fixtures/expected_roadmap_v2_from_v1.json",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}

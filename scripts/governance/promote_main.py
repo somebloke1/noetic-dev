@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import os
-import pwd
+import stat
 import subprocess
 import sys
 import tempfile
@@ -26,8 +28,28 @@ from check_delivery_gate import (  # noqa: E402
 from hash_tree import canonical_json, sha256_text  # noqa: E402
 
 PROTECTED_PUBLISHER = Path("/usr/local/libexec/noetic-dev/promote-main")
+PUBLISHER_KEY = Path("/etc/noetic-dev/main-publisher/deploy-key")
 GIT = "/usr/bin/git"
+SSH_KEYGEN = "/usr/bin/ssh-keygen"
 CANONICAL_REMOTE = f"git@github.com:{REPO_FULL_NAME}.git"
+GIT_SSH_COMMAND = " ".join(
+    (
+        "/usr/bin/ssh",
+        "-F /dev/null",
+        "-oBatchMode=yes",
+        "-oIdentityAgent=none",
+        "-oIdentitiesOnly=yes",
+        f"-oIdentityFile={PUBLISHER_KEY}",
+        "-oCertificateFile=none",
+        "-oPreferredAuthentications=publickey",
+        "-oPasswordAuthentication=no",
+        "-oKbdInteractiveAuthentication=no",
+        "-oHostbasedAuthentication=no",
+        "-oGSSAPIAuthentication=no",
+        "-oPermitLocalCommand=no",
+        "-oProxyCommand=none",
+    )
+)
 UNSAFE_LOCAL_CONFIG = (
     "core.sshcommand",
     "core.fsmonitor",
@@ -46,19 +68,70 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _require_root() -> None:
+    if os.geteuid() != 0:
+        raise RuntimeError("protected main publisher must run as root")
+
+
+def _trusted_root_private_key(path: Path) -> bool:
+    try:
+        current = path
+        while True:
+            metadata = os.lstat(current)
+            if stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+                return False
+            if current == path and (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_IMODE(metadata.st_mode) != 0o400
+                or metadata.st_size <= 0
+                or metadata.st_size > 16_384
+            ):
+                return False
+            if current.parent == current:
+                return True
+            current = current.parent
+    except OSError:
+        return False
+
+
+def _publisher_key_fingerprint() -> str:
+    if not _trusted_root_private_key(PUBLISHER_KEY):
+        raise RuntimeError("publisher DeployKey is not a trusted root-owned 0400 file")
+    try:
+        result = subprocess.run(
+            [SSH_KEYGEN, "-y", "-P", "", "-f", str(PUBLISHER_KEY)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+            env={"PATH": "/usr/bin:/bin", "HOME": "/root"},
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError("publisher DeployKey public-key derivation failed") from exc
+    fields = result.stdout.strip().split()
+    if result.returncode != 0 or len(fields) < 2 or len(result.stdout) > 16_384:
+        raise RuntimeError("publisher DeployKey public-key derivation failed")
+    try:
+        key_blob = base64.b64decode(fields[1], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("publisher DeployKey public key is malformed") from exc
+    digest = base64.b64encode(hashlib.sha256(key_blob).digest()).decode("ascii").rstrip("=")
+    return f"SHA256:{digest}"
+
+
 def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = {
         "PATH": "/usr/bin:/bin",
-        "HOME": pwd.getpwuid(os.getuid()).pw_dir,
+        "HOME": "/root",
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_CONFIG_NOSYSTEM": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_NO_REPLACE_OBJECTS": "1",
-        "GIT_SSH_COMMAND": "/usr/bin/ssh -F /dev/null -oBatchMode=yes -oPermitLocalCommand=no -oProxyCommand=none",
+        "GIT_SSH_COMMAND": GIT_SSH_COMMAND,
+        "GIT_SSH_VARIANT": "ssh",
         "SHELL": "/bin/sh",
     }
-    if os.environ.get("SSH_AUTH_SOCK"):
-        env["SSH_AUTH_SOCK"] = os.environ["SSH_AUTH_SOCK"]
     return subprocess.run(
         [GIT, *args],
         cwd=repo_root,
@@ -113,6 +186,7 @@ def promote(
     repo_root: Path,
     manifest_path: str | None = None,
 ) -> Dict[str, Any]:
+    _require_root()
     passed, errors, _gate_type = check_delivery(
         manifest,
         manifest_path,
@@ -122,6 +196,18 @@ def promote(
     )
     if not passed:
         raise RuntimeError("main-promotion readiness gate failed: " + "; ".join(errors))
+
+    capability = external_evidence.get("main_publisher_capability", {})
+    actual_fingerprint = _publisher_key_fingerprint()
+    if (
+        not isinstance(capability, dict)
+        or capability.get("principal_type") != "DeployKey"
+        or type(capability.get("principal_id")) is not int
+        or capability.get("principal_id", 0) <= 0
+        or capability.get("write_access") is not True
+        or capability.get("ssh_public_key_fingerprint") != actual_fingerprint
+    ):
+        raise RuntimeError("actual publisher DeployKey does not match protected capability evidence")
 
     repo = manifest.get("repo", {})
     candidate_sha = repo.get("candidate_sha", "")
@@ -186,6 +272,10 @@ def promote(
         "publisher": str(PROTECTED_PUBLISHER),
         "authorized_dev_sha": candidate_sha,
         "expected_old_main_sha": old_main_sha,
+        "effective_uid": os.geteuid(),
+        "principal_type": "DeployKey",
+        "principal_id": capability["principal_id"],
+        "ssh_public_key_fingerprint": actual_fingerprint,
         "git_argv": argv,
         "exit_code": result.returncode,
         "stdout_sha256": sha256_text(result.stdout),
@@ -196,6 +286,11 @@ def promote(
 
 
 def main() -> int:
+    try:
+        _require_root()
+    except RuntimeError as exc:
+        print(f"promotion blocked: {exc}", file=sys.stderr)
+        return 1
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--external-evidence", required=True)

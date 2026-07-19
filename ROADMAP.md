@@ -45,6 +45,11 @@ index and the headings below.
 Schema version 2 closes the stage, parallel-track, unresolved-conflict, and checkpoint-evidence
 catalogs. Adding, removing, or reassigning one of those identities requires an
 explicit schema/validator successor and migration tests, not an in-place mutation.
+The executable `scripts/governance/migrate_roadmap.py` migration reads the persisted
+`tests/governance/fixtures/canonical_roadmap_v1.json` predecessor and deterministically
+produces the golden v2 fixture. It changes only the schema markers and removes
+resolved conflicts C1, C3, and C4; every other value is preserved. Unknown v1
+states and mixed markers fail closed, while valid v2 input is an idempotent no-op.
 The machine index also pins the SHA-256 of this entire document, so scope,
 non-claims, and explanatory prose cannot drift outside the paired contract.
 The schema also pins the exact D2 and D9 policy gates rather than searching for

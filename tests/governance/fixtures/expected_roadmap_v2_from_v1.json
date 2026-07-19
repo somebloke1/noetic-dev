@@ -1,0 +1,287 @@
+{
+  "$schema": "./schemas/roadmap-v2.schema.json",
+  "authority_issue": 32,
+  "baseline": {
+    "branch": "dev",
+    "captured_at": "2026-07-18",
+    "claim_scope": "integration_checkpoint_only",
+    "sha": "15b9ae66ff316abf28a5041c465e95baef5e82f9"
+  },
+  "document_path": "ROADMAP.md",
+  "document_sha256": "78cf53403c27212f9917d35da66586df3bac976c9ae994c1b7c18e85e5c820cc",
+  "parallel_tracks": [
+    {
+      "constraint": "May improve models and evaluation but cannot gate D2-D9.",
+      "id": "T1",
+      "title": "saeproj research"
+    },
+    {
+      "constraint": "May inform D3a; changing the selected reference runtime requires an accepted decision.",
+      "id": "T2",
+      "title": "Client trials"
+    },
+    {
+      "constraint": "May advance only from a demonstrated multi-host requirement; plain MCP remains the default.",
+      "id": "T3",
+      "title": "ContextForge evaluation"
+    },
+    {
+      "constraint": "Remains non-evidence even if merged; production readiness requires a separately scoped successor.",
+      "id": "T4",
+      "title": "Issue 65 OpenCode experiment"
+    }
+  ],
+  "policy_snapshot": {
+    "authoritative_delivery_gate": "external_dependency_missing",
+    "existing_work_freeze": "active",
+    "publication": "blocked"
+  },
+  "schema_version": "2",
+  "stages": [
+    {
+      "depends_on": [],
+      "evidence": [
+        {
+          "kind": "commit",
+          "reference": "29196a67349537d6f8a8a711df11b86da0430857"
+        },
+        {
+          "kind": "commit",
+          "reference": "15b9ae66ff316abf28a5041c465e95baef5e82f9"
+        },
+        {
+          "kind": "issue",
+          "reference": "https://github.com/somebloke1/noetic-dev/issues/32"
+        }
+      ],
+      "exit_gate": "Repository and governance artifacts are present at the exact baseline without claiming publication readiness.",
+      "id": "D0",
+      "status": "checkpointed",
+      "title": "Repository and governance bootstrap"
+    },
+    {
+      "depends_on": [
+        "D0"
+      ],
+      "evidence": [
+        {
+          "kind": "commit",
+          "reference": "f5efd668304a7dbade20bd20704ed4930cbecef9"
+        },
+        {
+          "kind": "commit",
+          "reference": "0ab63d8fac1ceadfaca72717e62ff1d564c81e0e"
+        },
+        {
+          "kind": "commit",
+          "reference": "38c2812eca31983e39f8705f7bc7aed05df31329"
+        },
+        {
+          "kind": "commit",
+          "reference": "b846efa0392eda96a58e1b6d099c9e39385cac58"
+        }
+      ],
+      "exit_gate": "Frozen M0, M1, verified-change, and terminal projection contracts remain present with all documented non-claims.",
+      "id": "D1a",
+      "status": "checkpointed",
+      "title": "Fixed provider-free reference proofs"
+    },
+    {
+      "depends_on": [
+        "D0"
+      ],
+      "evidence": [
+        {
+          "kind": "commit",
+          "reference": "58c4c791d7f39c0a6eca0dc7b1ddfd8bb67d02b2"
+        },
+        {
+          "kind": "pull_request",
+          "reference": "https://github.com/somebloke1/noetic-dev/pull/64"
+        },
+        {
+          "kind": "workflow_run",
+          "reference": "https://github.com/somebloke1/noetic-dev/actions/runs/29629152718"
+        },
+        {
+          "kind": "commit",
+          "reference": "15b9ae66ff316abf28a5041c465e95baef5e82f9"
+        }
+      ],
+      "exit_gate": "The bounded protected-review route and attestation slice is present while its trust and runtime non-claims remain explicit.",
+      "id": "D1b",
+      "status": "checkpointed",
+      "title": "Protected-review routing and attestation slice"
+    },
+    {
+      "depends_on": [
+        "D0",
+        "D1a",
+        "D1b"
+      ],
+      "evidence": [],
+      "exit_gate": "Accepted authority and branch-flow decisions, reviewed freeze disposition, consistent machine and prose policy, synchronized issue 32 and roadmap, green validation, and paired independent QA.",
+      "id": "D2",
+      "status": "next",
+      "title": "Governance and source convergence"
+    },
+    {
+      "depends_on": [
+        "D2"
+      ],
+      "evidence": [],
+      "exit_gate": "Pinned donor characterization and accepted decisions cover component homes, runtime, persistence, identity, effects, privacy, compatibility, and rollback implications.",
+      "id": "D3a",
+      "status": "planned",
+      "title": "Donor characterization and design decisions"
+    },
+    {
+      "depends_on": [
+        "D3a"
+      ],
+      "evidence": [],
+      "exit_gate": "Versioned schemas, fixtures, evolution rules, property tests, and adversarial QA cover controller, delegation, authority, event, effect, storage, and pin contracts.",
+      "id": "D3b",
+      "status": "planned",
+      "title": "Versioned connective contracts"
+    },
+    {
+      "depends_on": [
+        "D3b"
+      ],
+      "evidence": [],
+      "exit_gate": "A durable reference controller passes conformance, scheduling, duplicate, restart, stale-writer, cancellation, exhaustion, and recovery tests without claiming deterministic semantic judgment.",
+      "id": "D4a",
+      "status": "planned",
+      "title": "Portable executive controller"
+    },
+    {
+      "depends_on": [
+        "D3b"
+      ],
+      "evidence": [],
+      "exit_gate": "At-least-once delegated delivery is idempotently admitted, replay-safe, cancellable, crash-resumable, reconcilable, and separately adjudicable by Telos.",
+      "id": "D4b",
+      "status": "planned",
+      "title": "Telos delegation dispatcher"
+    },
+    {
+      "depends_on": [
+        "D3b"
+      ],
+      "evidence": [],
+      "exit_gate": "The selected runtime and scoped effect and QA paths enforce principal, credential, routing, outcome, expiry, and duplicate-effect boundaries.",
+      "id": "D4c",
+      "status": "planned",
+      "title": "Selected runtime and model adapters"
+    },
+    {
+      "depends_on": [
+        "D4a",
+        "D4b",
+        "D4c"
+      ],
+      "evidence": [],
+      "exit_gate": "A clean environment resolves exact compatible component pins, preserves and replays durable evidence, passes cross-component contracts, and rolls back to a known-good checkpoint.",
+      "id": "D4d",
+      "status": "planned",
+      "title": "Pinned integration skeleton"
+    },
+    {
+      "depends_on": [
+        "D4d"
+      ],
+      "evidence": [],
+      "exit_gate": "One bounded authenticated effect survives forced retries, duplicates, crash/restart, cancellation, replay, QA, separate Telos adjudication, and rollback under exact pins.",
+      "id": "D5",
+      "status": "planned",
+      "title": "Authentic bounded vertical slice"
+    },
+    {
+      "depends_on": [
+        "D5"
+      ],
+      "evidence": [],
+      "exit_gate": "One discipline and then the development pipeline conform across fake and reference runtimes without donor runtime coupling.",
+      "id": "D6",
+      "status": "planned",
+      "title": "Cognitive programs"
+    },
+    {
+      "depends_on": [
+        "D5",
+        "D6"
+      ],
+      "evidence": [],
+      "exit_gate": "Read-only views replay real persisted events, explain causal state and missing evidence, enforce privacy, and expose no command authority.",
+      "id": "D7",
+      "status": "planned",
+      "title": "Read-only live observability"
+    },
+    {
+      "depends_on": [
+        "D7"
+      ],
+      "evidence": [],
+      "exit_gate": "Clean install, restart, upgrade, rollback, identity, reconnect, isolation, command-length, and security drills pass against exact pins.",
+      "id": "D8",
+      "status": "planned",
+      "title": "Attach and composition hardening"
+    },
+    {
+      "depends_on": [
+        "D2",
+        "D8"
+      ],
+      "evidence": [],
+      "exit_gate": "License, audit, distinct protected trust root, protected main, post-merge evidence, independent approval, rollback, and immutable tag bind one full main SHA.",
+      "id": "D9",
+      "status": "planned",
+      "title": "Release and publication"
+    }
+  ],
+  "unresolved_conflicts": [
+    {
+      "blocks": [
+        "D3a",
+        "D9"
+      ],
+      "id": "C2",
+      "resolution_stage": "D2",
+      "title": "active freeze and bootstrap records lag portfolio state"
+    },
+    {
+      "blocks": [
+        "D4c",
+        "D5"
+      ],
+      "id": "C5",
+      "resolution_stage": "D3a",
+      "title": "first production reference runtime is not selected"
+    },
+    {
+      "blocks": [
+        "D3b",
+        "D5",
+        "D7"
+      ],
+      "id": "C6",
+      "resolution_stage": "D3a",
+      "title": "principal effect persistence and event privacy semantics are undecided"
+    },
+    {
+      "blocks": [],
+      "id": "C7",
+      "resolution_stage": "D3a",
+      "title": "privileged observability controls lack an authority model"
+    },
+    {
+      "blocks": [
+        "D9"
+      ],
+      "id": "C8",
+      "resolution_stage": "D9",
+      "title": "license and distinct release trust root are unresolved"
+    }
+  ]
+}

@@ -23,6 +23,16 @@
       "required_for_merge": true,
       "phase": "pre_merge"
     },
+    "roadmap.migration_v1_v2": {
+      "category": "validation",
+      "argv": ["python3", "scripts/governance/migrate_roadmap.py", "--check", "tests/governance/fixtures/canonical_roadmap_v1.json", "tests/governance/fixtures/expected_roadmap_v2_from_v1.json"],
+      "cwd": "{{repo_root}}",
+      "description": "Validate the deterministic canonical roadmap v1-to-v2 migration against persisted source and golden fixtures.",
+      "counts_as_test": false,
+      "counts_as_validation": true,
+      "required_for_merge": false,
+      "phase": "pre_merge"
+    },
     "tests.all": {
       "category": "test",
       "argv": ["python3", "-m", "unittest", "discover", "-s", "tests"],
@@ -63,7 +73,7 @@
         "external_evidence_path": "^/(?!.*\\.\\.)[A-Za-z0-9._/-]+$"
       },
       "cwd": "{{repo_root}}",
-      "description": "Verify protected owner authorization, then atomically fast-forward main from the expected old SHA to the exact authorized dev SHA.",
+      "description": "As root, verify protected owner authorization and a write-enabled DeployKey capability matching the fixed root-protected SSH key, then atomically fast-forward main from the expected old SHA to the exact authorized dev SHA.",
       "counts_as_test": false,
       "counts_as_validation": false,
       "required_for_publication": true,

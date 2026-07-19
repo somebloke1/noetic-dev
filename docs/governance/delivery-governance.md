@@ -118,7 +118,7 @@ must verify the receipt proof, issuer/key, validity interval, and exact expected
 claims before returning zero. Its absence remains an explicit bootstrap blocker.
 After every promotion-PR check passes, the root-owned protected publisher at
 `/usr/local/libexec/noetic-dev/promote-main` executes the registered
-`main.promote_exact` operation. It independently verifies the protected owner
+`main.promote_exact` operation as root only. It independently verifies the protected owner
 authorization receipt, clean exact-dev checkout, fixed canonical remote,
 current remote
 heads, and strict fast-forward ancestry before invoking the fixed
@@ -141,8 +141,17 @@ is checked with non-dereferencing metadata and must be root-owned, non-symlink,
 and non-writable by group or other; the leaf must also be a regular executable.
 Only then does it install the exact authorized-dev archive under
 `/opt/noetic-dev-main-publisher/releases/<sha>` and atomically point
-the fixed root-owned launcher at that immutable release. This deployment does not
+the fixed mode-`0700` root-owned launcher at that immutable release. This deployment does not
 establish the separate attestation verifier or publication authority by itself.
+The launcher starts isolated Python with an empty environment and never accepts an
+SSH key path or agent socket from its caller. The separately provisioned
+`/etc/noetic-dev/main-publisher/deploy-key` must be a nonempty root-owned regular
+file with mode `0400`; every parent is root-owned, non-symlink, and non-writable by
+group or other. The installer and publisher derive its public half noninteractively
+with fixed `/usr/bin/ssh-keygen`. Fetch and push disable SSH agents and default
+identities and use only that fixed key. Its OpenSSH SHA-256 fingerprint and DeployKey
+ID must equal the independently attested, write-enabled publisher capability and are
+recorded in execution evidence.
 Replacement objects are disabled and the extracted archive must reconstruct the
 authorized commit's exact tree. Every symlink is rejected before installation, and
 both publisher entrypoints must be regular files, so immutable-tree verification
@@ -153,7 +162,7 @@ from a fresh temporary bare repository under an isolated Git/SSH environment.
 Before touching any remote ref, the publisher must derive a passing complete
 `main-promotion` pre-merge delivery gate, not merely validate owner authorization.
 It also requires an independently verified protected capability receipt binding
-the exact candidate/base SHAs to a specific Integration or DeployKey principal
+the exact candidate/base SHAs to a specific write-enabled DeployKey ID and SSH fingerprint
 that live branch-protection evidence authorizes to bypass the PR and required-check
 barriers for this fast-forward without permitting force pushes. Current live
 `main` protection has no such actor, so the operation remains an explicit bootstrap

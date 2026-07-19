@@ -19,6 +19,13 @@ from scripts.governance.check_roadmap import (
 )
 from scripts.governance.hash_tree import canonical_json_sha256
 from scripts.governance.json_schema import load_json_strict, validate_schema
+from scripts.governance.migrate_roadmap import (
+    CANONICAL_V1_SHA256,
+    RoadmapMigrationError,
+    canonical_json_bytes,
+    migrate_roadmap,
+    migrate_v1_to_v2,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,6 +33,10 @@ STATE_PATH = ROOT / "governance" / "roadmap.json"
 SCHEMA_PATH = ROOT / "governance" / "schemas" / "roadmap-v2.schema.json"
 V1_SCHEMA_PATH = ROOT / "governance" / "schemas" / "roadmap.schema.json"
 DOC_PATH = ROOT / "ROADMAP.md"
+V1_FIXTURE_PATH = ROOT / "tests/governance/fixtures/canonical_roadmap_v1.json"
+V2_MIGRATION_FIXTURE_PATH = (
+    ROOT / "tests/governance/fixtures/expected_roadmap_v2_from_v1.json"
+)
 
 
 class TestRoadmap(unittest.TestCase):
@@ -44,21 +55,106 @@ class TestRoadmap(unittest.TestCase):
         self.assertEqual(validate_roadmap(self.state, self.schema, self.markdown, ROOT), [])
         self.assertEqual(validate_roadmap_files(ROOT), [])
 
-    def test_schema_v1_is_preserved_and_v2_migration_is_explicit(self) -> None:
+    def test_v1_and_v2_schemas_are_disjoint(self) -> None:
         v1_schema = load_json_strict(V1_SCHEMA_PATH)
-        predecessor = copy.deepcopy(self.state)
-        predecessor["$schema"] = "./schemas/roadmap.schema.json"
-        predecessor["schema_version"] = "1"
-        predecessor["unresolved_conflicts"] = [
-            {"id": "C1", "title": "resolved branch-flow conflict", "resolution_stage": "D2", "blocks": ["D3a", "D9"]},
-            {"id": "C2", "title": "resolved audit conflict", "resolution_stage": "D2", "blocks": ["D3a", "D9"]},
-            {"id": "C3", "title": "resolved notation conflict", "resolution_stage": "D2", "blocks": ["D3a"]},
-            {"id": "C4", "title": "resolved model-access conflict", "resolution_stage": "D2", "blocks": ["D3a", "D4c"]},
-            *copy.deepcopy(self.state["unresolved_conflicts"][1:]),
-        ]
+        predecessor = load_json_strict(V1_FIXTURE_PATH)
         self.assertEqual(validate_schema(predecessor, v1_schema), [])
         self.assertNotEqual(validate_schema(predecessor, self.schema), [])
         self.assertNotEqual(validate_schema(self.state, v1_schema), [])
+
+    def test_persisted_v1_fixture_has_exact_provenance(self) -> None:
+        source = load_json_strict(V1_FIXTURE_PATH)
+        self.assertEqual(
+            hashlib.sha256(V1_FIXTURE_PATH.read_bytes()).hexdigest(),
+            "64e13e09d6ee20626a588a098854f47e1fd2319e7dd589556b93b63b8c6b90f5",
+        )
+        self.assertEqual(canonical_json_sha256(source), CANONICAL_V1_SHA256)
+        self.assertEqual(validate_schema(source, load_json_strict(V1_SCHEMA_PATH)), [])
+
+    def test_v1_to_v2_migration_matches_golden_and_changes_only_declared_paths(self) -> None:
+        source = load_json_strict(V1_FIXTURE_PATH)
+        original = copy.deepcopy(source)
+        migrated = migrate_v1_to_v2(source)
+        self.assertEqual(source, original)
+        self.assertEqual(canonical_json_bytes(migrated), V2_MIGRATION_FIXTURE_PATH.read_bytes())
+        self.assertEqual(validate_schema(migrated, self.schema), [])
+        self.assertEqual(migrated["$schema"], "./schemas/roadmap-v2.schema.json")
+        self.assertEqual(migrated["schema_version"], "2")
+        source_without_markers = copy.deepcopy(source)
+        migrated_without_markers = copy.deepcopy(migrated)
+        source_without_markers.pop("$schema")
+        source_without_markers.pop("schema_version")
+        migrated_without_markers.pop("$schema")
+        migrated_without_markers.pop("schema_version")
+        source_without_markers["unresolved_conflicts"] = [
+            item
+            for item in source_without_markers["unresolved_conflicts"]
+            if item["id"] not in {"C1", "C3", "C4"}
+        ]
+        self.assertEqual(migrated_without_markers, source_without_markers)
+
+    def test_migration_is_idempotent_and_fails_closed_on_unknown_inputs(self) -> None:
+        source = load_json_strict(V1_FIXTURE_PATH)
+        migrated = migrate_roadmap(source)
+        self.assertEqual(migrate_roadmap(migrated), migrated)
+        attacks = []
+        changed = copy.deepcopy(source)
+        changed["unresolved_conflicts"][0]["title"] = "plausible but unknown v1"
+        attacks.append(changed)
+        reordered = copy.deepcopy(source)
+        reordered["stages"][0], reordered["stages"][1] = (
+            reordered["stages"][1], reordered["stages"][0]
+        )
+        attacks.append(reordered)
+        for schema, version in [
+            ("./schemas/roadmap.schema.json", "2"),
+            ("./schemas/roadmap-v2.schema.json", "1"),
+            ("./schemas/roadmap-v3.schema.json", "3"),
+            (None, None),
+        ]:
+            attacked = copy.deepcopy(source)
+            attacked["$schema"] = schema
+            attacked["schema_version"] = version
+            attacks.append(attacked)
+        attacks.extend([None, [], "1", 1, True])
+        for attack in attacks:
+            with self.subTest(attack=repr(attack)[:80]):
+                with self.assertRaises(RoadmapMigrationError):
+                    migrate_roadmap(attack)
+
+    def test_migration_cli_emits_exact_bytes_and_check_fails_without_stdout(self) -> None:
+        script = ROOT / "scripts/governance/migrate_roadmap.py"
+        result = subprocess.run(
+            ["python3", str(script), str(V1_FIXTURE_PATH)],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, V2_MIGRATION_FIXTURE_PATH.read_bytes())
+        checked = subprocess.run(
+            [
+                "python3", str(script), "--check", str(V1_FIXTURE_PATH),
+                str(V2_MIGRATION_FIXTURE_PATH),
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertEqual(checked.stdout, b"")
+        with tempfile.TemporaryDirectory() as temp:
+            wrong = Path(temp) / "wrong.json"
+            wrong.write_text("{}\n", encoding="utf-8")
+            rejected = subprocess.run(
+                ["python3", str(script), "--check", str(V1_FIXTURE_PATH), str(wrong)],
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(rejected.returncode, 1)
+        self.assertEqual(rejected.stdout, b"")
+        self.assertIn(b"roadmap migration blocked", rejected.stderr)
 
     def test_d2_checkpoint_transition_is_reachable(self) -> None:
         transitioned = copy.deepcopy(self.state)

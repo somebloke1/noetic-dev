@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import copy
+import base64
+import hashlib
 import json
+import stat
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -27,6 +31,7 @@ from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_exc
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+TEST_DEPLOY_KEY_FINGERPRINT = "SHA256:" + "A" * 43
 
 
 class ExplodingList(list):
@@ -134,6 +139,26 @@ def protected_attestation_receipt() -> dict:
             "payload_sha256": "8" * 64,
             "signature": "opaque-verifier-proof",
         },
+    }
+
+
+def publisher_capability() -> dict:
+    return {
+        "status": "established",
+        "repository": "somebloke1/noetic-dev",
+        "target_ref": "refs/heads/main",
+        "principal_type": "DeployKey",
+        "principal_id": 12345,
+        "write_access": True,
+        "ssh_public_key_fingerprint": TEST_DEPLOY_KEY_FINGERPRINT,
+        "bypass_mode": "always",
+        "protection_source": "ruleset",
+        "live_protection_verified": True,
+        "pull_request_bypass": True,
+        "required_status_checks_bypass": True,
+        "force_push_bypass": False,
+        "captured_at": "2026-07-11T11:59:59.750000+00:00",
+        "protected_attestation_receipt": protected_attestation_receipt(),
     }
 
 
@@ -458,37 +483,36 @@ class TestDeliveryGatePositive(unittest.TestCase):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
         external["promotion_authorization"] = promotion_authorization(manifest)
-        external["main_publisher_capability"] = {
-            "status": "established",
-            "repository": "somebloke1/noetic-dev",
-            "target_ref": "refs/heads/main",
-            "principal_type": "Integration",
-            "principal_id": 12345,
-            "bypass_mode": "always",
-            "protection_source": "ruleset",
-            "live_protection_verified": True,
-            "pull_request_bypass": True,
-            "required_status_checks_bypass": True,
-            "force_push_bypass": False,
-            "captured_at": "2026-07-11T11:59:59.750000+00:00",
-            "protected_attestation_receipt": protected_attestation_receipt(),
-        }
+        external["main_publisher_capability"] = publisher_capability()
         with mock.patch(
             "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
-        ):
+        ) as verifier:
             _passed, errors, _gate_type = check_delivery(
                 manifest, external_evidence=external, gate_mode="main-promotion"
             )
         self.assertFalse(
             any("protected main publisher capability" in error for error in errors), errors
         )
+        capability_claims = [
+            call.args[1]
+            for call in verifier.call_args_list
+            if "capability_sha256" in call.args[1]
+        ]
+        self.assertEqual(
+            capability_claims[0]["ssh_public_key_fingerprint"],
+            TEST_DEPLOY_KEY_FINGERPRINT,
+        )
+        self.assertTrue(capability_claims[0]["write_access"])
 
         attacks = [
             ("status", "missing"),
             ("repository", "attacker/repo"),
             ("target_ref", "refs/heads/dev"),
-            ("principal_type", "User"),
+            ("principal_type", "Integration"),
             ("principal_id", True),
+            ("principal_id", 0),
+            ("write_access", False),
+            ("ssh_public_key_fingerprint", "SHA256:invalid"),
             ("bypass_mode", "pull_request"),
             ("live_protection_verified", False),
             ("pull_request_bypass", False),
@@ -1601,11 +1625,16 @@ class TestPublicationBindingFailures(unittest.TestCase):
             }
         )
         external = advisory_external()
+        external["main_publisher_capability"] = publisher_capability()
         external["promotion_execution"] = {
             "registry_id": "main.promote_exact",
             "publisher": "/usr/local/libexec/noetic-dev/promote-main",
             "authorized_dev_sha": publication_sha,
             "expected_old_main_sha": base_sha,
+            "effective_uid": 0,
+            "principal_type": "DeployKey",
+            "principal_id": 12345,
+            "ssh_public_key_fingerprint": TEST_DEPLOY_KEY_FINGERPRINT,
             "git_argv": [
                 "/usr/bin/git",
                 "push",
@@ -1768,6 +1797,36 @@ class TestPublicationBindingFailures(unittest.TestCase):
                     "\n".join(errors),
                 )
 
+        for field, value in [
+            ("effective_uid", 1000),
+            ("effective_uid", False),
+            ("principal_type", "Integration"),
+            ("principal_id", 54321),
+            ("principal_id", 0),
+            ("principal_id", True),
+            ("ssh_public_key_fingerprint", "SHA256:" + "B" * 43),
+        ]:
+            with self.subTest(execution_identity=field, value=value):
+                attacked_manifest, attacked_external = self._publication_candidate()
+                attacked_external["promotion_execution"][field] = value
+                command = next(
+                    item
+                    for item in attacked_manifest["commands"]
+                    if item.get("registry_id") == "main.promote_exact"
+                )
+                command["stdout_sha256"] = sha256_text(
+                    canonical_json(attacked_external["promotion_execution"]) + "\n"
+                )
+                _passed, errors, _gate_type = check_delivery(
+                    attacked_manifest,
+                    external_evidence=attacked_external,
+                    phase="publication",
+                )
+                self.assertIn(
+                    "authenticated exact promotion execution missing",
+                    "\n".join(errors),
+                )
+
         attacked_manifest, attacked_external = self._publication_candidate()
         command = next(
             item
@@ -1826,6 +1885,26 @@ class TestPublicationBindingFailures(unittest.TestCase):
         changed_digest = verifier.call_args.args[1]["promotion_execution_sha256"]
         self.assertNotEqual(original_digest, changed_digest)
 
+    def test_protected_receipt_claim_changes_on_deploy_key_substitution(self):
+        manifest, external = self._publication_candidate()
+        external["mode"] = "protected_integration_receipt"
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        bind_external_evidence(manifest, external)
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            verify_authoritative_provenance(manifest, external)
+        original_digest = verifier.call_args.args[1]["main_publisher_capability_sha256"]
+        external["main_publisher_capability"]["ssh_public_key_fingerprint"] = (
+            "SHA256:" + "B" * 43
+        )
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            verify_authoritative_provenance(manifest, external)
+        changed_digest = verifier.call_args.args[1]["main_publisher_capability_sha256"]
+        self.assertNotEqual(original_digest, changed_digest)
+
 
     def test_executes_only_exact_remote_compare_and_swap(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -1833,11 +1912,19 @@ class TestPublicationBindingFailures(unittest.TestCase):
         manifest["pull_request"]["head_ref"] = "dev"
         candidate = manifest["repo"]["candidate_sha"]
         old_main = manifest["repo"]["base_sha"]
-        external = {"promotion_authorization": promotion_authorization(manifest)}
+        external = {
+            "promotion_authorization": promotion_authorization(manifest),
+            "main_publisher_capability": publisher_capability(),
+        }
         completed = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
         with (
             mock.patch(
                 "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+            ),
+            mock.patch("promote_main.os.geteuid", return_value=0),
+            mock.patch(
+                "promote_main._publisher_key_fingerprint",
+                return_value=TEST_DEPLOY_KEY_FINGERPRINT,
             ),
             mock.patch(
                 "promote_main._require_git",
@@ -1870,15 +1957,26 @@ class TestPublicationBindingFailures(unittest.TestCase):
             f"{candidate}:refs/heads/main",
         ]
         self.assertEqual(record["git_argv"], expected)
+        self.assertEqual(record["effective_uid"], 0)
+        self.assertEqual(record["principal_id"], 12345)
+        self.assertEqual(record["ssh_public_key_fingerprint"], TEST_DEPLOY_KEY_FINGERPRINT)
         self.assertEqual(git_run.call_args.args[1:], tuple(expected[1:]))
 
     def test_rejects_remote_main_changed_after_authorization(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         candidate = manifest["repo"]["candidate_sha"]
-        external = {"promotion_authorization": {}}
+        external = {
+            "promotion_authorization": {},
+            "main_publisher_capability": publisher_capability(),
+        }
         with (
             mock.patch(
                 "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+            ),
+            mock.patch("promote_main.os.geteuid", return_value=0),
+            mock.patch(
+                "promote_main._publisher_key_fingerprint",
+                return_value=TEST_DEPLOY_KEY_FINGERPRINT,
             ),
             mock.patch(
                 "promote_main._require_git",
@@ -1905,10 +2003,16 @@ class TestPublicationBindingFailures(unittest.TestCase):
 
     def test_rejects_hidden_index_flags_and_unsafe_local_git_config(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = {"promotion_authorization": {}}
+        external = {
+            "promotion_authorization": {},
+            "main_publisher_capability": publisher_capability(),
+        }
         candidate = manifest["repo"]["candidate_sha"]
         with mock.patch(
             "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+        ), mock.patch("promote_main.os.geteuid", return_value=0), mock.patch(
+            "promote_main._publisher_key_fingerprint",
+            return_value=TEST_DEPLOY_KEY_FINGERPRINT,
         ):
             with mock.patch(
                 "promote_main._require_git", return_value="core.sshcommand\0"
@@ -1924,11 +2028,14 @@ class TestPublicationBindingFailures(unittest.TestCase):
 
     def test_publisher_refuses_incomplete_main_promotion_gate(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        external = {"promotion_authorization": {}}
+        external = {
+            "promotion_authorization": {},
+            "main_publisher_capability": publisher_capability(),
+        }
         with mock.patch(
             "promote_main.check_delivery",
             return_value=(False, ["required review missing"], "main-promotion"),
-        ) as gate:
+        ) as gate, mock.patch("promote_main.os.geteuid", return_value=0):
             with self.assertRaisesRegex(RuntimeError, "readiness gate failed"):
                 promote_main.promote(
                     manifest,
@@ -1953,7 +2060,17 @@ class TestPublicationBindingFailures(unittest.TestCase):
 
     def test_git_process_uses_fixed_binary_and_isolated_configuration(self):
         completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")
-        with mock.patch("promote_main.subprocess.run", return_value=completed) as run:
+        hostile = {
+            "SSH_AUTH_SOCK": "/tmp/attacker-agent",
+            "GIT_SSH": "/tmp/attacker-ssh",
+            "GIT_SSH_COMMAND": "/tmp/attacker-command",
+            "GIT_CONFIG_GLOBAL": "/tmp/attacker-config",
+            "HOME": "/tmp/attacker-home",
+            "LD_PRELOAD": "/tmp/attacker.so",
+        }
+        with mock.patch.dict(promote_main.os.environ, hostile, clear=True), mock.patch(
+            "promote_main.subprocess.run", return_value=completed
+        ) as run:
             promote_main._git(REPO_ROOT, "status", "--porcelain")
         self.assertEqual(
             run.call_args.args[0], ["/usr/bin/git", "status", "--porcelain"]
@@ -1962,7 +2079,109 @@ class TestPublicationBindingFailures(unittest.TestCase):
         self.assertEqual(env["GIT_CONFIG_GLOBAL"], "/dev/null")
         self.assertEqual(env["GIT_CONFIG_NOSYSTEM"], "1")
         self.assertEqual(env["GIT_NO_REPLACE_OBJECTS"], "1")
+        self.assertEqual(env["HOME"], "/root")
+        self.assertEqual(env["GIT_SSH_VARIANT"], "ssh")
         self.assertIn("-F /dev/null", env["GIT_SSH_COMMAND"])
+        self.assertIn("-oIdentityAgent=none", env["GIT_SSH_COMMAND"])
+        self.assertIn("-oIdentitiesOnly=yes", env["GIT_SSH_COMMAND"])
+        self.assertIn(
+            "-oIdentityFile=/etc/noetic-dev/main-publisher/deploy-key",
+            env["GIT_SSH_COMMAND"],
+        )
+        self.assertIn("-oCertificateFile=none", env["GIT_SSH_COMMAND"])
+        for name in hostile:
+            if name not in {"GIT_SSH_COMMAND", "GIT_CONFIG_GLOBAL", "HOME"}:
+                self.assertNotIn(name, env)
+
+    def test_publisher_key_fingerprint_is_derived_from_fixed_private_key(self):
+        key_blob = b"canonical-test-public-key-blob"
+        encoded = base64.b64encode(key_blob).decode("ascii")
+        completed = subprocess.CompletedProcess(
+            [], 0, stdout=f"ssh-ed25519 {encoded}\n", stderr=""
+        )
+        with mock.patch(
+            "promote_main._trusted_root_private_key", return_value=True
+        ), mock.patch("promote_main.subprocess.run", return_value=completed) as run:
+            fingerprint = promote_main._publisher_key_fingerprint()
+        expected = base64.b64encode(hashlib.sha256(key_blob).digest()).decode("ascii").rstrip("=")
+        self.assertEqual(fingerprint, f"SHA256:{expected}")
+        self.assertEqual(
+            run.call_args.args[0],
+            [
+                "/usr/bin/ssh-keygen", "-y", "-P", "", "-f",
+                "/etc/noetic-dev/main-publisher/deploy-key",
+            ],
+        )
+        self.assertEqual(run.call_args.kwargs["env"], {"PATH": "/usr/bin:/bin", "HOME": "/root"})
+        self.assertNotIn("SSH_AUTH_SOCK", run.call_args.kwargs["env"])
+
+        failures = [
+            subprocess.CompletedProcess([], 1, stdout="", stderr="invalid"),
+            subprocess.CompletedProcess([], 0, stdout="ssh-ed25519 not-base64!\n", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout="missing-blob\n", stderr=""),
+        ]
+        for failed in failures:
+            with self.subTest(stdout=failed.stdout, code=failed.returncode), mock.patch(
+                "promote_main._trusted_root_private_key", return_value=True
+            ), mock.patch("promote_main.subprocess.run", return_value=failed):
+                with self.assertRaisesRegex(RuntimeError, "DeployKey"):
+                    promote_main._publisher_key_fingerprint()
+
+    def test_private_key_path_requires_root_owned_0400_regular_file_and_safe_parents(self):
+        leaf = promote_main.PUBLISHER_KEY
+
+        def metadata(mode: int, uid: int = 0, size: int = 100):
+            return types.SimpleNamespace(st_mode=mode, st_uid=uid, st_size=size)
+
+        safe_file = metadata(stat.S_IFREG | 0o400)
+        safe_dir = metadata(stat.S_IFDIR | 0o755, size=0)
+
+        def check(leaf_metadata, unsafe_parent=None):
+            def fake_lstat(path):
+                if path == leaf:
+                    return leaf_metadata
+                if unsafe_parent is not None and path == leaf.parent:
+                    return unsafe_parent
+                return safe_dir
+
+            with mock.patch("promote_main.os.lstat", side_effect=fake_lstat):
+                return promote_main._trusted_root_private_key(leaf)
+
+        self.assertTrue(check(safe_file))
+        attacks = [
+            (metadata(stat.S_IFLNK | 0o400), None),
+            (metadata(stat.S_IFREG | 0o600), None),
+            (metadata(stat.S_IFREG | 0o400, uid=1000), None),
+            (metadata(stat.S_IFREG | 0o400, size=0), None),
+            (metadata(stat.S_IFREG | 0o400, size=16_385), None),
+            (safe_file, metadata(stat.S_IFDIR | 0o775, size=0)),
+            (safe_file, metadata(stat.S_IFLNK | 0o755, size=0)),
+            (safe_file, metadata(stat.S_IFDIR | 0o755, uid=1000, size=0)),
+        ]
+        for leaf_metadata, parent_metadata in attacks:
+            with self.subTest(leaf=leaf_metadata, parent=parent_metadata):
+                self.assertFalse(check(leaf_metadata, parent_metadata))
+        with mock.patch("promote_main.os.lstat", side_effect=OSError("missing")):
+            self.assertFalse(promote_main._trusted_root_private_key(leaf))
+
+    def test_publisher_rejects_non_root_or_mismatched_actual_deploy_key_before_git(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = {"main_publisher_capability": publisher_capability()}
+        with mock.patch("promote_main.os.geteuid", return_value=1000), mock.patch(
+            "promote_main.check_delivery"
+        ) as gate:
+            with self.assertRaisesRegex(RuntimeError, "must run as root"):
+                promote_main.promote(manifest, external, REPO_ROOT)
+        gate.assert_not_called()
+
+        with mock.patch("promote_main.os.geteuid", return_value=0), mock.patch(
+            "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+        ), mock.patch(
+            "promote_main._publisher_key_fingerprint", return_value="SHA256:" + "B" * 43
+        ), mock.patch("promote_main._git") as git_run:
+            with self.assertRaisesRegex(RuntimeError, "does not match protected capability"):
+                promote_main.promote(manifest, external, REPO_ROOT)
+        git_run.assert_not_called()
 
     def test_post_main_evidence_rejects_wrong_run_main_and_chronology(self):
         manifest, external = self._publication_candidate()
