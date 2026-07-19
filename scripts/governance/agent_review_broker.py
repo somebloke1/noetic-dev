@@ -39,6 +39,7 @@ LITELLM_BASE_URL = "http://172.22.10.160:3333"
 GENUS_ROUTER_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
 SHA_RE = re.compile(r"^[a-f0-9]{40}$")
 MAX_REQUEST_BYTES = 16_384
+MAX_FILE_INVENTORY_BYTES = 200_000
 MAX_PATCH_BYTES = 512_000
 MAX_MODEL_OUTPUT_BYTES = 65_536
 MAX_GITHUB_OUTPUT_BYTES = 1_048_576
@@ -353,7 +354,7 @@ def fetch_exact_diff(payload: dict[str, Any]) -> dict[str, Any]:
             raise ReviewError("immutable Git returned an invalid merge base")
         returncode, names, _ = run_bounded(
             ["git", "-C", str(repository), "diff", "--name-only", "-z", merge_base, payload["head_sha"], "--"],
-            max_stdout=MAX_PATCH_BYTES,
+            max_stdout=MAX_FILE_INVENTORY_BYTES,
             max_stderr=4_096,
             timeout=60,
             env=clean_env,

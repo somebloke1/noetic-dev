@@ -17,7 +17,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, MAX_PATCH_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, load_litellm_token, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_token, validate_litellm_transport, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, MAX_FILE_INVENTORY_BYTES, MAX_PATCH_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, fetch_exact_diff, gh_json, load_litellm_token, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_token, validate_litellm_transport, validate_pr, validate_request, validate_runtime
 from genus_router_mcp import GenusRouterError, GenusRouterToolError
 from route_evidence import validate_route_evidence
 
@@ -201,6 +201,26 @@ class TestAgentReview(unittest.TestCase):
                 timeout=10,
                 env=os.environ.copy(),
             )
+
+    @mock.patch("agent_review_broker.run_bounded")
+    def test_exact_diff_keeps_inventory_and_patch_ceiling_distinct(self, bounded: mock.Mock):
+        base_sha = "a" * 40
+        head_sha = "b" * 40
+        bounded.side_effect = [
+            (0, b"", b""),
+            (0, b"", b""),
+            (0, b"", b""),
+            (0, f"{base_sha}\n".encode(), b""),
+            (0, b"changed.py\0", b""),
+            (0, b"diff", b""),
+        ]
+
+        material = fetch_exact_diff({"base_sha": base_sha, "head_sha": head_sha})
+
+        self.assertEqual(material["files"], ["changed.py"])
+        self.assertEqual(bounded.call_args_list[4].kwargs["max_stdout"], MAX_FILE_INVENTORY_BYTES)
+        self.assertEqual(bounded.call_args_list[5].kwargs["max_stdout"], MAX_PATCH_BYTES)
+        self.assertEqual(MAX_FILE_INVENTORY_BYTES, 200_000)
 
     @mock.patch("agent_review_broker.subprocess.Popen", side_effect=FileNotFoundError("missing"))
     def test_subprocess_spawn_failure_is_controlled(self, _popen: mock.Mock):
