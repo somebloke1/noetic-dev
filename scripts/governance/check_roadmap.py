@@ -197,12 +197,57 @@ def _validate_d2_protected_review(
         errors.append("D2 freeze review PR API request URL is invalid")
     if (
         pr_response.get("number") != review["pull_request"]
+        or pr_response.get("state") != "open"
         or pr_response.get("head_ref") != "issue-32-canonical-roadmap"
         or pr_response.get("base_ref") != "dev"
         or pr_response.get("head_sha") != review["reviewed_candidate_sha"]
         or pr_response.get("linked_issues") != [32]
     ):
         errors.append("D2 freeze review is not derived from the authenticated PR response")
+
+    implementation = review["implementation_generation"]
+    qa_entry = review["qa_records"][0]
+    qa_record = qa_entry["record"]
+    if (
+        implementation.get("candidate_sha") != review["reviewed_candidate_sha"]
+        or qa_record.get("qa_for_generation_id")
+        != implementation.get("generation_id")
+        or qa_record.get("reviewed_candidate_sha")
+        != review["reviewed_candidate_sha"]
+        or qa_record.get("verdict") != "pass"
+        or qa_record.get("independent") is not True
+        or type(qa_record.get("protected_run_id")) is not int
+        or qa_record.get("protected_run_id", 0) <= 0
+        or qa_record.get("protected_run_url")
+        != (
+            "https://github.com/somebloke1/noetic-dev/actions/runs/"
+            f"{qa_record.get('protected_run_id')}"
+        )
+        or qa_entry.get("record_sha256") != canonical_json_sha256(qa_record)
+    ):
+        errors.append("D2 completion does not bind exactly one passing QA record to the generation")
+    if (
+        qa_record.get("agent_id") == implementation.get("agent_id")
+        or qa_record.get("principal_id") == implementation.get("principal_id")
+    ):
+        errors.append("D2 completion QA identity is not independent of implementation")
+
+    integration_pr_envelope = review["integration_pr_api_response"]
+    integration_pr = _authenticated_github_response(
+        integration_pr_envelope, errors, "D2 integrated PR", dict
+    )
+    if (
+        integration_pr_envelope.get("request_url") != expected_pr_url
+        or integration_pr.get("number") != review["pull_request"]
+        or integration_pr.get("state") != "closed"
+        or integration_pr.get("merged") is not True
+        or integration_pr.get("head_ref") != "issue-32-canonical-roadmap"
+        or integration_pr.get("head_sha") != review["reviewed_candidate_sha"]
+        or integration_pr.get("base_ref") != "dev"
+        or integration_pr.get("merge_commit_sha") != review["dev_integration_sha"]
+        or integration_pr.get("linked_issues") != [32]
+    ):
+        errors.append("D2 integration SHA is not derived from the authenticated merged PR")
 
     dev_envelope = review["dev_branch_api_response"]
     dev_response = _authenticated_github_response(
@@ -270,6 +315,12 @@ def _validate_d2_protected_review(
 
     reviewed_at = _parse_instant(review.get("reviewed_at"))
     pr_fetched_at = _parse_instant(pr_envelope.get("fetched_at"))
+    implementation_completed_at = _parse_instant(implementation.get("completed_at"))
+    qa_completed_at = _parse_instant(qa_record.get("completed_at"))
+    merged_at = _parse_instant(integration_pr.get("merged_at"))
+    integration_pr_fetched_at = _parse_instant(
+        integration_pr_envelope.get("fetched_at")
+    )
     dev_fetched_at = _parse_instant(dev_envelope.get("fetched_at"))
     compare_fetched_at = _parse_instant(compare_envelope.get("fetched_at"))
     receipt_issued_at = _parse_instant(
@@ -277,8 +328,28 @@ def _validate_d2_protected_review(
     )
     if reviewed_at is None or pr_fetched_at is None or pr_fetched_at >= reviewed_at:
         errors.append("D2 freeze review must strictly follow authenticated PR capture")
-    if reviewed_at is None or dev_fetched_at is None or dev_fetched_at <= reviewed_at:
-        errors.append("D2 protected dev capture must strictly follow freeze review")
+    if (
+        pr_fetched_at is None
+        or implementation_completed_at is None
+        or qa_completed_at is None
+        or reviewed_at is None
+        or not pr_fetched_at < implementation_completed_at < qa_completed_at
+        or qa_completed_at != reviewed_at
+    ):
+        errors.append("D2 implementation and independent QA chronology is invalid")
+    if (
+        reviewed_at is None
+        or merged_at is None
+        or integration_pr_fetched_at is None
+        or not reviewed_at < merged_at <= integration_pr_fetched_at
+    ):
+        errors.append("D2 authenticated merge chronology is invalid")
+    if (
+        integration_pr_fetched_at is None
+        or dev_fetched_at is None
+        or dev_fetched_at <= integration_pr_fetched_at
+    ):
+        errors.append("D2 protected dev capture must strictly follow authenticated merge")
     if (
         dev_fetched_at is None
         or compare_fetched_at is None
@@ -298,12 +369,21 @@ def _validate_d2_protected_review(
 
     review_claims = {key: value for key, value in review.items() if key != "protected_attestation_receipt"}
     expected_claims = {
-        "purpose": "d2-freeze-completion-v2",
+        "purpose": "d2-freeze-completion-v3",
         "repository": "somebloke1/noetic-dev",
         "audit_sha256": review["audit_sha256"],
         "reviewed_candidate_sha": review["reviewed_candidate_sha"],
         "pull_request": review["pull_request"],
         "pr_api_response_sha256": pr_envelope["response_sha256"],
+        "implementation_generation_id": implementation["generation_id"],
+        "implementation_agent_id": implementation["agent_id"],
+        "qa_agent_id": qa_record["agent_id"],
+        "qa_principal_id": qa_record["principal_id"],
+        "qa_protected_run_id": qa_record["protected_run_id"],
+        "qa_record_sha256": qa_entry["record_sha256"],
+        "integration_pr_api_response_sha256": integration_pr_envelope[
+            "response_sha256"
+        ],
         "dev_integration_sha": review["dev_integration_sha"],
         "contained_dev_head_sha": dev_head_sha,
         "dev_branch_api_response_sha256": dev_envelope["response_sha256"],

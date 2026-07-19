@@ -1,9 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "D2 Protected Freeze Review Evidence v2",
+  "title": "D2 Protected Freeze Review Evidence v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "audit_sha256", "reviewed_candidate_sha", "pull_request", "pr_api_response", "dev_integration_sha", "dev_branch_api_response", "dev_compare_api_response", "issue", "head", "base", "evidence_url", "reviewed_at", "protected_attestation_receipt"],
+  "required": ["schema_version", "audit_sha256", "reviewed_candidate_sha", "pull_request", "pr_api_response", "implementation_generation", "qa_records", "integration_pr_api_response", "dev_integration_sha", "dev_branch_api_response", "dev_compare_api_response", "issue", "head", "base", "evidence_url", "reviewed_at", "protected_attestation_receipt"],
   "definitions": {
     "authentication": {
       "type": "object",
@@ -42,7 +42,7 @@
     }
   },
   "properties": {
-    "schema_version": {"type": "string", "const": "2"},
+    "schema_version": {"type": "string", "const": "3"},
     "audit_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "reviewed_candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "pull_request": {"type": "integer", "minimum": 1},
@@ -67,6 +67,82 @@
             "head_ref": {"type": "string", "const": "issue-32-canonical-roadmap"},
             "head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
             "base_ref": {"type": "string", "const": "dev"},
+            "linked_issues": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "integer", "const": 32}}
+          }
+        }
+      }
+    },
+    "implementation_generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation_id", "agent_id", "principal_id", "provider", "candidate_sha", "completed_at"],
+      "properties": {
+        "generation_id": {"type": "string", "minLength": 1},
+        "agent_id": {"type": "string", "minLength": 1},
+        "principal_id": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "const": "protected-runner"},
+        "candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "completed_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "qa_records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["record_sha256", "record"],
+        "properties": {
+          "record_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "record": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["schema_version", "role", "objective", "verdict", "independent", "agent_id", "principal_id", "provider", "qa_for_generation_id", "reviewed_candidate_sha", "protected_run_id", "protected_run_url", "falsification_transcript_sha256", "completed_at"],
+            "properties": {
+              "schema_version": {"type": "string", "const": "1"},
+              "role": {"type": "string", "const": "qa"},
+              "objective": {"type": "string", "const": "adversarial-falsification"},
+              "verdict": {"type": "string", "const": "pass"},
+              "independent": {"type": "boolean", "const": true},
+              "agent_id": {"type": "string", "minLength": 1},
+              "principal_id": {"type": "string", "minLength": 1},
+              "provider": {"type": "string", "const": "protected-runner"},
+              "qa_for_generation_id": {"type": "string", "minLength": 1},
+              "reviewed_candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+              "protected_run_id": {"type": "integer"},
+              "protected_run_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/actions/runs/[1-9][0-9]*$"},
+              "falsification_transcript_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "completed_at": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "integration_pr_api_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+      "properties": {
+        "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/pulls/[1-9][0-9]*$"},
+        "status": {"type": "integer", "const": 200},
+        "request_id": {"type": "string", "minLength": 1},
+        "fetched_at": {"type": "string", "minLength": 1},
+        "authentication": {"$ref": "#/definitions/authentication"},
+        "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["number", "state", "merged", "merged_at", "head_ref", "head_sha", "base_ref", "merge_commit_sha", "linked_issues"],
+          "properties": {
+            "number": {"type": "integer"},
+            "state": {"type": "string", "const": "closed"},
+            "merged": {"type": "boolean", "const": true},
+            "merged_at": {"type": "string", "minLength": 1},
+            "head_ref": {"type": "string", "const": "issue-32-canonical-roadmap"},
+            "head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+            "base_ref": {"type": "string", "const": "dev"},
+            "merge_commit_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
             "linked_issues": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "integer", "const": 32}}
           }
         }

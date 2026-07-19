@@ -218,8 +218,24 @@ class TestRoadmap(unittest.TestCase):
                 "response": response,
             }
 
+        qa_record = {
+            "schema_version": "1",
+            "role": "qa",
+            "objective": "adversarial-falsification",
+            "verdict": "pass",
+            "independent": True,
+            "agent_id": "qa-protected-terra",
+            "principal_id": "protected-principal-qa",
+            "provider": "protected-runner",
+            "qa_for_generation_id": "generation-d2-final",
+            "reviewed_candidate_sha": candidate_sha,
+            "protected_run_id": 29691499052,
+            "protected_run_url": "https://github.com/somebloke1/noetic-dev/actions/runs/29691499052",
+            "falsification_transcript_sha256": "b" * 64,
+            "completed_at": "2026-07-19T00:01:00+00:00",
+        }
         review = {
-            "schema_version": "2",
+            "schema_version": "3",
             "audit_sha256": freeze["audit_sha256"],
             "reviewed_candidate_sha": candidate_sha,
             "pull_request": 67,
@@ -232,6 +248,35 @@ class TestRoadmap(unittest.TestCase):
                     "head_ref": "issue-32-canonical-roadmap",
                     "head_sha": candidate_sha,
                     "base_ref": "dev",
+                    "linked_issues": [32],
+                },
+            ),
+            "implementation_generation": {
+                "generation_id": "generation-d2-final",
+                "agent_id": "implementation-codex",
+                "principal_id": "protected-principal-implementation",
+                "provider": "protected-runner",
+                "candidate_sha": candidate_sha,
+                "completed_at": "2026-07-19T00:00:30+00:00",
+            },
+            "qa_records": [
+                {
+                    "record_sha256": canonical_json_sha256(qa_record),
+                    "record": qa_record,
+                }
+            ],
+            "integration_pr_api_response": envelope(
+                "https://api.github.com/repos/somebloke1/noetic-dev/pulls/67",
+                "2026-07-19T00:01:30+00:00",
+                {
+                    "number": 67,
+                    "state": "closed",
+                    "merged": True,
+                    "merged_at": "2026-07-19T00:01:15+00:00",
+                    "head_ref": "issue-32-canonical-roadmap",
+                    "head_sha": candidate_sha,
+                    "base_ref": "dev",
+                    "merge_commit_sha": integration_sha,
                     "linked_issues": [32],
                 },
             ),
@@ -264,7 +309,7 @@ class TestRoadmap(unittest.TestCase):
                 "provider": "protected-integration",
                 "issued_at": "2026-07-19T00:02:01+00:00",
                 "expires_at": "2026-07-19T00:07:01+00:00",
-                "subject": {"purpose": "d2-freeze-completion-v2"},
+                "subject": {"purpose": "d2-freeze-completion-v3"},
                 "claims": {},
                 "proof": {
                     "format": "protected-integration-receipt-v1",
@@ -307,6 +352,16 @@ class TestRoadmap(unittest.TestCase):
                     review_path.read_bytes()
                 ).hexdigest()
 
+            def validate_review(payload: dict) -> list[str]:
+                write_review(payload)
+                with mock.patch(
+                    "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                    return_value=True,
+                ):
+                    return _validate_d2_protected_review(
+                        root, completed_freeze, d2
+                    )
+
             write_review(review)
 
             with mock.patch(
@@ -318,7 +373,13 @@ class TestRoadmap(unittest.TestCase):
                 )
             claims = verifier.call_args.args[1]
             self.assertEqual(claims["contained_dev_head_sha"], integration_sha)
-            self.assertEqual(claims["purpose"], "d2-freeze-completion-v2")
+            self.assertEqual(claims["purpose"], "d2-freeze-completion-v3")
+            self.assertEqual(claims["qa_record_sha256"], canonical_json_sha256(qa_record))
+            self.assertEqual(claims["qa_protected_run_id"], 29691499052)
+            self.assertEqual(
+                claims["integration_pr_api_response_sha256"],
+                review["integration_pr_api_response"]["response_sha256"],
+            )
             self.assertEqual(
                 claims["dev_compare_api_response_sha256"],
                 review["dev_compare_api_response"]["response_sha256"],
@@ -343,6 +404,77 @@ class TestRoadmap(unittest.TestCase):
             ):
                 errors = _validate_d2_protected_review(root, completed_freeze, d2)
             self.assert_has_error(errors, "not derived from the authenticated PR response")
+
+            qa_attacks = []
+            missing_qa = copy.deepcopy(review)
+            missing_qa["qa_records"] = []
+            qa_attacks.append(("missing-qa", missing_qa))
+            duplicate_qa = copy.deepcopy(review)
+            duplicate_qa["qa_records"].append(copy.deepcopy(duplicate_qa["qa_records"][0]))
+            qa_attacks.append(("duplicate-qa", duplicate_qa))
+            self_qa = copy.deepcopy(review)
+            self_qa_record = self_qa["qa_records"][0]["record"]
+            self_qa_record["agent_id"] = self_qa["implementation_generation"]["agent_id"]
+            self_qa_record["principal_id"] = self_qa["implementation_generation"]["principal_id"]
+            self_qa["qa_records"][0]["record_sha256"] = canonical_json_sha256(
+                self_qa_record
+            )
+            qa_attacks.append(("self-qa", self_qa))
+            stale_candidate = copy.deepcopy(review)
+            stale_record = stale_candidate["qa_records"][0]["record"]
+            stale_record["reviewed_candidate_sha"] = "f" * 40
+            stale_candidate["qa_records"][0]["record_sha256"] = canonical_json_sha256(
+                stale_record
+            )
+            qa_attacks.append(("stale-candidate", stale_candidate))
+            digest_substitution = copy.deepcopy(review)
+            digest_substitution["qa_records"][0]["record"][
+                "falsification_transcript_sha256"
+            ] = "c" * 64
+            qa_attacks.append(("qa-digest-substitution", digest_substitution))
+            confused_run = copy.deepcopy(review)
+            confused_record = confused_run["qa_records"][0]["record"]
+            confused_record["protected_run_id"] = True
+            confused_run["qa_records"][0]["record_sha256"] = canonical_json_sha256(
+                confused_record
+            )
+            qa_attacks.append(("qa-run-type-confusion", confused_run))
+            for attack, attacked_review in qa_attacks:
+                with self.subTest(qa_attack=attack):
+                    self.assertTrue(validate_review(attacked_review), attack)
+
+            integration_attacks = []
+            unrelated = copy.deepcopy(review)
+            unrelated_response = unrelated["integration_pr_api_response"]["response"]
+            unrelated_response["merge_commit_sha"] = "f" * 40
+            unrelated["integration_pr_api_response"]["response_sha256"] = canonical_json_sha256(
+                unrelated_response
+            )
+            integration_attacks.append(("unrelated-integration", unrelated))
+            wrong_candidate = copy.deepcopy(review)
+            wrong_candidate_response = wrong_candidate["integration_pr_api_response"]["response"]
+            wrong_candidate_response["head_sha"] = "f" * 40
+            wrong_candidate["integration_pr_api_response"]["response_sha256"] = canonical_json_sha256(
+                wrong_candidate_response
+            )
+            integration_attacks.append(("wrong-integrated-candidate", wrong_candidate))
+            false_merge = copy.deepcopy(review)
+            false_merge_response = false_merge["integration_pr_api_response"]["response"]
+            false_merge_response["merged"] = False
+            false_merge["integration_pr_api_response"]["response_sha256"] = canonical_json_sha256(
+                false_merge_response
+            )
+            integration_attacks.append(("false-merged-state", false_merge))
+            stale_merge = copy.deepcopy(review)
+            stale_merge_response = stale_merge["integration_pr_api_response"]["response"]
+            stale_merge_response["merged_at"] = "2026-07-19T00:00:45+00:00"
+            stale_merge["integration_pr_api_response"]["response_sha256"] = canonical_json_sha256(
+                stale_merge_response
+            )
+            integration_attacks.append(("merge-before-qa", stale_merge))
+            for attack, attacked_review in integration_attacks:
+                with self.subTest(integration_attack=attack):
+                    self.assertTrue(validate_review(attacked_review), attack)
 
             for successor_stage in range(3, 10):
                 successor_review = copy.deepcopy(review)
