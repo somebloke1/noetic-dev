@@ -67,12 +67,16 @@ def pr_api_response(
     }
 
 
-def github_api_response(request_url: str, response) -> dict:
+def github_api_response(
+    request_url: str,
+    response,
+    fetched_at: str = "2026-07-11T11:59:59.500000+00:00",
+) -> dict:
     return {
         "request_url": request_url,
         "status": 200,
         "request_id": "request-1",
-        "fetched_at": "2026-07-11T11:59:59.500000+00:00",
+        "fetched_at": fetched_at,
         "authentication": {
             "verified": True,
             "source": "protected-integration",
@@ -487,6 +491,10 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertEqual(
             expected_claims["dev_provenance_sha256"],
             canonical_json_sha256(external["promotion_authorization"]["dev_provenance"]),
+        )
+        self.assertEqual(
+            expected_claims["post_merge_sha256"],
+            canonical_json_sha256(external.get("post_merge", {})),
         )
 
         external["promotion_authorization"]["dev_sha"] = "0" * 40
@@ -1081,7 +1089,8 @@ class TestExternalEvidenceFailures(unittest.TestCase):
 class TestPublicationBindingFailures(unittest.TestCase):
     def _publication_candidate(self):
         manifest = load_fixture("valid_advisory_manifest.json")
-        publication_sha = "f" * 40
+        publication_sha = manifest["repo"]["candidate_sha"]
+        base_sha = manifest["repo"]["base_sha"]
         manifest["publication"]["merge_result_sha"] = publication_sha
         manifest["publication"]["publication_sha"] = publication_sha
         for command in manifest["commands"]:
@@ -1089,30 +1098,62 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 command["commit_sha"] = publication_sha
         external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
+        run_id = 456
         external["post_merge"] = {
-            "event": "push",
-            "ref": "refs/heads/main",
-            "sha": publication_sha,
-            "merge_result_sha": publication_sha,
-            "merge_method": "fast-forward",
-            "main_contains_sha": True,
+            "run_api_response": github_api_response(
+                f"https://api.github.com/repos/somebloke1/noetic-dev/actions/runs/{run_id}",
+                {
+                    "id": run_id,
+                    "repository": {"full_name": "somebloke1/noetic-dev"},
+                    "path": ".github/workflows/governance.yml",
+                    "event": "push",
+                    "head_branch": "main",
+                    "head_sha": publication_sha,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "html_url": f"https://github.com/somebloke1/noetic-dev/actions/runs/{run_id}",
+                    "updated_at": "2026-07-11T12:01:00+00:00",
+                },
+                "2026-07-11T12:01:01+00:00",
+            ),
+            "main_branch_api_response": github_api_response(
+                "https://api.github.com/repos/somebloke1/noetic-dev/branches/main",
+                {"name": "main", "protected": True, "commit": {"sha": publication_sha}},
+                "2026-07-11T12:01:02+00:00",
+            ),
+            "compare_api_response": github_api_response(
+                f"https://api.github.com/repos/somebloke1/noetic-dev/compare/{base_sha}...{publication_sha}",
+                {
+                    "status": "ahead",
+                    "ahead_by": 1,
+                    "behind_by": 0,
+                    "base_commit": {"sha": base_sha},
+                    "merge_base_commit": {"sha": base_sha},
+                    "head_commit": {"sha": publication_sha},
+                },
+                "2026-07-11T12:01:01.500000+00:00",
+            ),
         }
         return manifest, external
 
     def test_premerge_postmerge_claim_cannot_satisfy_publication(self):
         manifest, external = self._publication_candidate()
-        external["post_merge"]["event"] = "pull_request"
+        envelope = external["post_merge"]["run_api_response"]
+        envelope["response"]["event"] = "pull_request"
+        resign_response(envelope)
         passed, errors, gate_type = check_delivery(manifest, external_evidence=external, phase="publication")
         self.assertFalse(passed)
         self.assertEqual(gate_type, "publication")
-        self.assertIn("push to refs/heads/main", "\n".join(errors))
+        self.assertIn("post-main run is not bound", "\n".join(errors))
 
     def test_non_main_publication_sha_rejected(self):
         manifest, external = self._publication_candidate()
-        external["post_merge"]["ref"] = "refs/heads/feature"
+        envelope = external["post_merge"]["main_branch_api_response"]
+        envelope["response"]["name"] = "feature"
+        resign_response(envelope)
         passed, errors, _ = check_delivery(manifest, external_evidence=external, phase="publication")
         self.assertFalse(passed)
-        self.assertIn("refs/heads/main", "\n".join(errors))
+        self.assertIn("protected main does not equal", "\n".join(errors))
 
     def test_main_promotion_rejects_sha_changing_merge_methods_and_results(self):
         manifest, external = self._publication_candidate()
@@ -1120,37 +1161,107 @@ class TestPublicationBindingFailures(unittest.TestCase):
         manifest["publication"]["merge_result_sha"] = candidate_sha
         manifest["publication"]["publication_sha"] = candidate_sha
         external["post_merge"].update(
-            {
-                "sha": candidate_sha,
-                "merge_result_sha": candidate_sha,
-                "merge_method": "fast-forward",
-            }
+            copy.deepcopy(self._publication_candidate()[1]["post_merge"])
         )
         _passed, errors, _gate_type = check_delivery(
             manifest, external_evidence=external, phase="publication"
         )
         joined = "\n".join(errors)
         self.assertNotIn("preserve the exact owner-authorized dev SHA", joined)
-        self.assertNotIn("exact fast-forward", joined)
+        self.assertNotIn("not an authenticated fast-forward", joined)
 
-        for method in ["squash", "rebase", "merge", None]:
-            with self.subTest(method=method):
-                external["post_merge"]["merge_method"] = method
+        for field, value in [
+            ("status", "diverged"),
+            ("behind_by", 1),
+            ("merge_base_commit", {"sha": "0" * 40}),
+            ("head_commit", {"sha": "0" * 40}),
+        ]:
+            with self.subTest(compare_field=field):
+                attacked = copy.deepcopy(external)
+                envelope = attacked["post_merge"]["compare_api_response"]
+                envelope["response"][field] = value
+                resign_response(envelope)
                 _passed, errors, _gate_type = check_delivery(
-                    manifest, external_evidence=external, phase="publication"
+                    manifest, external_evidence=attacked, phase="publication"
                 )
-                self.assertIn("exact fast-forward", "\n".join(errors))
+                self.assertIn("not an authenticated fast-forward", "\n".join(errors))
 
-        external["post_merge"]["merge_method"] = "fast-forward"
         different_sha = "e" * 40
         manifest["publication"]["merge_result_sha"] = different_sha
         manifest["publication"]["publication_sha"] = different_sha
-        external["post_merge"]["sha"] = different_sha
-        external["post_merge"]["merge_result_sha"] = different_sha
         _passed, errors, _gate_type = check_delivery(
             manifest, external_evidence=external, phase="publication"
         )
         self.assertIn("preserve the exact owner-authorized dev SHA", "\n".join(errors))
+
+    def test_protected_receipt_claim_changes_on_post_main_substitution(self):
+        manifest, external = self._publication_candidate()
+        external["mode"] = "protected_integration_receipt"
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        bind_external_evidence(manifest, external)
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            verify_authoritative_provenance(manifest, external)
+        original_digest = verifier.call_args.args[1]["post_merge_sha256"]
+
+        envelope = external["post_merge"]["main_branch_api_response"]
+        envelope["response"]["commit"]["sha"] = "e" * 40
+        resign_response(envelope)
+        bind_external_evidence(manifest, external)
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            verify_authoritative_provenance(manifest, external)
+        substituted_digest = verifier.call_args.args[1]["post_merge_sha256"]
+        self.assertNotEqual(original_digest, substituted_digest)
+
+    def test_post_main_evidence_rejects_wrong_run_main_and_chronology(self):
+        manifest, external = self._publication_candidate()
+        for field, value in [
+            ("head_sha", "e" * 40),
+            ("conclusion", "failure"),
+            ("path", ".github/workflows/other.yml"),
+        ]:
+            with self.subTest(run_field=field):
+                attacked = copy.deepcopy(external)
+                envelope = attacked["post_merge"]["run_api_response"]
+                envelope["response"][field] = value
+                resign_response(envelope)
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=attacked, phase="publication"
+                )
+                self.assertIn("post-main run is not bound", "\n".join(errors))
+
+        for field, value in [
+            ("protected", False),
+            ("commit", {"sha": "e" * 40}),
+        ]:
+            with self.subTest(main_field=field):
+                attacked = copy.deepcopy(external)
+                envelope = attacked["post_merge"]["main_branch_api_response"]
+                envelope["response"][field] = value
+                resign_response(envelope)
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=attacked, phase="publication"
+                )
+                self.assertIn("protected main does not equal", "\n".join(errors))
+
+        attacked = copy.deepcopy(external)
+        attacked["post_merge"]["main_branch_api_response"]["fetched_at"] = (
+            attacked["post_merge"]["run_api_response"]["fetched_at"]
+        )
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=attacked, phase="publication"
+        )
+        self.assertIn("post-main evidence chronology is invalid", "\n".join(errors))
+
+        attacked = copy.deepcopy(external)
+        attacked["post_merge"]["merge_method"] = "fast-forward"
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=attacked, phase="publication"
+        )
+        self.assertIn("additional property not allowed: merge_method", "\n".join(errors))
 
 
 class TestQaBindingFailures(unittest.TestCase):

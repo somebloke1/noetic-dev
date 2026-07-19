@@ -278,7 +278,55 @@
         }
       }
     },
-    "post_merge": {"type": "object"}
+    "post_merge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_api_response", "main_branch_api_response", "compare_api_response"],
+      "properties": {
+        "run_api_response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+          "properties": {
+            "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/actions/runs/[1-9][0-9]*$"},
+            "status": {"type": "integer", "const": 200},
+            "request_id": {"type": "string", "minLength": 1},
+            "fetched_at": {"type": "string", "minLength": 1},
+            "authentication": {"$ref": "#/definitions/github_api_authentication"},
+            "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "response": {"type": "object"}
+          }
+        },
+        "main_branch_api_response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+          "properties": {
+            "request_url": {"type": "string", "const": "https://api.github.com/repos/somebloke1/noetic-dev/branches/main"},
+            "status": {"type": "integer", "const": 200},
+            "request_id": {"type": "string", "minLength": 1},
+            "fetched_at": {"type": "string", "minLength": 1},
+            "authentication": {"$ref": "#/definitions/github_api_authentication"},
+            "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "response": {"type": "object"}
+          }
+        },
+        "compare_api_response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+          "properties": {
+            "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/compare/[a-f0-9]{40}\\.\\.\\.[a-f0-9]{40}$"},
+            "status": {"type": "integer", "const": 200},
+            "request_id": {"type": "string", "minLength": 1},
+            "fetched_at": {"type": "string", "minLength": 1},
+            "authentication": {"$ref": "#/definitions/github_api_authentication"},
+            "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "response": {"type": "object"}
+          }
+        }
+      }
+    }
   },
   "additionalProperties": false
 }

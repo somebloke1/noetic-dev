@@ -126,6 +126,16 @@ Publication requires ALL of the following:
 8. The protected existing-work freeze artifact is complete; the manifest cannot override it.
 9. No branch-name publication: only full SHAs.
 
+Post-main evidence is not a method/SHA assertion. It consists of authenticated,
+canonical-digest-bound GitHub API envelopes for the successful Governance `push`
+run on `main`, the protected `main` branch readback, and the comparison from the
+pre-promotion main base to the candidate. Publication derives the exact SHA from
+those response bodies and accepts fast-forward only when the old main SHA is the
+merge base, the candidate is strictly ahead and not behind, and protected main
+equals that candidate after the successful run. The complete post-main evidence
+digest is a required protected-receipt claim, so pre-merge receipts cannot be
+replayed for publication.
+
 Freeze completion additionally requires protected external review evidence whose
 audit digest matches `existing-work-freeze.json`, whose verdict is `pass`, and
 whose reviewed candidate SHA and evidence URL are explicit. A locally asserted

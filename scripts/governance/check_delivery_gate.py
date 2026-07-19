@@ -48,7 +48,6 @@ WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
 REPO_FULL_NAME = "somebloke1/noetic-dev"
 REPOSITORY_OWNER = "somebloke1"
 QA_TOOL_ALLOWLIST: set[str] = set()
-ALLOWED_MERGE_METHODS = {"fast-forward"}
 LOCAL_PROTECTED_EXTERNAL_INTEGRATION_AVAILABLE = False
 PROTECTED_ATTESTATION_VERIFIER = Path(
     "/usr/local/libexec/noetic-dev/verify-delivery-attestation"
@@ -1093,6 +1092,9 @@ def verify_authoritative_provenance(
             "dev_provenance_sha256": canonical_json_sha256(
                 external_evidence.get("promotion_authorization", {}).get("dev_provenance", {})
             ),
+            "post_merge_sha256": canonical_json_sha256(
+                external_evidence.get("post_merge", {})
+            ),
             "freeze_review_sha256": freeze_review_digest,
             "freeze_review_pr_api_sha256": freeze_review_pr_api_digest,
         }
@@ -1277,14 +1279,100 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
     if not post_merge:
         errors.append("publication blocked: protected post-merge main-run evidence missing")
     else:
-        if post_merge.get("event") != "push" or post_merge.get("ref") != "refs/heads/main":
-            errors.append("publication blocked: post-merge evidence must be a push to refs/heads/main")
-        if post_merge.get("sha") != publication_sha or post_merge.get("merge_result_sha") != merge_sha:
-            errors.append("publication blocked: post-merge evidence SHA mismatch")
-        if post_merge.get("main_contains_sha") is not True:
-            errors.append("publication blocked: publication SHA is not verified on main")
-        if post_merge.get("merge_method") not in ALLOWED_MERGE_METHODS:
-            errors.append("publication blocked: main promotion must be an exact fast-forward")
+        run_envelope = post_merge.get("run_api_response")
+        run = _authenticated_github_response(
+            run_envelope, errors, "post-main validation run", dict
+        )
+        run_id = run.get("id")
+        expected_run_api_url = (
+            f"https://api.github.com/repos/{REPO_FULL_NAME}/actions/runs/{run_id}"
+            if type(run_id) is int
+            else ""
+        )
+        expected_run_url = (
+            f"https://github.com/{REPO_FULL_NAME}/actions/runs/{run_id}"
+            if type(run_id) is int
+            else ""
+        )
+        repository = run.get("repository")
+        if not isinstance(run_envelope, dict) or run_envelope.get("request_url") != expected_run_api_url:
+            errors.append("publication blocked: post-main run API request URL is invalid")
+        if (
+            not isinstance(repository, dict)
+            or repository.get("full_name") != REPO_FULL_NAME
+            or run.get("path") != ".github/workflows/governance.yml"
+            or run.get("event") != "push"
+            or run.get("head_branch") != "main"
+            or run.get("head_sha") != candidate_sha
+            or run.get("status") != "completed"
+            or run.get("conclusion") != "success"
+            or run.get("html_url") != expected_run_url
+        ):
+            errors.append("publication blocked: post-main run is not bound to the exact candidate")
+
+        main_envelope = post_merge.get("main_branch_api_response")
+        main_branch = _authenticated_github_response(
+            main_envelope, errors, "protected main branch", dict
+        )
+        main_commit = main_branch.get("commit")
+        if (
+            not isinstance(main_envelope, dict)
+            or main_envelope.get("request_url")
+            != f"https://api.github.com/repos/{REPO_FULL_NAME}/branches/main"
+            or main_branch.get("name") != "main"
+            or main_branch.get("protected") is not True
+            or not isinstance(main_commit, dict)
+            or main_commit.get("sha") != candidate_sha
+        ):
+            errors.append("publication blocked: protected main does not equal the exact candidate SHA")
+
+        compare_envelope = post_merge.get("compare_api_response")
+        comparison = _authenticated_github_response(
+            compare_envelope, errors, "main fast-forward comparison", dict
+        )
+        base_sha = manifest.get("repo", {}).get("base_sha", "")
+        expected_compare_url = (
+            f"https://api.github.com/repos/{REPO_FULL_NAME}/compare/{base_sha}...{candidate_sha}"
+        )
+        base_commit = comparison.get("base_commit")
+        merge_base = comparison.get("merge_base_commit")
+        head_commit = comparison.get("head_commit")
+        if (
+            not isinstance(compare_envelope, dict)
+            or compare_envelope.get("request_url") != expected_compare_url
+            or comparison.get("status") != "ahead"
+            or type(comparison.get("ahead_by")) is not int
+            or comparison.get("ahead_by", 0) <= 0
+            or comparison.get("behind_by") != 0
+            or not isinstance(base_commit, dict)
+            or base_commit.get("sha") != base_sha
+            or not isinstance(merge_base, dict)
+            or merge_base.get("sha") != base_sha
+            or not isinstance(head_commit, dict)
+            or head_commit.get("sha") != candidate_sha
+        ):
+            errors.append("publication blocked: main promotion is not an authenticated fast-forward")
+
+        run_finished_at = _parse_time(run.get("updated_at"))
+        run_fetched_at = _parse_time(
+            run_envelope.get("fetched_at") if isinstance(run_envelope, dict) else None
+        )
+        main_fetched_at = _parse_time(
+            main_envelope.get("fetched_at") if isinstance(main_envelope, dict) else None
+        )
+        compare_fetched_at = _parse_time(
+            compare_envelope.get("fetched_at") if isinstance(compare_envelope, dict) else None
+        )
+        if (
+            run_finished_at is None
+            or run_fetched_at is None
+            or main_fetched_at is None
+            or compare_fetched_at is None
+            or run_fetched_at < run_finished_at
+            or main_fetched_at <= run_fetched_at
+            or compare_fetched_at > main_fetched_at
+        ):
+            errors.append("publication blocked: post-main evidence chronology is invalid")
 
     successful_post = _successful_registered_command_ids(manifest, "post_merge", commit_sha=publication_sha if _is_sha(publication_sha) else None)
     for required in registry.get("rules", {}).get("required_post_merge_validations", []):
