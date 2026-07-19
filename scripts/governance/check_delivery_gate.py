@@ -396,7 +396,12 @@ def _authenticated_github_response(
     if not isinstance(response, response_type):
         errors.append(f"{label} GitHub API response body has the wrong type")
         return response_type()
-    if envelope.get("response_sha256") != canonical_json_sha256(response):
+    try:
+        response_digest = canonical_json_sha256(response)
+    except (TypeError, ValueError, OverflowError):
+        errors.append(f"{label} GitHub API response is not canonical JSON")
+        return response
+    if envelope.get("response_sha256") != response_digest:
         errors.append(f"{label} GitHub API response digest mismatch")
     return response
 
@@ -1078,6 +1083,13 @@ def verify_authoritative_provenance(
 
     if mode == "protected_integration_receipt":
         receipt = external_evidence.get("protected_attestation_receipt", {})
+        try:
+            post_merge_digest = canonical_json_sha256(
+                external_evidence.get("post_merge", {})
+            )
+        except (TypeError, ValueError, OverflowError):
+            post_merge_digest = None
+            errors.append("protected post-main evidence is not canonical JSON")
         expected_claims = {
             "repository": REPO_FULL_NAME,
             "workflow_sha": policy.get("sha"),
@@ -1092,9 +1104,7 @@ def verify_authoritative_provenance(
             "dev_provenance_sha256": canonical_json_sha256(
                 external_evidence.get("promotion_authorization", {}).get("dev_provenance", {})
             ),
-            "post_merge_sha256": canonical_json_sha256(
-                external_evidence.get("post_merge", {})
-            ),
+            "post_merge_sha256": post_merge_digest,
             "freeze_review_sha256": freeze_review_digest,
             "freeze_review_pr_api_sha256": freeze_review_pr_api_digest,
         }
@@ -1343,6 +1353,7 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             or comparison.get("status") != "ahead"
             or type(comparison.get("ahead_by")) is not int
             or comparison.get("ahead_by", 0) <= 0
+            or type(comparison.get("behind_by")) is not int
             or comparison.get("behind_by") != 0
             or not isinstance(base_commit, dict)
             or base_commit.get("sha") != base_sha
@@ -1368,9 +1379,9 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             or run_fetched_at is None
             or main_fetched_at is None
             or compare_fetched_at is None
-            or run_fetched_at < run_finished_at
-            or main_fetched_at <= run_fetched_at
-            or compare_fetched_at > main_fetched_at
+            or run_fetched_at <= run_finished_at
+            or compare_fetched_at <= run_fetched_at
+            or main_fetched_at <= compare_fetched_at
         ):
             errors.append("publication blocked: post-main evidence chronology is invalid")
 

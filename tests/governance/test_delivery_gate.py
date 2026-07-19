@@ -1173,6 +1173,8 @@ class TestPublicationBindingFailures(unittest.TestCase):
         for field, value in [
             ("status", "diverged"),
             ("behind_by", 1),
+            ("behind_by", False),
+            ("ahead_by", True),
             ("merge_base_commit", {"sha": "0" * 40}),
             ("head_commit", {"sha": "0" * 40}),
         ]:
@@ -1247,14 +1249,21 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 )
                 self.assertIn("protected main does not equal", "\n".join(errors))
 
-        attacked = copy.deepcopy(external)
-        attacked["post_merge"]["main_branch_api_response"]["fetched_at"] = (
-            attacked["post_merge"]["run_api_response"]["fetched_at"]
-        )
-        _passed, errors, _gate_type = check_delivery(
-            manifest, external_evidence=attacked, phase="publication"
-        )
-        self.assertIn("post-main evidence chronology is invalid", "\n".join(errors))
+        chronology_attacks = [
+            ("run-equals-finish", "run_api_response", "2026-07-11T12:01:00+00:00"),
+            ("compare-equals-run", "compare_api_response", "2026-07-11T12:01:01+00:00"),
+            ("compare-before-finish", "compare_api_response", "2026-07-11T12:00:59+00:00"),
+            ("compare-equals-main", "compare_api_response", "2026-07-11T12:01:02+00:00"),
+            ("main-equals-run", "main_branch_api_response", "2026-07-11T12:01:01+00:00"),
+        ]
+        for attack, envelope_name, fetched_at in chronology_attacks:
+            with self.subTest(chronology=attack):
+                attacked = copy.deepcopy(external)
+                attacked["post_merge"][envelope_name]["fetched_at"] = fetched_at
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=attacked, phase="publication"
+                )
+                self.assertIn("post-main evidence chronology is invalid", "\n".join(errors))
 
         attacked = copy.deepcopy(external)
         attacked["post_merge"]["merge_method"] = "fast-forward"
@@ -1262,6 +1271,18 @@ class TestPublicationBindingFailures(unittest.TestCase):
             manifest, external_evidence=attacked, phase="publication"
         )
         self.assertIn("additional property not allowed: merge_method", "\n".join(errors))
+
+    def test_post_main_non_finite_or_unserializable_response_fails_closed(self):
+        manifest, external = self._publication_candidate()
+        for value in [float("nan"), float("inf"), float("-inf"), object()]:
+            with self.subTest(value=repr(value)):
+                attacked = copy.deepcopy(external)
+                envelope = attacked["post_merge"]["run_api_response"]
+                envelope["response"]["invalid"] = value
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=attacked, phase="publication"
+                )
+                self.assertIn("response is not canonical JSON", "\n".join(errors))
 
 
 class TestQaBindingFailures(unittest.TestCase):
