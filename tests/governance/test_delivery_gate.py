@@ -1429,7 +1429,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 "push",
                 "--porcelain",
                 f"--force-with-lease=refs/heads/main:{base_sha}",
-                "origin",
+                "git@github.com:somebloke1/noetic-dev.git",
                 f"{publication_sha}:refs/heads/main",
             ],
             "exit_code": 0,
@@ -1658,9 +1658,12 @@ class TestPublicationBindingFailures(unittest.TestCase):
             mock.patch(
                 "promote_main._require_git",
                 side_effect=[
-                    "https://github.com/somebloke1/noetic-dev.git",
-                    "https://github.com/somebloke1/noetic-dev.git",
+                    "",
                     candidate,
+                    "",
+                    "",
+                    "",
+                    "",
                     "",
                 ],
             ),
@@ -1679,11 +1682,11 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "push",
             "--porcelain",
             f"--force-with-lease=refs/heads/main:{old_main}",
-            "origin",
+            "git@github.com:somebloke1/noetic-dev.git",
             f"{candidate}:refs/heads/main",
         ]
         self.assertEqual(record["git_argv"], expected)
-        self.assertEqual(git_run.call_args.args, (REPO_ROOT, *expected[1:]))
+        self.assertEqual(git_run.call_args.args[1:], tuple(expected[1:]))
 
     def test_rejects_remote_main_changed_after_authorization(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -1694,9 +1697,12 @@ class TestPublicationBindingFailures(unittest.TestCase):
             mock.patch(
                 "promote_main._require_git",
                 side_effect=[
-                    "https://github.com/somebloke1/noetic-dev.git",
-                    "https://github.com/somebloke1/noetic-dev.git",
+                    "",
                     candidate,
+                    "",
+                    "",
+                    "",
+                    "",
                     "",
                 ],
             ),
@@ -1710,6 +1716,36 @@ class TestPublicationBindingFailures(unittest.TestCase):
         ):
             with self.assertRaisesRegex(RuntimeError, "remote main changed"):
                 promote_main.promote(manifest, external, REPO_ROOT)
+
+    def test_rejects_hidden_index_flags_and_unsafe_local_git_config(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = {"promotion_authorization": {}}
+        candidate = manifest["repo"]["candidate_sha"]
+        with mock.patch("promote_main._check_owner_promotion_authorization"):
+            with mock.patch(
+                "promote_main._require_git", return_value="core.sshcommand\0"
+            ):
+                with self.assertRaisesRegex(RuntimeError, "transport-altering"):
+                    promote_main.promote(manifest, external, REPO_ROOT)
+            with mock.patch(
+                "promote_main._require_git",
+                side_effect=["", candidate, "h tracked.txt"],
+            ):
+                with self.assertRaisesRegex(RuntimeError, "hidden index"):
+                    promote_main.promote(manifest, external, REPO_ROOT)
+
+    def test_git_process_uses_fixed_binary_and_isolated_configuration(self):
+        completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")
+        with mock.patch("promote_main.subprocess.run", return_value=completed) as run:
+            promote_main._git(REPO_ROOT, "status", "--porcelain")
+        self.assertEqual(
+            run.call_args.args[0], ["/usr/bin/git", "status", "--porcelain"]
+        )
+        env = run.call_args.kwargs["env"]
+        self.assertEqual(env["GIT_CONFIG_GLOBAL"], "/dev/null")
+        self.assertEqual(env["GIT_CONFIG_NOSYSTEM"], "1")
+        self.assertEqual(env["GIT_NO_REPLACE_OBJECTS"], "1")
+        self.assertIn("-F /dev/null", env["GIT_SSH_COMMAND"])
 
     def test_post_main_evidence_rejects_wrong_run_main_and_chronology(self):
         manifest, external = self._publication_candidate()

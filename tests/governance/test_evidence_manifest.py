@@ -44,6 +44,10 @@ class TestEvidenceManifestValidation(unittest.TestCase):
                     "{{manifest_path}}",
                     "--lease=main:{{old_sha}}",
                 ],
+                "placeholder_grammars": {
+                    "manifest_path": "^/(?!.*\\.\\.)[A-Za-z0-9._/-]+$",
+                    "old_sha": "^[a-f0-9]{40}$",
+                },
             }
         }
         command = {
@@ -51,7 +55,20 @@ class TestEvidenceManifestValidation(unittest.TestCase):
             "argv": ["command", "/tmp/manifest.json", "--lease=main:" + "a" * 40],
         }
         self.assertTrue(_command_matches_registry(command, "example", registry))
-        command["argv"][2] = "--lease=dev:" + "a" * 40
+        for malformed in [
+            "--lease=dev:" + "a" * 40,
+            "--lease=main:" + "a" * 40 + " --evil",
+            "--lease=main:../escape",
+        ]:
+            command["argv"][2] = malformed
+            self.assertFalse(_command_matches_registry(command, "example", registry))
+        command["argv"] = [
+            "command",
+            "/tmp/manifest.json --evil",
+            "--lease=main:" + "a" * 40,
+        ]
+        self.assertFalse(_command_matches_registry(command, "example", registry))
+        command["argv"][1] = "/tmp/../manifest.json"
         self.assertFalse(_command_matches_registry(command, "example", registry))
 
     def test_valid_advisory_manifest_is_structurally_valid(self):

@@ -116,7 +116,8 @@ claims before returning zero. Its absence remains an explicit bootstrap blocker.
 After every promotion-PR check passes, the root-owned protected publisher at
 `/usr/local/libexec/noetic-dev/promote-main` executes the registered
 `main.promote_exact` operation. It independently verifies the protected owner
-authorization receipt, canonical origin, clean exact-dev checkout, current remote
+authorization receipt, clean exact-dev checkout, fixed canonical remote,
+current remote
 heads, and strict fast-forward ancestry before invoking the fixed
 `/usr/bin/git push --porcelain` executable with
 `--force-with-lease=refs/heads/main:<expected-old-main-sha>` and the exact
@@ -131,6 +132,10 @@ The root-only `deploy/install-main-publisher.sh` installs an exact authorized-de
 archive under `/opt/noetic-dev-main-publisher/releases/<sha>` and atomically points
 the fixed root-owned launcher at that immutable release. This deployment does not
 establish the separate attestation verifier or publication authority by itself.
+Replacement objects are disabled and the extracted archive must reconstruct the
+authorized commit's exact tree. The publisher rejects hidden index flags and unsafe
+local Git configuration, then fetches and pushes only the fixed canonical SSH URL
+from a fresh temporary bare repository under an isolated Git/SSH environment.
 
 ### Publication gate
 

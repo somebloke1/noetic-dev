@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -68,7 +69,10 @@ class TestCommandRegistry(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("$EUID -ne 0", installer)
-        self.assertIn("git -C \"$source_root\" archive \"$authorized_sha\"", installer)
+        self.assertIn("GIT_NO_REPLACE_OBJECTS=1", installer)
+        self.assertIn("/usr/bin/git --no-replace-objects", installer)
+        self.assertIn("archive \"$authorized_sha\"", installer)
+        self.assertIn("actual_tree", installer)
         self.assertIn("chown -R root:root \"$release\"", installer)
         self.assertIn("chmod -R go-w \"$release\"", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
@@ -88,6 +92,20 @@ class TestCommandRegistry(unittest.TestCase):
                     self.assertIn(field, cmd)
                 self.assertIn(cmd["category"], valid_categories)
                 self.assertFalse(cmd["counts_as_test"] and cmd["counts_as_validation"])
+
+    def test_every_argv_placeholder_has_a_declared_anchored_grammar(self):
+        for command_id, command in self.registry["commands"].items():
+            declared = command.get("placeholder_grammars", {})
+            placeholders = {
+                name
+                for argument in command["argv"]
+                for name in re.findall(r"\{\{([a-z0-9_]+)\}\}", argument)
+            }
+            with self.subTest(command_id=command_id):
+                self.assertEqual(placeholders, set(declared))
+                self.assertTrue(
+                    all(grammar.startswith("^") and grammar.endswith("$") for grammar in declared.values())
+                )
 
 
 if __name__ == "__main__":

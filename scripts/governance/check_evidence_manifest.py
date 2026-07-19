@@ -364,9 +364,16 @@ def _command_matches_registry(command: Dict[str, Any], registry_id: str, registr
     actual = command.get("argv", [])
     if len(actual) != len(expected):
         return False
+    grammars = spec.get("placeholder_grammars", {})
     for template, value in zip(expected, actual):
         pattern = re.escape(template)
-        pattern = re.sub(r"\\\{\\\{[a-z0-9_]+\\\}\\\}", r".+", pattern)
+        placeholders = re.findall(r"\{\{([a-z0-9_]+)\}\}", template)
+        for placeholder in placeholders:
+            grammar = grammars.get(placeholder)
+            if not isinstance(grammar, str) or not grammar.startswith("^") or not grammar.endswith("$"):
+                return False
+            token = re.escape("{{" + placeholder + "}}")
+            pattern = pattern.replace(token, "(?:" + grammar[1:-1] + ")")
         if re.fullmatch(pattern, value) is None:
             return False
     return True

@@ -1465,7 +1465,7 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         "push",
         "--porcelain",
         f"--force-with-lease=refs/heads/main:{expected_old_main_sha}",
-        "origin",
+        "git@github.com:somebloke1/noetic-dev.git",
         f"{candidate_sha}:refs/heads/main",
     ]
     promotion_records = [
