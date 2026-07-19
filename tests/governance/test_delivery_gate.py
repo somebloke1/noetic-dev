@@ -368,6 +368,56 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertIn("freeze review PR head ref mismatch", joined)
         self.assertIn("freeze review PR must link only issue 32", joined)
 
+        local_freeze["reviewed_candidate_sha"] = "1" * 40
+        local_freeze["reviewed_pull_request"] = 67
+        local_freeze["review_evidence_url"] = (
+            "https://github.com/somebloke1/noetic-dev/pull/67#issuecomment-10"
+        )
+        external["freeze"] = copy.deepcopy(local_freeze)
+        external["freeze_review"].update(
+            {
+                "reviewed_candidate_sha": "1" * 40,
+                "pull_request": 67,
+                "pr_head_ref": "issue-32-canonical-roadmap",
+                "pr_head_sha": "1" * 40,
+                "pr_linked_issues": [32],
+                "evidence_url": local_freeze["review_evidence_url"],
+                "reviewed_at": local_freeze["reviewed_at"],
+                "pr_api_response": pr_api_response(
+                    67,
+                    "issue-32-canonical-roadmap",
+                    "1" * 40,
+                    [32],
+                    "2026-07-19T00:09:00Z",
+                ),
+            }
+        )
+        external["freeze_review"]["pr_api_response"]["response"]["head_sha"] = "3" * 40
+        with mock.patch("check_delivery_gate._protected_freeze", return_value=local_freeze):
+            _passed, errors, _gate_type = check_delivery(
+                manifest,
+                external_evidence=external,
+                phase="publication",
+            )
+        joined = "\n".join(errors)
+        self.assertIn("PR API response digest mismatch", joined)
+        self.assertIn("fields do not derive from PR API response", joined)
+
+        external["freeze_review"]["pr_api_response"] = pr_api_response(
+            67,
+            "issue-32-canonical-roadmap",
+            "1" * 40,
+            [32],
+            "2026-07-19T00:10:01Z",
+        )
+        with mock.patch("check_delivery_gate._protected_freeze", return_value=local_freeze):
+            _passed, errors, _gate_type = check_delivery(
+                manifest,
+                external_evidence=external,
+                phase="publication",
+            )
+        self.assertIn("PR API capture postdates review", "\n".join(errors))
+
     def test_multigeneration_history_is_valid_except_external_authority(self):
         manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest)
