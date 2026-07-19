@@ -1094,6 +1094,7 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
     external_freeze = (external_evidence or {}).get("freeze")
     if external_freeze and external_freeze != freeze:
         errors.append("publication blocked: external freeze evidence does not match protected freeze artifact")
+    repair = freeze.get("authorized_repair", {})
     freeze_review = (external_evidence or {}).get("freeze_review")
     if not isinstance(freeze_review, dict):
         errors.append("publication blocked: protected independent freeze review evidence missing")
@@ -1109,13 +1110,22 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             errors.append("publication blocked: freeze review candidate SHA mismatch")
         if freeze_review.get("pull_request") != freeze.get("reviewed_pull_request"):
             errors.append("publication blocked: freeze review PR binding mismatch")
+        if freeze_review.get("pr_source") != "github_api" or freeze_review.get("pr_verified") is not True:
+            errors.append("publication blocked: freeze review PR is not authenticated GitHub API evidence")
+        if freeze_review.get("pr_head_ref") != repair.get("head"):
+            errors.append("publication blocked: freeze review PR head ref mismatch")
+        if freeze_review.get("pr_base_ref") != repair.get("base"):
+            errors.append("publication blocked: freeze review PR base ref mismatch")
+        if freeze_review.get("pr_head_sha") != reviewed_candidate_sha:
+            errors.append("publication blocked: freeze review PR head SHA mismatch")
+        if freeze_review.get("pr_linked_issues") != [32]:
+            errors.append("publication blocked: freeze review PR must link only issue 32")
         if freeze_review.get("dev_integration_sha") != freeze.get("dev_integration_sha"):
             errors.append("publication blocked: freeze review dev integration SHA mismatch")
         if freeze_review.get("dev_contains_integration_sha") is not True:
             errors.append("publication blocked: reviewed D2 integration is not verified on dev")
         if freeze_review.get("issue") != 32:
             errors.append("publication blocked: freeze review must bind issue 32")
-        repair = freeze.get("authorized_repair", {})
         if freeze_review.get("head") != repair.get("head") or freeze_review.get("base") != repair.get("base"):
             errors.append("publication blocked: freeze review branch binding mismatch")
         evidence_url = freeze_review.get("evidence_url", "")

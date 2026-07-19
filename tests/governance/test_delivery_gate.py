@@ -211,6 +211,12 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "audit_sha256": "0" * 64,
             "reviewed_candidate_sha": "1" * 40,
             "pull_request": 67,
+            "pr_source": "github_api",
+            "pr_verified": True,
+            "pr_head_ref": "issue-32-canonical-roadmap",
+            "pr_base_ref": "dev",
+            "pr_head_sha": "1" * 40,
+            "pr_linked_issues": [32],
             "dev_integration_sha": "2" * 40,
             "dev_contains_integration_sha": True,
             "issue": 32,
@@ -257,6 +263,12 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "audit_sha256": "a" * 64,
             "reviewed_candidate_sha": "1" * 40,
             "pull_request": 67,
+            "pr_source": "github_api",
+            "pr_verified": True,
+            "pr_head_ref": "issue-32-canonical-roadmap",
+            "pr_base_ref": "dev",
+            "pr_head_sha": "1" * 40,
+            "pr_linked_issues": [32],
             "dev_integration_sha": "2" * 40,
             "dev_contains_integration_sha": True,
             "issue": 32,
@@ -274,6 +286,34 @@ class TestDeliveryGatePositive(unittest.TestCase):
         joined = "\n".join(errors)
         self.assertIn("freeze review evidence URL mismatch", joined)
         self.assertIn("freeze review timestamp mismatch", joined)
+
+        unrelated_sha = "8fcb1c509b14f10f1f7e2ef2363ffb98996fa46b"
+        local_freeze["reviewed_candidate_sha"] = unrelated_sha
+        local_freeze["reviewed_pull_request"] = 66
+        local_freeze["review_evidence_url"] = (
+            "https://github.com/somebloke1/noetic-dev/pull/66#issuecomment-12"
+        )
+        external["freeze"] = copy.deepcopy(local_freeze)
+        external["freeze_review"].update(
+            {
+                "reviewed_candidate_sha": unrelated_sha,
+                "pull_request": 66,
+                "pr_head_ref": "issue-65-opencode-spike",
+                "pr_head_sha": unrelated_sha,
+                "pr_linked_issues": [65],
+                "evidence_url": local_freeze["review_evidence_url"],
+                "reviewed_at": local_freeze["reviewed_at"],
+            }
+        )
+        with mock.patch("check_delivery_gate._protected_freeze", return_value=local_freeze):
+            _passed, errors, _gate_type = check_delivery(
+                manifest,
+                external_evidence=external,
+                phase="publication",
+            )
+        joined = "\n".join(errors)
+        self.assertIn("freeze review PR head ref mismatch", joined)
+        self.assertIn("freeze review PR must link only issue 32", joined)
 
     def test_multigeneration_history_is_valid_except_external_authority(self):
         manifest = load_fixture("valid_multigeneration_advisory_manifest.json")

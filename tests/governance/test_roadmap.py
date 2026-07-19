@@ -9,7 +9,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.governance.check_roadmap import validate_roadmap, validate_roadmap_files
+from scripts.governance.check_roadmap import (
+    _parse_instant,
+    validate_roadmap,
+    validate_roadmap_files,
+)
 from scripts.governance.json_schema import load_json_strict, validate_schema
 
 
@@ -110,6 +114,13 @@ class TestRoadmap(unittest.TestCase):
         unbound_complete["independent_review_completed"] = True
         unbound_complete["blocks_publication"] = False
         self.assertNotEqual(validate_schema(unbound_complete, freeze_schema), [])
+
+    def test_complete_freeze_chronology_compares_instants_not_strings(self) -> None:
+        captured = _parse_instant("2026-07-18T23:46:09-12:00")
+        reviewed = _parse_instant("2026-07-19T00:00:00+14:00")
+        self.assertIsNotNone(captured)
+        self.assertIsNotNone(reviewed)
+        self.assertLess(reviewed, captured)
 
     def test_wrong_stage_container_type_fails(self) -> None:
         mutated = copy.deepcopy(self.state)

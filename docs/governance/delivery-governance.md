@@ -118,6 +118,9 @@ whose reviewed candidate SHA and evidence URL are explicit. A locally asserted
 The complete freeze artifact must record the same exact review-comment URL and
 review time; publication compares both to the protected evidence and requires the
 review time to follow inventory capture.
+Protected freeze-review evidence also authenticates the GitHub PR number, exact
+head/base refs, head SHA, and sole linked issue #32; matching caller assertions
+without those GitHub API bindings are rejected.
 The protected artifact and signed-attestation claim digest include owner promotion
 authorization and freeze-review objects, so either object is substitution-evident.
 

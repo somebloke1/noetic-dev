@@ -7,6 +7,7 @@ import hashlib
 import re
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -140,6 +141,16 @@ EXPECTED_BRANCH_NAMES = (
     "issue-39-terminal-observability", "issue-51-external-mcp-adapter",
     "issue-65-opencode-spike",
 )
+
+
+def _parse_instant(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def _find_cycles(stages: list[dict[str, Any]]) -> list[str]:
@@ -558,9 +569,9 @@ def _validate_repository_policy(
             errors.append("complete freeze requires dev_integration_sha")
         if not isinstance(freeze.get("reviewed_pull_request"), int):
             errors.append("complete freeze requires reviewed_pull_request")
-        reviewed_at = freeze.get("reviewed_at", "")
-        captured_at = freeze.get("captured_at", "")
-        if not isinstance(reviewed_at, str) or reviewed_at <= captured_at:
+        reviewed_at = _parse_instant(freeze.get("reviewed_at"))
+        captured_at = _parse_instant(freeze.get("captured_at"))
+        if reviewed_at is None or captured_at is None or reviewed_at <= captured_at:
             errors.append("complete freeze review time must follow audit capture")
         if re.fullmatch(
             r"https://github\.com/somebloke1/noetic-dev/(?:issues/32|pull/[1-9][0-9]*)#issuecomment-[1-9][0-9]*",
