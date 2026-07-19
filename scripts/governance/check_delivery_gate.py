@@ -36,6 +36,7 @@ from check_evidence_manifest import (  # noqa: E402
 )
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
+from route_evidence import protected_ci_snapshot  # noqa: E402
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
 PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
@@ -364,6 +365,37 @@ def _check_pr_and_issue(
         errors.append(f"issue status is not merge-eligible: {canonical}")
 
 
+def _authenticated_github_response(
+    envelope: Any,
+    errors: List[str],
+    label: str,
+    response_type: type,
+) -> Any:
+    if not isinstance(envelope, dict):
+        errors.append(f"{label} GitHub API response envelope is missing")
+        return response_type()
+    authentication = envelope.get("authentication")
+    if (
+        not isinstance(authentication, dict)
+        or authentication.get("verified") is not True
+        or authentication.get("source") != "protected-integration"
+        or not isinstance(authentication.get("principal"), str)
+        or not authentication.get("principal")
+    ):
+        errors.append(f"{label} GitHub API response is not authenticated")
+    if envelope.get("status") != 200 or not isinstance(envelope.get("request_id"), str):
+        errors.append(f"{label} GitHub API response metadata is invalid")
+    if _parse_time(envelope.get("fetched_at")) is None:
+        errors.append(f"{label} GitHub API capture timestamp is invalid")
+    response = envelope.get("response")
+    if not isinstance(response, response_type):
+        errors.append(f"{label} GitHub API response body has the wrong type")
+        return response_type()
+    if envelope.get("response_sha256") != canonical_json_sha256(response):
+        errors.append(f"{label} GitHub API response digest mismatch")
+    return response
+
+
 def _check_owner_promotion_authorization(
     manifest: Dict[str, Any],
     errors: List[str],
@@ -391,33 +423,75 @@ def _check_owner_promotion_authorization(
     if not isinstance(provenance, dict):
         errors.append("authenticated protected dev provenance is missing")
         provenance = {}
-    if provenance.get("source") != "github_api" or provenance.get("verified") is not True:
-        errors.append("protected dev ref is not authenticated GitHub API evidence")
-    if provenance.get("ref") != "refs/heads/dev" or provenance.get("protected") is not True:
-        errors.append("promotion candidate is not proven to come from protected dev")
-    if provenance.get("head_sha") != candidate_sha or provenance.get("contains_candidate") is not True:
+    branch_envelope = provenance.get("branch_api_response")
+    branch = _authenticated_github_response(branch_envelope, errors, "protected dev branch", dict)
+    if not isinstance(branch_envelope, dict) or branch_envelope.get("request_url") != (
+        f"https://api.github.com/repos/{REPO_FULL_NAME}/branches/dev"
+    ):
+        errors.append("protected dev branch GitHub API request URL is invalid")
+    commit = branch.get("commit")
+    if (
+        branch.get("name") != "dev"
+        or branch.get("protected") is not True
+        or not isinstance(commit, dict)
+        or commit.get("sha") != candidate_sha
+    ):
         errors.append("promotion candidate is not the authenticated protected dev head")
-    validation_run = provenance.get("validation_run")
-    if not isinstance(validation_run, dict):
-        errors.append("authenticated protected dev validation run is missing")
-        validation_run = {}
-    expected_run_url = (
-        f"https://github.com/somebloke1/noetic-dev/actions/runs/{validation_run.get('run_id')}"
-        if isinstance(validation_run.get("run_id"), int)
+
+    applied_envelope = provenance.get("applied_rules_api_response")
+    applied_rules = _authenticated_github_response(
+        applied_envelope, errors, "protected dev applied rules", list
+    )
+    if not isinstance(applied_envelope, dict) or applied_envelope.get("request_url") != (
+        f"https://api.github.com/repos/{REPO_FULL_NAME}/rules/branches/dev"
+    ):
+        errors.append("protected dev applied-rules GitHub API request URL is invalid")
+
+    ruleset_envelope = provenance.get("ruleset_api_response")
+    ruleset = _authenticated_github_response(ruleset_envelope, errors, "protected dev ruleset", dict)
+    ruleset_id = ruleset.get("id")
+    expected_ruleset_url = (
+        f"https://api.github.com/repos/{REPO_FULL_NAME}/rulesets/{ruleset_id}"
+        if type(ruleset_id) is int
         else ""
     )
-    if validation_run.get("source") != "github_api" or validation_run.get("verified") is not True:
-        errors.append("protected dev validation run is not authenticated GitHub API evidence")
+    if not isinstance(ruleset_envelope, dict) or ruleset_envelope.get("request_url") != expected_ruleset_url:
+        errors.append("protected dev ruleset GitHub API request URL is invalid")
+
+    run_envelope = provenance.get("validation_run_api_response")
+    validation_run = _authenticated_github_response(
+        run_envelope, errors, "protected dev validation run", dict
+    )
+    run_id = validation_run.get("id")
+    expected_run_api_url = (
+        f"https://api.github.com/repos/{REPO_FULL_NAME}/actions/runs/{run_id}"
+        if type(run_id) is int
+        else ""
+    )
+    expected_run_url = (
+        f"https://github.com/{REPO_FULL_NAME}/actions/runs/{run_id}"
+        if type(run_id) is int
+        else ""
+    )
+    if not isinstance(run_envelope, dict) or run_envelope.get("request_url") != expected_run_api_url:
+        errors.append("protected dev validation-run GitHub API request URL is invalid")
+    repository = validation_run.get("repository")
     if (
-        validation_run.get("repository") != REPO_FULL_NAME
-        or validation_run.get("workflow_path") != ".github/workflows/governance.yml"
+        not isinstance(repository, dict)
+        or repository.get("full_name") != REPO_FULL_NAME
+        or validation_run.get("path") != ".github/workflows/governance.yml"
         or validation_run.get("event") != "push"
         or validation_run.get("head_branch") != "dev"
         or validation_run.get("head_sha") != candidate_sha
+        or validation_run.get("status") != "completed"
         or validation_run.get("conclusion") != "success"
-        or validation_run.get("run_url") != expected_run_url
+        or validation_run.get("html_url") != expected_run_url
     ):
         errors.append("protected dev validation run is not bound to the promotion candidate")
+    if protected_ci_snapshot(run_id, validation_run, applied_rules, ruleset) != _load_repo_json(
+        "governance/protected-dev-ruleset.json"
+    ):
+        errors.append("protected dev rules are absent, bypassable, stale, or missing required checks")
     if authorization.get("issue") != 32:
         errors.append("owner promotion authorization must be recorded on issue 32")
     comment_id = authorization.get("comment_id")
@@ -451,7 +525,7 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization time does not match authenticated comment creation")
     elif dev_validated_at is None:
         errors.append("protected dev validation timestamp is invalid")
-    elif _parse_time(validation_run.get("completed_at", "")) != dev_validated_at:
+    elif _parse_time(validation_run.get("updated_at", "")) != dev_validated_at:
         errors.append("protected dev validation timestamp does not match the authenticated run")
     elif authorized_at <= dev_validated_at:
         errors.append("owner promotion authorization must follow protected dev validation")
@@ -459,6 +533,16 @@ def _check_owner_promotion_authorization(
         errors.append("candidate pin timestamp is missing or invalid for main promotion")
     elif authorized_at >= pinned_at:
         errors.append("owner promotion authorization must precede candidate pinning")
+    capture_times = [
+        _parse_time(envelope.get("fetched_at")) if isinstance(envelope, dict) else None
+        for envelope in (branch_envelope, applied_envelope, ruleset_envelope, run_envelope)
+    ]
+    if (
+        authorized_at is None
+        or pinned_at is None
+        or any(captured is None or captured < authorized_at or captured >= pinned_at for captured in capture_times)
+    ):
+        errors.append("protected dev API captures must follow authorization and precede candidate pinning")
 
 def _profile_for(profile_id: str) -> Optional[Dict[str, Any]]:
     return _model_profiles().get("profiles", {}).get(profile_id)

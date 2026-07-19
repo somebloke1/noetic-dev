@@ -23,6 +23,18 @@
     "approvals",
     "freeze"
   ],
+  "definitions": {
+    "github_api_authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified", "source", "principal"],
+      "properties": {
+        "verified": {"type": "boolean", "const": true},
+        "source": {"type": "string", "const": "protected-integration"},
+        "principal": {"type": "string", "minLength": 1}
+      }
+    }
+  },
   "properties": {
     "schema_version": {"type": "string", "const": "1"},
     "evidence_class": {"type": "string", "const": "protected-external"},
@@ -95,30 +107,62 @@
         "dev_provenance": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["source", "verified", "ref", "protected", "head_sha", "contains_candidate", "validation_run"],
+          "required": ["branch_api_response", "applied_rules_api_response", "ruleset_api_response", "validation_run_api_response"],
           "properties": {
-            "source": {"type": "string", "const": "github_api"},
-            "verified": {"type": "boolean", "const": true},
-            "ref": {"type": "string", "const": "refs/heads/dev"},
-            "protected": {"type": "boolean", "const": true},
-            "head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
-            "contains_candidate": {"type": "boolean", "const": true},
-            "validation_run": {
+            "branch_api_response": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["source", "verified", "repository", "workflow_path", "event", "head_branch", "head_sha", "conclusion", "run_id", "run_url", "completed_at"],
+              "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
               "properties": {
-                "source": {"type": "string", "const": "github_api"},
-                "verified": {"type": "boolean", "const": true},
-                "repository": {"type": "string", "const": "somebloke1/noetic-dev"},
-                "workflow_path": {"type": "string", "const": ".github/workflows/governance.yml"},
-                "event": {"type": "string", "const": "push"},
-                "head_branch": {"type": "string", "const": "dev"},
-                "head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
-                "conclusion": {"type": "string", "const": "success"},
-                "run_id": {"type": "integer", "minimum": 1},
-                "run_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/actions/runs/[1-9][0-9]*$"},
-                "completed_at": {"type": "string", "minLength": 1}
+                "request_url": {"type": "string", "const": "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev"},
+                "status": {"type": "integer", "const": 200},
+                "request_id": {"type": "string", "minLength": 1},
+                "fetched_at": {"type": "string", "minLength": 1},
+                "authentication": {"$ref": "#/definitions/github_api_authentication"},
+                "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "response": {"type": "object"}
+              }
+            },
+            "applied_rules_api_response": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+              "properties": {
+                "request_url": {"type": "string", "const": "https://api.github.com/repos/somebloke1/noetic-dev/rules/branches/dev"},
+                "status": {"type": "integer", "const": 200},
+                "request_id": {"type": "string", "minLength": 1},
+                "fetched_at": {"type": "string", "minLength": 1},
+                "authentication": {"$ref": "#/definitions/github_api_authentication"},
+                "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "response": {"type": "array"}
+              }
+            },
+            "ruleset_api_response": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+              "properties": {
+                "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/rulesets/[1-9][0-9]*$"},
+                "status": {"type": "integer", "const": 200},
+                "request_id": {"type": "string", "minLength": 1},
+                "fetched_at": {"type": "string", "minLength": 1},
+                "authentication": {"$ref": "#/definitions/github_api_authentication"},
+                "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "response": {"type": "object"}
+              }
+            },
+            "validation_run_api_response": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+              "properties": {
+                "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/actions/runs/[1-9][0-9]*$"},
+                "status": {"type": "integer", "const": 200},
+                "request_id": {"type": "string", "minLength": 1},
+                "fetched_at": {"type": "string", "minLength": 1},
+                "authentication": {"$ref": "#/definitions/github_api_authentication"},
+                "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "response": {"type": "object"}
               }
             }
           }

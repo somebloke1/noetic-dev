@@ -66,33 +66,74 @@ def pr_api_response(
     }
 
 
+def github_api_response(request_url: str, response) -> dict:
+    return {
+        "request_url": request_url,
+        "status": 200,
+        "request_id": "request-1",
+        "fetched_at": "2026-07-11T11:59:59.500000+00:00",
+        "authentication": {
+            "verified": True,
+            "source": "protected-integration",
+            "principal": "noetic-dev-delivery-app",
+        },
+        "response_sha256": canonical_json_sha256(response),
+        "response": response,
+    }
+
+
+def resign_response(envelope: dict) -> None:
+    envelope["response_sha256"] = canonical_json_sha256(envelope["response"])
+
+
 def promotion_authorization(manifest: dict) -> dict:
     candidate_sha = manifest["repo"]["candidate_sha"]
+    with open(REPO_ROOT / "governance/protected-dev-ruleset.json", encoding="utf-8") as file:
+        policy = json.load(file)
+    ruleset = copy.deepcopy(policy["ruleset"])
+    ruleset["created_at"] = "2026-07-11T10:00:00+00:00"
+    ruleset["updated_at"] = "2026-07-11T11:00:00+00:00"
+    ruleset_id = ruleset["id"]
+    applied_rules = [
+        {**copy.deepcopy(rule), "ruleset_id": ruleset_id}
+        for rule in policy["applied_rules"]
+    ]
+    run_id = 123
+    run = {
+        "id": run_id,
+        "repository": {"full_name": "somebloke1/noetic-dev"},
+        "path": ".github/workflows/governance.yml",
+        "event": "push",
+        "head_branch": "dev",
+        "head_sha": candidate_sha,
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": f"https://github.com/somebloke1/noetic-dev/actions/runs/{run_id}",
+        "created_at": "2026-07-11T11:59:57+00:00",
+        "updated_at": "2026-07-11T11:59:58+00:00",
+    }
     return {
         "authorized": True,
         "authorized_by": "somebloke1",
         "dev_sha": candidate_sha,
         "dev_validation_sha": candidate_sha,
         "dev_provenance": {
-            "source": "github_api",
-            "verified": True,
-            "ref": "refs/heads/dev",
-            "protected": True,
-            "head_sha": candidate_sha,
-            "contains_candidate": True,
-            "validation_run": {
-                "source": "github_api",
-                "verified": True,
-                "repository": "somebloke1/noetic-dev",
-                "workflow_path": ".github/workflows/governance.yml",
-                "event": "push",
-                "head_branch": "dev",
-                "head_sha": candidate_sha,
-                "conclusion": "success",
-                "run_id": 123,
-                "run_url": "https://github.com/somebloke1/noetic-dev/actions/runs/123",
-                "completed_at": "2026-07-11T11:59:58+00:00",
-            },
+            "branch_api_response": github_api_response(
+                "https://api.github.com/repos/somebloke1/noetic-dev/branches/dev",
+                {"name": "dev", "protected": True, "commit": {"sha": candidate_sha}},
+            ),
+            "applied_rules_api_response": github_api_response(
+                "https://api.github.com/repos/somebloke1/noetic-dev/rules/branches/dev",
+                applied_rules,
+            ),
+            "ruleset_api_response": github_api_response(
+                f"https://api.github.com/repos/somebloke1/noetic-dev/rulesets/{ruleset_id}",
+                ruleset,
+            ),
+            "validation_run_api_response": github_api_response(
+                f"https://api.github.com/repos/somebloke1/noetic-dev/actions/runs/{run_id}",
+                run,
+            ),
         },
         "issue": 32,
         "comment_id": 1,
@@ -133,9 +174,9 @@ class TestDeliveryGatePositive(unittest.TestCase):
         external["promotion_authorization"]["authorized_at"] = "2026-07-11T11:59:59+00:00"
         external["promotion_authorization"]["comment_created_at"] = "2026-07-11T11:59:59+00:00"
         external["promotion_authorization"]["dev_validated_at"] = "2026-07-11T11:59:59+00:00"
-        external["promotion_authorization"]["dev_provenance"]["validation_run"]["completed_at"] = (
-            "2026-07-11T11:59:59+00:00"
-        )
+        run_envelope = external["promotion_authorization"]["dev_provenance"]["validation_run_api_response"]
+        run_envelope["response"]["updated_at"] = "2026-07-11T11:59:59+00:00"
+        resign_response(run_envelope)
         external["promotion_authorization"]["comment_body"] = "unrelated checkpoint"
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         joined = "\n".join(errors)
@@ -157,49 +198,104 @@ class TestDeliveryGatePositive(unittest.TestCase):
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertNotIn("pull request head must be protected dev", "\n".join(errors))
 
-        attacks = [
-            ("head_sha", "0" * 40, "authenticated protected dev head"),
-            ("contains_candidate", False, "authenticated protected dev head"),
-            ("protected", False, "proven to come from protected dev"),
-            ("source", "manifest", "not authenticated GitHub API evidence"),
-            ("verified", False, "not authenticated GitHub API evidence"),
+        branch_attacks = [
+            ("name", "main"),
+            ("protected", False),
+            ("commit", {"sha": "0" * 40}),
         ]
-        for field, value, expected in attacks:
+        for field, value in branch_attacks:
             with self.subTest(field=field):
                 external = advisory_external()
                 external["promotion_authorization"] = promotion_authorization(manifest)
-                external["promotion_authorization"]["dev_provenance"][field] = value
+                envelope = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]
+                envelope["response"][field] = value
+                resign_response(envelope)
                 _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
-                self.assertIn(expected, "\n".join(errors))
+                self.assertIn("authenticated protected dev head", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        envelope = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]
+        envelope["response"]["protected"] = False
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("response digest mismatch", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        envelope = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]
+        envelope["authentication"]["verified"] = False
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("response is not authenticated", "\n".join(errors))
+
+        rule_attacks = ["empty-applied", "bypass", "inactive", "missing-check"]
+        for attack in rule_attacks:
+            with self.subTest(rule_attack=attack):
+                external = advisory_external()
+                external["promotion_authorization"] = promotion_authorization(manifest)
+                provenance = external["promotion_authorization"]["dev_provenance"]
+                applied = provenance["applied_rules_api_response"]
+                ruleset = provenance["ruleset_api_response"]
+                if attack == "empty-applied":
+                    applied["response"] = []
+                    resign_response(applied)
+                elif attack == "bypass":
+                    ruleset["response"]["bypass_actors"] = [{"actor_type": "User", "actor_id": 1}]
+                    resign_response(ruleset)
+                elif attack == "inactive":
+                    ruleset["response"]["enforcement"] = "disabled"
+                    resign_response(ruleset)
+                else:
+                    status_rule = next(
+                        rule for rule in ruleset["response"]["rules"]
+                        if rule["type"] == "required_status_checks"
+                    )
+                    status_rule["parameters"]["required_status_checks"].pop()
+                    resign_response(ruleset)
+                _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+                self.assertIn("rules are absent, bypassable, stale, or missing required checks", "\n".join(errors))
 
         run_attacks = [
             ("head_sha", "0" * 40),
             ("event", "pull_request"),
             ("head_branch", "main"),
             ("conclusion", "failure"),
-            ("run_url", "https://github.com/somebloke1/noetic-dev/actions/runs/999"),
+            ("status", "in_progress"),
+            ("path", ".github/workflows/other.yml"),
+            ("html_url", "https://github.com/somebloke1/noetic-dev/actions/runs/999"),
         ]
         for field, value in run_attacks:
             with self.subTest(run_field=field):
                 external = advisory_external()
                 external["promotion_authorization"] = promotion_authorization(manifest)
-                run = external["promotion_authorization"]["dev_provenance"]["validation_run"]
+                envelope = external["promotion_authorization"]["dev_provenance"]["validation_run_api_response"]
+                run = envelope["response"]
                 run[field] = value
+                resign_response(envelope)
                 _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
                 self.assertIn("validation run is not bound", "\n".join(errors))
 
         external = advisory_external()
         external["promotion_authorization"] = promotion_authorization(manifest)
-        run = external["promotion_authorization"]["dev_provenance"]["validation_run"]
-        run["completed_at"] = "2026-07-11T11:59:57+00:00"
+        envelope = external["promotion_authorization"]["dev_provenance"]["validation_run_api_response"]
+        envelope["response"]["updated_at"] = "2026-07-11T11:59:57+00:00"
+        resign_response(envelope)
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertIn("timestamp does not match the authenticated run", "\n".join(errors))
 
         external = advisory_external()
         external["promotion_authorization"] = promotion_authorization(manifest)
+        envelope = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]
+        envelope["fetched_at"] = "2026-07-11T11:59:58+00:00"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("captures must follow authorization", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
         provenance = external["promotion_authorization"]["dev_provenance"]
-        self.assertEqual(provenance["head_sha"], candidate_sha)
-        self.assertEqual(provenance["validation_run"]["head_sha"], candidate_sha)
+        self.assertEqual(provenance["branch_api_response"]["response"]["commit"]["sha"], candidate_sha)
+        self.assertEqual(
+            provenance["validation_run_api_response"]["response"]["head_sha"], candidate_sha
+        )
 
     def test_main_promotion_rejects_missing_invalid_or_retroactive_pin_time(self):
         manifest = load_fixture("valid_advisory_manifest.json")
