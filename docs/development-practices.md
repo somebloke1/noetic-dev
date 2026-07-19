@@ -16,7 +16,8 @@
   merge by squash only after required checks, paired QA, and review pass.
 - `main` is the protected release branch. Do not develop directly on it; promote
   only an exact validated `dev` SHA after explicit repository-owner approval,
-  using a protected exact fast-forward rather than squash, rebase, or a merge commit.
+  using the registered protected `main.promote_exact` compare-and-swap fast-forward
+  rather than squash, rebase, or a merge commit.
 - Branch names: `issue-<number>-<short-slug>`; administrative branches may use `chore/<slug>`.
 - Create feature worktrees as siblings, never nested in this repository:
 

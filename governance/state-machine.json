@@ -80,11 +80,11 @@
       "authorized_roles": ["owner", "orchestrator"]
     },
     "READY_TO_MERGE": {
-      "description": "The separately validated and reviewed promotion candidate is ready to merge to main.",
+      "description": "The separately validated and reviewed promotion candidate is ready for the protected exact main ref-update operation.",
       "authorized_roles": ["publisher"]
     },
     "MERGED_TO_MAIN": {
-      "description": "Candidate merged to main; post-merge validation pending.",
+      "description": "Protected main was atomically fast-forwarded to the exact candidate SHA; post-update validation is pending.",
       "authorized_roles": ["publisher"]
     },
     "POST_MERGE_VALIDATING": {
@@ -140,7 +140,7 @@
     {"from": "POST_DEV_VALIDATING", "to": "MAIN_PROMOTION_PENDING", "authorized_roles": ["validator"], "conditions": ["post-integration validations and tests pass", "exact dev SHA recorded"]},
     {"from": "MAIN_PROMOTION_PENDING", "to": "MAIN_PROMOTION_AUTHORIZED", "authorized_roles": ["owner"], "conditions": ["protected external evidence binds repository-owner identity, issue 32 authorization record, timestamp, and exact dev SHA"]},
     {"from": "MAIN_PROMOTION_AUTHORIZED", "to": "CANDIDATE_PINNED", "authorized_roles": ["orchestrator"], "conditions": ["promotion PR targets protected main", "promotion head equals authorized dev SHA", "new implementation_pass_id and qa_for_pass_id allocated"]},
-    {"from": "READY_TO_MERGE", "to": "MERGED_TO_MAIN", "authorized_roles": ["publisher"], "conditions": ["squash/rebase merge to main", "merge_result_sha recorded"]},
+    {"from": "READY_TO_MERGE", "to": "MERGED_TO_MAIN", "authorized_roles": ["publisher"], "conditions": ["promotion PR required checks passed against exact authorized dev SHA", "authenticated comparison proves expected old main SHA is the merge base and authorized candidate is strictly ahead", "protected main head equals expected old main SHA", "main.promote_exact executes git push --porcelain with force-with-lease for expected old main SHA and force=false fast-forward semantics", "source SHA equals owner-authorized and protected-validated dev candidate SHA", "protected main readback and merge_result_sha equal the exact candidate SHA", "squash, rebase, and merge commits are forbidden"]},
     {"from": "MERGED_TO_MAIN", "to": "POST_MERGE_VALIDATING", "authorized_roles": ["validator"], "conditions": ["post-merge validation running against main SHA"]},
     {"from": "POST_MERGE_VALIDATING", "to": "PUBLICATION_READY", "authorized_roles": ["validator"], "conditions": ["post-merge validations and tests pass"]},
     {"from": "PUBLICATION_READY", "to": "PUBLISHED", "authorized_roles": ["publisher"], "conditions": ["publication_sha is full 40-char main SHA", "trusted runner provenance verified", "independent high-reasoning agent approval exists"]},

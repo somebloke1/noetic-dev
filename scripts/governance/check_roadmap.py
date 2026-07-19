@@ -667,6 +667,7 @@ def _validate_repository_policy(
             errors.append("repair-authorized freeze must allow its bounded repair PR")
         expected_repair = {
             "issue": 32,
+            "pull_request": 67,
             "head": "issue-32-canonical-roadmap",
             "base": "dev",
             "max_pull_requests": 1,

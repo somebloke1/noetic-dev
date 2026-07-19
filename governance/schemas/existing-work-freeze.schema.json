@@ -28,9 +28,10 @@
     "authorized_repair": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["issue", "head", "base", "max_pull_requests"],
+      "required": ["issue", "pull_request", "head", "base", "max_pull_requests"],
       "properties": {
         "issue": {"type": "integer", "const": 32},
+        "pull_request": {"type": "integer", "const": 67},
         "head": {"type": "string", "const": "issue-32-canonical-roadmap"},
         "base": {"type": "string", "const": "dev"},
         "max_pull_requests": {"type": "integer", "const": 1}

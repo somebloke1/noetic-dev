@@ -96,7 +96,8 @@ validation SHA/time, authenticated GitHub comment ID/source, author and `OWNER`
 association, exact affirmative body, comment creation time, and the exact dev SHA.
 The same protected authorization record fixes the operation to
 `fast-forward`, source `refs/heads/dev`, target `refs/heads/main`, and an expected
-main SHA identical to the authorized dev SHA before any ref update is attempted.
+old main SHA identical to the reviewed promotion base plus an expected main SHA
+identical to the authorized dev SHA before any ref update is attempted.
 Authorization must strictly follow dev validation and strictly precede
 main-promotion candidate pinning. The executable mode is `--gate-mode main-promotion`.
 The protected integration captures authenticated branch, applied-rules, ruleset,
@@ -111,6 +112,14 @@ missing, unsafe, oversized, timed-out, failed, or nonzero verification blocks th
 gate. The verifier is a separately deployed protected-integration dependency and
 must verify the receipt proof, issuer/key, validity interval, and exact expected
 claims before returning zero. Its absence remains an explicit bootstrap blocker.
+After every promotion-PR check passes, the protected publisher executes the
+registered `main.promote_exact` command: `git push --porcelain` with
+`--force-with-lease=refs/heads/main:<expected-old-main-sha>` and the exact
+`<authorized-dev-sha>:refs/heads/main` refspec. The lease supplies compare-and-swap
+semantics; the authenticated post-main run, compare, and branch responses prove
+that the result was a fast-forward to that same SHA. A squash, rebase, merge commit,
+wrong lease, wrong source/target, nonzero command, or missing command record blocks
+the `MERGED_TO_MAIN` transition and publication.
 
 ### Publication gate
 
@@ -159,6 +168,10 @@ integration SHA from a later authenticated protected-`dev` branch response, incl
 that integration SHA in D2 commit evidence, and pass the fixed protected receipt
 verifier. Local freeze, roadmap, evidence-list, or digest edits alone cannot advance
 the transition.
+While the freeze is `repair_authorized`, `dev-integration` admits only issue #32,
+PR #67, branch `issue-32-canonical-roadmap` targeting `dev`, with exactly the sole
+linked issue #32. Active freeze state blocks every dev integration; main promotion
+remains blocked until the freeze is complete.
 
 ### Branch-name publication
 

@@ -189,6 +189,7 @@ def promotion_authorization(manifest: dict) -> dict:
         "promotion_method": "fast-forward",
         "source_ref": "refs/heads/dev",
         "target_ref": "refs/heads/main",
+        "expected_old_main_sha": manifest["repo"]["base_sha"],
         "expected_main_sha": candidate_sha,
         "dev_provenance": {
             "branch_api_response": github_api_response(
@@ -260,6 +261,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
             ("promotion_method", "squash"),
             ("source_ref", "refs/heads/feature"),
             ("target_ref", "refs/heads/dev"),
+            ("expected_old_main_sha", "0" * 40),
             ("expected_main_sha", "0" * 40),
         ]:
             with self.subTest(promotion_field=field):
@@ -458,6 +460,69 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertNotIn("must both be main", joined)
         self.assertNotIn("owner promotion authorization", joined)
         self.assertNotIn("not eligible for pre-merge", joined)
+
+    def test_repair_authorized_freeze_admits_only_canonical_pr_67(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        manifest["repo"]["base_branch"] = "dev"
+        manifest["repo"]["candidate_branch"] = "issue-32-canonical-roadmap"
+        manifest["pull_request"].update(
+            {
+                "number": 67,
+                "base": "dev",
+                "head_ref": "issue-32-canonical-roadmap",
+                "linked_issues": [32],
+            }
+        )
+        manifest["issue"]["numbers"] = [32]
+
+        _passed, errors, _gate_type = check_delivery(
+            manifest,
+            external_evidence=advisory_external(),
+            gate_mode="dev-integration",
+        )
+        self.assertNotIn("freeze admits only canonical", "\n".join(errors))
+
+        attacks = [
+            ("pr-number", ("pull_request", "number"), 66),
+            ("head-ref", ("pull_request", "head_ref"), "issue-65-opencode-spike"),
+            ("candidate-branch", ("repo", "candidate_branch"), "other"),
+            ("base", ("pull_request", "base"), "main"),
+            ("repo-base", ("repo", "base_branch"), "main"),
+            ("issue", ("issue", "numbers"), [65]),
+            ("linked-issue", ("pull_request", "linked_issues"), [65]),
+        ]
+        for attack, path, value in attacks:
+            with self.subTest(attack=attack):
+                attacked = copy.deepcopy(manifest)
+                attacked[path[0]][path[1]] = value
+                _passed, errors, _gate_type = check_delivery(
+                    attacked,
+                    external_evidence=advisory_external(),
+                    gate_mode="dev-integration",
+                )
+                self.assertIn(
+                    "freeze admits only canonical issue 32 PR 67 reconciliation",
+                    "\n".join(errors),
+                )
+
+        active_freeze = {"status": "active"}
+        with mock.patch("check_delivery_gate._protected_freeze", return_value=active_freeze):
+            _passed, errors, _gate_type = check_delivery(
+                manifest,
+                external_evidence=advisory_external(),
+                gate_mode="dev-integration",
+            )
+        self.assertIn("freeze blocks all dev integrations", "\n".join(errors))
+
+        with mock.patch(
+            "check_delivery_gate._protected_freeze", return_value={"status": "complete"}
+        ):
+            _passed, errors, _gate_type = check_delivery(
+                manifest,
+                external_evidence=advisory_external(),
+                gate_mode="dev-integration",
+            )
+        self.assertNotIn("existing-work freeze", "\n".join(errors))
 
     def test_attestation_digest_detects_authorization_substitution(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -1326,6 +1391,29 @@ class TestPublicationBindingFailures(unittest.TestCase):
         for command in manifest["commands"]:
             if command.get("phase") == "post_merge":
                 command["commit_sha"] = publication_sha
+        manifest["commands"].append(
+            {
+                "argv": [
+                    "git",
+                    "push",
+                    "--porcelain",
+                    f"--force-with-lease=refs/heads/main:{base_sha}",
+                    "origin",
+                    f"{publication_sha}:refs/heads/main",
+                ],
+                "category": "gate",
+                "command_id": "main.promote_exact",
+                "registry_id": "main.promote_exact",
+                "cwd": "/repo",
+                "exit_code": 0,
+                "phase": "promotion",
+                "commit_sha": publication_sha,
+                "started_at": "2026-07-11T12:00:00+00:00",
+                "finished_at": "2026-07-11T12:00:01+00:00",
+                "stdout_sha256": "1" * 64,
+                "stderr_sha256": "0" * 64,
+            }
+        )
         external = advisory_external()
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         run_id = 456
@@ -1399,6 +1487,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
         joined = "\n".join(errors)
         self.assertNotIn("preserve the exact owner-authorized dev SHA", joined)
         self.assertNotIn("not an authenticated fast-forward", joined)
+        self.assertNotIn("exact protected main ref-update command evidence missing", joined)
 
         for field, value in [
             ("status", "diverged"),
@@ -1425,6 +1514,47 @@ class TestPublicationBindingFailures(unittest.TestCase):
             manifest, external_evidence=external, phase="publication"
         )
         self.assertIn("preserve the exact owner-authorized dev SHA", "\n".join(errors))
+
+        command_attacks = [
+            ("old-main", 3, "--force-with-lease=refs/heads/main:" + "0" * 40),
+            ("source", 5, "e" * 40 + ":refs/heads/main"),
+            ("target", 5, candidate_sha + ":refs/heads/dev"),
+        ]
+        for attack, index, value in command_attacks:
+            with self.subTest(command_attack=attack):
+                attacked_manifest, attacked_external = self._publication_candidate()
+                command = next(
+                    item
+                    for item in attacked_manifest["commands"]
+                    if item.get("registry_id") == "main.promote_exact"
+                )
+                command["argv"][index] = value
+                _passed, errors, _gate_type = check_delivery(
+                    attacked_manifest,
+                    external_evidence=attacked_external,
+                    phase="publication",
+                )
+                self.assertIn(
+                    "exact protected main ref-update command evidence missing",
+                    "\n".join(errors),
+                )
+
+        attacked_manifest, attacked_external = self._publication_candidate()
+        command = next(
+            item
+            for item in attacked_manifest["commands"]
+            if item.get("registry_id") == "main.promote_exact"
+        )
+        command["exit_code"] = 1
+        _passed, errors, _gate_type = check_delivery(
+            attacked_manifest,
+            external_evidence=attacked_external,
+            phase="publication",
+        )
+        self.assertIn(
+            "exact protected main ref-update command evidence missing",
+            "\n".join(errors),
+        )
 
     def test_protected_receipt_claim_changes_on_post_main_substitution(self):
         manifest, external = self._publication_candidate()

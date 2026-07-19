@@ -187,6 +187,21 @@ class TestStateMachine(unittest.TestCase):
                     f"No transition from {current} to {next_state}",
                 )
 
+    def test_main_transition_requires_executable_exact_ref_update(self):
+        transition = next(
+            item
+            for item in self.sm["transitions"]
+            if item["from"] == "READY_TO_MERGE" and item["to"] == "MERGED_TO_MAIN"
+        )
+        conditions = " ".join(transition["conditions"])
+        self.assertIn("main.promote_exact", conditions)
+        self.assertIn("force-with-lease", conditions)
+        self.assertIn("expected old main SHA", conditions)
+        self.assertIn("owner-authorized", conditions)
+        self.assertIn("protected main readback", conditions)
+        self.assertIn("squash, rebase, and merge commits are forbidden", conditions)
+        self.assertNotIn("squash/rebase merge to main", conditions)
+
 
 if __name__ == "__main__":
     unittest.main()

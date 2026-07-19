@@ -53,6 +53,16 @@
       "required_for_merge": false,
       "phase": "pre_merge"
     },
+    "main.promote_exact": {
+      "category": "gate",
+      "argv": ["git", "push", "--porcelain", "--force-with-lease=refs/heads/main:{{expected_old_main_sha}}", "origin", "{{authorized_dev_sha}}:refs/heads/main"],
+      "cwd": "{{repo_root}}",
+      "description": "Atomically fast-forward protected main from the expected old main SHA to the exact owner-authorized validated dev SHA.",
+      "counts_as_test": false,
+      "counts_as_validation": false,
+      "required_for_publication": true,
+      "phase": "promotion"
+    },
     "postmerge.validate": {
       "category": "validation",
       "argv": ["python3", "scripts/validate_repo.py"],

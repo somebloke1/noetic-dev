@@ -15,6 +15,7 @@
   "independent_review_completed": false,
   "authorized_repair": {
     "issue": 32,
+    "pull_request": 67,
     "head": "issue-32-canonical-roadmap",
     "base": "dev",
     "max_pull_requests": 1

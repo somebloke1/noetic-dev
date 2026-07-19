@@ -248,10 +248,20 @@ def _registry_matches(command: Dict[str, Any], registry_id: str, registry: Dict[
         return False
     expected = spec.get("argv", [])
     actual = command.get("argv", [])
-    if "{{manifest_path}}" in expected:
-        fixed = [item for item in expected if item != "{{manifest_path}}"]
-        return actual[: len(fixed)] == fixed
-    return actual == expected
+    if len(actual) != len(expected):
+        return False
+
+    def matches_item(actual_item: Any, expected_item: Any) -> bool:
+        if not isinstance(actual_item, str) or not isinstance(expected_item, str):
+            return False
+        parts = re.split(r"(\{\{[a-z0-9_]+\}\})", expected_item)
+        pattern = "".join(
+            r".+" if part.startswith("{{") and part.endswith("}}") else re.escape(part)
+            for part in parts
+        )
+        return re.fullmatch(pattern, actual_item) is not None
+
+    return all(matches_item(actual_item, expected_item) for actual_item, expected_item in zip(actual, expected))
 
 
 def _successful_registered_command_ids(manifest: Dict[str, Any], phase: str, *, commit_sha: str | None = None) -> set[str]:
@@ -517,6 +527,8 @@ def _check_owner_promotion_authorization(
         authorization.get("promotion_method") != "fast-forward"
         or authorization.get("source_ref") != "refs/heads/dev"
         or authorization.get("target_ref") != "refs/heads/main"
+        or authorization.get("expected_old_main_sha")
+        != manifest.get("repo", {}).get("base_sha")
         or authorization.get("expected_main_sha") != candidate_sha
     ):
         errors.append("owner authorization does not require an exact dev-to-main fast-forward")
@@ -1357,6 +1369,47 @@ def _protected_freeze() -> Dict[str, Any]:
     return _load_repo_json("governance/audits/existing-work-freeze.json")
 
 
+def _check_existing_work_freeze(
+    manifest: Dict[str, Any],
+    errors: List[str],
+    gate_mode: str,
+) -> None:
+    freeze = _protected_freeze()
+    status = freeze.get("status")
+    if status == "complete":
+        return
+    if gate_mode != "dev-integration":
+        errors.append("existing-work freeze blocks main promotion until D2 completion")
+        return
+    if status != "repair_authorized":
+        errors.append("existing-work freeze blocks all dev integrations")
+        return
+    repair = freeze.get("authorized_repair")
+    if not isinstance(repair, dict) or repair != {
+        "issue": 32,
+        "pull_request": 67,
+        "head": "issue-32-canonical-roadmap",
+        "base": "dev",
+        "max_pull_requests": 1,
+    }:
+        errors.append("existing-work freeze repair authorization is invalid")
+        return
+    repo = manifest.get("repo", {})
+    pull_request = manifest.get("pull_request", {})
+    issue = manifest.get("issue", {})
+    if (
+        pull_request.get("number") != repair["pull_request"]
+        or pull_request.get("head_ref") != repair["head"]
+        or repo.get("candidate_branch") != repair["head"]
+        or pull_request.get("base") != repair["base"]
+        or repo.get("base_branch") != repair["base"]
+        or issue.get("numbers") != [repair["issue"]]
+        or pull_request.get("linked_issues") != [repair["issue"]]
+        or repair["max_pull_requests"] != 1
+    ):
+        errors.append("existing-work freeze admits only canonical issue 32 PR 67 reconciliation")
+
+
 def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evidence: Optional[Dict[str, Any]]) -> None:
     publication = manifest.get("publication", {})
     registry = _command_registry()
@@ -1375,6 +1428,29 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
     candidate_sha = manifest.get("repo", {}).get("candidate_sha", "")
     if merge_sha and merge_sha != candidate_sha:
         errors.append("publication blocked: main must preserve the exact owner-authorized dev SHA")
+    expected_old_main_sha = manifest.get("repo", {}).get("base_sha", "")
+    expected_promotion_argv = [
+        "git",
+        "push",
+        "--porcelain",
+        f"--force-with-lease=refs/heads/main:{expected_old_main_sha}",
+        "origin",
+        f"{candidate_sha}:refs/heads/main",
+    ]
+    promotion_records = [
+        command
+        for command in manifest.get("commands", [])
+        if command_registry_id(command) == "main.promote_exact"
+    ]
+    if (
+        len(promotion_records) != 1
+        or promotion_records[0].get("category") != "gate"
+        or promotion_records[0].get("phase") != "promotion"
+        or promotion_records[0].get("commit_sha") != candidate_sha
+        or promotion_records[0].get("exit_code") != 0
+        or promotion_records[0].get("argv") != expected_promotion_argv
+    ):
+        errors.append("publication blocked: exact protected main ref-update command evidence missing")
 
     post_merge = (external_evidence or {}).get("post_merge", {})
     if not post_merge:
@@ -1629,6 +1705,7 @@ def check_delivery(
         merge_errors.append(f"branch-name publication forbidden: {publication_sha}")
 
     _check_pr_and_issue(manifest, merge_errors, target_branch)
+    _check_existing_work_freeze(manifest, merge_errors, gate_mode)
     if gate_mode == "main-promotion":
         _check_owner_promotion_authorization(manifest, merge_errors, external_evidence)
     _check_required_commands(manifest, merge_errors)
