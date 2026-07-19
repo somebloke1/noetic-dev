@@ -95,6 +95,9 @@ must bind repository owner `somebloke1`, an exact issue #32 comment, protected-d
 validation SHA/time, authenticated GitHub comment ID/source, author and `OWNER`
 association, exact affirmative body naming both the authorized dev SHA and expected
 old main SHA, comment creation time, and the exact dev SHA.
+Those fields must derive from a canonical-digest-bound authenticated GitHub
+`issues/comments/<id>` response envelope captured strictly after comment creation
+and before candidate pinning; duplicated caller fields cannot substitute for it.
 The same protected authorization record fixes the operation to
 `fast-forward`, source `refs/heads/dev`, target `refs/heads/main`, and an expected
 old main SHA identical to the reviewed promotion base plus an expected main SHA

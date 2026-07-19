@@ -182,7 +182,16 @@ def promotion_authorization(manifest: dict) -> dict:
         "created_at": "2026-07-11T11:59:57+00:00",
         "updated_at": "2026-07-11T11:59:58+00:00",
     }
-    return {
+    comment_id = 1
+    comment_body = (
+        f"noetic-dev-main-promotion: authorize {candidate_sha} "
+        f"from {manifest['repo']['base_sha']}"
+    )
+    comment_url = (
+        "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1"
+    )
+    comment_created_at = "2026-07-11T11:59:59+00:00"
+    authorization = {
         "authorized": True,
         "authorized_by": "somebloke1",
         "dev_sha": candidate_sha,
@@ -211,21 +220,32 @@ def promotion_authorization(manifest: dict) -> dict:
             ),
         },
         "issue": 32,
-        "comment_id": 1,
+        "comment_id": comment_id,
         "comment_source": "github_api",
         "comment_verified": True,
         "comment_author": "somebloke1",
         "comment_author_association": "OWNER",
-        "comment_body": (
-            f"noetic-dev-main-promotion: authorize {candidate_sha} "
-            f"from {manifest['repo']['base_sha']}"
+        "comment_body": comment_body,
+        "comment_created_at": comment_created_at,
+        "comment_api_response": github_api_response(
+            f"https://api.github.com/repos/somebloke1/noetic-dev/issues/comments/{comment_id}",
+            {
+                "id": comment_id,
+                "html_url": comment_url,
+                "issue_url": "https://api.github.com/repos/somebloke1/noetic-dev/issues/32",
+                "body": comment_body,
+                "user": {"login": "somebloke1"},
+                "author_association": "OWNER",
+                "created_at": comment_created_at,
+            },
+            "2026-07-11T11:59:59.500000+00:00",
         ),
-        "comment_created_at": "2026-07-11T11:59:59+00:00",
-        "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
+        "authorization_url": comment_url,
         "authorized_at": "2026-07-11T11:59:59+00:00",
         "dev_validated_at": "2026-07-11T11:59:58+00:00",
         "protected_authorization_receipt": protected_attestation_receipt(),
     }
+    return authorization
 
 
 class TestDeliveryGatePositive(unittest.TestCase):
@@ -398,6 +418,41 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertEqual(
             provenance["validation_run_api_response"]["response"]["head_sha"], candidate_sha
         )
+
+    def test_owner_authorization_derives_from_authenticated_comment_response(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        attacks = [
+            ("id", 2),
+            ("html_url", "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-2"),
+            ("issue_url", "https://api.github.com/repos/somebloke1/noetic-dev/issues/31"),
+            ("body", "unrelated"),
+            ("user", {"login": "attacker"}),
+            ("author_association", "CONTRIBUTOR"),
+            ("created_at", "2026-07-11T11:59:58+00:00"),
+        ]
+        for field, value in attacks:
+            with self.subTest(field=field):
+                external = advisory_external()
+                external["promotion_authorization"] = promotion_authorization(manifest)
+                envelope = external["promotion_authorization"]["comment_api_response"]
+                envelope["response"][field] = value
+                resign_response(envelope)
+                _passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=external
+                )
+                self.assertIn(
+                    "fields do not derive from the authenticated comment response",
+                    "\n".join(errors),
+                )
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        envelope = external["promotion_authorization"]["comment_api_response"]
+        envelope["response"]["body"] = "digest attack"
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=external
+        )
+        self.assertIn("comment GitHub API response digest mismatch", "\n".join(errors))
 
     def test_main_publisher_capability_is_exact_attested_and_fail_closed(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -709,6 +764,12 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertEqual(
             expected_claims["dev_provenance_sha256"],
             canonical_json_sha256(external["promotion_authorization"]["dev_provenance"]),
+        )
+        self.assertEqual(
+            expected_claims["promotion_comment_api_sha256"],
+            canonical_json_sha256(
+                external["promotion_authorization"]["comment_api_response"]
+            ),
         )
         self.assertEqual(
             expected_claims["post_merge_sha256"],

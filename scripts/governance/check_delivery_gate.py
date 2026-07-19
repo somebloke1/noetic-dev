@@ -708,6 +708,31 @@ def _check_owner_promotion_authorization(
     )
     if authorization.get("comment_body") != expected_body:
         errors.append("owner promotion authorization comment body is not the exact affirmative record")
+    comment_envelope = authorization.get("comment_api_response")
+    comment = _authenticated_github_response(
+        comment_envelope, errors, "owner promotion authorization comment", dict
+    )
+    expected_comment_api_url = (
+        f"https://api.github.com/repos/{REPO_FULL_NAME}/issues/comments/{comment_id}"
+        if isinstance(comment_id, int)
+        else ""
+    )
+    comment_user = comment.get("user")
+    if (
+        not isinstance(comment_envelope, dict)
+        or comment_envelope.get("request_url") != expected_comment_api_url
+        or comment.get("id") != comment_id
+        or comment.get("html_url") != authorization.get("authorization_url")
+        or comment.get("issue_url")
+        != f"https://api.github.com/repos/{REPO_FULL_NAME}/issues/32"
+        or comment.get("body") != authorization.get("comment_body")
+        or not isinstance(comment_user, dict)
+        or comment_user.get("login") != authorization.get("comment_author")
+        or comment.get("author_association")
+        != authorization.get("comment_author_association")
+        or comment.get("created_at") != authorization.get("comment_created_at")
+    ):
+        errors.append("owner promotion authorization fields do not derive from the authenticated comment response")
     if not _verify_protected_attestation_receipt(
         authorization.get("protected_authorization_receipt"),
         promotion_authorization_claims(manifest, authorization),
@@ -716,6 +741,9 @@ def _check_owner_promotion_authorization(
     _check_main_publisher_capability(manifest, errors, external_evidence)
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
     comment_created_at = _parse_time(authorization.get("comment_created_at", ""))
+    comment_fetched_at = _parse_time(
+        comment_envelope.get("fetched_at") if isinstance(comment_envelope, dict) else None
+    )
     dev_validated_at = _parse_time(authorization.get("dev_validated_at", ""))
     pinned_at = _parse_time(manifest.get("repo", {}).get("candidate_pinned_at", ""))
     if authorized_at is None:
@@ -732,6 +760,13 @@ def _check_owner_promotion_authorization(
         errors.append("candidate pin timestamp is missing or invalid for main promotion")
     elif authorized_at >= pinned_at:
         errors.append("owner promotion authorization must precede candidate pinning")
+    if (
+        comment_created_at is None
+        or comment_fetched_at is None
+        or pinned_at is None
+        or not comment_created_at < comment_fetched_at < pinned_at
+    ):
+        errors.append("authenticated owner comment capture chronology is invalid")
     capture_times = [
         _parse_time(envelope.get("fetched_at")) if isinstance(envelope, dict) else None
         for envelope in (branch_envelope, applied_envelope, ruleset_envelope, run_envelope)
@@ -1249,6 +1284,11 @@ def verify_authoritative_provenance(
         post_merge_evidence = external_evidence.get("post_merge", {})
         promotion_execution_evidence = external_evidence.get("promotion_execution", {})
         publisher_capability_evidence = external_evidence.get("main_publisher_capability", {})
+        promotion_comment_evidence = (
+            promotion_evidence.get("comment_api_response", {})
+            if isinstance(promotion_evidence, dict)
+            else {}
+        )
         dev_provenance_evidence = (
             promotion_evidence.get("dev_provenance", {})
             if isinstance(promotion_evidence, dict)
@@ -1270,6 +1310,11 @@ def verify_authoritative_provenance(
             "manifest_sha256": computed_manifest_digest,
             "review_evidence_sha256": review_evidence_digest,
             "promotion_authorization_sha256": promotion_authorization_digest,
+            "promotion_comment_api_sha256": _external_canonical_sha256(
+                promotion_comment_evidence,
+                errors,
+                "protected owner promotion comment evidence",
+            ),
             "dev_provenance_sha256": _external_canonical_sha256(
                 dev_provenance_evidence,
                 errors,
@@ -1297,6 +1342,7 @@ def verify_authoritative_provenance(
             "manifest_sha256",
             "review_evidence_sha256",
             "promotion_authorization_sha256",
+            "promotion_comment_api_sha256",
             "dev_provenance_sha256",
             "post_merge_sha256",
             "promotion_execution_sha256",
