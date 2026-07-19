@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import stat
@@ -382,6 +383,26 @@ def _external_canonical_sha256(
         return None
 
 
+def _normalize_external_json(value: Any) -> Any:
+    value_type = type(value)
+    if value is None or value_type in {bool, int, str}:
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise ValueError("non-finite external JSON number")
+        return value
+    if value_type is list:
+        return [_normalize_external_json(item) for item in value]
+    if value_type is dict:
+        normalized: Dict[str, Any] = {}
+        for key, item in value.items():
+            if type(key) is not str:
+                raise ValueError("external JSON object key is not a string")
+            normalized[key] = _normalize_external_json(item)
+        return normalized
+    raise ValueError(f"unsupported external JSON type: {value_type.__name__}")
+
+
 def _external_member(
     value: Any,
     key: str,
@@ -477,7 +498,7 @@ def _verify_protected_attestation_receipt(
                 "expected_claims": expected_claims,
             }
         ).encode("utf-8")
-    except (TypeError, ValueError, OverflowError):
+    except Exception:
         return False
     if len(challenge) > 1_048_576:
         return False
@@ -973,6 +994,13 @@ def verify_authoritative_provenance(
     not accepted as authenticated provenance until the separately protected
     integration is installed and required by branch protection.
     """
+    if external_evidence is not None:
+        try:
+            external_evidence = _normalize_external_json(external_evidence)
+        except Exception:
+            return ["external evidence normalization failed safely"]
+        if type(external_evidence) is not dict:
+            return ["external evidence normalization requires a JSON object"]
     errors: List[str] = _external_integration_blockers(external_evidence)
     policy = manifest.get("policy", {})
     repo = manifest.get("repo", {})
@@ -1204,9 +1232,29 @@ def verify_authoritative_provenance(
             "properties"
         ]["protected_attestation_receipt"]
         receipt_errors = validate_schema(receipt, receipt_schema)
+        required_digest_claims = (
+            "manifest_sha256",
+            "review_evidence_sha256",
+            "promotion_authorization_sha256",
+            "dev_provenance_sha256",
+            "post_merge_sha256",
+            "freeze_review_sha256",
+            "freeze_review_pr_api_sha256",
+        )
+        invalid_digest_claims = [
+            key
+            for key in required_digest_claims
+            if not isinstance(expected_claims.get(key), str)
+            or re.fullmatch(r"[a-f0-9]{64}", expected_claims[key]) is None
+        ]
         if receipt_errors:
             errors.extend(
                 f"protected attestation receipt schema: {error}" for error in receipt_errors
+            )
+        elif invalid_digest_claims:
+            errors.append(
+                "protected integration attestation digest claims are invalid: "
+                + ", ".join(invalid_digest_claims)
             )
         elif not _verify_protected_attestation_receipt(receipt, expected_claims):
             errors.append("protected integration attestation receipt is not independently verified")
@@ -1603,6 +1651,15 @@ def check_delivery(
     target_branch = "dev" if gate_mode == "dev-integration" else "main"
     if phase == "publication" and target_branch != "main":
         return False, ["publication phase requires main-promotion gate mode"], "publication"
+    if external_evidence is not None:
+        try:
+            external_evidence = _normalize_external_json(external_evidence)
+        except Exception:
+            gate_type = "publication" if phase == "publication" else gate_mode
+            return False, ["external evidence normalization failed safely"], gate_type
+        if type(external_evidence) is not dict:
+            gate_type = "publication" if phase == "publication" else gate_mode
+            return False, ["external evidence normalization requires a JSON object"], gate_type
 
     merge_errors: List[str] = []
     from check_evidence_manifest import check as validate_manifest  # noqa: WPS433

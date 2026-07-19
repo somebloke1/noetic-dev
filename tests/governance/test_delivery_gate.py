@@ -613,6 +613,33 @@ class TestDeliveryGatePositive(unittest.TestCase):
                     )
                 run.assert_not_called()
 
+        attacked = ExplodingItemsDict(receipt)
+        with mock.patch(
+            "check_delivery_gate._trusted_root_executable", return_value=True
+        ), mock.patch("check_delivery_gate.subprocess.run") as run:
+            self.assertFalse(
+                delivery_gate._verify_protected_attestation_receipt(
+                    attacked, expected_claims
+                )
+            )
+        run.assert_not_called()
+
+    def test_protected_verifier_is_not_called_with_invalid_computed_digests(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["mode"] = "protected_integration_receipt"
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        bind_external_evidence(manifest, external)
+        with mock.patch(
+            "check_delivery_gate._external_canonical_sha256", return_value=None
+        ), mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ) as verifier:
+            errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("protected integration attestation digest claims are invalid", "\n".join(errors))
+        verifier.assert_not_called()
+
     def test_external_hashing_rejects_exploding_mappings_and_iterators(self):
         errors = []
         self.assertIsNone(
@@ -631,45 +658,78 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertIn("exploding member cannot be read safely", errors)
 
         manifest = load_fixture("valid_advisory_manifest.json")
-        attacks = [
-            ("promotion_authorization", ExplodingGetDict(), "cannot be read safely"),
-            ("freeze_review", ExplodingGetDict(), "cannot be read safely"),
-            ("post_merge", ExplodingGetDict(), "missing required property run_api_response"),
-        ]
-        for field, value, expected in attacks:
-            with self.subTest(field=field):
-                external = advisory_external()
-                external["mode"] = "protected_integration_receipt"
-                external["protected_attestation_receipt"] = protected_attestation_receipt()
-                external[field] = value
-                with mock.patch(
-                    "check_delivery_gate._verify_protected_attestation_receipt",
-                    return_value=True,
-                ):
-                    errors = verify_authoritative_provenance(manifest, external)
-                self.assertIn(expected, "\n".join(errors))
+        promotion = promotion_authorization(manifest)
+        attacks = []
+
+        external = ExplodingGetDict(advisory_external())
+        attacks.append(("top-level", external))
+
+        external = advisory_external()
+        external["promotion_authorization"] = ExplodingGetDict(promotion)
+        attacks.append(("promotion", external))
+
+        external = advisory_external()
+        external["promotion_authorization"] = copy.deepcopy(promotion)
+        external["promotion_authorization"]["dev_provenance"] = ExplodingGetDict(
+            promotion["dev_provenance"]
+        )
+        attacks.append(("dev-provenance", external))
+
+        external = advisory_external()
+        external["promotion_authorization"] = copy.deepcopy(promotion)
+        branch = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]
+        branch["authentication"] = ExplodingGetDict(branch["authentication"])
+        attacks.append(("api-authentication", external))
+
+        external = advisory_external()
+        external["promotion_authorization"] = copy.deepcopy(promotion)
+        response = external["promotion_authorization"]["dev_provenance"]["branch_api_response"]["response"]
+        response["commit"] = ExplodingGetDict(response["commit"])
+        attacks.append(("branch-commit", external))
+
+        external = advisory_external()
+        external["approvals"] = ExplodingList(external["approvals"])
+        attacks.append(("approval-list", external))
+
+        external = advisory_external()
+        external["approvals"][0] = ExplodingGetDict(external["approvals"][0])
+        attacks.append(("approval-record", external))
+
+        external = advisory_external()
+        external["post_merge"] = ExplodingGetDict()
+        attacks.append(("post-main", external))
 
         external = advisory_external()
         external["freeze_review"] = {"pr_api_response": ExplodingGetDict()}
-        errors = verify_authoritative_provenance(manifest, external)
-        self.assertIn("pr_api_response: missing required property response", "\n".join(errors))
+        attacks.append(("freeze-review-pr", external))
 
         external = advisory_external()
-        external["promotion_authorization"] = {
-            "dev_provenance": ExplodingGetDict()
-        }
-        external["mode"] = "protected_integration_receipt"
-        external["protected_attestation_receipt"] = protected_attestation_receipt()
-        with mock.patch(
-            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
-        ):
-            errors = verify_authoritative_provenance(manifest, external)
-        self.assertIn("dev_provenance: missing required property branch_api_response", "\n".join(errors))
+        external["invalid"] = {1: "non-string-key"}
+        attacks.append(("non-string-key", external))
 
         external = advisory_external()
-        external["agent_identities"] = ExplodingList()
-        errors = verify_authoritative_provenance(manifest, external)
-        self.assertIn("external evidence schema validation failed safely", "\n".join(errors))
+        external["invalid"] = object()
+        attacks.append(("arbitrary-object", external))
+
+        external = advisory_external()
+        external["invalid"] = float("nan")
+        attacks.append(("non-finite", external))
+
+        for attack, external in attacks:
+            with self.subTest(full_gate_attack=attack), mock.patch(
+                "check_delivery_gate._verify_protected_attestation_receipt",
+                return_value=True,
+            ) as verifier:
+                passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=external
+                )
+                self.assertFalse(passed)
+                self.assertIn("external evidence normalization failed safely", errors)
+                verifier.assert_not_called()
+
+                errors = verify_authoritative_provenance(manifest, external)
+                self.assertIn("external evidence normalization failed safely", errors)
+                verifier.assert_not_called()
 
     def test_valid_advisory_is_blocked_without_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -733,7 +793,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
             external_evidence=external,
             phase="publication",
         )
-        self.assertIn("freeze review PR API response is not canonical JSON", "\n".join(errors))
+        self.assertIn("external evidence normalization failed safely", errors)
 
     def test_publication_binds_freeze_review_url_and_time_to_local_completion(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -1365,14 +1425,14 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 _passed, errors, _gate_type = check_delivery(
                     manifest, external_evidence=attacked, phase="publication"
                 )
-                self.assertIn("response is not canonical JSON", "\n".join(errors))
+                self.assertIn("external evidence normalization failed safely", errors)
 
         attacked = copy.deepcopy(external)
         attacked["post_merge"]["run_api_response"]["response"]["invalid"] = ExplodingList([1])
         _passed, errors, _gate_type = check_delivery(
             manifest, external_evidence=attacked, phase="publication"
         )
-        self.assertIn("response is not canonical JSON", "\n".join(errors))
+        self.assertIn("external evidence normalization failed safely", errors)
 
         attacked["mode"] = "protected_integration_receipt"
         attacked["protected_attestation_receipt"] = protected_attestation_receipt()
@@ -1380,8 +1440,8 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
         ) as verifier:
             errors = verify_authoritative_provenance(manifest, attacked)
-        self.assertIn("protected post-main evidence is not canonical JSON", "\n".join(errors))
-        self.assertIsNone(verifier.call_args.args[1]["post_merge_sha256"])
+        self.assertIn("external evidence normalization failed safely", errors)
+        verifier.assert_not_called()
 
 
 class TestQaBindingFailures(unittest.TestCase):
