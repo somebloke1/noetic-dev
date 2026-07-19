@@ -370,6 +370,18 @@ def _check_pr_and_issue(
         errors.append(f"issue status is not merge-eligible: {canonical}")
 
 
+def _external_canonical_sha256(
+    value: Any,
+    errors: List[str],
+    label: str,
+) -> Optional[str]:
+    try:
+        return canonical_json_sha256(value)
+    except Exception:
+        errors.append(f"{label} is not canonical JSON")
+        return None
+
+
 def _authenticated_github_response(
     envelope: Any,
     errors: List[str],
@@ -396,10 +408,10 @@ def _authenticated_github_response(
     if not isinstance(response, response_type):
         errors.append(f"{label} GitHub API response body has the wrong type")
         return response_type()
-    try:
-        response_digest = canonical_json_sha256(response)
-    except (TypeError, ValueError, OverflowError):
-        errors.append(f"{label} GitHub API response is not canonical JSON")
+    response_digest = _external_canonical_sha256(
+        response, errors, f"{label} GitHub API response"
+    )
+    if response_digest is None:
         return response
     if envelope.get("response_sha256") != response_digest:
         errors.append(f"{label} GitHub API response digest mismatch")
@@ -969,21 +981,31 @@ def verify_authoritative_provenance(
             "trusted runner canonical manifest digest mismatch: "
             f"computed={computed_manifest_digest}, recorded={artifact.get('manifest_sha256')}"
         )
-    promotion_authorization_digest = canonical_json_sha256(
-        external_evidence.get("promotion_authorization", {})
+    promotion_authorization_digest = _external_canonical_sha256(
+        external_evidence.get("promotion_authorization", {}),
+        errors,
+        "protected promotion authorization evidence",
     )
-    freeze_review_digest = canonical_json_sha256(
-        external_evidence.get("freeze_review", {})
+    freeze_review_digest = _external_canonical_sha256(
+        external_evidence.get("freeze_review", {}),
+        errors,
+        "protected freeze review evidence",
     )
-    freeze_review_pr_api_digest = canonical_json_sha256(
-        external_evidence.get("freeze_review", {}).get("pr_api_response", {})
+    freeze_review_pr_api_digest = _external_canonical_sha256(
+        external_evidence.get("freeze_review", {}).get("pr_api_response", {}),
+        errors,
+        "protected freeze review PR API evidence",
     )
-    review_evidence_digest = canonical_json_sha256({
-        "agent_identities": external_evidence.get("agent_identities", []),
-        "approvals": external_evidence.get("approvals", []),
-        "promotion_authorization": external_evidence.get("promotion_authorization", {}),
-        "freeze_review": external_evidence.get("freeze_review", {}),
-    })
+    review_evidence_digest = _external_canonical_sha256(
+        {
+            "agent_identities": external_evidence.get("agent_identities", []),
+            "approvals": external_evidence.get("approvals", []),
+            "promotion_authorization": external_evidence.get("promotion_authorization", {}),
+            "freeze_review": external_evidence.get("freeze_review", {}),
+        },
+        errors,
+        "protected review evidence",
+    )
     if artifact.get("review_evidence_sha256") != review_evidence_digest:
         errors.append("protected review identity/approval evidence digest mismatch")
     if artifact.get("promotion_authorization_sha256") != promotion_authorization_digest:
@@ -1083,13 +1105,11 @@ def verify_authoritative_provenance(
 
     if mode == "protected_integration_receipt":
         receipt = external_evidence.get("protected_attestation_receipt", {})
-        try:
-            post_merge_digest = canonical_json_sha256(
-                external_evidence.get("post_merge", {})
-            )
-        except (TypeError, ValueError, OverflowError):
-            post_merge_digest = None
-            errors.append("protected post-main evidence is not canonical JSON")
+        post_merge_digest = _external_canonical_sha256(
+            external_evidence.get("post_merge", {}),
+            errors,
+            "protected post-main evidence",
+        )
         expected_claims = {
             "repository": REPO_FULL_NAME,
             "workflow_sha": policy.get("sha"),
@@ -1101,8 +1121,10 @@ def verify_authoritative_provenance(
             "manifest_sha256": computed_manifest_digest,
             "review_evidence_sha256": review_evidence_digest,
             "promotion_authorization_sha256": promotion_authorization_digest,
-            "dev_provenance_sha256": canonical_json_sha256(
-                external_evidence.get("promotion_authorization", {}).get("dev_provenance", {})
+            "dev_provenance_sha256": _external_canonical_sha256(
+                external_evidence.get("promotion_authorization", {}).get("dev_provenance", {}),
+                errors,
+                "protected dev provenance evidence",
             ),
             "post_merge_sha256": post_merge_digest,
             "freeze_review_sha256": freeze_review_digest,
@@ -1439,7 +1461,11 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             or not pr_api.get("request_id")
         ):
             errors.append("publication blocked: freeze review PR API response is not authenticated")
-        computed_pr_response_digest = canonical_json_sha256(pr_response)
+        computed_pr_response_digest = _external_canonical_sha256(
+            pr_response,
+            errors,
+            "freeze review PR API response",
+        )
         if pr_api.get("response_sha256") != computed_pr_response_digest:
             errors.append("publication blocked: freeze review PR API response digest mismatch")
         expected_pr_response = {

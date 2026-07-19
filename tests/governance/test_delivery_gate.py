@@ -28,6 +28,11 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+class ExplodingList(list):
+    def __iter__(self):
+        raise RuntimeError("iterator exploded")
+
+
 def load_fixture(name: str):
     with open(FIXTURES_DIR / name, encoding="utf-8") as f:
         return json.load(f)
@@ -651,6 +656,16 @@ class TestDeliveryGatePositive(unittest.TestCase):
             phase="publication",
         )
         self.assertIn("freeze review audit digest mismatch", "\n".join(errors))
+
+        external["freeze_review"]["pr_api_response"]["response"]["exploding"] = (
+            ExplodingList([1])
+        )
+        _passed, errors, _gate_type = check_delivery(
+            manifest,
+            external_evidence=external,
+            phase="publication",
+        )
+        self.assertIn("freeze review PR API response is not canonical JSON", "\n".join(errors))
 
     def test_publication_binds_freeze_review_url_and_time_to_local_completion(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -1283,6 +1298,22 @@ class TestPublicationBindingFailures(unittest.TestCase):
                     manifest, external_evidence=attacked, phase="publication"
                 )
                 self.assertIn("response is not canonical JSON", "\n".join(errors))
+
+        attacked = copy.deepcopy(external)
+        attacked["post_merge"]["run_api_response"]["response"]["invalid"] = ExplodingList([1])
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=attacked, phase="publication"
+        )
+        self.assertIn("response is not canonical JSON", "\n".join(errors))
+
+        attacked["mode"] = "protected_integration_receipt"
+        attacked["protected_attestation_receipt"] = protected_attestation_receipt()
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ) as verifier:
+            errors = verify_authoritative_provenance(manifest, attacked)
+        self.assertIn("protected post-main evidence is not canonical JSON", "\n".join(errors))
+        self.assertIsNone(verifier.call_args.args[1]["post_merge_sha256"])
 
 
 class TestQaBindingFailures(unittest.TestCase):
