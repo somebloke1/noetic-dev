@@ -1469,6 +1469,42 @@ def _protected_freeze() -> Dict[str, Any]:
     return _load_repo_json("governance/audits/existing-work-freeze.json")
 
 
+def _check_complete_freeze_readiness(
+    freeze: Dict[str, Any], errors: List[str]
+) -> None:
+    try:
+        schema_errors = validate_schema(
+            freeze,
+            _load_schema("governance/schemas/existing-work-freeze.schema.json"),
+        )
+    except Exception:
+        errors.append("existing-work complete freeze schema validation failed safely")
+        return
+    errors.extend(f"existing-work complete freeze schema: {error}" for error in schema_errors)
+    if schema_errors:
+        return
+    if (
+        freeze.get("status") != "complete"
+        or freeze.get("audit_completed") is not True
+        or freeze.get("independent_review_completed") is not True
+        or freeze.get("blocks_publication") is not False
+    ):
+        errors.append("existing-work complete freeze invariants are not satisfied")
+        return
+    try:
+        from check_roadmap import _validate_d2_protected_review  # noqa: WPS433
+
+        roadmap = _load_repo_json("governance/roadmap.json")
+        d2 = next(
+            stage for stage in roadmap.get("stages", []) if stage.get("id") == "D2"
+        )
+        review_errors = _validate_d2_protected_review(REPO_ROOT, freeze, d2)
+    except Exception:
+        errors.append("existing-work protected D2 freeze review derivation failed safely")
+        return
+    errors.extend(f"existing-work complete freeze: {error}" for error in review_errors)
+
+
 def _check_existing_work_freeze(
     manifest: Dict[str, Any],
     errors: List[str],
@@ -1477,6 +1513,8 @@ def _check_existing_work_freeze(
     freeze = _protected_freeze()
     status = freeze.get("status")
     if status == "complete":
+        if gate_mode == "main-promotion":
+            _check_complete_freeze_readiness(freeze, errors)
         return
     if gate_mode != "dev-integration":
         errors.append("existing-work freeze blocks main promotion until D2 completion")

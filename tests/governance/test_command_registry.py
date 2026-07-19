@@ -69,6 +69,11 @@ class TestCommandRegistry(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("$EUID -ne 0", installer)
+        self.assertNotIn("NOETIC_SOURCE", installer)
+        self.assertIn("https://github.com/somebloke1/noetic-dev.git", installer)
+        self.assertIn("refs/heads/dev:refs/heads/dev", installer)
+        self.assertIn("install-main-publisher", installer)
+        self.assertIn("verify-delivery-attestation", installer)
         self.assertIn("GIT_NO_REPLACE_OBJECTS=1", installer)
         self.assertIn("/usr/bin/git --no-replace-objects", installer)
         self.assertIn("archive \"$authorized_sha\"", installer)

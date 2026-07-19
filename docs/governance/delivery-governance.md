@@ -128,8 +128,13 @@ wrong lease, wrong source/target, nonzero command, or missing command record blo
 the `MERGED_TO_MAIN` transition and publication. Its structured execution record is
 digest-bound into the protected integration attestation; manifest-provided command
 hashes alone are never accepted as proof that the push occurred.
-The root-only `deploy/install-main-publisher.sh` installs an exact authorized-dev
-archive under `/opt/noetic-dev-main-publisher/releases/<sha>` and atomically points
+The root-only `deploy/install-main-publisher.sh` ignores caller source objects. It
+fetches the canonical repository's current protected `dev` head into a fresh bare
+repository, requires it to equal the requested SHA, and requires the fixed
+root-protected attestation verifier to validate a signed
+`install-main-publisher` authorization receipt for that same repository/ref/SHA.
+Only then does it install the exact authorized-dev archive under
+`/opt/noetic-dev-main-publisher/releases/<sha>` and atomically point
 the fixed root-owned launcher at that immutable release. This deployment does not
 establish the separate attestation verifier or publication authority by itself.
 Replacement objects are disabled and the extracted archive must reconstruct the

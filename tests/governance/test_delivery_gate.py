@@ -596,6 +596,50 @@ class TestDeliveryGatePositive(unittest.TestCase):
             )
         self.assertNotIn("existing-work freeze", "\n".join(errors))
 
+        malformed_complete = {"status": "complete"}
+        with mock.patch(
+            "check_delivery_gate._protected_freeze", return_value=malformed_complete
+        ):
+            _passed, errors, _gate_type = check_delivery(
+                load_fixture("valid_advisory_manifest.json"),
+                external_evidence=advisory_external(),
+                gate_mode="main-promotion",
+            )
+        self.assertIn("complete freeze schema", "\n".join(errors))
+
+    def test_complete_freeze_readiness_derives_protected_d2_review(self):
+        freeze = json.loads(
+            (REPO_ROOT / "governance/audits/existing-work-freeze.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        freeze.update(
+            {
+                "status": "complete",
+                "blocks_publication": False,
+                "independent_review_completed": True,
+                "reviewed_candidate_sha": "1" * 40,
+                "reviewed_pull_request": 67,
+                "dev_integration_sha": "2" * 40,
+                "reviewed_at": "2026-07-19T00:10:00Z",
+                "review_evidence_url": "https://github.com/somebloke1/noetic-dev/pull/67#issuecomment-10",
+                "protected_review_artifact": "governance/audits/d2-protected-freeze-review.json",
+                "protected_review_sha256": "3" * 64,
+            }
+        )
+        errors = []
+        with mock.patch(
+            "check_roadmap._validate_d2_protected_review", return_value=[]
+        ) as review:
+            delivery_gate._check_complete_freeze_readiness(freeze, errors)
+        self.assertEqual(errors, [])
+        review.assert_called_once()
+
+        freeze["independent_review_completed"] = False
+        errors = []
+        delivery_gate._check_complete_freeze_readiness(freeze, errors)
+        self.assertIn("complete freeze schema", "\n".join(errors))
+
     def test_attestation_digest_detects_authorization_substitution(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
