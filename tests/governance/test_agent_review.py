@@ -17,7 +17,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, load_litellm_token, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_token, validate_litellm_transport, validate_pr, validate_request, validate_runtime
+from agent_review_broker import BWRAP, MAX_PATCH_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, gh_json, load_litellm_token, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_token, validate_litellm_transport, validate_pr, validate_request, validate_runtime
 from genus_router_mcp import GenusRouterError, GenusRouterToolError
 from route_evidence import validate_route_evidence
 
@@ -175,6 +175,32 @@ class TestAgentReview(unittest.TestCase):
                     env=os.environ.copy(),
                 )
             self.assertFalse(marker.exists())
+
+    @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
+    def test_patch_output_ceiling_accepts_boundary_and_rejects_next_byte(self):
+        self.assertGreater(MAX_PATCH_BYTES, 236_597)
+        program = "import sys; sys.stdout.buffer.write(b'x' * int(sys.argv[1]))"
+        for size in [MAX_PATCH_BYTES - 1, MAX_PATCH_BYTES]:
+            with self.subTest(size=size):
+                returncode, output, error = run_bounded(
+                    [sys.executable, "-c", program, str(size)],
+                    max_stdout=MAX_PATCH_BYTES,
+                    max_stderr=1_024,
+                    timeout=10,
+                    env=os.environ.copy(),
+                )
+                self.assertEqual(returncode, 0)
+                self.assertEqual(len(output), size)
+                self.assertEqual(error, b"")
+
+        with self.assertRaisesRegex(ReviewError, "byte limit"):
+            run_bounded(
+                [sys.executable, "-c", program, str(MAX_PATCH_BYTES + 1)],
+                max_stdout=MAX_PATCH_BYTES,
+                max_stderr=1_024,
+                timeout=10,
+                env=os.environ.copy(),
+            )
 
     @mock.patch("agent_review_broker.subprocess.Popen", side_effect=FileNotFoundError("missing"))
     def test_subprocess_spawn_failure_is_controlled(self, _popen: mock.Mock):
