@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+root=/opt/noetic-dev-main-publisher
+release=$(/usr/bin/readlink -f "$root/current")
+case "$release" in
+  "$root"/releases/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  *)
+    echo "protected publisher release is invalid" >&2
+    exit 1
+    ;;
+esac
+exec /usr/bin/python3 "$release/scripts/governance/promote_main.py" "$@"

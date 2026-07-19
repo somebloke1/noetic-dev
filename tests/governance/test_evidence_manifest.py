@@ -13,7 +13,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_evidence_manifest import check as check_manifest
+from check_evidence_manifest import _command_matches_registry, check as check_manifest
 from hash_tree import (
     canonical_json,
     canonical_json_sha256,
@@ -35,6 +35,25 @@ def load_fixture(name: str):
 
 
 class TestEvidenceManifestValidation(unittest.TestCase):
+    def test_registry_templates_match_standalone_and_embedded_placeholders(self):
+        registry = {
+            "example": {
+                "category": "gate",
+                "argv": [
+                    "command",
+                    "{{manifest_path}}",
+                    "--lease=main:{{old_sha}}",
+                ],
+            }
+        }
+        command = {
+            "category": "gate",
+            "argv": ["command", "/tmp/manifest.json", "--lease=main:" + "a" * 40],
+        }
+        self.assertTrue(_command_matches_registry(command, "example", registry))
+        command["argv"][2] = "--lease=dev:" + "a" * 40
+        self.assertFalse(_command_matches_registry(command, "example", registry))
+
     def test_valid_advisory_manifest_is_structurally_valid(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         errors = check_manifest(manifest)

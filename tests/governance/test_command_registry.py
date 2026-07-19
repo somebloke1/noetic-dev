@@ -56,6 +56,24 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertEqual(rules["required_post_merge_validations"], ["postmerge.validate"])
         self.assertEqual(rules["required_post_merge_tests"], ["postmerge.tests"])
 
+    def test_main_publisher_uses_fixed_root_launcher_and_immutable_release(self):
+        command = self.registry["commands"]["main.promote_exact"]
+        self.assertEqual(
+            command["argv"][0], "/usr/local/libexec/noetic-dev/promote-main"
+        )
+        installer = (REPO_ROOT / "deploy/install-main-publisher.sh").read_text(
+            encoding="utf-8"
+        )
+        launcher = (REPO_ROOT / "deploy/noetic-dev-promote-main").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("$EUID -ne 0", installer)
+        self.assertIn("git -C \"$source_root\" archive \"$authorized_sha\"", installer)
+        self.assertIn("chown -R root:root \"$release\"", installer)
+        self.assertIn("chmod -R go-w \"$release\"", installer)
+        self.assertIn("/opt/noetic-dev-main-publisher", launcher)
+        self.assertIn("exec /usr/bin/python3", launcher)
+
     def test_registry_rules_prevent_false_equivalences(self):
         rules = self.registry["rules"]
         self.assertTrue(rules["validate_repo_cannot_be_test"])

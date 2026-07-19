@@ -362,10 +362,14 @@ def _command_matches_registry(command: Dict[str, Any], registry_id: str, registr
         return False
     expected = spec.get("argv", [])
     actual = command.get("argv", [])
-    if "{{manifest_path}}" in expected:
-        fixed = [item for item in expected if item != "{{manifest_path}}"]
-        return actual[: len(fixed)] == fixed
-    return actual == expected
+    if len(actual) != len(expected):
+        return False
+    for template, value in zip(expected, actual):
+        pattern = re.escape(template)
+        pattern = re.sub(r"\\\{\\\{[a-z0-9_]+\\\}\\\}", r".+", pattern)
+        if re.fullmatch(pattern, value) is None:
+            return False
+    return True
 
 
 def _check_commands(manifest: Dict[str, Any], errors: List[str]) -> None:

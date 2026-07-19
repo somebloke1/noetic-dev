@@ -93,7 +93,8 @@ A PR candidate is ready to merge only when ALL of the following hold:
 The owner authorization is not a manifest boolean. Protected external evidence
 must bind repository owner `somebloke1`, an exact issue #32 comment, protected-dev
 validation SHA/time, authenticated GitHub comment ID/source, author and `OWNER`
-association, exact affirmative body, comment creation time, and the exact dev SHA.
+association, exact affirmative body naming both the authorized dev SHA and expected
+old main SHA, comment creation time, and the exact dev SHA.
 The same protected authorization record fixes the operation to
 `fast-forward`, source `refs/heads/dev`, target `refs/heads/main`, and an expected
 old main SHA identical to the reviewed promotion base plus an expected main SHA
@@ -112,14 +113,24 @@ missing, unsafe, oversized, timed-out, failed, or nonzero verification blocks th
 gate. The verifier is a separately deployed protected-integration dependency and
 must verify the receipt proof, issuer/key, validity interval, and exact expected
 claims before returning zero. Its absence remains an explicit bootstrap blocker.
-After every promotion-PR check passes, the protected publisher executes the
-registered `main.promote_exact` command: `git push --porcelain` with
+After every promotion-PR check passes, the root-owned protected publisher at
+`/usr/local/libexec/noetic-dev/promote-main` executes the registered
+`main.promote_exact` operation. It independently verifies the protected owner
+authorization receipt, canonical origin, clean exact-dev checkout, current remote
+heads, and strict fast-forward ancestry before invoking the fixed
+`/usr/bin/git push --porcelain` executable with
 `--force-with-lease=refs/heads/main:<expected-old-main-sha>` and the exact
 `<authorized-dev-sha>:refs/heads/main` refspec. The lease supplies compare-and-swap
 semantics; the authenticated post-main run, compare, and branch responses prove
 that the result was a fast-forward to that same SHA. A squash, rebase, merge commit,
 wrong lease, wrong source/target, nonzero command, or missing command record blocks
-the `MERGED_TO_MAIN` transition and publication.
+the `MERGED_TO_MAIN` transition and publication. Its structured execution record is
+digest-bound into the protected integration attestation; manifest-provided command
+hashes alone are never accepted as proof that the push occurred.
+The root-only `deploy/install-main-publisher.sh` installs an exact authorized-dev
+archive under `/opt/noetic-dev-main-publisher/releases/<sha>` and atomically points
+the fixed root-owned launcher at that immutable release. This deployment does not
+establish the separate attestation verifier or publication authority by itself.
 
 ### Publication gate
 

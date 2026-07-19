@@ -38,7 +38,7 @@ from check_evidence_manifest import (  # noqa: E402
     normalize_qa_records,
     pass_records_by_id,
 )
-from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_file, validate_sha_hex  # noqa: E402
+from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text, validate_sha_hex  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
 from route_evidence import protected_ci_snapshot  # noqa: E402
 
@@ -500,6 +500,22 @@ def _verify_protected_attestation_receipt(
     return result.returncode == 0
 
 
+def promotion_authorization_claims(
+    manifest: Dict[str, Any], authorization: Dict[str, Any]
+) -> Dict[str, Any]:
+    authorization_record = {
+        key: value
+        for key, value in authorization.items()
+        if key != "protected_authorization_receipt"
+    }
+    return {
+        "repository": REPO_FULL_NAME,
+        "authorized_dev_sha": manifest.get("repo", {}).get("candidate_sha"),
+        "expected_old_main_sha": manifest.get("repo", {}).get("base_sha"),
+        "promotion_authorization_sha256": canonical_json_sha256(authorization_record),
+    }
+
+
 def _check_owner_promotion_authorization(
     manifest: Dict[str, Any],
     errors: List[str],
@@ -625,9 +641,17 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization comment author is not the repository owner")
     if authorization.get("comment_author_association") != "OWNER":
         errors.append("owner promotion authorization comment lacks OWNER association")
-    expected_body = f"noetic-dev-main-promotion: authorize {candidate_sha}"
+    expected_body = (
+        f"noetic-dev-main-promotion: authorize {candidate_sha} "
+        f"from {manifest.get('repo', {}).get('base_sha')}"
+    )
     if authorization.get("comment_body") != expected_body:
         errors.append("owner promotion authorization comment body is not the exact affirmative record")
+    if not _verify_protected_attestation_receipt(
+        authorization.get("protected_authorization_receipt"),
+        promotion_authorization_claims(manifest, authorization),
+    ):
+        errors.append("owner promotion authorization is not independently verified")
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
     comment_created_at = _parse_time(authorization.get("comment_created_at", ""))
     dev_validated_at = _parse_time(authorization.get("dev_validated_at", ""))
@@ -1161,6 +1185,7 @@ def verify_authoritative_provenance(
     if mode == "protected_integration_receipt":
         receipt = external_evidence.get("protected_attestation_receipt", {})
         post_merge_evidence = external_evidence.get("post_merge", {})
+        promotion_execution_evidence = external_evidence.get("promotion_execution", {})
         dev_provenance_evidence = (
             promotion_evidence.get("dev_provenance", {})
             if isinstance(promotion_evidence, dict)
@@ -1188,6 +1213,11 @@ def verify_authoritative_provenance(
                 "protected dev provenance evidence",
             ),
             "post_merge_sha256": post_merge_digest,
+            "promotion_execution_sha256": _external_canonical_sha256(
+                promotion_execution_evidence,
+                errors,
+                "protected promotion execution evidence",
+            ),
             "freeze_review_sha256": freeze_review_digest,
             "freeze_review_pr_api_sha256": freeze_review_pr_api_digest,
         }
@@ -1201,6 +1231,7 @@ def verify_authoritative_provenance(
             "promotion_authorization_sha256",
             "dev_provenance_sha256",
             "post_merge_sha256",
+            "promotion_execution_sha256",
             "freeze_review_sha256",
             "freeze_review_pr_api_sha256",
         )
@@ -1429,8 +1460,8 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
     if merge_sha and merge_sha != candidate_sha:
         errors.append("publication blocked: main must preserve the exact owner-authorized dev SHA")
     expected_old_main_sha = manifest.get("repo", {}).get("base_sha", "")
-    expected_promotion_argv = [
-        "git",
+    expected_git_argv = [
+        "/usr/bin/git",
         "push",
         "--porcelain",
         f"--force-with-lease=refs/heads/main:{expected_old_main_sha}",
@@ -1448,9 +1479,42 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         or promotion_records[0].get("phase") != "promotion"
         or promotion_records[0].get("commit_sha") != candidate_sha
         or promotion_records[0].get("exit_code") != 0
-        or promotion_records[0].get("argv") != expected_promotion_argv
     ):
         errors.append("publication blocked: exact protected main ref-update command evidence missing")
+    execution = (external_evidence or {}).get("promotion_execution", {})
+    command = promotion_records[0] if len(promotion_records) == 1 else {}
+    execution_started = _parse_time(
+        execution.get("started_at") if isinstance(execution, dict) else None
+    )
+    execution_finished = _parse_time(
+        execution.get("finished_at") if isinstance(execution, dict) else None
+    )
+    command_started = _parse_time(command.get("started_at"))
+    command_finished = _parse_time(command.get("finished_at"))
+    if (
+        not isinstance(execution, dict)
+        or execution.get("registry_id") != "main.promote_exact"
+        or execution.get("publisher") != "/usr/local/libexec/noetic-dev/promote-main"
+        or execution.get("authorized_dev_sha") != candidate_sha
+        or execution.get("expected_old_main_sha") != expected_old_main_sha
+        or execution.get("git_argv") != expected_git_argv
+        or execution.get("exit_code") != 0
+        or not isinstance(execution.get("stdout_sha256"), str)
+        or not isinstance(execution.get("stderr_sha256"), str)
+        or re.fullmatch(r"[a-f0-9]{64}", execution.get("stdout_sha256", "")) is None
+        or re.fullmatch(r"[a-f0-9]{64}", execution.get("stderr_sha256", "")) is None
+        or command.get("stdout_sha256")
+        != sha256_text(canonical_json(execution) + "\n")
+        or command.get("stderr_sha256") != sha256_text("")
+        or command_started is None
+        or execution_started is None
+        or execution_finished is None
+        or command_finished is None
+        or not (
+            command_started <= execution_started < execution_finished <= command_finished
+        )
+    ):
+        errors.append("publication blocked: authenticated exact promotion execution missing")
 
     post_merge = (external_evidence or {}).get("post_merge", {})
     if not post_merge:
@@ -1549,6 +1613,8 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             or run_fetched_at <= run_finished_at
             or compare_fetched_at <= run_fetched_at
             or main_fetched_at <= compare_fetched_at
+            or execution_finished is None
+            or execution_finished >= run_finished_at
         ):
             errors.append("publication blocked: post-main evidence chronology is invalid")
 

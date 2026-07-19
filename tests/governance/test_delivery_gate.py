@@ -16,13 +16,14 @@ if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
 import check_delivery_gate as delivery_gate
+import promote_main
 from check_delivery_gate import (
     check_bootstrap_blocked,
     check_delivery,
     check_pinning,
     verify_authoritative_provenance,
 )
-from hash_tree import canonical_json_sha256, manifest_digest_excluding_own
+from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_text
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -215,11 +216,15 @@ def promotion_authorization(manifest: dict) -> dict:
         "comment_verified": True,
         "comment_author": "somebloke1",
         "comment_author_association": "OWNER",
-        "comment_body": f"noetic-dev-main-promotion: authorize {candidate_sha}",
+        "comment_body": (
+            f"noetic-dev-main-promotion: authorize {candidate_sha} "
+            f"from {manifest['repo']['base_sha']}"
+        ),
         "comment_created_at": "2026-07-11T11:59:59+00:00",
         "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
         "authorized_at": "2026-07-11T11:59:59+00:00",
         "dev_validated_at": "2026-07-11T11:59:58+00:00",
+        "protected_authorization_receipt": protected_attestation_receipt(),
     }
 
 
@@ -1394,12 +1399,11 @@ class TestPublicationBindingFailures(unittest.TestCase):
         manifest["commands"].append(
             {
                 "argv": [
-                    "git",
-                    "push",
-                    "--porcelain",
-                    f"--force-with-lease=refs/heads/main:{base_sha}",
-                    "origin",
-                    f"{publication_sha}:refs/heads/main",
+                    "/usr/local/libexec/noetic-dev/promote-main",
+                    "--manifest",
+                    "/protected/manifest.json",
+                    "--external-evidence",
+                    "/protected/external-evidence.json",
                 ],
                 "category": "gate",
                 "command_id": "main.promote_exact",
@@ -1415,6 +1419,30 @@ class TestPublicationBindingFailures(unittest.TestCase):
             }
         )
         external = advisory_external()
+        external["promotion_execution"] = {
+            "registry_id": "main.promote_exact",
+            "publisher": "/usr/local/libexec/noetic-dev/promote-main",
+            "authorized_dev_sha": publication_sha,
+            "expected_old_main_sha": base_sha,
+            "git_argv": [
+                "/usr/bin/git",
+                "push",
+                "--porcelain",
+                f"--force-with-lease=refs/heads/main:{base_sha}",
+                "origin",
+                f"{publication_sha}:refs/heads/main",
+            ],
+            "exit_code": 0,
+            "stdout_sha256": "1" * 64,
+            "stderr_sha256": "0" * 64,
+            "started_at": "2026-07-11T12:00:00+00:00",
+            "finished_at": "2026-07-11T12:00:01+00:00",
+        }
+        promotion_command = manifest["commands"][-1]
+        promotion_command["stdout_sha256"] = sha256_text(
+            canonical_json(external["promotion_execution"]) + "\n"
+        )
+        promotion_command["stderr_sha256"] = sha256_text("")
         external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
         run_id = 456
         external["post_merge"] = {
@@ -1516,9 +1544,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
         self.assertIn("preserve the exact owner-authorized dev SHA", "\n".join(errors))
 
         command_attacks = [
-            ("old-main", 3, "--force-with-lease=refs/heads/main:" + "0" * 40),
-            ("source", 5, "e" * 40 + ":refs/heads/main"),
-            ("target", 5, candidate_sha + ":refs/heads/dev"),
+            ("manifest-flag", 1, "--wrong-manifest"),
+            ("publisher", 0, "/tmp/promote-main"),
+            ("evidence-flag", 3, "--wrong-evidence"),
         ]
         for attack, index, value in command_attacks:
             with self.subTest(command_attack=attack):
@@ -1535,7 +1563,26 @@ class TestPublicationBindingFailures(unittest.TestCase):
                     phase="publication",
                 )
                 self.assertIn(
-                    "exact protected main ref-update command evidence missing",
+                    "command main.promote_exact does not match registry entry",
+                    "\n".join(errors),
+                )
+
+        execution_attacks = [
+            ("old-main", 3, "--force-with-lease=refs/heads/main:" + "0" * 40),
+            ("source", 5, "e" * 40 + ":refs/heads/main"),
+            ("target", 5, candidate_sha + ":refs/heads/dev"),
+        ]
+        for attack, index, value in execution_attacks:
+            with self.subTest(execution_attack=attack):
+                attacked_manifest, attacked_external = self._publication_candidate()
+                attacked_external["promotion_execution"]["git_argv"][index] = value
+                _passed, errors, _gate_type = check_delivery(
+                    attacked_manifest,
+                    external_evidence=attacked_external,
+                    phase="publication",
+                )
+                self.assertIn(
+                    "authenticated exact promotion execution missing",
                     "\n".join(errors),
                 )
 
@@ -1577,6 +1624,92 @@ class TestPublicationBindingFailures(unittest.TestCase):
             verify_authoritative_provenance(manifest, external)
         substituted_digest = verifier.call_args.args[1]["post_merge_sha256"]
         self.assertNotEqual(original_digest, substituted_digest)
+
+    def test_protected_receipt_claim_changes_on_promotion_execution_substitution(self):
+        manifest, external = self._publication_candidate()
+        external["mode"] = "protected_integration_receipt"
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        bind_external_evidence(manifest, external)
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            verify_authoritative_provenance(manifest, external)
+        original_digest = verifier.call_args.args[1]["promotion_execution_sha256"]
+
+        external["promotion_execution"]["stdout_sha256"] = "e" * 64
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ) as verifier:
+            verify_authoritative_provenance(manifest, external)
+        changed_digest = verifier.call_args.args[1]["promotion_execution_sha256"]
+        self.assertNotEqual(original_digest, changed_digest)
+
+
+    def test_executes_only_exact_remote_compare_and_swap(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        manifest["repo"]["candidate_branch"] = "dev"
+        manifest["pull_request"]["head_ref"] = "dev"
+        candidate = manifest["repo"]["candidate_sha"]
+        old_main = manifest["repo"]["base_sha"]
+        external = {"promotion_authorization": promotion_authorization(manifest)}
+        completed = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        with (
+            mock.patch("promote_main._check_owner_promotion_authorization"),
+            mock.patch(
+                "promote_main._require_git",
+                side_effect=[
+                    "https://github.com/somebloke1/noetic-dev.git",
+                    "https://github.com/somebloke1/noetic-dev.git",
+                    candidate,
+                    "",
+                ],
+            ),
+            mock.patch(
+                "promote_main._remote_heads",
+                return_value={
+                    "refs/heads/dev": candidate,
+                    "refs/heads/main": old_main,
+                },
+            ),
+            mock.patch("promote_main._git", return_value=completed) as git_run,
+        ):
+            record = promote_main.promote(manifest, external, REPO_ROOT)
+        expected = [
+            "/usr/bin/git",
+            "push",
+            "--porcelain",
+            f"--force-with-lease=refs/heads/main:{old_main}",
+            "origin",
+            f"{candidate}:refs/heads/main",
+        ]
+        self.assertEqual(record["git_argv"], expected)
+        self.assertEqual(git_run.call_args.args, (REPO_ROOT, *expected[1:]))
+
+    def test_rejects_remote_main_changed_after_authorization(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        candidate = manifest["repo"]["candidate_sha"]
+        external = {"promotion_authorization": {}}
+        with (
+            mock.patch("promote_main._check_owner_promotion_authorization"),
+            mock.patch(
+                "promote_main._require_git",
+                side_effect=[
+                    "https://github.com/somebloke1/noetic-dev.git",
+                    "https://github.com/somebloke1/noetic-dev.git",
+                    candidate,
+                    "",
+                ],
+            ),
+            mock.patch(
+                "promote_main._remote_heads",
+                return_value={
+                    "refs/heads/dev": candidate,
+                    "refs/heads/main": "e" * 40,
+                },
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "remote main changed"):
+                promote_main.promote(manifest, external, REPO_ROOT)
 
     def test_post_main_evidence_rejects_wrong_run_main_and_chronology(self):
         manifest, external = self._publication_candidate()

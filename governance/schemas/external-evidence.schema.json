@@ -107,7 +107,7 @@
     "promotion_authorization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "dev_provenance", "promotion_method", "source_ref", "target_ref", "expected_old_main_sha", "expected_main_sha", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "authorization_url", "authorized_at", "dev_validated_at"],
+      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "dev_provenance", "promotion_method", "source_ref", "target_ref", "expected_old_main_sha", "expected_main_sha", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "authorization_url", "authorized_at", "dev_validated_at", "protected_authorization_receipt"],
       "properties": {
         "authorized": {"type": "boolean", "const": true},
         "authorized_by": {"type": "string", "const": "somebloke1"},
@@ -191,7 +191,25 @@
         "comment_created_at": {"type": "string", "minLength": 1},
         "authorization_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/32#issuecomment-[1-9][0-9]*$"},
         "authorized_at": {"type": "string", "minLength": 1},
-        "dev_validated_at": {"type": "string", "minLength": 1}
+        "dev_validated_at": {"type": "string", "minLength": 1},
+        "protected_authorization_receipt": {"$ref": "#/properties/protected_attestation_receipt"}
+      }
+    },
+    "promotion_execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry_id", "publisher", "authorized_dev_sha", "expected_old_main_sha", "git_argv", "exit_code", "stdout_sha256", "stderr_sha256", "started_at", "finished_at"],
+      "properties": {
+        "registry_id": {"type": "string", "const": "main.promote_exact"},
+        "publisher": {"type": "string", "const": "/usr/local/libexec/noetic-dev/promote-main"},
+        "authorized_dev_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "expected_old_main_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "git_argv": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"type": "string", "minLength": 1}},
+        "exit_code": {"type": "integer", "const": 0},
+        "stdout_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "stderr_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "started_at": {"type": "string", "minLength": 1},
+        "finished_at": {"type": "string", "minLength": 1}
       }
     },
     "freeze_review": {

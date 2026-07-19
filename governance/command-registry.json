@@ -55,9 +55,9 @@
     },
     "main.promote_exact": {
       "category": "gate",
-      "argv": ["git", "push", "--porcelain", "--force-with-lease=refs/heads/main:{{expected_old_main_sha}}", "origin", "{{authorized_dev_sha}}:refs/heads/main"],
+      "argv": ["/usr/local/libexec/noetic-dev/promote-main", "--manifest", "{{manifest_path}}", "--external-evidence", "{{external_evidence_path}}"],
       "cwd": "{{repo_root}}",
-      "description": "Atomically fast-forward protected main from the expected old main SHA to the exact owner-authorized validated dev SHA.",
+      "description": "Verify protected owner authorization, then atomically fast-forward main from the expected old SHA to the exact authorized dev SHA.",
       "counts_as_test": false,
       "counts_as_validation": false,
       "required_for_publication": true,
