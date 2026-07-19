@@ -57,8 +57,8 @@ def _load_state_machine() -> Dict[str, Any]:
     return _load_repo_json("governance/state-machine.json")
 
 
-def _parse_time(value: str, label: str, errors: List[str]) -> datetime | None:
-    if not value:
+def _parse_time(value: Any, label: str, errors: List[str]) -> datetime | None:
+    if not isinstance(value, str) or not value:
         errors.append(f"{label} missing timestamp")
         return None
     try:
@@ -171,8 +171,7 @@ def _check_repo_and_pr(
         errors.append(
             f"repo.base_branch must be {target_branch} for this governed delivery mode"
         )
-    if repo.get("candidate_pinned_at"):
-        _parse_time(repo["candidate_pinned_at"], "repo.candidate_pinned_at", errors)
+    _parse_time(repo.get("candidate_pinned_at", ""), "repo.candidate_pinned_at", errors)
 
 
 def _check_issue(manifest: Dict[str, Any], errors: List[str]) -> None:

@@ -66,6 +66,48 @@ def pr_api_response(
     }
 
 
+def promotion_authorization(manifest: dict) -> dict:
+    candidate_sha = manifest["repo"]["candidate_sha"]
+    return {
+        "authorized": True,
+        "authorized_by": "somebloke1",
+        "dev_sha": candidate_sha,
+        "dev_validation_sha": candidate_sha,
+        "dev_provenance": {
+            "source": "github_api",
+            "verified": True,
+            "ref": "refs/heads/dev",
+            "protected": True,
+            "head_sha": candidate_sha,
+            "contains_candidate": True,
+            "validation_run": {
+                "source": "github_api",
+                "verified": True,
+                "repository": "somebloke1/noetic-dev",
+                "workflow_path": ".github/workflows/governance.yml",
+                "event": "push",
+                "head_branch": "dev",
+                "head_sha": candidate_sha,
+                "conclusion": "success",
+                "run_id": 123,
+                "run_url": "https://github.com/somebloke1/noetic-dev/actions/runs/123",
+                "completed_at": "2026-07-11T11:59:58+00:00",
+            },
+        },
+        "issue": 32,
+        "comment_id": 1,
+        "comment_source": "github_api",
+        "comment_verified": True,
+        "comment_author": "somebloke1",
+        "comment_author_association": "OWNER",
+        "comment_body": f"noetic-dev-main-promotion: authorize {candidate_sha}",
+        "comment_created_at": "2026-07-11T11:59:59+00:00",
+        "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
+        "authorized_at": "2026-07-11T11:59:59+00:00",
+        "dev_validated_at": "2026-07-11T11:59:58+00:00",
+    }
+
+
 class TestDeliveryGatePositive(unittest.TestCase):
     def test_main_promotion_requires_exact_owner_authorization(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -73,23 +115,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertIn("owner promotion authorization missing", "\n".join(errors))
 
-        external["promotion_authorization"] = {
-            "authorized": True,
-            "authorized_by": "somebloke1",
-            "dev_sha": manifest["repo"]["candidate_sha"],
-            "dev_validation_sha": manifest["repo"]["candidate_sha"],
-            "issue": 32,
-            "comment_id": 1,
-            "comment_source": "github_api",
-            "comment_verified": True,
-            "comment_author": "somebloke1",
-            "comment_author_association": "OWNER",
-            "comment_body": f"noetic-dev-main-promotion: authorize {manifest['repo']['candidate_sha']}",
-            "comment_created_at": "2026-07-11T11:59:59+00:00",
-            "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
-            "authorized_at": "2026-07-11T11:59:59+00:00",
-            "dev_validated_at": "2026-07-11T11:59:58+00:00",
-        }
+        external["promotion_authorization"] = promotion_authorization(manifest)
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertNotIn("owner promotion authorization missing", "\n".join(errors))
         self.assertNotIn("owner-authorized dev SHA", "\n".join(errors))
@@ -107,11 +133,93 @@ class TestDeliveryGatePositive(unittest.TestCase):
         external["promotion_authorization"]["authorized_at"] = "2026-07-11T11:59:59+00:00"
         external["promotion_authorization"]["comment_created_at"] = "2026-07-11T11:59:59+00:00"
         external["promotion_authorization"]["dev_validated_at"] = "2026-07-11T11:59:59+00:00"
+        external["promotion_authorization"]["dev_provenance"]["validation_run"]["completed_at"] = (
+            "2026-07-11T11:59:59+00:00"
+        )
         external["promotion_authorization"]["comment_body"] = "unrelated checkpoint"
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         joined = "\n".join(errors)
         self.assertIn("must follow protected dev validation", joined)
         self.assertIn("exact affirmative record", joined)
+
+    def test_main_promotion_requires_authenticated_protected_dev_validation(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        candidate_sha = manifest["repo"]["candidate_sha"]
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("pull request head must be protected dev", "\n".join(errors))
+
+        manifest["repo"]["candidate_branch"] = "dev"
+        manifest["pull_request"]["head_ref"] = "dev"
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertNotIn("pull request head must be protected dev", "\n".join(errors))
+
+        attacks = [
+            ("head_sha", "0" * 40, "authenticated protected dev head"),
+            ("contains_candidate", False, "authenticated protected dev head"),
+            ("protected", False, "proven to come from protected dev"),
+            ("source", "manifest", "not authenticated GitHub API evidence"),
+            ("verified", False, "not authenticated GitHub API evidence"),
+        ]
+        for field, value, expected in attacks:
+            with self.subTest(field=field):
+                external = advisory_external()
+                external["promotion_authorization"] = promotion_authorization(manifest)
+                external["promotion_authorization"]["dev_provenance"][field] = value
+                _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+                self.assertIn(expected, "\n".join(errors))
+
+        run_attacks = [
+            ("head_sha", "0" * 40),
+            ("event", "pull_request"),
+            ("head_branch", "main"),
+            ("conclusion", "failure"),
+            ("run_url", "https://github.com/somebloke1/noetic-dev/actions/runs/999"),
+        ]
+        for field, value in run_attacks:
+            with self.subTest(run_field=field):
+                external = advisory_external()
+                external["promotion_authorization"] = promotion_authorization(manifest)
+                run = external["promotion_authorization"]["dev_provenance"]["validation_run"]
+                run[field] = value
+                _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+                self.assertIn("validation run is not bound", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        run = external["promotion_authorization"]["dev_provenance"]["validation_run"]
+        run["completed_at"] = "2026-07-11T11:59:57+00:00"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("timestamp does not match the authenticated run", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        provenance = external["promotion_authorization"]["dev_provenance"]
+        self.assertEqual(provenance["head_sha"], candidate_sha)
+        self.assertEqual(provenance["validation_run"]["head_sha"], candidate_sha)
+
+    def test_main_promotion_rejects_missing_invalid_or_retroactive_pin_time(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        for value in [None, 1, {}, [], "not-a-time", "2026-07-11T12:00:00"]:
+            with self.subTest(value=value):
+                attacked = copy.deepcopy(manifest)
+                if value is None:
+                    attacked["repo"].pop("candidate_pinned_at")
+                else:
+                    attacked["repo"]["candidate_pinned_at"] = value
+                external = advisory_external()
+                external["promotion_authorization"] = promotion_authorization(attacked)
+                _passed, errors, _gate_type = check_delivery(attacked, external_evidence=external)
+                self.assertIn("candidate pin timestamp is missing or invalid", "\n".join(errors))
+
+        manifest["repo"]["candidate_pinned_at"] = "2026-07-11T11:59:59+00:00"
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("authorization must precede candidate pinning", "\n".join(errors))
 
     def test_dev_integration_mode_accepts_dev_shape_until_external_authority_gate(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -163,23 +271,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
     def test_attestation_digest_detects_authorization_substitution(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = advisory_external()
-        external["promotion_authorization"] = {
-            "authorized": True,
-            "authorized_by": "somebloke1",
-            "dev_sha": manifest["repo"]["candidate_sha"],
-            "dev_validation_sha": manifest["repo"]["candidate_sha"],
-            "issue": 32,
-            "comment_id": 1,
-            "comment_source": "github_api",
-            "comment_verified": True,
-            "comment_author": "somebloke1",
-            "comment_author_association": "OWNER",
-            "comment_body": f"noetic-dev-main-promotion: authorize {manifest['repo']['candidate_sha']}",
-            "comment_created_at": "2026-07-11T11:59:59+00:00",
-            "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
-            "authorized_at": "2026-07-11T11:59:59+00:00",
-            "dev_validated_at": "2026-07-11T11:59:58+00:00",
-        }
+        external["promotion_authorization"] = promotion_authorization(manifest)
         promotion_digest = canonical_json_sha256(external["promotion_authorization"])
         freeze_digest = canonical_json_sha256({})
         review_digest = canonical_json_sha256(

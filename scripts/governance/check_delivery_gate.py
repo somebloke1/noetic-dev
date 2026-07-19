@@ -75,8 +75,8 @@ def _model_profiles() -> Dict[str, Any]:
     return _load_repo_json("governance/model-profiles.json")
 
 
-def _parse_time(value: str) -> Optional[datetime]:
-    if not value:
+def _parse_time(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -374,6 +374,11 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization missing from protected external evidence")
         return
     candidate_sha = manifest.get("repo", {}).get("candidate_sha")
+    if (
+        manifest.get("repo", {}).get("candidate_branch") != "dev"
+        or manifest.get("pull_request", {}).get("head_ref") != "dev"
+    ):
+        errors.append("main-promotion pull request head must be protected dev")
     if authorization.get("authorized") is not True:
         errors.append("owner promotion authorization is not affirmative")
     if authorization.get("authorized_by") != REPOSITORY_OWNER:
@@ -382,6 +387,37 @@ def _check_owner_promotion_authorization(
         errors.append("owner-authorized dev SHA does not equal the promotion candidate SHA")
     if authorization.get("dev_validation_sha") != candidate_sha:
         errors.append("protected dev validation SHA does not equal the promotion candidate SHA")
+    provenance = authorization.get("dev_provenance")
+    if not isinstance(provenance, dict):
+        errors.append("authenticated protected dev provenance is missing")
+        provenance = {}
+    if provenance.get("source") != "github_api" or provenance.get("verified") is not True:
+        errors.append("protected dev ref is not authenticated GitHub API evidence")
+    if provenance.get("ref") != "refs/heads/dev" or provenance.get("protected") is not True:
+        errors.append("promotion candidate is not proven to come from protected dev")
+    if provenance.get("head_sha") != candidate_sha or provenance.get("contains_candidate") is not True:
+        errors.append("promotion candidate is not the authenticated protected dev head")
+    validation_run = provenance.get("validation_run")
+    if not isinstance(validation_run, dict):
+        errors.append("authenticated protected dev validation run is missing")
+        validation_run = {}
+    expected_run_url = (
+        f"https://github.com/somebloke1/noetic-dev/actions/runs/{validation_run.get('run_id')}"
+        if isinstance(validation_run.get("run_id"), int)
+        else ""
+    )
+    if validation_run.get("source") != "github_api" or validation_run.get("verified") is not True:
+        errors.append("protected dev validation run is not authenticated GitHub API evidence")
+    if (
+        validation_run.get("repository") != REPO_FULL_NAME
+        or validation_run.get("workflow_path") != ".github/workflows/governance.yml"
+        or validation_run.get("event") != "push"
+        or validation_run.get("head_branch") != "dev"
+        or validation_run.get("head_sha") != candidate_sha
+        or validation_run.get("conclusion") != "success"
+        or validation_run.get("run_url") != expected_run_url
+    ):
+        errors.append("protected dev validation run is not bound to the promotion candidate")
     if authorization.get("issue") != 32:
         errors.append("owner promotion authorization must be recorded on issue 32")
     comment_id = authorization.get("comment_id")
@@ -415,9 +451,13 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization time does not match authenticated comment creation")
     elif dev_validated_at is None:
         errors.append("protected dev validation timestamp is invalid")
+    elif _parse_time(validation_run.get("completed_at", "")) != dev_validated_at:
+        errors.append("protected dev validation timestamp does not match the authenticated run")
     elif authorized_at <= dev_validated_at:
         errors.append("owner promotion authorization must follow protected dev validation")
-    elif pinned_at is not None and authorized_at >= pinned_at:
+    elif pinned_at is None:
+        errors.append("candidate pin timestamp is missing or invalid for main promotion")
+    elif authorized_at >= pinned_at:
         errors.append("owner promotion authorization must precede candidate pinning")
 
 def _profile_for(profile_id: str) -> Optional[Dict[str, Any]]:

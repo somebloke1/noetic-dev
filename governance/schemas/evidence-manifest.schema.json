@@ -89,7 +89,8 @@
         "base_sha",
         "candidate_branch",
         "candidate_sha",
-        "candidate_tree_oid"
+        "candidate_tree_oid",
+        "candidate_pinned_at"
       ],
       "properties": {
         "remote": {"type": "string"},
