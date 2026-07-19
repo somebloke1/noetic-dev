@@ -403,23 +403,6 @@ def _normalize_external_json(value: Any) -> Any:
     raise ValueError(f"unsupported external JSON type: {value_type.__name__}")
 
 
-def _external_member(
-    value: Any,
-    key: str,
-    default: Any,
-    errors: List[str],
-    label: str,
-) -> Any:
-    if not isinstance(value, dict):
-        errors.append(f"{label} is not an object")
-        return default
-    try:
-        return value.get(key, default)
-    except Exception:
-        errors.append(f"{label} cannot be read safely")
-        return default
-
-
 def _authenticated_github_response(
     envelope: Any,
     errors: List[str],
@@ -428,11 +411,6 @@ def _authenticated_github_response(
 ) -> Any:
     if not isinstance(envelope, dict):
         errors.append(f"{label} GitHub API response envelope is missing")
-        return response_type()
-    try:
-        envelope = dict(envelope)
-    except Exception:
-        errors.append(f"{label} GitHub API response envelope cannot be read safely")
         return response_type()
     authentication = envelope.get("authentication")
     if (
@@ -450,11 +428,6 @@ def _authenticated_github_response(
     response = envelope.get("response")
     if not isinstance(response, response_type):
         errors.append(f"{label} GitHub API response body has the wrong type")
-        return response_type()
-    try:
-        response = dict(response) if response_type is dict else list(response)
-    except Exception:
-        errors.append(f"{label} GitHub API response body cannot be read safely")
         return response_type()
     response_digest = _external_canonical_sha256(
         response, errors, f"{label} GitHub API response"
@@ -1044,26 +1017,12 @@ def verify_authoritative_provenance(
             "trusted runner canonical manifest digest mismatch: "
             f"computed={computed_manifest_digest}, recorded={artifact.get('manifest_sha256')}"
         )
-    promotion_evidence = _external_member(
-        external_evidence,
-        "promotion_authorization",
-        {},
-        errors,
-        "protected promotion authorization evidence",
-    )
-    freeze_evidence = _external_member(
-        external_evidence,
-        "freeze_review",
-        {},
-        errors,
-        "protected freeze review evidence",
-    )
-    freeze_pr_evidence = _external_member(
-        freeze_evidence,
-        "pr_api_response",
-        {},
-        errors,
-        "protected freeze review PR API evidence",
+    promotion_evidence = external_evidence.get("promotion_authorization", {})
+    freeze_evidence = external_evidence.get("freeze_review", {})
+    freeze_pr_evidence = (
+        freeze_evidence.get("pr_api_response", {})
+        if isinstance(freeze_evidence, dict)
+        else {}
     )
     promotion_authorization_digest = _external_canonical_sha256(
         promotion_evidence,
@@ -1189,19 +1148,11 @@ def verify_authoritative_provenance(
 
     if mode == "protected_integration_receipt":
         receipt = external_evidence.get("protected_attestation_receipt", {})
-        post_merge_evidence = _external_member(
-            external_evidence,
-            "post_merge",
-            {},
-            errors,
-            "protected post-main evidence",
-        )
-        dev_provenance_evidence = _external_member(
-            promotion_evidence,
-            "dev_provenance",
-            {},
-            errors,
-            "protected dev provenance evidence",
+        post_merge_evidence = external_evidence.get("post_merge", {})
+        dev_provenance_evidence = (
+            promotion_evidence.get("dev_provenance", {})
+            if isinstance(promotion_evidence, dict)
+            else {}
         )
         post_merge_digest = _external_canonical_sha256(
             post_merge_evidence,

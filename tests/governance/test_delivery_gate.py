@@ -43,6 +43,18 @@ class ExplodingItemsDict(dict):
         raise RuntimeError("items exploded")
 
 
+class StringSubclass(str):
+    pass
+
+
+class IntSubclass(int):
+    pass
+
+
+class FloatSubclass(float):
+    pass
+
+
 def load_fixture(name: str):
     with open(FIXTURES_DIR / name, encoding="utf-8") as f:
         return json.load(f)
@@ -631,14 +643,98 @@ class TestDeliveryGatePositive(unittest.TestCase):
         external["promotion_authorization"] = promotion_authorization(manifest)
         external["protected_attestation_receipt"] = protected_attestation_receipt()
         bind_external_evidence(manifest, external)
-        with mock.patch(
-            "check_delivery_gate._external_canonical_sha256", return_value=None
-        ), mock.patch(
-            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
-        ) as verifier:
-            errors = verify_authoritative_provenance(manifest, external)
-        self.assertIn("protected integration attestation digest claims are invalid", "\n".join(errors))
-        verifier.assert_not_called()
+        labels = {
+            "review_evidence_sha256": "protected review evidence",
+            "promotion_authorization_sha256": "protected promotion authorization evidence",
+            "dev_provenance_sha256": "protected dev provenance evidence",
+            "post_merge_sha256": "protected post-main evidence",
+            "freeze_review_sha256": "protected freeze review evidence",
+            "freeze_review_pr_api_sha256": "protected freeze review PR API evidence",
+        }
+        original = delivery_gate._external_canonical_sha256
+        invalid_values = [None, "A" * 64, "a" * 8, 1]
+        for claim, target_label in labels.items():
+            for invalid in invalid_values:
+                with self.subTest(claim=claim, invalid=invalid):
+                    def altered_hash(value, errors, label):
+                        if label == target_label:
+                            return invalid
+                        return original(value, errors, label)
+
+                    with mock.patch(
+                        "check_delivery_gate._external_canonical_sha256",
+                        side_effect=altered_hash,
+                    ), mock.patch(
+                        "check_delivery_gate._verify_protected_attestation_receipt",
+                        return_value=True,
+                    ) as verifier:
+                        errors = verify_authoritative_provenance(manifest, external)
+                    self.assertIn(claim, "\n".join(errors))
+                    verifier.assert_not_called()
+
+        for invalid in invalid_values:
+            with self.subTest(claim="manifest_sha256", invalid=invalid), mock.patch(
+                "check_delivery_gate.manifest_digest_excluding_own",
+                return_value=invalid,
+            ), mock.patch(
+                "check_delivery_gate._verify_protected_attestation_receipt",
+                return_value=True,
+            ) as verifier:
+                errors = verify_authoritative_provenance(manifest, external)
+            self.assertIn("manifest_sha256", "\n".join(errors))
+            verifier.assert_not_called()
+
+    def test_external_normalization_exact_builtin_matrix(self):
+        source = {
+            "object": {
+                "array": ["text", 1, True, 1.5, None, {"empty": []}],
+            }
+        }
+        normalized = delivery_gate._normalize_external_json(source)
+        self.assertEqual(normalized, source)
+        self.assertIsNot(normalized, source)
+        self.assertIs(type(normalized), dict)
+        self.assertIs(type(normalized["object"]), dict)
+        self.assertIs(type(normalized["object"]["array"]), list)
+        for value, expected_type in zip(
+            normalized["object"]["array"][:5],
+            [str, int, bool, float, type(None)],
+        ):
+            self.assertIs(type(value), expected_type)
+
+        rejected = [
+            ExplodingGetDict(),
+            ExplodingItemsDict(),
+            ExplodingList(),
+            StringSubclass("text"),
+            IntSubclass(1),
+            FloatSubclass(1.0),
+            {1: "non-string-key"},
+            object(),
+            set(),
+            b"bytes",
+            complex(1, 2),
+            ("tuple",),
+            float("nan"),
+            float("inf"),
+            float("-inf"),
+        ]
+        for value in rejected:
+            with self.subTest(rejected_type=type(value).__name__), self.assertRaises(ValueError):
+                delivery_gate._normalize_external_json({"nested": value})
+
+        manifest = load_fixture("valid_advisory_manifest.json")
+        for root in [[], "text", 1, True, 1.5]:
+            with self.subTest(root_type=type(root).__name__):
+                passed, errors, _gate_type = check_delivery(
+                    manifest, external_evidence=root
+                )
+                self.assertFalse(passed)
+                self.assertIn("external evidence normalization requires a JSON object", errors)
+
+        passed, errors, _gate_type = check_delivery(manifest, external_evidence=None)
+        self.assertFalse(passed)
+        self.assertIn("no authoritative trusted runner provenance", "\n".join(errors))
 
     def test_external_hashing_rejects_exploding_mappings_and_iterators(self):
         errors = []
@@ -648,15 +744,6 @@ class TestDeliveryGatePositive(unittest.TestCase):
             )
         )
         self.assertIn("exploding mapping is not canonical JSON", errors)
-        errors = []
-        self.assertEqual(
-            delivery_gate._external_member(
-                ExplodingGetDict(), "value", {}, errors, "exploding member"
-            ),
-            {},
-        )
-        self.assertIn("exploding member cannot be read safely", errors)
-
         manifest = load_fixture("valid_advisory_manifest.json")
         promotion = promotion_authorization(manifest)
         attacks = []
