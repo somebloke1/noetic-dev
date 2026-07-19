@@ -14,13 +14,28 @@ release=$root/releases/$authorized_sha
 canonical_remote=https://github.com/somebloke1/noetic-dev.git
 verifier=/usr/local/libexec/noetic-dev/verify-delivery-attestation
 
+trusted_executable_path() {
+  local current=$1 mode owner
+  while true; do
+    [[ ! -L $current ]]
+    owner=$(/usr/bin/stat -c %u "$current")
+    mode=$((8#$(/usr/bin/stat -c %a "$current")))
+    [[ $owner -eq 0 ]]
+    (( (mode & 8#022) == 0 ))
+    if [[ $current == "$1" ]]; then
+      [[ -f $current && -x $current ]]
+    else
+      [[ -d $current ]]
+    fi
+    [[ $current == / ]] && break
+    current=$(/usr/bin/dirname "$current")
+  done
+}
+
 [[ $authorized_sha =~ ^[0-9a-f]{40}$ ]]
 [[ -f $authorization_receipt && ! -L $authorization_receipt ]]
 [[ $(/usr/bin/stat -c %s "$authorization_receipt") -le 1048576 ]]
-[[ -f $verifier && ! -L $verifier && -x $verifier ]]
-[[ $(/usr/bin/stat -c %u "$verifier") -eq 0 ]]
-verifier_mode=$((8#$(/usr/bin/stat -c %a "$verifier")))
-(( (verifier_mode & 8#022) == 0 ))
+trusted_executable_path "$verifier"
 challenge=$(
   /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root /usr/bin/python3 -I -c '
 import json, sys

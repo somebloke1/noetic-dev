@@ -133,6 +133,9 @@ fetches the canonical repository's current protected `dev` head into a fresh bar
 repository, requires it to equal the requested SHA, and requires the fixed
 root-protected attestation verifier to validate a signed
 `install-main-publisher` authorization receipt for that same repository/ref/SHA.
+Before verifier execution, every path component from the executable through `/`
+is checked with non-dereferencing metadata and must be root-owned, non-symlink,
+and non-writable by group or other; the leaf must also be a regular executable.
 Only then does it install the exact authorized-dev archive under
 `/opt/noetic-dev-main-publisher/releases/<sha>` and atomically point
 the fixed root-owned launcher at that immutable release. This deployment does not

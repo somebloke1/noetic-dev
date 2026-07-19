@@ -467,7 +467,7 @@ def _validate_evidence(
                 len(actual_evidence) == 3
                 and actual_evidence[:2] == expected_evidence
                 and actual_evidence[2][0] == "commit"
-                and actual_evidence[2][1] == baseline
+                and COMMIT_RE.fullmatch(actual_evidence[2][1]) is not None
             )
         if not evidence_matches:
             errors.append(
@@ -489,11 +489,33 @@ def _validate_evidence(
                     continue
                 commit_count += 1
                 if root is not None:
+                    is_d2_integration = (
+                        stage["id"] == "D2"
+                        and stage["status"] == "checkpointed"
+                        and len(actual_evidence) == 3
+                        and identity == actual_evidence[2]
+                    )
                     if not _git_succeeds(root, "cat-file", "-e", f"{reference}^{{commit}}"):
                         errors.append(
                             f"{stage['id']}: evidence commit does not resolve: {reference}"
                         )
-                    elif not _git_succeeds(
+                    elif is_d2_integration and not _git_succeeds(
+                        root, "merge-base", "--is-ancestor", baseline, reference
+                    ):
+                        errors.append(
+                            "D2: roadmap baseline is not an ancestor of the dev integration evidence"
+                        )
+                    elif is_d2_integration and not _git_succeeds(
+                        root,
+                        "merge-base",
+                        "--is-ancestor",
+                        reference,
+                        f"refs/remotes/origin/{state['baseline']['branch']}",
+                    ):
+                        errors.append(
+                            "D2: dev integration evidence is not on the declared roadmap branch"
+                        )
+                    elif not is_d2_integration and not _git_succeeds(
                         root, "merge-base", "--is-ancestor", reference, baseline
                     ):
                         errors.append(

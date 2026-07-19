@@ -62,9 +62,10 @@ class TestRoadmap(unittest.TestCase):
 
     def test_d2_checkpoint_transition_is_reachable(self) -> None:
         transitioned = copy.deepcopy(self.state)
+        integration_sha = "d" * 40
         transitioned["stages"][3]["status"] = "checkpointed"
         transitioned["stages"][3]["evidence"].append(
-            {"kind": "commit", "reference": transitioned["baseline"]["sha"]}
+            {"kind": "commit", "reference": integration_sha}
         )
         transitioned["stages"][4]["status"] = "next"
         transitioned["unresolved_conflicts"] = [
@@ -81,7 +82,7 @@ class TestRoadmap(unittest.TestCase):
             "  `issue:https://github.com/somebloke1/noetic-dev/issues/32`.",
             "- **Evidence refs:** `artifact:governance/audits/20260718-d2-portfolio/inventory.json`,\n"
             "  `issue:https://github.com/somebloke1/noetic-dev/issues/32`,\n"
-            f"  `commit:{transitioned['baseline']['sha']}`.",
+            f"  `commit:{integration_sha}`.",
         ).replace(
             "- **C2 - D2 portfolio audit awaits protected independent review and integration:** resolve in D2; blocks D3a, D9.\n",
             "",
@@ -89,10 +90,15 @@ class TestRoadmap(unittest.TestCase):
         transitioned["document_sha256"] = hashlib.sha256(
             markdown.encode("utf-8")
         ).hexdigest()
-        self.assert_has_error(
-            validate_roadmap(transitioned, self.schema, markdown),
-            "D2 checkpoint requires protected repository evidence",
-        )
+        with mock.patch(
+            "scripts.governance.check_roadmap._git_succeeds", return_value=True
+        ), mock.patch(
+            "scripts.governance.check_roadmap._validate_repository_policy",
+            return_value=[],
+        ):
+            self.assertEqual(
+                validate_roadmap(transitioned, self.schema, markdown, ROOT), []
+            )
 
     def test_d2_checkpoint_requires_authenticated_protected_review_and_integration_sha(self) -> None:
         freeze = load_json_strict(
