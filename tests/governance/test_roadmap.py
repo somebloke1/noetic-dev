@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import copy
+import gzip
 import hashlib
 import json
 import subprocess
@@ -13,6 +15,7 @@ from unittest import mock
 
 from scripts.governance.check_roadmap import (
     _parse_instant,
+    _validate_d2_inventory,
     _validate_d2_protected_review,
     validate_roadmap,
     validate_roadmap_files,
@@ -599,6 +602,146 @@ class TestRoadmap(unittest.TestCase):
         unbound_complete["independent_review_completed"] = True
         unbound_complete["blocks_publication"] = False
         self.assertNotEqual(validate_schema(unbound_complete, freeze_schema), [])
+
+    def test_portfolio_capture_rejects_omission_substitution_pagination_type_chronology_and_receipt_attacks(self) -> None:
+        audit_path = ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
+        audit = load_json_strict(audit_path)
+        audit_schema = load_json_strict(
+            ROOT / "governance/schemas/d2-portfolio-audit.schema.json"
+        )
+        source_order = ("principal", "open_pull_requests", "branches", "open_issues")
+
+        def refresh_claims(attacked: dict) -> None:
+            envelopes = attacked["capture"]["source_envelopes"]
+            claims = {
+                "repository": "somebloke1/noetic-dev",
+                "repository_id": 1297462728,
+                "capture_started_at": attacked["capture"]["started_at"],
+                "capture_completed_at": attacked["capture"]["completed_at"],
+                "response_sha256": {
+                    source: envelopes[source]["response_sha256"]
+                    for source in source_order
+                },
+                "body_sha256": {
+                    source: envelopes[source]["body_sha256"]
+                    for source in source_order
+                },
+            }
+            attacked["verification"]["required_claims"] = claims
+            attacked["verification"]["required_claims_sha256"] = canonical_json_sha256(
+                claims
+            )
+
+        def mutate_response(attacked: dict, source: str, mutation) -> None:
+            envelope = attacked["capture"]["source_envelopes"][source]
+            response = json.loads(
+                gzip.decompress(base64.b64decode(envelope["response_gzip_base64"]))
+            )
+            mutation(response)
+            raw = json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
+            envelope["response_gzip_base64"] = base64.b64encode(
+                gzip.compress(raw, compresslevel=9, mtime=0)
+            ).decode("ascii")
+            envelope["body_sha256"] = hashlib.sha256(raw).hexdigest()
+            envelope["canonical_response_sha256"] = canonical_json_sha256(response)
+            envelope["response_sha256"] = canonical_json_sha256(
+                {key: value for key, value in envelope.items() if key != "response_sha256"}
+            )
+            refresh_claims(attacked)
+
+        omitted_envelope_field = copy.deepcopy(audit)
+        del omitted_envelope_field["capture"]["source_envelopes"]["branches"][
+            "body_sha256"
+        ]
+        self.assertNotEqual(validate_schema(omitted_envelope_field, audit_schema), [])
+
+        substituted_projection = copy.deepcopy(audit)
+        substituted_projection["open_pull_requests"][0]["title"] = "plausible substitute"
+        self.assert_has_error(
+            _validate_d2_inventory(substituted_projection), "not derived from the response body"
+        )
+
+        omitted_response_node = copy.deepcopy(audit)
+
+        def omit_pull(response: dict) -> None:
+            connection = response["data"]["repository"]["pullRequests"]
+            connection["nodes"].pop(0)
+            connection["totalCount"] -= 1
+
+        mutate_response(omitted_response_node, "open_pull_requests", omit_pull)
+        omitted_response_node["capture"]["source_envelopes"]["open_pull_requests"][
+            "pagination"
+        ]["item_count"] -= 1
+        omitted_response_node["capture"]["source_envelopes"]["open_pull_requests"][
+            "pagination"
+        ]["total_count"] -= 1
+        envelope = omitted_response_node["capture"]["source_envelopes"][
+            "open_pull_requests"
+        ]
+        envelope["response_sha256"] = canonical_json_sha256(
+            {key: value for key, value in envelope.items() if key != "response_sha256"}
+        )
+        refresh_claims(omitted_response_node)
+        self.assert_has_error(
+            _validate_d2_inventory(omitted_response_node),
+            "PR identities are not derived",
+        )
+
+        paginated = copy.deepcopy(audit)
+
+        def add_next_page(response: dict) -> None:
+            response["data"]["repository"]["refs"]["pageInfo"]["hasNextPage"] = True
+
+        mutate_response(paginated, "branches", add_next_page)
+        self.assert_has_error(_validate_d2_inventory(paginated), "pagination was substituted")
+
+        wrong_type = copy.deepcopy(audit)
+        wrong_type["counts"]["branches"] = True
+        self.assertNotEqual(validate_schema(wrong_type, audit_schema), [])
+        self.assert_has_error(
+            _validate_d2_inventory(wrong_type), "counts are not derived"
+        )
+
+        reversed_chronology = copy.deepcopy(audit)
+        principal = reversed_chronology["capture"]["source_envelopes"]["principal"]
+        principal["fetched_at"] = reversed_chronology["capture"]["completed_at"]
+        principal["response_sha256"] = canonical_json_sha256(
+            {key: value for key, value in principal.items() if key != "response_sha256"}
+        )
+        refresh_claims(reversed_chronology)
+        self.assert_has_error(
+            _validate_d2_inventory(reversed_chronology), "capture chronology"
+        )
+
+        fake_receipt = copy.deepcopy(audit)
+        fake_receipt["verification"]["status"] = "protected_receipt_verified"
+        fake_receipt["verification"]["protected_attestation_receipt"] = {"proof": "fake"}
+        with mock.patch(
+            "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+            return_value=False,
+        ) as verifier:
+            self.assert_has_error(
+                _validate_d2_inventory(fake_receipt), "receipt verification failed"
+            )
+            verifier.assert_called_once()
+
+        with mock.patch(
+            "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+            return_value=True,
+        ) as verifier:
+            self.assertEqual(_validate_d2_inventory(fake_receipt), [])
+            verifier.assert_called_once_with(
+                fake_receipt["verification"]["protected_attestation_receipt"],
+                fake_receipt["verification"]["required_claims"],
+            )
+
+        receipt_in_pending = copy.deepcopy(audit)
+        receipt_in_pending["verification"]["protected_attestation_receipt"] = {
+            "proof": "self-authored"
+        }
+        self.assert_has_error(
+            _validate_d2_inventory(receipt_in_pending), "must not embed an unverified receipt"
+        )
 
     def test_complete_freeze_chronology_compares_instants_not_strings(self) -> None:
         captured = _parse_instant("2026-07-18T23:46:09-12:00")

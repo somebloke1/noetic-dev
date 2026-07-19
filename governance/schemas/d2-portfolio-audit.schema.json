@@ -3,26 +3,182 @@
   "title": "D2 Portfolio Audit Inventory",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "repository", "captured_at", "sources", "refs", "counts", "open_pull_requests", "branches", "open_issues", "review"],
+  "required": ["$schema", "schema_version", "repository", "captured_at", "capture", "verification", "refs", "counts", "open_pull_requests", "branches", "open_issues", "review"],
+  "definitions": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "response_digest_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principal", "open_pull_requests", "branches", "open_issues"],
+      "properties": {
+        "principal": {"$ref": "#/definitions/sha256"},
+        "open_pull_requests": {"$ref": "#/definitions/sha256"},
+        "branches": {"$ref": "#/definitions/sha256"},
+        "open_issues": {"$ref": "#/definitions/sha256"}
+      }
+    },
+    "graphql_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "operation_name", "query_sha256", "variables", "variables_sha256"],
+      "properties": {
+        "method": {"type": "string", "const": "POST"},
+        "operation_name": {"type": "string", "enum": ["D2Principal", "D2OpenPullRequests", "D2Branches", "D2OpenIssues"]},
+        "query_sha256": {"$ref": "#/definitions/sha256"},
+        "variables": {"type": "object"},
+        "variables_sha256": {"$ref": "#/definitions/sha256"}
+      }
+    },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "principal", "candidate_authenticated", "protected_verified"],
+      "properties": {
+        "method": {"type": "string", "const": "gh-cli-oauth-token"},
+        "principal": {"type": "string", "const": "somebloke1"},
+        "candidate_authenticated": {"type": "boolean", "const": true},
+        "protected_verified": {"type": "boolean", "const": false}
+      }
+    },
+    "response_headers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date"],
+      "properties": {
+        "date": {"type": "string", "minLength": 1}
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["first", "item_count", "total_count", "has_next_page", "end_cursor"],
+      "properties": {
+        "first": {"type": "integer", "const": 100},
+        "item_count": {"type": "integer"},
+        "total_count": {"type": "integer"},
+        "has_next_page": {"type": "boolean", "const": false},
+        "end_cursor": {"type": ["string", "null"]}
+      }
+    },
+    "response_envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_url", "request", "status", "request_id", "fetched_at", "repository", "repository_id", "authentication", "response_headers", "body_sha256", "canonical_response_sha256", "response_gzip_base64", "response_sha256"],
+      "properties": {
+        "request_url": {"type": "string", "const": "https://api.github.com/graphql"},
+        "request": {"$ref": "#/definitions/graphql_request"},
+        "status": {"type": "integer", "const": 200},
+        "request_id": {"type": "string", "minLength": 1},
+        "fetched_at": {"$ref": "#/definitions/timestamp"},
+        "repository": {"type": "string", "const": "somebloke1/noetic-dev"},
+        "repository_id": {"type": "integer", "const": 1297462728},
+        "authentication": {"$ref": "#/definitions/authentication"},
+        "response_headers": {"$ref": "#/definitions/response_headers"},
+        "pagination": {"$ref": "#/definitions/pagination"},
+        "body_sha256": {"$ref": "#/definitions/sha256"},
+        "canonical_response_sha256": {"$ref": "#/definitions/sha256"},
+        "response_gzip_base64": {"type": "string", "minLength": 1},
+        "response_sha256": {"$ref": "#/definitions/sha256"}
+      }
+    },
+    "required_claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "repository_id", "capture_started_at", "capture_completed_at", "response_sha256", "body_sha256"],
+      "properties": {
+        "repository": {"type": "string", "const": "somebloke1/noetic-dev"},
+        "repository_id": {"type": "integer", "const": 1297462728},
+        "capture_started_at": {"$ref": "#/definitions/timestamp"},
+        "capture_completed_at": {"$ref": "#/definitions/timestamp"},
+        "response_sha256": {"$ref": "#/definitions/response_digest_set"},
+        "body_sha256": {"$ref": "#/definitions/response_digest_set"}
+      }
+    },
+    "protected_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "receipt_id", "provider", "issued_at", "expires_at", "subject", "claims", "proof"],
+      "properties": {
+        "schema_version": {"type": "string", "const": "1"},
+        "receipt_id": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "const": "protected-integration"},
+        "issued_at": {"$ref": "#/definitions/timestamp"},
+        "expires_at": {"$ref": "#/definitions/timestamp"},
+        "subject": {"type": "object"},
+        "claims": {"type": "object"},
+        "proof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "key_id", "payload_sha256", "signature"],
+          "properties": {
+            "format": {"type": "string", "const": "protected-integration-receipt-v1"},
+            "key_id": {"type": "string", "minLength": 1},
+            "payload_sha256": {"$ref": "#/definitions/sha256"},
+            "signature": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  },
   "properties": {
-    "schema_version": {"type": "string", "const": "1"},
-    "repository": {"type": "string", "const": "somebloke1/noetic-dev"},
-    "captured_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
-    "sources": {
-      "type": "array",
-      "minItems": 3,
-      "maxItems": 3,
-      "items": {"type": "string", "minLength": 1}
+    "$schema": {"type": "string", "const": "../../schemas/d2-portfolio-audit.schema.json"},
+    "schema_version": {"type": "string", "const": "2"},
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "full_name", "default_branch"],
+      "properties": {
+        "id": {"type": "integer", "const": 1297462728},
+        "full_name": {"type": "string", "const": "somebloke1/noetic-dev"},
+        "default_branch": {"type": "string", "const": "dev"}
+      }
+    },
+    "captured_at": {"$ref": "#/definitions/timestamp"},
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["started_at", "completed_at", "collector", "source_envelopes"],
+      "properties": {
+        "started_at": {"$ref": "#/definitions/timestamp"},
+        "completed_at": {"$ref": "#/definitions/timestamp"},
+        "collector": {"type": "string", "const": "scripts/governance/capture_d2_inventory.py"},
+        "source_envelopes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["principal", "open_pull_requests", "branches", "open_issues"],
+          "properties": {
+            "principal": {"$ref": "#/definitions/response_envelope"},
+            "open_pull_requests": {"$ref": "#/definitions/response_envelope"},
+            "branches": {"$ref": "#/definitions/response_envelope"},
+            "open_issues": {"$ref": "#/definitions/response_envelope"}
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "required_source", "required_claims_sha256", "required_claims"],
+      "properties": {
+        "status": {"type": "string", "enum": ["pending_protected_receipt", "protected_receipt_verified"]},
+        "required_source": {"type": "string", "const": "protected-integration"},
+        "required_claims_sha256": {"$ref": "#/definitions/sha256"},
+        "required_claims": {"$ref": "#/definitions/required_claims"},
+        "protected_attestation_receipt": {"$ref": "#/definitions/protected_receipt"}
+      }
     },
     "refs": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["main", "dev", "default_branch", "dev_ahead_of_main"],
+      "required": ["main", "dev", "default_branch"],
       "properties": {
         "main": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "dev": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
-        "default_branch": {"type": "string", "const": "dev"},
-        "dev_ahead_of_main": {"type": "integer", "minimum": 0}
+        "default_branch": {"type": "string", "const": "dev"}
       }
     },
     "counts": {
@@ -30,69 +186,53 @@
       "additionalProperties": false,
       "required": ["open_pull_requests", "branches", "open_issues"],
       "properties": {
-        "open_pull_requests": {"type": "integer", "const": 12},
-        "branches": {"type": "integer", "const": 26},
-        "open_issues": {"type": "integer", "const": 20}
+        "open_pull_requests": {"type": "integer"},
+        "branches": {"type": "integer"},
+        "open_issues": {"type": "integer"}
       }
     },
     "open_pull_requests": {
       "type": "array",
-      "minItems": 12,
-      "maxItems": 12,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["number", "title", "base", "head", "head_sha", "updated_at", "url", "disposition"],
+        "required": ["number", "title", "base", "head", "head_sha", "updated_at", "url", "governance_disposition"],
         "properties": {
-          "number": {"type": "integer", "minimum": 1},
+          "number": {"type": "integer"},
           "title": {"type": "string", "minLength": 1},
           "base": {"type": "string", "minLength": 1},
           "head": {"type": "string", "minLength": 1},
           "head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
           "updated_at": {"type": "string", "minLength": 1},
           "url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/pull/[1-9][0-9]*$"},
-          "disposition": {"type": "string", "minLength": 1}
+          "governance_disposition": {"type": "string", "minLength": 1}
         }
       }
     },
     "branches": {
       "type": "array",
-      "minItems": 26,
-      "maxItems": 26,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "sha", "disposition"],
+        "required": ["name", "sha", "governance_disposition"],
         "properties": {
           "name": {"type": "string", "minLength": 1},
           "sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
-          "protected": {"type": "boolean"},
-          "disposition": {"type": "string", "minLength": 1}
+          "governance_disposition": {"type": "string", "minLength": 1}
         }
       }
     },
     "open_issues": {
       "type": "array",
-      "minItems": 20,
-      "maxItems": 20,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["number", "title", "labels", "status", "dependencies", "updated_at", "url"],
+        "required": ["number", "title", "labels", "status", "updated_at", "url"],
         "properties": {
-          "number": {"type": "integer", "minimum": 1},
+          "number": {"type": "integer"},
           "title": {"type": "string", "minLength": 1},
           "labels": {"type": "array", "items": {"type": "string", "minLength": 1}},
-          "status": {"type": "string", "enum": ["in_progress", "blocked", "missing"]},
-          "dependencies": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["blocked_by", "blocking"],
-            "properties": {
-              "blocked_by": {"type": "integer", "minimum": 0},
-              "blocking": {"type": "integer", "minimum": 0}
-            }
-          },
+          "status": {"type": "string", "minLength": 1},
           "updated_at": {"type": "string", "minLength": 1},
           "url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/[1-9][0-9]*$"}
         }
@@ -101,12 +241,28 @@
     "review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["method", "evidence_location", "required_before_push_or_pr"],
+      "required": ["method", "evidence_location", "required_before_inventory_completion"],
       "properties": {
         "method": {"type": "string", "minLength": 1},
         "evidence_location": {"type": "string", "minLength": 1},
-        "required_before_push_or_pr": {"type": "boolean", "const": true}
+        "required_before_inventory_completion": {"type": "boolean", "const": true}
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verification": {
+            "properties": {"status": {"const": "protected_receipt_verified"}}
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "verification": {"required": ["protected_attestation_receipt"]}
+        }
+      }
+    }
+  ]
 }

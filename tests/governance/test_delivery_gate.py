@@ -695,6 +695,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         freeze.update(
             {
                 "status": "complete",
+                "audit_completed": True,
                 "blocks_publication": False,
                 "independent_review_completed": True,
                 "reviewed_candidate_sha": "1" * 40,
@@ -706,13 +707,56 @@ class TestDeliveryGatePositive(unittest.TestCase):
                 "protected_review_sha256": "3" * 64,
             }
         )
+        inventory = json.loads(
+            (
+                REPO_ROOT
+                / "governance/audits/20260718-d2-portfolio/inventory.json"
+            ).read_text(encoding="utf-8")
+        )
+        inventory["verification"].update(
+            {
+                "status": "protected_receipt_verified",
+                "protected_attestation_receipt": {
+                    "schema_version": "1",
+                    "receipt_id": "inventory-receipt-1",
+                    "provider": "protected-integration",
+                    "issued_at": "2026-07-19T00:01:00+00:00",
+                    "expires_at": "2026-07-19T00:06:00+00:00",
+                    "subject": {},
+                    "claims": {},
+                    "proof": {
+                        "format": "protected-integration-receipt-v1",
+                        "key_id": "protected-inventory-v1",
+                        "payload_sha256": "4" * 64,
+                        "signature": "opaque-proof",
+                    },
+                },
+            }
+        )
+        original_load = delivery_gate._load_repo_json
+
+        def load_with_verified_inventory(relative: str):
+            if relative == "governance/audits/20260718-d2-portfolio/inventory.json":
+                return inventory
+            return original_load(relative)
+
         errors = []
         with mock.patch(
+            "check_delivery_gate._load_repo_json",
+            side_effect=load_with_verified_inventory,
+        ), mock.patch(
+            "check_roadmap._validate_d2_inventory", return_value=[]
+        ) as inventory_review, mock.patch(
             "check_roadmap._validate_d2_protected_review", return_value=[]
         ) as review:
             delivery_gate._check_complete_freeze_readiness(freeze, errors)
         self.assertEqual(errors, [])
+        inventory_review.assert_called_once()
         review.assert_called_once()
+
+        errors = []
+        delivery_gate._check_complete_freeze_readiness(freeze, errors)
+        self.assertIn("inventory lacks a verified protected receipt", "\n".join(errors))
 
         freeze["independent_review_completed"] = False
         errors = []

@@ -283,9 +283,9 @@ GitHub issue #32 remains the portfolio coordination issue. Issue #5 and its road
 - Status: accepted
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-18
-- Updated: 2026-07-18
+- Updated: 2026-07-19
 - Tags: D2,authority,dev,main,freeze,p1-p4,litellm,P4
-- Source: Repository-owner P4 adjudication on 2026-07-18; live GitHub snapshot at 2026-07-18T23:20:48Z; governance/audits/20260718-d2-portfolio/inventory.json
+- Source: Repository-owner P4 adjudication on 2026-07-18; candidate-authenticated GitHub capture on 2026-07-19 pending protected receipt; governance/audits/20260718-d2-portfolio/inventory.json
 - Confidence: high
 
 Adopt protected `dev` as the autonomous feature-integration branch. Feature PRs target current `dev`, pass required checks, receive exactly one independent adversarial QA pass per implementation/remediation generation, receive independent review, and integrate by squash. Protected `main` is the release branch. Promotion must use an exact validated dev SHA and requires explicit repository-owner approval before a bounded main-promotion PR may proceed through the stronger release gate.
@@ -294,5 +294,5 @@ Ratify `P1`-`P4` as canonical notation with the fixed human gloss `P1 be attenti
 
 Require every noetic-dev model invocation to access models through LiteLLM, including chat/completion, embeddings, and ASR. Genus-router retains model selection. Direct provider, llama.cpp, Ollama, embedding, or ASR access by noetic-dev callers is not an architectural escape hatch; infrastructure beneath LiteLLM may use provider-specific transports without exposing them to callers. This supersedes dec-20260711-0005.
 
-Accept the current D2 portfolio inventory as the successor to the stale ten-PR count and authorize exactly one bounded D2 governance-reconciliation PR to protected `dev`. The freeze remains `repair_authorized`, not complete, until protected external evidence binds independent review to the exact candidate and inventory digest. Neither inventory completion nor review authorizes publication or main promotion. Issue #32 coordinates the portfolio; ROADMAP.md governs aggregate order and gates; issue labels govern lifecycle; Git, PR, checks, QA, and review records govern implementation evidence; goalchains carry continuity but do not override those tracked authorities.
+Authorize exactly one bounded D2 governance-reconciliation PR to protected `dev` as an owner P4 decision independent of the candidate inventory's verification status. Accept the response-derived candidate capture as the successor to the stale count, but do not call its audit complete until a separately protected integration verifies its exact receipt claims. The freeze remains `repair_authorized`; neither candidate capture nor review authorizes publication or main promotion. Issue #32 coordinates the portfolio; ROADMAP.md governs aggregate order and gates; issue labels govern lifecycle; Git, PR, checks, QA, and review records govern implementation evidence; goalchains carry continuity but do not override those tracked authorities.
 <!-- governance-crud:end id=dec-20260718-0002 -->

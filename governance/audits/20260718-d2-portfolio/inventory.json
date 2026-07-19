@@ -1,90 +1,724 @@
 {
-  "schema_version": "1",
-  "repository": "somebloke1/noetic-dev",
-  "captured_at": "2026-07-18T23:46:09Z",
-  "sources": [
-    "GET /repos/somebloke1/noetic-dev/pulls?state=open&per_page=100",
-    "GET /repos/somebloke1/noetic-dev/branches?per_page=100",
-    "GET /repos/somebloke1/noetic-dev/issues?state=open&per_page=100"
-  ],
+  "$schema": "../../schemas/d2-portfolio-audit.schema.json",
+  "schema_version": "2",
+  "repository": {
+    "id": 1297462728,
+    "full_name": "somebloke1/noetic-dev",
+    "default_branch": "dev"
+  },
+  "captured_at": "2026-07-19T17:20:57.562779+00:00",
+  "capture": {
+    "started_at": "2026-07-19T17:20:55.799205+00:00",
+    "completed_at": "2026-07-19T17:20:57.562779+00:00",
+    "collector": "scripts/governance/capture_d2_inventory.py",
+    "source_envelopes": {
+      "principal": {
+        "request_url": "https://api.github.com/graphql",
+        "request": {
+          "method": "POST",
+          "operation_name": "D2Principal",
+          "query_sha256": "765e26798cd9c6d4872290d1389a78747d803dbcb8631ff8e91641203cf40b05",
+          "variables": {},
+          "variables_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        "status": 200,
+        "request_id": "ECE8:3FD55E:1D6EF50:67273C5:6A5D0777",
+        "fetched_at": "2026-07-19T17:20:56.210971+00:00",
+        "repository": "somebloke1/noetic-dev",
+        "repository_id": 1297462728,
+        "authentication": {
+          "method": "gh-cli-oauth-token",
+          "principal": "somebloke1",
+          "candidate_authenticated": true,
+          "protected_verified": false
+        },
+        "response_headers": {
+          "date": "Sun, 19 Jul 2026 17:20:56 GMT"
+        },
+        "body_sha256": "859b5ad0e7a399e1bdabd2b970124c72a40defa3ad0ca0ebdf4611b60ebc18bd",
+        "canonical_response_sha256": "859b5ad0e7a399e1bdabd2b970124c72a40defa3ad0ca0ebdf4611b60ebc18bd",
+        "response_gzip_base64": "H4sIAAAAAAAC/6tWSkksSVSyqlYqy0wtTy0CsUAiSYnFqZ4pSlaGlqYmxkYGOko5+emZeUpWSsX5ualJOfnZqYZKtbW1APeqj7Y/AAAA",
+        "response_sha256": "41c93c00e0b8c183c2b45fcd4efa6a1d5f5e2fe0e6d60ffbf96755b7ada813ad"
+      },
+      "open_pull_requests": {
+        "request_url": "https://api.github.com/graphql",
+        "request": {
+          "method": "POST",
+          "operation_name": "D2OpenPullRequests",
+          "query_sha256": "598735bcbc35fb8102c492d0d72d3297339c7924f69ae6f93253acbd017f4255",
+          "variables": {
+            "owner": "somebloke1",
+            "name": "noetic-dev"
+          },
+          "variables_sha256": "a7c6763a8da93009812c263d63969ef91b4ab6832baf2ba5574e569dd99f638a"
+        },
+        "status": 200,
+        "request_id": "ECF4:33602F:1AC2D76:5D8D57E:6A5D0778",
+        "fetched_at": "2026-07-19T17:20:56.691782+00:00",
+        "repository": "somebloke1/noetic-dev",
+        "repository_id": 1297462728,
+        "authentication": {
+          "method": "gh-cli-oauth-token",
+          "principal": "somebloke1",
+          "candidate_authenticated": true,
+          "protected_verified": false
+        },
+        "response_headers": {
+          "date": "Sun, 19 Jul 2026 17:20:56 GMT"
+        },
+        "body_sha256": "cfd14c7b45b4af3a2d80e4893a0a69170b776bfe768c1d71c4b606cba55302f8",
+        "canonical_response_sha256": "0a9e5d4132708d046fc55dcfe7cd57c2c767c0e3d7520c626ebe8c1cf6584eeb",
+        "response_gzip_base64": "H4sIAAAAAAAC/7WXXW/bNhSG/4qgqw2IFn6TMtCLrr0phiZbF3Tohl3w49DmKoueJCfxiv73HdlbbblxsnZwkIuEPDxHfHT48tWHMtjBlrMPZQer3Kchd5vxv3HU2R5ehXJGWa2FYpqZi7K1S/glDYvruxa6clb2eQmuye+BXrYZhuSrALflRRkg2nUzfN/Z1i/eQBxzjmtxyS5gsN0chnE4J6xR1opTTZ0OAaRgXgqvuJYSwOuaUuJ4xABLaPnx40W5WjfNG/hzDf3QjymGPNjmRV63mJBynLdzeNXGPM4tbH8F98OPOFTOom16uCihDS/WXZ/HHbzjbzee1Zvr9t3mevUDef3H881VIndXG3J//fanu9cvM726yX+9brprw1/+9PP82bMSn6HNAbD4b7iv9dKNMBjuKg3Ndo/Z99/Yzi/SAH5Yd/DtrPC57XOTkCwUe1ZFAJ/6hHMIZSSOsK52oJY2tTi4ABv2g6nv11DR6jD5Puh6y1J5E0Az5QSnXlAauK8FI1BbpmpHnWTKSqI4rluvxucJzxFcyQhTFdEVVTdEzAiZSfXrGNI1OLkYhlU/u7yc48tfu+98Xl4++O4vx3dzyZDQHow4AoMkhi43DXSIpV8hgLgp+vUKupS7IuPO8MV2dkAqxXvoWmg+Y/M4hkkQr/b1qrHaMS4pHAfDAWlxCYpGziXVKvAAlPLopCNSWRHPh0tMcFF5xKvLNiztCmEhF+ua1C+Keb4dyYRtWw3d2m9p5S5ghv8BS1b/FPsMkgPlIzE6ekJREbgi4D1nUWlHPVjpSdDW1ueDROWUknqsq1J7C+0oZkXILTYVTsbcLVGNoIjpfiTQn+D0SL9M4nS1TV0dpJsQY5LE2glFnDLacu00YY5x5gSeRwVBMTyT2tIzElNTYnpPLIIdpsRQsVMLBdyDX49NBsUtKbYR1g+nWJ1mMAlTh0gPc06AeUUE8UBQomqhpFRBOu3qunaBEOOci8pQCWc8h1RPgZkjYDA2Vb+H5W2b2+Rtg6DmbRqP4Pbv3QZPMHsKxiTYVAeZq139Y25BMCE59x45UVErAwwYETEwT6Nj2tAa8GTKM3IzU271EbcBmnyALUAD8528h9Sv7OAXT0F7nMMktK625ap9lWNg2llDHVWGSEmBCmsMR7VXJEaBp1YozmSs6zPej7SeAGPkAS1D04KSNYeJmo0TqV2nAYUNVuhjoPXppJQ9hmJ6N4jqsGT1qeBn6EBZAso4TkEG9BTOWUej5hZE8IFRg9eAduGM1oJM0dGjXluiL2sOmq3Hve8uR+s99P2TmvYfWEzjSbWtiauWWwv9QMepWhPhjbPBe6oJhEgY0wqsRruBhszyWmmK8nM+bHSKjR1hs8Ng/WKPrUm3UKFnbofCBrsaoHsa3KMgpqG82hU8fRtEwN4iSqMpI8ooZzgyC8BN7X30PnhJrGPGnhHZ1MUyc3RIdxZstBSIrcPPkdRBsery6LDQmHVwm+BuvCPstnemyHZfQQ+xYRpPbdfZ6tPKCReqqGNq6ySoECKI6DhDP0adEkSgkBFLBTh2Ri5TtVfqqJUmXGwIRcLvnvFBimtUrBfYImj603v4AiZKVhnXelxb/bt2QsVEjzZUjt5BREoiShLegpFxxWN0talrFa1Q7hQVc0P1jAv8/Voqamq21KHZSvfHzYJt7xN6rJessOthkTtU9C/gwVn1yXuccuwo1WgxtYyGCfTqxIQa3QBFs2AJRyTo5Y2trTqFpL6hArtkJr8eCdqp3z/iz9+yWyjeZhAAAA==",
+        "response_sha256": "ff9191145e4d0fbccfc604e70ab05e4e4a4828a07163f70674464e5ce97f3949",
+        "pagination": {
+          "first": 100,
+          "item_count": 13,
+          "total_count": 13,
+          "has_next_page": false,
+          "end_cursor": "Y3Vyc29yOnYyOpK0MjAyNi0wNy0xOVQwMDo1NTozMlrO83DQSg=="
+        }
+      },
+      "branches": {
+        "request_url": "https://api.github.com/graphql",
+        "request": {
+          "method": "POST",
+          "operation_name": "D2Branches",
+          "query_sha256": "894698a55544db09fe14fc7e5156cfd715b9483a0a28deca60ea0af6b8ba2055",
+          "variables": {
+            "owner": "somebloke1",
+            "name": "noetic-dev"
+          },
+          "variables_sha256": "a7c6763a8da93009812c263d63969ef91b4ab6832baf2ba5574e569dd99f638a"
+        },
+        "status": 200,
+        "request_id": "ECFC:2964B6:1B8EDE6:60D10C1:6A5D0778",
+        "fetched_at": "2026-07-19T17:20:57.075684+00:00",
+        "repository": "somebloke1/noetic-dev",
+        "repository_id": 1297462728,
+        "authentication": {
+          "method": "gh-cli-oauth-token",
+          "principal": "somebloke1",
+          "candidate_authenticated": true,
+          "protected_verified": false
+        },
+        "response_headers": {
+          "date": "Sun, 19 Jul 2026 17:20:57 GMT"
+        },
+        "body_sha256": "c8b78ef87ebad54fd28a4cd4dd5e196ea6e1a87492cb79c0d476cf5bf132b18f",
+        "canonical_response_sha256": "c7ce1b874e50c0a028b8433b42bb4082fae722edb0a6728cc79c5b66311b98b0",
+        "response_gzip_base64": "H4sIAAAAAAAC/61WS28cNwz+L3v2oKIoUZKPzSmHPtBLURQ9UCJlT7M7s5gduwmC/PdynKZoATm91PDBO975SPF7UB9Pwjuf7j+eNr2ut3lftw/Hp+Np5Zu+ldM9+JIC+eTz3Wnhi/48748//LHodro/3daL1vP6TuGbZdV9bpPo8+nuJNr56bx/u/HSHn/SfmAe79orn7+w8/ag+/F4na3GqRBCgppENAbfYmiEKUbVlgqAq9jtC+zg9OnTnfXab8er+7rz+c36tBiQp7vTlR/07dLX43+PfPte3+8/2qPTfefzTe9Ousibp+22Hp1/9/svJ4NaVlHD+vV/bO9vqPl2e9IJJt7a47xr2582HWBTy6LJUw0ILQAIthK808KeSoUaPXF0hANsnNq67Nt6Pus23a7aBvAxVNSMaugYlaAjRkgkKAqAvcbqInHoA/g4bSvLha8j2KrUusupNwcmESSnraHvlCo05dicJOYygKV/dv3yJ7f9NqjRyAXX1NkUSqAYSWJNtZRSxblca+2UIeqo9TTJuqzb1Of3x9hH6D66XmogVyknxlST89Wjr8EYIBXyxkLiEafZ2n5Y5n1eFz5P+qzLsH8JPkTE1qxfCIWyevUudPENevUpQ1EbURxUKNOu5/VmdjrrAx+FBvipcoYKlF2MoBA4ZzReyfUe7HSB0Mdeykg54KaLSf9sB7m8GH9cgUpyoeXK0hokp9Kd94mUkwnJpMlYKAGkUQX4MqRnna7b+rDxZTQktU4ztkOG3LzJEVymXNPBrf02Sx/TlsujEjjxvnN7/KqKumqtjpLp31GmmtEOIYq5tNZbkxYdV595VCC8IFuO9NVAp3k5qD4yckCGEju1zhE0ivm3Vq7QE7IGaeIhmyFSlUEZn4ztbeOp8cJDcCConl7kCSEECb2iN9NBpeCCse4YglY/Ai9T3Syht+k8d20f2llNsbPo0kZpVCD5amIyRlRiUDb2A3fS5JxJoPls4i3YxpVMU3ye9w9/V5g2besmI3NLAbM0QQyupGTZBA1RvPnRQUuSPbgeIv1HoU1Z5kVvI+YDZgKkZMMvBQIyB4mau+UShtTN4eyNnVfOsq1Pu8r0sD7rtvDns1xU5tfcaGnVs4bMkDRnqdFCykiyQIzsPIdq01Pz+1erXeeXiVnJkQwCpMRFSqVeFIsqimTbGk07xiDCHXoUGnkF/aGudZmbJdbrsW4qttxLsWcfLNBdlmJJBRZk7LCWbIGfufCIFcTp4v6KrcOMI3U5m4SFSebOEU3E1ebPFoyhE6Tssy0rT7ZBRvBxusCX4XCdD/YHFXI3tTrEkKNFY6nITap4DAcrPrWSFahjGFVIx+3F+r9ezOVfMmuU6xo4elNqsYC1XLF1HbOQiGlNLQ6zsDbz/ajGEezbZT72xlpvuj2/fpQqzXYTW6JE9Qe/FrzR7hpgbveRA1K3/dRHiRJhstA6dHueLu06sfDVPo783ruNxIkrsdo2KpghV2cDspuHbS4X2CPmIeEUp/VqJrc9YpeP+Z0O6Wh2HYjHCg/dDG2BaEuweyTs3fRUCnUO9G/CLzyPDOYLFGIL8lAiJqGeObONWzpAzSTsArocj2X02yf7+RMrfxMs3QoAAA==",
+        "response_sha256": "3389e852c3bbb8161483b8d7705f677aed7973b9443c90b722e7151cabe6fcee",
+        "pagination": {
+          "first": 100,
+          "item_count": 26,
+          "total_count": 26,
+          "has_next_page": false,
+          "end_cursor": "MjY"
+        }
+      },
+      "open_issues": {
+        "request_url": "https://api.github.com/graphql",
+        "request": {
+          "method": "POST",
+          "operation_name": "D2OpenIssues",
+          "query_sha256": "bd04513666b953a53b3792ffb52118de6222f6145ca3eaaece306ee9aed0f237",
+          "variables": {
+            "owner": "somebloke1",
+            "name": "noetic-dev"
+          },
+          "variables_sha256": "a7c6763a8da93009812c263d63969ef91b4ab6832baf2ba5574e569dd99f638a"
+        },
+        "status": 200,
+        "request_id": "ED0A:2F6D67:1B29E79:5F1C70C:6A5D0779",
+        "fetched_at": "2026-07-19T17:20:57.562459+00:00",
+        "repository": "somebloke1/noetic-dev",
+        "repository_id": 1297462728,
+        "authentication": {
+          "method": "gh-cli-oauth-token",
+          "principal": "somebloke1",
+          "candidate_authenticated": true,
+          "protected_verified": false
+        },
+        "response_headers": {
+          "date": "Sun, 19 Jul 2026 17:20:57 GMT"
+        },
+        "body_sha256": "61b5f8ede4e2bd2d88f73ee76319bc84149f82429d4f9daa4f88d84abe4ada9a",
+        "canonical_response_sha256": "24466d63000de980ef9f0e824967533da2952a5716a699cc6332d8f75c980fa0",
+        "response_gzip_base64": "H4sIAAAAAAAC/9WZa28aRxSG/8poP7WSKXsDzEr9QJxGihpjJ3FbpVVVDbMHmHh2ZjUXMIr833tml8RrG4IX5Essy8J7nfO8Z86NL0FOLQ2yL4GGUhlulV75//zRCTXwNg+yKB4O0n48iI+PAkkL+Ivb+dlSgg6ywKgCJkJdQtSVCixnnRwWwVGQw5Q6YV9pKtn8A0z9M/29eEt9gaV6BtYfVhzfEQz7STSIJoM8h14as17K+smg1wNgg2EUhZNkihfQMAqur48CbowD42+2ylJxopzER8XhUVDSGbyVU+XPzakZw5U9x0NBNqXCwFEAMj9x2ii/9k/JnysWD1dn8tPqrPw9PP08Wo15uByvwquzN++X49dqOf6slmdv9PnI/3z8Y7y06a8BrkCq3C/gH7TKFROPIkKbuBXewhMljRIcGQK5oUKoZnNugVmngVCZEwTC5QxhuNJfm4/QiCAO434nHHSi5CIMszhB/H/7S7TAk3NrS5N1uzOUwE1+YaroblSgWxPqRninoBMQ92D12rEav79jda2lXZWQ5YoZPPvtYIkPg+w8uXVMc6W5XWXnUfMwGlAqCdJmU6WL5hljqXUm4/K/UquZBoOv+Pe6umANPLkB/rEExqcrYudAjCvBv4zkYEEjYG4QClEIH4zV1HIlCVPSaiUEPmcX/WR/+slT0Ec04D1rgwLxZgXCzQo0mLTSoXejwwdF84KWmeeLrB2zTf+3c63cbE4WqM+UQ05KQSVatEuB3v4K9J5CgZlCiyQGOtigQfoADXSNrR32/g321zDlEhpOjR+LAiNMFxaoLDHo+gU1Vcyhzs6rNZCCWs2vdtLv70+//xT0eVEKKNDMamc/2y4Y3MjxVnrqmEgr4BhypMHUCmR0fkpyJZWXR/p4512GTPmVTwi7t8Hx/kIMnjkQRU8iwfH9hMCoVJIzKhD5THLvIVR0mrviMeP/8Uv2/y15uGJj2oEf3gd/AUIZTMECZtW6Ojk3JbVsXkcpyuxO8On+4Ic/IHjribXjHoX3wRe4VkEMgmd+WV3KGN5JqveYagM8Zr6Nwh+QvHGTqjCElvSjDfGmjjILINVdtDAEq01flsIVMFed2V179i/CIQaeg3JvFL3M4nOLBl9xtZQgvlcEqYkBvaATLvB13TXrutLEiK/KuvPSQPN6q5jvihAPs/SAOBTFP5QIt9i1VGJTN1a4q4r2RKslPplQaylmAJrT0lZFap0JzGPWoNELbcLizRLUiFqyTzfVnsxp7cucE6SMZr1RegaYkEs0CSTjULcDpV+5xqjk/3JWRycunXeARyxIo/S5VNndsUUP2DO7RYkbGwJL/J9uXvlzRsCX/wgbW2Q7nzrhCyVMDagaLLiXp45SXH7Vy5L3o+/q0TvOkgP0iLfvkrSlHqN98vaaJ66PXULeqo2+g70xjXillPWJvfTJ2M/dICfVHG6GS+hoRA1L3yFQ/R1fj/qZT8YHzODi7UOIdgNL6YRosL1j+KCZCotq/uLnj7dNvwCt6UNsjkOsbw6wefAkNjcaj9/WW8qPPWgVAFFlZzpaOZ9r/HZ6xy28e3e6LpFLJTjbCmFwEWKEwzh3QPaPh8+7qVpMoDYWw3fGrc1mgwF6EFfknLJLsgizdXlLJwIzCHUGG250vM91D+I/TmC7u6Gvhf0sHR4waH3mtmNn+DqoDrujQ6Pm/QBV/sb0UBe1xhVQdRv+WQJuf/1QKm2n6PTq2yCWOqukKpTznfpim0DDKr/0svSAvjDZXggn7QQ6Xe61FTa7/QOG242wOkJchY+pudOVp3+LrXWU8fUtmPXLt8aVOMatlCUHBNfe4JlhtkvJ/V6zNeCX2KP5YbUGX9dwKjrcKOFJkTMsdk5wMesIbZ3eyvH4Ikx91AgPKHr6vZccn6OHxGf8vb7+H0EfkkfEHQAA",
+        "response_sha256": "bec17f65b07de421239d4d263860e9dfbaf27b0b2e26caa07caabfc3d18a7cd1",
+        "pagination": {
+          "first": 100,
+          "item_count": 20,
+          "total_count": 20,
+          "has_next_page": false,
+          "end_cursor": "Y3Vyc29yOnYyOpK0MjAyNi0wNy0xOFQwNDowNjowOFrPAAAAASUNwt4="
+        }
+      }
+    }
+  },
+  "verification": {
+    "status": "pending_protected_receipt",
+    "required_source": "protected-integration",
+    "required_claims_sha256": "035e47fd2708df74dbe7011e7b86dbcf75eea9c9fce2bb54e1c0c7a331f69bfd",
+    "required_claims": {
+      "repository": "somebloke1/noetic-dev",
+      "repository_id": 1297462728,
+      "capture_started_at": "2026-07-19T17:20:55.799205+00:00",
+      "capture_completed_at": "2026-07-19T17:20:57.562779+00:00",
+      "response_sha256": {
+        "principal": "41c93c00e0b8c183c2b45fcd4efa6a1d5f5e2fe0e6d60ffbf96755b7ada813ad",
+        "open_pull_requests": "ff9191145e4d0fbccfc604e70ab05e4e4a4828a07163f70674464e5ce97f3949",
+        "branches": "3389e852c3bbb8161483b8d7705f677aed7973b9443c90b722e7151cabe6fcee",
+        "open_issues": "bec17f65b07de421239d4d263860e9dfbaf27b0b2e26caa07caabfc3d18a7cd1"
+      },
+      "body_sha256": {
+        "principal": "859b5ad0e7a399e1bdabd2b970124c72a40defa3ad0ca0ebdf4611b60ebc18bd",
+        "open_pull_requests": "cfd14c7b45b4af3a2d80e4893a0a69170b776bfe768c1d71c4b606cba55302f8",
+        "branches": "c8b78ef87ebad54fd28a4cd4dd5e196ea6e1a87492cb79c0d476cf5bf132b18f",
+        "open_issues": "61b5f8ede4e2bd2d88f73ee76319bc84149f82429d4f9daa4f88d84abe4ada9a"
+      }
+    }
+  },
   "refs": {
     "main": "29196a67349537d6f8a8a711df11b86da0430857",
-    "dev": "15b9ae66ff316abf28a5041c465e95baef5e82f9",
-    "default_branch": "dev",
-    "dev_ahead_of_main": 29
+    "dev": "963171b7dde542c54c63755eec79110b3f631a01",
+    "default_branch": "dev"
   },
   "counts": {
-    "open_pull_requests": 12,
+    "open_pull_requests": 13,
     "branches": 26,
     "open_issues": 20
   },
   "open_pull_requests": [
-    {"number": 2, "title": "docs(architecture): consolidate noetic-dev decisions", "base": "main", "head": "issue-1-architecture", "head_sha": "6c8de726b431c411d3c9420e9a269b1b526a5063", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/2", "disposition": "retain architecture donor; recreate accepted work from current dev"},
-    {"number": 4, "title": "docs(controller): specify superior orchestration kernel", "base": "issue-1-architecture", "head": "issue-3-controller-spec", "head_sha": "54b3e83e43135e61f335176d3de113fb5b056a4f", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/4", "disposition": "retain reviewed controller donor; recreate accepted work from current dev"},
-    {"number": 15, "title": "docs(roadmap): establish governed construction order", "base": "issue-1-architecture", "head": "issue-5-roadmap", "head_sha": "5be6cf087fc01129360ecc32f67b1cea5c0d7aa9", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/15", "disposition": "retain donor evidence; ROADMAP.md and issue 32 supersede execution order"},
-    {"number": 16, "title": "docs(controller): inventory donor conformance fixtures", "base": "issue-3-controller-spec", "head": "issue-7-donor-fixtures", "head_sha": "250f9b460b687a37b702b232b4d3c6ed624207a1", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/16", "disposition": "retain selected donor fixtures for D3a characterization"},
-    {"number": 17, "title": "feat(controller): define executable v0 contracts", "base": "issue-7-donor-fixtures", "head": "issue-6-controller-contracts", "head_sha": "c6040ce09b1946556d5b7b999bd008bbbf6815ef", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/17", "disposition": "retain contract donor; reconcile under D3b"},
-    {"number": 18, "title": "feat(events): define canonical cognitional contract", "base": "issue-6-controller-contracts", "head": "issue-8-cognitional-events", "head_sha": "d424533ccbd014968e2e204fd2c1fb27819eaa95", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/18", "disposition": "retain event-contract donor; reconcile under D3b"},
-    {"number": 19, "title": "feat(telos): define delegation dispatch contract", "base": "issue-8-cognitional-events", "head": "issue-9-telos-delegation", "head_sha": "7ba81b1680551e14a883d3d60ff425046325f993", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/19", "disposition": "retain Telos delegation donor; reconcile under D3a and D3b"},
-    {"number": 20, "title": "docs(contextforge): inventory continuity dependencies", "base": "issue-9-telos-delegation", "head": "issue-14-contextforge-inventory", "head_sha": "7e6a0e68b31e5d20ebbab1f73ae4dcd2180d77bd", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/20", "disposition": "retain research evidence; ContextForge remains optional transport"},
-    {"number": 21, "title": "feat(models): define selection access contracts", "base": "issue-14-contextforge-inventory", "head": "issue-10-model-composition", "head_sha": "69704c8badcc170edf02276ea761f1b5a3967117", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/21", "disposition": "retain provider-neutral donor concepts; supersede direct-access design with mandatory LiteLLM"},
-    {"number": 22, "title": "feat(attach): define live-agent adapter contracts", "base": "issue-10-model-composition", "head": "issue-13-attach-contracts", "head_sha": "feebb0673130686b83f02de389ccfccdc50ab28a", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/22", "disposition": "retain attach donor; park until a trace consumer exists"},
-    {"number": 28, "title": "docs(governance): require protected review canary", "base": "dev", "head": "issue-27-terra-canary", "head_sha": "161b262b2321444d4fb322931b640483d0a14eb2", "updated_at": "2026-07-16T04:00:56Z", "url": "https://github.com/somebloke1/noetic-dev/pull/28", "disposition": "retain stale canary and dirty-worktree evidence; do not merge"},
-    {"number": 66, "title": "feat(governance): add isolated OpenCode spike", "base": "dev", "head": "issue-65-opencode-spike", "head_sha": "8fcb1c509b14f10f1f7e2ef2363ffb98996fa46b", "updated_at": "2026-07-18T17:34:34Z", "url": "https://github.com/somebloke1/noetic-dev/pull/66", "disposition": "paused bounded experiment; non-evidence for roadmap readiness; leave issue and PR untouched"}
+    {
+      "number": 2,
+      "title": "docs(architecture): consolidate noetic-dev decisions",
+      "base": "main",
+      "head": "issue-1-architecture",
+      "head_sha": "6c8de726b431c411d3c9420e9a269b1b526a5063",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/2",
+      "governance_disposition": "retain architecture donor; recreate accepted work from current dev"
+    },
+    {
+      "number": 4,
+      "title": "docs(controller): specify superior orchestration kernel",
+      "base": "issue-1-architecture",
+      "head": "issue-3-controller-spec",
+      "head_sha": "54b3e83e43135e61f335176d3de113fb5b056a4f",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/4",
+      "governance_disposition": "retain reviewed controller donor; recreate accepted work from current dev"
+    },
+    {
+      "number": 15,
+      "title": "docs(roadmap): establish governed construction order",
+      "base": "issue-1-architecture",
+      "head": "issue-5-roadmap",
+      "head_sha": "5be6cf087fc01129360ecc32f67b1cea5c0d7aa9",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/15",
+      "governance_disposition": "retain donor evidence; ROADMAP.md and issue 32 supersede execution order"
+    },
+    {
+      "number": 16,
+      "title": "docs(controller): inventory donor conformance fixtures",
+      "base": "issue-3-controller-spec",
+      "head": "issue-7-donor-fixtures",
+      "head_sha": "250f9b460b687a37b702b232b4d3c6ed624207a1",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/16",
+      "governance_disposition": "retain selected donor fixtures for D3a characterization"
+    },
+    {
+      "number": 17,
+      "title": "feat(controller): define executable v0 contracts",
+      "base": "issue-7-donor-fixtures",
+      "head": "issue-6-controller-contracts",
+      "head_sha": "c6040ce09b1946556d5b7b999bd008bbbf6815ef",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/17",
+      "governance_disposition": "retain contract donor; reconcile under D3b"
+    },
+    {
+      "number": 18,
+      "title": "feat(events): define canonical cognitional contract",
+      "base": "issue-6-controller-contracts",
+      "head": "issue-8-cognitional-events",
+      "head_sha": "d424533ccbd014968e2e204fd2c1fb27819eaa95",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/18",
+      "governance_disposition": "retain event-contract donor; reconcile under D3b"
+    },
+    {
+      "number": 19,
+      "title": "feat(telos): define delegation dispatch contract",
+      "base": "issue-8-cognitional-events",
+      "head": "issue-9-telos-delegation",
+      "head_sha": "7ba81b1680551e14a883d3d60ff425046325f993",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/19",
+      "governance_disposition": "retain Telos delegation donor; reconcile under D3a and D3b"
+    },
+    {
+      "number": 20,
+      "title": "docs(contextforge): inventory continuity dependencies",
+      "base": "issue-9-telos-delegation",
+      "head": "issue-14-contextforge-inventory",
+      "head_sha": "7e6a0e68b31e5d20ebbab1f73ae4dcd2180d77bd",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/20",
+      "governance_disposition": "retain research evidence; ContextForge remains optional transport"
+    },
+    {
+      "number": 21,
+      "title": "feat(models): define selection access contracts",
+      "base": "issue-14-contextforge-inventory",
+      "head": "issue-10-model-composition",
+      "head_sha": "69704c8badcc170edf02276ea761f1b5a3967117",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/21",
+      "governance_disposition": "retain provider-neutral donor concepts; supersede direct-access design with mandatory LiteLLM"
+    },
+    {
+      "number": 22,
+      "title": "feat(attach): define live-agent adapter contracts",
+      "base": "issue-10-model-composition",
+      "head": "issue-13-attach-contracts",
+      "head_sha": "feebb0673130686b83f02de389ccfccdc50ab28a",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/22",
+      "governance_disposition": "retain attach donor; park until a trace consumer exists"
+    },
+    {
+      "number": 28,
+      "title": "docs(governance): require protected review canary",
+      "base": "dev",
+      "head": "issue-27-terra-canary",
+      "head_sha": "161b262b2321444d4fb322931b640483d0a14eb2",
+      "updated_at": "2026-07-16T04:00:56Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/28",
+      "governance_disposition": "retain stale canary and dirty-worktree evidence; do not merge"
+    },
+    {
+      "number": 66,
+      "title": "feat(governance): add isolated OpenCode spike",
+      "base": "dev",
+      "head": "issue-65-opencode-spike",
+      "head_sha": "8fcb1c509b14f10f1f7e2ef2363ffb98996fa46b",
+      "updated_at": "2026-07-18T17:34:34Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/66",
+      "governance_disposition": "paused bounded experiment; non-evidence for roadmap readiness; leave issue and PR untouched"
+    },
+    {
+      "number": 67,
+      "title": "fix(governance): reconcile D2 authority",
+      "base": "dev",
+      "head": "issue-32-canonical-roadmap",
+      "head_sha": "7e662475f8240ec08d9fb21424a03b980878a9a6",
+      "updated_at": "2026-07-19T14:56:54Z",
+      "url": "https://github.com/somebloke1/noetic-dev/pull/67",
+      "governance_disposition": "active bounded D2 roadmap candidate"
+    }
   ],
   "branches": [
-    {"name": "main", "sha": "29196a67349537d6f8a8a711df11b86da0430857", "protected": true, "disposition": "protected release branch; user-approved promotion only"},
-    {"name": "dev", "sha": "15b9ae66ff316abf28a5041c465e95baef5e82f9", "protected": true, "disposition": "protected autonomous integration branch"},
-    {"name": "issue-1-architecture", "sha": "6c8de726b431c411d3c9420e9a269b1b526a5063", "disposition": "retain donor"},
-    {"name": "issue-3-controller-spec", "sha": "54b3e83e43135e61f335176d3de113fb5b056a4f", "disposition": "retain donor"},
-    {"name": "issue-5-roadmap", "sha": "5be6cf087fc01129360ecc32f67b1cea5c0d7aa9", "disposition": "retain superseded roadmap donor"},
-    {"name": "issue-6-controller-contracts", "sha": "c6040ce09b1946556d5b7b999bd008bbbf6815ef", "disposition": "retain donor"},
-    {"name": "issue-7-donor-fixtures", "sha": "250f9b460b687a37b702b232b4d3c6ed624207a1", "disposition": "retain donor"},
-    {"name": "issue-8-cognitional-events", "sha": "d424533ccbd014968e2e204fd2c1fb27819eaa95", "disposition": "retain donor"},
-    {"name": "issue-9-telos-delegation", "sha": "7ba81b1680551e14a883d3d60ff425046325f993", "disposition": "retain donor"},
-    {"name": "issue-10-model-composition", "sha": "69704c8badcc170edf02276ea761f1b5a3967117", "disposition": "retain donor; direct-access policy superseded"},
-    {"name": "issue-11-cognitive-programs", "sha": "e25083c5b05ac2b5b10868b7f681681c29736008", "disposition": "retain donor without PR"},
-    {"name": "issue-13-attach-contracts", "sha": "feebb0673130686b83f02de389ccfccdc50ab28a", "disposition": "retain parked donor"},
-    {"name": "issue-14-contextforge-inventory", "sha": "7e6a0e68b31e5d20ebbab1f73ae4dcd2180d77bd", "disposition": "retain research donor"},
-    {"name": "issue-27-terra-canary", "sha": "161b262b2321444d4fb322931b640483d0a14eb2", "disposition": "preserve stale canary and dirty material"},
-    {"name": "issue-29-broker-lifecycle-evidence", "sha": "9172b1e13c5ed54eac8b4af6e700c17c282c193c", "disposition": "retain model-governance evidence"},
-    {"name": "issue-29-modality-evidence-record", "sha": "cd915566154097735e1c33d260b01c7d8210f456", "disposition": "retain model-governance evidence"},
-    {"name": "issue-29-modality-readiness", "sha": "43861367d2199143aa4d5e8f7aa347fd62a2ae4c", "disposition": "retain model-governance evidence"},
-    {"name": "issue-29-routed-governance-remediation", "sha": "c60f8e48a17e88db5d00322f675a02a4b17ceeaa", "disposition": "retain remediation donor"},
-    {"name": "issue-29-routed-pi-recovery", "sha": "4177a9d9b6f9e39ee3dd831ccef354ddaf1f5d68", "disposition": "retain closed-PR donor"},
-    {"name": "issue-32-canonical-roadmap", "sha": "0e0ec275b9e377f77c3ce9820d24e188b39f595e", "disposition": "active bounded D2 roadmap candidate"},
-    {"name": "issue-33-m0-telos-trace", "sha": "0a02bad8afa534fbb2aea9684f61782854b2667b", "disposition": "retain integrated-work evidence"},
-    {"name": "issue-35-m1-recoverability", "sha": "8f4af0334851b19b3acdbd23417e827c98e16f34", "disposition": "retain integrated-work evidence"},
-    {"name": "issue-37-development-program", "sha": "de4a52260932573194258d6dd367e7118daec3ae", "disposition": "retain integrated-work evidence"},
-    {"name": "issue-39-terminal-observability", "sha": "bdc0b6a8b35e2354d76e50b31d0a25a436f07afd", "disposition": "retain integrated-work evidence"},
-    {"name": "issue-51-external-mcp-adapter", "sha": "9ff98e0d095b9ea93818b0f34b1b3cc04a2338a6", "disposition": "retain integrated-work evidence"},
-    {"name": "issue-65-opencode-spike", "sha": "8fcb1c509b14f10f1f7e2ef2363ffb98996fa46b", "disposition": "paused bounded experiment; leave untouched"}
+    {
+      "name": "dev",
+      "sha": "963171b7dde542c54c63755eec79110b3f631a01",
+      "governance_disposition": "protected autonomous integration branch"
+    },
+    {
+      "name": "issue-1-architecture",
+      "sha": "6c8de726b431c411d3c9420e9a269b1b526a5063",
+      "governance_disposition": "retain donor"
+    },
+    {
+      "name": "issue-10-model-composition",
+      "sha": "69704c8badcc170edf02276ea761f1b5a3967117",
+      "governance_disposition": "retain donor; direct-access policy superseded"
+    },
+    {
+      "name": "issue-11-cognitive-programs",
+      "sha": "e25083c5b05ac2b5b10868b7f681681c29736008",
+      "governance_disposition": "retain donor without PR"
+    },
+    {
+      "name": "issue-13-attach-contracts",
+      "sha": "feebb0673130686b83f02de389ccfccdc50ab28a",
+      "governance_disposition": "retain parked donor"
+    },
+    {
+      "name": "issue-14-contextforge-inventory",
+      "sha": "7e6a0e68b31e5d20ebbab1f73ae4dcd2180d77bd",
+      "governance_disposition": "retain research donor"
+    },
+    {
+      "name": "issue-27-terra-canary",
+      "sha": "161b262b2321444d4fb322931b640483d0a14eb2",
+      "governance_disposition": "preserve stale canary and dirty material"
+    },
+    {
+      "name": "issue-29-broker-lifecycle-evidence",
+      "sha": "9172b1e13c5ed54eac8b4af6e700c17c282c193c",
+      "governance_disposition": "retain model-governance evidence"
+    },
+    {
+      "name": "issue-29-modality-evidence-record",
+      "sha": "cd915566154097735e1c33d260b01c7d8210f456",
+      "governance_disposition": "retain model-governance evidence"
+    },
+    {
+      "name": "issue-29-modality-readiness",
+      "sha": "43861367d2199143aa4d5e8f7aa347fd62a2ae4c",
+      "governance_disposition": "retain model-governance evidence"
+    },
+    {
+      "name": "issue-29-routed-governance-remediation",
+      "sha": "c60f8e48a17e88db5d00322f675a02a4b17ceeaa",
+      "governance_disposition": "retain remediation donor"
+    },
+    {
+      "name": "issue-29-routed-pi-recovery",
+      "sha": "4177a9d9b6f9e39ee3dd831ccef354ddaf1f5d68",
+      "governance_disposition": "retain closed-PR donor"
+    },
+    {
+      "name": "issue-3-controller-spec",
+      "sha": "54b3e83e43135e61f335176d3de113fb5b056a4f",
+      "governance_disposition": "retain donor"
+    },
+    {
+      "name": "issue-32-canonical-roadmap",
+      "sha": "7e662475f8240ec08d9fb21424a03b980878a9a6",
+      "governance_disposition": "active bounded D2 roadmap candidate"
+    },
+    {
+      "name": "issue-33-m0-telos-trace",
+      "sha": "0a02bad8afa534fbb2aea9684f61782854b2667b",
+      "governance_disposition": "retain integrated-work evidence"
+    },
+    {
+      "name": "issue-35-m1-recoverability",
+      "sha": "8f4af0334851b19b3acdbd23417e827c98e16f34",
+      "governance_disposition": "retain integrated-work evidence"
+    },
+    {
+      "name": "issue-37-development-program",
+      "sha": "de4a52260932573194258d6dd367e7118daec3ae",
+      "governance_disposition": "retain integrated-work evidence"
+    },
+    {
+      "name": "issue-39-terminal-observability",
+      "sha": "bdc0b6a8b35e2354d76e50b31d0a25a436f07afd",
+      "governance_disposition": "retain integrated-work evidence"
+    },
+    {
+      "name": "issue-5-roadmap",
+      "sha": "5be6cf087fc01129360ecc32f67b1cea5c0d7aa9",
+      "governance_disposition": "retain superseded roadmap donor"
+    },
+    {
+      "name": "issue-51-external-mcp-adapter",
+      "sha": "9ff98e0d095b9ea93818b0f34b1b3cc04a2338a6",
+      "governance_disposition": "retain integrated-work evidence"
+    },
+    {
+      "name": "issue-6-controller-contracts",
+      "sha": "c6040ce09b1946556d5b7b999bd008bbbf6815ef",
+      "governance_disposition": "retain donor"
+    },
+    {
+      "name": "issue-65-opencode-spike",
+      "sha": "8fcb1c509b14f10f1f7e2ef2363ffb98996fa46b",
+      "governance_disposition": "paused bounded experiment; leave untouched"
+    },
+    {
+      "name": "issue-7-donor-fixtures",
+      "sha": "250f9b460b687a37b702b232b4d3c6ed624207a1",
+      "governance_disposition": "retain donor"
+    },
+    {
+      "name": "issue-8-cognitional-events",
+      "sha": "d424533ccbd014968e2e204fd2c1fb27819eaa95",
+      "governance_disposition": "retain donor"
+    },
+    {
+      "name": "issue-9-telos-delegation",
+      "sha": "7ba81b1680551e14a883d3d60ff425046325f993",
+      "governance_disposition": "retain donor"
+    },
+    {
+      "name": "main",
+      "sha": "29196a67349537d6f8a8a711df11b86da0430857",
+      "governance_disposition": "protected release branch; user-approved promotion only"
+    }
   ],
   "open_issues": [
-    {"number": 1, "title": "Consolidate noetic-dev architecture and naming", "labels": ["type:docs", "phase:P3", "priority:P1", "component:form", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:12Z", "url": "https://github.com/somebloke1/noetic-dev/issues/1"},
-    {"number": 3, "title": "Specify the superior deterministic orchestration controller", "labels": ["type:research", "phase:P2", "priority:P0", "component:controller", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:13Z", "url": "https://github.com/somebloke1/noetic-dev/issues/3"},
-    {"number": 5, "title": "Roadmap: construct noetic-dev through verified planes", "labels": ["type:governance", "phase:P4", "priority:P0", "roadmap", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:15Z", "url": "https://github.com/somebloke1/noetic-dev/issues/5"},
-    {"number": 6, "title": "Define controller command/event schemas and authority matrix", "labels": ["type:implementation", "phase:P2", "priority:P0", "component:controller", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:16Z", "url": "https://github.com/somebloke1/noetic-dev/issues/6"},
-    {"number": 7, "title": "Inventory and transpose APM donor conformance fixtures", "labels": ["type:research", "phase:P1", "priority:P0", "component:controller", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:18Z", "url": "https://github.com/somebloke1/noetic-dev/issues/7"},
-    {"number": 8, "title": "Specify canonical cognitional-event schema", "labels": ["type:implementation", "phase:P2", "priority:P1", "component:events", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:13Z", "url": "https://github.com/somebloke1/noetic-dev/issues/8"},
-    {"number": 9, "title": "Specify Telos delegation-dispatch contract", "labels": ["type:implementation", "phase:P2", "priority:P1", "component:telos", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:14Z", "url": "https://github.com/somebloke1/noetic-dev/issues/9"},
-    {"number": 10, "title": "Specify model selection/access composition", "labels": ["type:implementation", "phase:P2", "priority:P1", "component:substrate", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:15Z", "url": "https://github.com/somebloke1/noetic-dev/issues/10"},
-    {"number": 11, "title": "Specify cognitive programs on the executive controller", "labels": ["type:research", "phase:P2", "priority:P1", "component:programs", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-16T09:13:16Z", "url": "https://github.com/somebloke1/noetic-dev/issues/11"},
-    {"number": 12, "title": "Define observability/control plane scope and read models", "labels": ["type:research", "phase:P2", "priority:P1", "component:observability", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-16T09:29:44Z", "url": "https://github.com/somebloke1/noetic-dev/issues/12"},
-    {"number": 13, "title": "Specify tmux and browser attach adapter contracts", "labels": ["type:research", "phase:P2", "priority:P2", "component:attach", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:16Z", "url": "https://github.com/somebloke1/noetic-dev/issues/13"},
-    {"number": 14, "title": "Inventory current ContextForge dependencies and preserve service continuity", "labels": ["type:research", "type:governance", "phase:P1", "priority:P1", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:23:18Z", "url": "https://github.com/somebloke1/noetic-dev/issues/14"},
-    {"number": 23, "title": "fix(governance): enforce truthful delivery evidence and independent QA", "labels": ["type:implementation", "status:blocked", "phase:P4", "priority:P0"], "status": "blocked", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T00:58:38Z", "url": "https://github.com/somebloke1/noetic-dev/issues/23"},
-    {"number": 25, "title": "Bootstrap protected dev agent-review canary", "labels": [], "status": "missing", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T16:09:12Z", "url": "https://github.com/somebloke1/noetic-dev/issues/25"},
-    {"number": 27, "title": "Demonstrate protected dev Terra canary", "labels": [], "status": "missing", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T16:20:11Z", "url": "https://github.com/somebloke1/noetic-dev/issues/27"},
-    {"number": 29, "title": "Enforce mandatory genus-router and LiteLLM model policy", "labels": ["type:implementation", "phase:P4", "priority:P0", "component:substrate"], "status": "missing", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-17T03:10:24Z", "url": "https://github.com/somebloke1/noetic-dev/issues/29"},
-    {"number": 30, "title": "Scenario Pack v0: executable causal projection probe", "labels": ["type:implementation", "status:blocked", "phase:P2", "priority:P1", "component:observability"], "status": "blocked", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-13T20:06:49Z", "url": "https://github.com/somebloke1/noetic-dev/issues/30"},
-    {"number": 32, "title": "Represent and resume the complete noetic-dev portfolio through autonomous dev", "labels": ["type:implementation", "priority:P0", "status:in_progress"], "status": "in_progress", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-18T23:39:06Z", "url": "https://github.com/somebloke1/noetic-dev/issues/32"},
-    {"number": 57, "title": "Automate durable protected-route attestation", "labels": ["type:implementation", "phase:P4", "priority:P0"], "status": "missing", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-17T22:30:31Z", "url": "https://github.com/somebloke1/noetic-dev/issues/57"},
-    {"number": 65, "title": "Spike one credential-isolated OpenCode model turn", "labels": ["type:implementation", "phase:P4", "priority:P1", "component:substrate"], "status": "missing", "dependencies": {"blocked_by": 0, "blocking": 0}, "updated_at": "2026-07-18T04:06:08Z", "url": "https://github.com/somebloke1/noetic-dev/issues/65"}
+    {
+      "number": 1,
+      "title": "Consolidate noetic-dev architecture and naming",
+      "labels": [
+        "type:docs",
+        "phase:P3",
+        "priority:P1",
+        "component:form",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:12Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/1"
+    },
+    {
+      "number": 3,
+      "title": "Specify the superior deterministic orchestration controller",
+      "labels": [
+        "type:research",
+        "phase:P2",
+        "priority:P0",
+        "component:controller",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:13Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/3"
+    },
+    {
+      "number": 5,
+      "title": "Roadmap: construct noetic-dev through verified planes",
+      "labels": [
+        "type:governance",
+        "phase:P4",
+        "priority:P0",
+        "roadmap",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:15Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/5"
+    },
+    {
+      "number": 6,
+      "title": "Define controller command/event schemas and authority matrix",
+      "labels": [
+        "type:implementation",
+        "phase:P2",
+        "priority:P0",
+        "component:controller",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:16Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/6"
+    },
+    {
+      "number": 7,
+      "title": "Inventory and transpose APM donor conformance fixtures",
+      "labels": [
+        "type:research",
+        "phase:P1",
+        "priority:P0",
+        "component:controller",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:18Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/7"
+    },
+    {
+      "number": 8,
+      "title": "Specify canonical cognitional-event schema",
+      "labels": [
+        "type:implementation",
+        "phase:P2",
+        "priority:P1",
+        "component:events",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:13Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/8"
+    },
+    {
+      "number": 9,
+      "title": "Specify Telos delegation-dispatch contract",
+      "labels": [
+        "type:implementation",
+        "phase:P2",
+        "priority:P1",
+        "component:telos",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:14Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/9"
+    },
+    {
+      "number": 10,
+      "title": "Specify model selection/access composition",
+      "labels": [
+        "type:implementation",
+        "phase:P2",
+        "priority:P1",
+        "component:substrate",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:15Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/10"
+    },
+    {
+      "number": 11,
+      "title": "Specify cognitive programs on the executive controller",
+      "labels": [
+        "type:research",
+        "phase:P2",
+        "priority:P1",
+        "component:programs",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-16T09:13:16Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/11"
+    },
+    {
+      "number": 12,
+      "title": "Define observability/control plane scope and read models",
+      "labels": [
+        "type:research",
+        "phase:P2",
+        "priority:P1",
+        "component:observability",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-16T09:29:44Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/12"
+    },
+    {
+      "number": 13,
+      "title": "Specify tmux and browser attach adapter contracts",
+      "labels": [
+        "type:research",
+        "phase:P2",
+        "priority:P2",
+        "component:attach",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:16Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/13"
+    },
+    {
+      "number": 14,
+      "title": "Inventory current ContextForge dependencies and preserve service continuity",
+      "labels": [
+        "type:research",
+        "type:governance",
+        "phase:P1",
+        "priority:P1",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-13T00:23:18Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/14"
+    },
+    {
+      "number": 23,
+      "title": "fix(governance): enforce truthful delivery evidence and independent QA",
+      "labels": [
+        "type:implementation",
+        "status:blocked",
+        "phase:P4",
+        "priority:P0"
+      ],
+      "status": "blocked",
+      "updated_at": "2026-07-13T00:58:38Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/23"
+    },
+    {
+      "number": 25,
+      "title": "Bootstrap protected dev agent-review canary",
+      "labels": [],
+      "status": "missing",
+      "updated_at": "2026-07-13T16:09:12Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/25"
+    },
+    {
+      "number": 27,
+      "title": "Demonstrate protected dev Terra canary",
+      "labels": [],
+      "status": "missing",
+      "updated_at": "2026-07-13T16:20:11Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/27"
+    },
+    {
+      "number": 29,
+      "title": "Enforce mandatory genus-router and LiteLLM model policy",
+      "labels": [
+        "type:implementation",
+        "phase:P4",
+        "priority:P0",
+        "component:substrate"
+      ],
+      "status": "missing",
+      "updated_at": "2026-07-17T03:10:24Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/29"
+    },
+    {
+      "number": 30,
+      "title": "Scenario Pack v0: executable causal projection probe",
+      "labels": [
+        "type:implementation",
+        "status:blocked",
+        "phase:P2",
+        "priority:P1",
+        "component:observability"
+      ],
+      "status": "blocked",
+      "updated_at": "2026-07-13T20:06:49Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/30"
+    },
+    {
+      "number": 32,
+      "title": "Represent and resume the complete noetic-dev portfolio through autonomous dev",
+      "labels": [
+        "type:implementation",
+        "priority:P0",
+        "status:in_progress"
+      ],
+      "status": "in_progress",
+      "updated_at": "2026-07-19T00:55:45Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/32"
+    },
+    {
+      "number": 57,
+      "title": "Automate durable protected-route attestation",
+      "labels": [
+        "type:implementation",
+        "phase:P4",
+        "priority:P0"
+      ],
+      "status": "missing",
+      "updated_at": "2026-07-17T22:30:31Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/57"
+    },
+    {
+      "number": 65,
+      "title": "Spike one credential-isolated OpenCode model turn",
+      "labels": [
+        "type:implementation",
+        "phase:P4",
+        "priority:P1",
+        "component:substrate"
+      ],
+      "status": "missing",
+      "updated_at": "2026-07-18T04:06:08Z",
+      "url": "https://github.com/somebloke1/noetic-dev/issues/65"
+    }
   ],
   "review": {
-    "method": "one independent adversarial QA pass against the exact D2 candidate SHA",
-    "evidence_location": "GitHub issue 32 and the bounded D2 pull request",
-    "required_before_push_or_pr": true
+    "method": "one protected independent adversarial review against the exact D2 candidate and required receipt claims",
+    "evidence_location": "protected Agent Review artifact for pull request 67",
+    "required_before_inventory_completion": true
   }
 }

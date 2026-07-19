@@ -227,16 +227,31 @@ GitHub Actions App integration 15368 identifies all repository Actions workflows
 <!-- governance-crud:end id=k-20260717-0004 -->
 
 <!-- governance-crud:start id=k-20260718-0001 -->
-## k-20260718-0001: Live D2 portfolio and branch-protection snapshot
+## k-20260718-0001: Superseded D2 portfolio and branch-protection snapshot
 
 - Ledger: knowns
-- Status: verified
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-18
-- Updated: 2026-07-18
+- Updated: 2026-07-19
 - Tags: D2,github,portfolio,branch-protection,P1
 - Source: GitHub REST/GraphQL reads and local Git inspection captured at 2026-07-18T23:20:48Z
 - Confidence: high
 
-The repository default branch is `dev`. `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` is 29 commits ahead of `main@29196a67349537d6f8a8a711df11b86da0430857`. GitHub reports 12 open pull requests, 26 branch refs, and 20 open issues. `main` has classic protection with strict `validate`, one approval, stale-review dismissal, admin enforcement, resolved conversations, linear history, and no force-push/deletion. Active ruleset 19122088 protects `dev` with squash-only PRs, resolved threads, no deletion/non-fast-forward, strict updates, and five required GitHub Actions checks. The detailed inventory and dispositions are stored in `governance/audits/20260718-d2-portfolio/inventory.json`.
+This historical snapshot was superseded after PR #67 opened and protected `dev` advanced. Its 12-PR count and branch SHAs must not be used as current portfolio evidence. The branch-protection observations remain historical inputs, not a current inventory receipt.
 <!-- governance-crud:end id=k-20260718-0001 -->
+
+<!-- governance-crud:start id=k-20260719-0001 -->
+## k-20260719-0001: Candidate-authenticated D2 portfolio capture awaits protected receipt
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/workspace/synthesis
+- Created: 2026-07-19
+- Updated: 2026-07-19
+- Tags: D2,github,portfolio,P1,receipt-pending
+- Source: Authenticated GitHub GraphQL response envelopes captured by `scripts/governance/capture_d2_inventory.py` and stored in `governance/audits/20260718-d2-portfolio/inventory.json`
+- Confidence: high for the candidate capture and its declared non-authority; independently protected verification remains pending
+
+The candidate-authenticated response bodies derive 13 open pull requests, 26 branch refs, and 20 open issues for repository ID `1297462728` (`somebloke1/noetic-dev`), with `main@29196a67349537d6f8a8a711df11b86da0430857` and `dev@963171b7dde542c54c63755eec79110b3f631a01`. Each compressed response is bound by raw-body, canonical-response, and envelope digests plus request identity, pagination, and capture chronology. The artifact explicitly records `pending_protected_receipt`; it does not complete the D2 audit or independently authorize the bounded repair.
+<!-- governance-crud:end id=k-20260719-0001 -->

@@ -3,11 +3,16 @@
 
 from __future__ import annotations
 
+import base64
+import gzip
 import hashlib
+import io
+import json
 import re
 import subprocess
 import sys
 from datetime import datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +23,11 @@ if str(ROOT) not in sys.path:
 
 from scripts.governance.json_schema import load_json_strict, validate_schema  # noqa: E402
 from scripts.governance.hash_tree import canonical_json_sha256  # noqa: E402
+from scripts.governance.capture_d2_inventory import (  # noqa: E402
+    OPERATIONS as D2_INVENTORY_OPERATIONS,
+    QUERIES as D2_INVENTORY_QUERIES,
+    VARIABLES as D2_INVENTORY_VARIABLES,
+)
 from scripts.governance.check_delivery_gate import (  # noqa: E402
     _authenticated_github_response,
     _verify_protected_attestation_receipt,
@@ -132,21 +142,11 @@ D2_REVIEW_SCHEMA_PATH = Path("governance/schemas/d2-freeze-review.schema.json")
 BOOTSTRAP_STATUS_PATH = Path("governance/bootstrap-status.json")
 AUDIT_PATH = Path("governance/audits/20260718-d2-portfolio/inventory.json")
 AUDIT_SCHEMA_PATH = Path("governance/schemas/d2-portfolio-audit.schema.json")
-EXPECTED_PR_NUMBERS = (2, 4, 15, 16, 17, 18, 19, 20, 21, 22, 28, 66)
-EXPECTED_ISSUE_NUMBERS = (1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 23, 25, 27, 29, 30, 32, 57, 65)
-EXPECTED_BRANCH_NAMES = (
-    "main", "dev", "issue-1-architecture", "issue-3-controller-spec",
-    "issue-5-roadmap", "issue-6-controller-contracts", "issue-7-donor-fixtures",
-    "issue-8-cognitional-events", "issue-9-telos-delegation",
-    "issue-10-model-composition", "issue-11-cognitive-programs",
-    "issue-13-attach-contracts", "issue-14-contextforge-inventory",
-    "issue-27-terra-canary", "issue-29-broker-lifecycle-evidence",
-    "issue-29-modality-evidence-record", "issue-29-modality-readiness",
-    "issue-29-routed-governance-remediation", "issue-29-routed-pi-recovery",
-    "issue-32-canonical-roadmap", "issue-33-m0-telos-trace",
-    "issue-35-m1-recoverability", "issue-37-development-program",
-    "issue-39-terminal-observability", "issue-51-external-mcp-adapter",
-    "issue-65-opencode-spike",
+EXPECTED_D2_INVENTORY_SOURCE_ORDER = (
+    "principal",
+    "open_pull_requests",
+    "branches",
+    "open_issues",
 )
 
 
@@ -158,6 +158,363 @@ def _parse_instant(value: Any) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else None
+
+
+def _strict_json_bytes(raw: bytes) -> Any:
+    def no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate response key: {key}")
+            result[key] = value
+        return result
+
+    return json.loads(
+        raw,
+        object_pairs_hook=no_duplicates,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            ValueError(f"non-deterministic response number: {value}")
+        ),
+    )
+
+
+def _decode_d2_inventory_response(
+    envelope: dict[str, Any],
+    source: str,
+    errors: list[str],
+) -> dict[str, Any]:
+    label = f"portfolio audit {source}"
+    authentication = envelope.get("authentication", {})
+    if authentication != {
+        "method": "gh-cli-oauth-token",
+        "principal": "somebloke1",
+        "candidate_authenticated": True,
+        "protected_verified": False,
+    }:
+        errors.append(f"{label} candidate authentication metadata is invalid")
+    request = envelope.get("request", {})
+    expected_variables = {} if source == "principal" else D2_INVENTORY_VARIABLES
+    expected_query = D2_INVENTORY_QUERIES[source].strip() + "\n"
+    if (
+        envelope.get("request_url") != "https://api.github.com/graphql"
+        or request.get("method") != "POST"
+        or request.get("operation_name") != D2_INVENTORY_OPERATIONS[source]
+        or request.get("query_sha256")
+        != hashlib.sha256(expected_query.encode("utf-8")).hexdigest()
+        or request.get("variables") != expected_variables
+        or request.get("variables_sha256")
+        != canonical_json_sha256(expected_variables)
+    ):
+        errors.append(f"{label} GraphQL request identity is invalid")
+    if (
+        envelope.get("status") != 200
+        or type(envelope.get("request_id")) is not str
+        or not envelope.get("request_id")
+        or envelope.get("repository") != "somebloke1/noetic-dev"
+        or envelope.get("repository_id") != 1297462728
+        or _parse_instant(envelope.get("fetched_at")) is None
+    ):
+        errors.append(f"{label} response metadata is invalid")
+
+    encoded = envelope.get("response_gzip_base64")
+    try:
+        if type(encoded) is not str or len(encoded) > 300_000:
+            raise ValueError("encoded response exceeds limit")
+        compressed = base64.b64decode(encoded, validate=True)
+        if len(compressed) > 200_000:
+            raise ValueError("compressed response exceeds limit")
+        with gzip.GzipFile(fileobj=io.BytesIO(compressed), mode="rb") as archive:
+            raw = archive.read(500_001)
+        if len(raw) > 500_000:
+            raise ValueError("response exceeds limit")
+        response = _strict_json_bytes(raw)
+    except Exception:
+        errors.append(f"{label} compressed response is invalid")
+        return {}
+    if hashlib.sha256(raw).hexdigest() != envelope.get("body_sha256"):
+        errors.append(f"{label} raw body digest mismatch")
+    try:
+        canonical_response_sha256 = canonical_json_sha256(response)
+        envelope_sha256 = canonical_json_sha256(
+            {key: value for key, value in envelope.items() if key != "response_sha256"}
+        )
+    except Exception:
+        errors.append(f"{label} response is not canonical JSON")
+        return {}
+    if canonical_response_sha256 != envelope.get("canonical_response_sha256"):
+        errors.append(f"{label} canonical response digest mismatch")
+    if envelope_sha256 != envelope.get("response_sha256"):
+        errors.append(f"{label} response envelope digest mismatch")
+    if type(response) is not dict or set(response) != {"data"} or type(response["data"]) is not dict:
+        errors.append(f"{label} response body shape is invalid")
+        return {}
+    return response["data"]
+
+
+def _d2_repository_from_response(
+    data: dict[str, Any], source: str, errors: list[str]
+) -> dict[str, Any]:
+    repository = data.get("repository")
+    if type(repository) is not dict:
+        errors.append(f"portfolio audit {source} omitted repository identity")
+        return {}
+    default_branch = repository.get("defaultBranchRef")
+    target = default_branch.get("target") if type(default_branch) is dict else None
+    connection_key = {
+        "open_pull_requests": "pullRequests",
+        "branches": "refs",
+        "open_issues": "issues",
+    }[source]
+    if (
+        set(data) != {"repository"}
+        or set(repository)
+        != {"databaseId", "nameWithOwner", "defaultBranchRef", connection_key}
+        or repository.get("databaseId") != 1297462728
+        or repository.get("nameWithOwner") != "somebloke1/noetic-dev"
+        or type(default_branch) is not dict
+        or set(default_branch) != {"name", "target"}
+        or default_branch.get("name") != "dev"
+        or type(target) is not dict
+        or set(target) != {"oid"}
+        or re.fullmatch(r"[a-f0-9]{40}", target.get("oid", "")) is None
+    ):
+        errors.append(f"portfolio audit {source} repository identity is invalid")
+    return repository
+
+
+def _d2_connection(
+    repository: dict[str, Any],
+    key: str,
+    envelope: dict[str, Any],
+    errors: list[str],
+) -> list[dict[str, Any]]:
+    label = f"portfolio audit {key}"
+    connection = repository.get(key)
+    if type(connection) is not dict:
+        errors.append(f"{label} connection is missing")
+        return []
+    nodes = connection.get("nodes")
+    page_info = connection.get("pageInfo")
+    pagination = envelope.get("pagination")
+    if type(nodes) is not list or type(page_info) is not dict or type(pagination) is not dict:
+        errors.append(f"{label} pagination metadata is invalid")
+        return []
+    if (
+        set(connection) != {"totalCount", "pageInfo", "nodes"}
+        or set(page_info) != {"hasNextPage", "endCursor"}
+        or type(connection.get("totalCount")) is not int
+        or connection.get("totalCount") != len(nodes)
+        or len(nodes) > 100
+        or page_info.get("hasNextPage") is not False
+        or pagination
+        != {
+            "first": 100,
+            "item_count": len(nodes),
+            "total_count": connection.get("totalCount"),
+            "has_next_page": False,
+            "end_cursor": page_info.get("endCursor"),
+        }
+    ):
+        errors.append(f"{label} is incomplete or pagination was substituted")
+    if any(type(node) is not dict for node in nodes):
+        errors.append(f"{label} contains a non-object node")
+        return []
+    return nodes
+
+
+def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    capture = audit["capture"]
+    envelopes = capture["source_envelopes"]
+    decoded = {
+        source: _decode_d2_inventory_response(envelopes[source], source, errors)
+        for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER
+    }
+    viewer = decoded["principal"].get("viewer")
+    if (
+        set(decoded["principal"]) != {"viewer"}
+        or type(viewer) is not dict
+        or set(viewer) != {"databaseId", "login"}
+        or viewer.get("databaseId") != 1954320
+        or viewer.get("login") != "somebloke1"
+    ):
+        errors.append("portfolio audit authenticated principal response is invalid")
+
+    repositories = {
+        source: _d2_repository_from_response(decoded[source], source, errors)
+        for source in ("open_pull_requests", "branches", "open_issues")
+    }
+    pull_nodes = _d2_connection(
+        repositories["open_pull_requests"],
+        "pullRequests",
+        envelopes["open_pull_requests"],
+        errors,
+    )
+    branch_nodes = _d2_connection(
+        repositories["branches"], "refs", envelopes["branches"], errors
+    )
+    issue_nodes = _d2_connection(
+        repositories["open_issues"], "issues", envelopes["open_issues"], errors
+    )
+
+    expected_pulls = []
+    for item in sorted(pull_nodes, key=lambda node: node.get("number", 0)):
+        if set(item) != {
+            "number", "title", "baseRefName", "headRefName", "headRefOid",
+            "updatedAt", "url",
+        }:
+            errors.append("portfolio audit PR response node shape is invalid")
+            continue
+        expected_pulls.append(
+            {
+                "number": item["number"],
+                "title": item["title"],
+                "base": item["baseRefName"],
+                "head": item["headRefName"],
+                "head_sha": item["headRefOid"],
+                "updated_at": item["updatedAt"],
+                "url": item["url"],
+            }
+        )
+    actual_pulls = [
+        {key: value for key, value in item.items() if key != "governance_disposition"}
+        for item in audit["open_pull_requests"]
+    ]
+    if actual_pulls != expected_pulls:
+        errors.append("portfolio audit PR identities are not derived from the response body")
+
+    expected_branches = []
+    for item in sorted(branch_nodes, key=lambda node: node.get("name", "")):
+        target = item.get("target")
+        if set(item) != {"name", "target"} or type(target) is not dict or set(target) != {"oid"}:
+            errors.append("portfolio audit branch response node shape is invalid")
+            continue
+        expected_branches.append({"name": item["name"], "sha": target["oid"]})
+    actual_branches = [
+        {key: value for key, value in item.items() if key != "governance_disposition"}
+        for item in audit["branches"]
+    ]
+    if actual_branches != expected_branches:
+        errors.append("portfolio audit branch identities are not derived from the response body")
+
+    expected_issues = []
+    for item in sorted(issue_nodes, key=lambda node: node.get("number", 0)):
+        if set(item) != {"number", "title", "updatedAt", "url", "labels"}:
+            errors.append("portfolio audit issue response node shape is invalid")
+            continue
+        labels_connection = item.get("labels")
+        if type(labels_connection) is not dict:
+            errors.append("portfolio audit issue labels are missing")
+            continue
+        label_nodes = labels_connection.get("nodes")
+        page_info = labels_connection.get("pageInfo")
+        if (
+            type(label_nodes) is not list
+            or type(page_info) is not dict
+            or set(labels_connection) != {"totalCount", "pageInfo", "nodes"}
+            or set(page_info) != {"hasNextPage", "endCursor"}
+            or labels_connection.get("totalCount") != len(label_nodes)
+            or len(label_nodes) > 100
+            or page_info.get("hasNextPage") is not False
+            or any(type(label) is not dict or set(label) != {"name"} for label in label_nodes)
+        ):
+            errors.append(f"portfolio audit issue {item.get('number')} labels are incomplete")
+            continue
+        labels = [label["name"] for label in label_nodes]
+        status_labels = [label for label in labels if label.startswith("status:")]
+        status = status_labels[0].removeprefix("status:") if len(status_labels) == 1 else "missing"
+        expected_issues.append(
+            {
+                "number": item["number"],
+                "title": item["title"],
+                "labels": labels,
+                "status": status,
+                "updated_at": item["updatedAt"],
+                "url": item["url"],
+            }
+        )
+    if audit["open_issues"] != expected_issues:
+        errors.append("portfolio audit issue identities are not derived from the response body")
+
+    expected_counts = {
+        "open_pull_requests": len(expected_pulls),
+        "branches": len(expected_branches),
+        "open_issues": len(expected_issues),
+    }
+    if audit["counts"] != expected_counts:
+        errors.append("portfolio audit counts are not derived from response bodies")
+    branches_by_name = {item["name"]: item["sha"] for item in expected_branches}
+    expected_refs = {
+        "main": branches_by_name.get("main"),
+        "dev": branches_by_name.get("dev"),
+        "default_branch": "dev",
+    }
+    if audit["refs"] != expected_refs:
+        errors.append("portfolio audit refs are not derived from branch responses")
+
+    started_at = _parse_instant(capture.get("started_at"))
+    completed_at = _parse_instant(capture.get("completed_at"))
+    fetched_at = [
+        _parse_instant(envelopes[source].get("fetched_at"))
+        for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER
+    ]
+    try:
+        response_dates = [
+            parsedate_to_datetime(
+                envelopes[source].get("response_headers", {}).get("date", "")
+            )
+            for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER
+        ]
+    except (TypeError, ValueError):
+        response_dates = []
+    chronology = [started_at, *fetched_at, completed_at]
+    if (
+        any(value is None for value in chronology)
+        or any(left >= right for left, right in zip(chronology, chronology[1:]))
+        or len(response_dates) != len(fetched_at)
+        or any(
+            response_date.tzinfo is None
+            or response_date > fetched
+            or (fetched - response_date).total_seconds() > 300
+            for response_date, fetched in zip(response_dates, fetched_at)
+        )
+        or audit.get("captured_at") != capture.get("completed_at")
+        or len({envelopes[source].get("request_id") for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER}) != len(EXPECTED_D2_INVENTORY_SOURCE_ORDER)
+    ):
+        errors.append("portfolio audit capture chronology or request identity is invalid")
+
+    required_claims = {
+        "repository": "somebloke1/noetic-dev",
+        "repository_id": 1297462728,
+        "capture_started_at": capture.get("started_at"),
+        "capture_completed_at": capture.get("completed_at"),
+        "response_sha256": {
+            source: envelopes[source].get("response_sha256")
+            for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER
+        },
+        "body_sha256": {
+            source: envelopes[source].get("body_sha256")
+            for source in EXPECTED_D2_INVENTORY_SOURCE_ORDER
+        },
+    }
+    verification = audit["verification"]
+    if (
+        verification.get("required_claims") != required_claims
+        or verification.get("required_claims_sha256")
+        != canonical_json_sha256(required_claims)
+    ):
+        errors.append("portfolio audit protected receipt claims are not digest-bound")
+    status = verification.get("status")
+    receipt = verification.get("protected_attestation_receipt")
+    if status == "pending_protected_receipt":
+        if receipt is not None:
+            errors.append("pending portfolio audit must not embed an unverified receipt")
+    elif status == "protected_receipt_verified":
+        if not _verify_protected_attestation_receipt(receipt, required_claims):
+            errors.append("portfolio audit protected receipt verification failed")
+    else:
+        errors.append("portfolio audit verification status is invalid")
+    return errors
 
 
 def _validate_d2_protected_review(
@@ -735,6 +1092,9 @@ def _validate_repository_policy(
     errors.extend(f"portfolio audit: {error}" for error in audit_schema_errors)
     freeze_schema_errors = validate_schema(freeze, freeze_schema)
     errors.extend(f"existing-work freeze: {error}" for error in freeze_schema_errors)
+    if audit_schema_errors or freeze_schema_errors:
+        return errors
+    errors.extend(_validate_d2_inventory(audit))
     audit_file = root.resolve() / AUDIT_PATH
     audit_sha256 = hashlib.sha256(audit_file.read_bytes()).hexdigest()
     if freeze.get("audit_artifact") != str(AUDIT_PATH):
@@ -743,38 +1103,19 @@ def _validate_repository_policy(
         errors.append("freeze audit_sha256 does not match the D2 inventory bytes")
     if freeze.get("captured_at") != audit.get("captured_at"):
         errors.append("freeze captured_at does not match the D2 inventory")
-    for key, collection in (
-        ("open_pull_requests", audit.get("open_pull_requests", [])),
-        ("branches", audit.get("branches", [])),
-        ("open_issues", audit.get("open_issues", [])),
+    inventory_verified = (
+        audit.get("verification", {}).get("status") == "protected_receipt_verified"
+    )
+    if freeze.get("audit_completed") is not inventory_verified:
+        errors.append("freeze audit completion does not match protected receipt verification")
+    if freeze.get("candidate_open_pr_count") != audit.get("counts", {}).get(
+        "open_pull_requests"
     ):
-        if audit.get("counts", {}).get(key if key != "open_pull_requests" else key) != len(collection):
-            errors.append(f"portfolio audit count does not match {key}")
-    pr_numbers = tuple(item.get("number") for item in audit.get("open_pull_requests", []))
-    if pr_numbers != EXPECTED_PR_NUMBERS or len(set(pr_numbers)) != len(pr_numbers):
-        errors.append("portfolio audit open PR identities or order changed")
-    for pull_request in audit.get("open_pull_requests", []):
-        if pull_request.get("url") != f"https://github.com/somebloke1/noetic-dev/pull/{pull_request.get('number')}":
-            errors.append("portfolio audit PR URL does not match its number")
-    issue_numbers = tuple(item.get("number") for item in audit.get("open_issues", []))
-    if issue_numbers != EXPECTED_ISSUE_NUMBERS or len(set(issue_numbers)) != len(issue_numbers):
-        errors.append("portfolio audit open issue identities or order changed")
-    for issue in audit.get("open_issues", []):
-        if issue.get("url") != f"https://github.com/somebloke1/noetic-dev/issues/{issue.get('number')}":
-            errors.append("portfolio audit issue URL does not match its number")
-        status_labels = [label for label in issue.get("labels", []) if label.startswith("status:")]
-        expected_status = status_labels[0].removeprefix("status:") if len(status_labels) == 1 else "missing"
-        if issue.get("status") != expected_status:
-            errors.append(f"portfolio audit issue {issue.get('number')} status does not match labels")
-    branch_names = tuple(item.get("name") for item in audit.get("branches", []))
-    if branch_names != EXPECTED_BRANCH_NAMES or len(set(branch_names)) != len(branch_names):
-        errors.append("portfolio audit branch identities or order changed")
+        errors.append("freeze candidate PR count does not match the D2 inventory")
     branches = {item.get("name"): item for item in audit.get("branches", [])}
     for ref_name in ("main", "dev"):
         if branches.get(ref_name, {}).get("sha") != audit.get("refs", {}).get(ref_name):
             errors.append(f"portfolio audit {ref_name} ref does not match branch inventory")
-        if branches.get(ref_name, {}).get("protected") is not True:
-            errors.append(f"portfolio audit {ref_name} must be recorded as protected")
     for pull_request in audit.get("open_pull_requests", []):
         if pull_request.get("head") not in branches:
             errors.append(f"portfolio audit PR {pull_request.get('number')} head branch is absent")
@@ -808,8 +1149,8 @@ def _validate_repository_policy(
         if c2 is None or c2["resolution_stage"] != "D2" or not {"D3a", "D9"}.issubset(c2["blocks"]):
             errors.append("review-pending freeze must remain a D2 conflict blocking D3a and D9")
     if freeze.get("status") == "repair_authorized":
-        if freeze.get("audit_completed") is not True:
-            errors.append("repair-authorized freeze requires a completed inventory")
+        if freeze.get("audit_completed") is not False:
+            errors.append("repair-authorized freeze must not claim receipt-pending inventory completion")
         if freeze.get("independent_review_completed") is not False:
             errors.append("repair-authorized freeze must remain review-pending")
         if freeze.get("blocks_publication") is not True:

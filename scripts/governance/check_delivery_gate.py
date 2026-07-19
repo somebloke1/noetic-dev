@@ -1547,8 +1547,34 @@ def _check_complete_freeze_readiness(
         errors.append("existing-work complete freeze invariants are not satisfied")
         return
     try:
-        from check_roadmap import _validate_d2_protected_review  # noqa: WPS433
+        from check_roadmap import (  # noqa: WPS433
+            _validate_d2_inventory,
+            _validate_d2_protected_review,
+        )
 
+        inventory = _load_repo_json(
+            "governance/audits/20260718-d2-portfolio/inventory.json"
+        )
+        inventory_schema = _load_schema(
+            "governance/schemas/d2-portfolio-audit.schema.json"
+        )
+        inventory_schema_errors = validate_schema(inventory, inventory_schema)
+        if inventory_schema_errors:
+            errors.extend(
+                f"existing-work completed inventory schema: {error}"
+                for error in inventory_schema_errors
+            )
+            return
+        if inventory.get("verification", {}).get("status") != "protected_receipt_verified":
+            errors.append("existing-work inventory lacks a verified protected receipt")
+            return
+        inventory_errors = _validate_d2_inventory(inventory)
+        if inventory_errors:
+            errors.extend(
+                f"existing-work completed inventory: {error}"
+                for error in inventory_errors
+            )
+            return
         roadmap = _load_repo_json("governance/roadmap.json")
         d2 = next(
             stage for stage in roadmap.get("stages", []) if stage.get("id") == "D2"
@@ -1987,7 +2013,7 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
     """Return success only while bootstrap advisory mode remains honestly blocked."""
     errors: List[str] = []
     freeze = _protected_freeze()
-    if freeze.get("status") != "repair_authorized" or freeze.get("audit_completed") is not True:
+    if freeze.get("status") != "repair_authorized" or freeze.get("audit_completed") is not False:
         errors.append("existing-work portfolio inventory is not in repair-authorized state")
     if freeze.get("independent_review_completed") is not False:
         errors.append("repair-authorized inventory must remain review-pending")
