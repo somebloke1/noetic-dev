@@ -14,7 +14,12 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_delivery_gate import check_bootstrap_blocked, check_delivery, check_pinning
+from check_delivery_gate import (
+    check_bootstrap_blocked,
+    check_delivery,
+    check_pinning,
+    verify_authoritative_provenance,
+)
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -42,8 +47,9 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "authorized_by": "somebloke1",
             "dev_sha": manifest["repo"]["candidate_sha"],
             "issue": 32,
-            "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32",
+            "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
             "authorized_at": manifest["repo"]["candidate_pinned_at"],
+            "dev_validated_at": "2026-07-11T11:59:59+00:00",
         }
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertNotIn("owner promotion authorization missing", "\n".join(errors))
@@ -53,11 +59,94 @@ class TestDeliveryGatePositive(unittest.TestCase):
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertIn("owner-authorized dev SHA", "\n".join(errors))
 
+        external["promotion_authorization"]["dev_sha"] = manifest["repo"]["candidate_sha"]
+        external["promotion_authorization"]["authorized_at"] = "2026-07-11T11:59:58+00:00"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("predates protected dev validation", "\n".join(errors))
+
+    def test_dev_integration_mode_accepts_dev_shape_until_external_authority_gate(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        manifest["repo"]["base_branch"] = "dev"
+        manifest["pull_request"]["base"] = "dev"
+        ready_index = next(
+            index
+            for index, transition in enumerate(manifest["state_transitions"])
+            if transition["to"] == "READY_TO_MERGE"
+        )
+        manifest["state_transitions"] = manifest["state_transitions"][: ready_index + 1]
+        manifest["state_transitions"][-1]["to"] = "READY_TO_INTEGRATE_DEV"
+
+        external = advisory_external()
+        external["run"]["base_branch"] = "dev"
+        external["pull_request"]["base_ref"] = "dev"
+        external.pop("promotion_authorization", None)
+        external.pop("freeze_review", None)
+        external["artifact"]["manifest_sha256"] = manifest_digest_excluding_own(manifest)
+        promotion_digest = canonical_json_sha256({})
+        freeze_digest = canonical_json_sha256({})
+        review_digest = canonical_json_sha256(
+            {
+                "agent_identities": external["agent_identities"],
+                "approvals": external["approvals"],
+                "promotion_authorization": {},
+                "freeze_review": {},
+            }
+        )
+        external["artifact"]["review_evidence_sha256"] = review_digest
+        external["artifact"]["promotion_authorization_sha256"] = promotion_digest
+        external["artifact"]["freeze_review_sha256"] = freeze_digest
+
+        passed, errors, gate_type = check_delivery(
+            manifest,
+            external_evidence=external,
+            gate_mode="dev-integration",
+        )
+        joined = "\n".join(errors)
+        self.assertFalse(passed)
+        self.assertEqual(gate_type, "dev-integration")
+        self.assertIn("caller-supplied external evidence is advisory only", joined)
+        self.assertNotIn("must be main", joined)
+        self.assertNotIn("must both be main", joined)
+        self.assertNotIn("owner promotion authorization", joined)
+        self.assertNotIn("not eligible for pre-merge", joined)
+
+    def test_attestation_digest_detects_authorization_substitution(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["promotion_authorization"] = {
+            "authorized": True,
+            "authorized_by": "somebloke1",
+            "dev_sha": manifest["repo"]["candidate_sha"],
+            "issue": 32,
+            "authorization_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
+            "authorized_at": manifest["repo"]["candidate_pinned_at"],
+            "dev_validated_at": "2026-07-11T11:59:59+00:00",
+        }
+        promotion_digest = canonical_json_sha256(external["promotion_authorization"])
+        freeze_digest = canonical_json_sha256({})
+        review_digest = canonical_json_sha256(
+            {
+                "agent_identities": external["agent_identities"],
+                "approvals": external["approvals"],
+                "promotion_authorization": external["promotion_authorization"],
+                "freeze_review": {},
+            }
+        )
+        external["artifact"]["promotion_authorization_sha256"] = promotion_digest
+        external["artifact"]["freeze_review_sha256"] = freeze_digest
+        external["artifact"]["review_evidence_sha256"] = review_digest
+
+        external["promotion_authorization"]["dev_sha"] = "0" * 40
+        errors = verify_authoritative_provenance(manifest, external)
+        joined = "\n".join(errors)
+        self.assertIn("promotion authorization evidence digest mismatch", joined)
+        self.assertIn("review identity/approval evidence digest mismatch", joined)
+
     def test_self_consistent_external_evidence_remains_advisory(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest, external_evidence=advisory_external())
         self.assertFalse(passed)
-        self.assertEqual(gate_type, "merge")
+        self.assertEqual(gate_type, "main-promotion")
         joined = "\n".join(errors)
         self.assertIn("caller-supplied external evidence is advisory only", joined)
         self.assertIn("credential_broker_established", joined)
@@ -73,7 +162,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         manifest = load_fixture("valid_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest)
         self.assertFalse(passed)
-        self.assertEqual(gate_type, "merge")
+        self.assertEqual(gate_type, "main-promotion")
         self.assertIn("authoritative trusted runner", " ".join(errors).lower())
 
     def test_publication_remains_blocked_by_missing_release_authority(self):
@@ -94,7 +183,13 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "independent": True,
             "audit_sha256": "0" * 64,
             "reviewed_candidate_sha": "1" * 40,
-            "evidence_url": "https://github.com/somebloke1/noetic-dev/issues/32",
+            "pull_request": 67,
+            "dev_integration_sha": "2" * 40,
+            "dev_contains_integration_sha": True,
+            "issue": 32,
+            "head": "issue-32-canonical-roadmap",
+            "base": "dev",
+            "evidence_url": "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1",
             "reviewed_at": "2026-07-18T23:46:09Z",
         }
         _passed, errors, _gate_type = check_delivery(
@@ -108,7 +203,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         manifest = load_fixture("valid_multigeneration_advisory_manifest.json")
         passed, errors, gate_type = check_delivery(manifest)
         self.assertFalse(passed)
-        self.assertEqual(gate_type, "merge")
+        self.assertEqual(gate_type, "main-promotion")
         joined = "\n".join(errors)
         self.assertIn("authoritative trusted runner", joined)
         self.assertNotIn("stale candidate", joined)

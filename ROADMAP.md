@@ -1,6 +1,6 @@
 # noetic-dev Delivery Roadmap
 
-**Status:** Canonical aggregate delivery plan, version 1
+**Status:** Canonical aggregate delivery plan, version 2
 **Exact checkpoint:** `dev@15b9ae66ff316abf28a5041c465e95baef5e82f9` on 2026-07-18
 **Portfolio authority:** [GitHub issue #32](https://github.com/somebloke1/noetic-dev/issues/32)
 **Machine index:** [`governance/roadmap.json`](governance/roadmap.json)

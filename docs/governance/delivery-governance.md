@@ -66,6 +66,8 @@ the exact head SHA, all review threads are resolved, exactly one independent
 adversarial QA pass exists for each implementation/remediation generation, and
 the independent reviewer accepts the final candidate. Integration is squash-only.
 This gate establishes integration evidence, not release or publication authority.
+The executable mode is `--gate-mode dev-integration`; it requires `dev` consistently
+in the manifest and protected provenance and never requires owner promotion evidence.
 
 ### Main-promotion readiness gate
 
@@ -89,8 +91,10 @@ A PR candidate is ready to merge only when ALL of the following hold:
 15. All workflow action refs are pinned to full SHAs, and docker/action, job container, and service images are pinned by immutable digests.
 
 The owner authorization is not a manifest boolean. Protected external evidence
-must bind repository owner `somebloke1`, issue #32 or its comment, authorization
-time, and the exact dev SHA; the gate rejects a missing identity, URL, or SHA match.
+must bind repository owner `somebloke1`, an exact issue #32 comment, protected-dev
+validation time, authorization time, and the exact dev SHA. Authorization must
+follow dev validation and precede main-promotion candidate pinning. The executable
+mode is `--gate-mode main-promotion`.
 
 ### Publication gate
 
@@ -110,6 +114,8 @@ Freeze completion additionally requires protected external review evidence whose
 audit digest matches `existing-work-freeze.json`, whose verdict is `pass`, and
 whose reviewed candidate SHA and evidence URL are explicit. A locally asserted
 `complete` value or caller-controlled manifest cannot satisfy this gate.
+The protected artifact and signed-attestation claim digest include owner promotion
+authorization and freeze-review objects, so either object is substitution-evident.
 
 ### Branch-name publication
 
@@ -117,7 +123,7 @@ Publication using a branch name (e.g., `main`, `latest`) is always forbidden. On
 
 ## Evidence manifest
 
-Every governed main-promotion delivery produces an evidence manifest at `.governance/runs/<run_id>/manifest.json`. The schema is defined in `governance/schemas/evidence-manifest.schema.json`. Protected dev integration retains its exact-SHA PR, required-check, QA, review, and squash-merge records instead of claiming release authority.
+Every governed candidate produces an evidence manifest at `.governance/runs/<run_id>/manifest.json`; `dev-integration` binds its base and provenance to protected `dev`, while `main-promotion` binds them to protected `main` and additionally requires exact owner authorization. The schema is defined in `governance/schemas/evidence-manifest.schema.json`. A dev-integration manifest establishes integration evidence only, not release authority.
 
 QA evidence is represented as `qa.records[]`, not as a single prose report. Each implementation/remediation pass ID must have exactly one QA record with distinct implementation and QA identities, matching that generation's candidate/base/tree bindings, a protected READY probe record hash, and a protected QA execution record hash. Earlier generations may bind to earlier candidate SHAs; the final pass must bind to `repo.candidate_sha`. The canonical manifest digest is `sha256(canonical_json(manifest_without_/policy/runner_attestation/artifact/manifest_sha256))`; no other fields are removed during hashing.
 

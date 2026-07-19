@@ -13,7 +13,7 @@ governance/audits/<YYYYMMDD>-<topic>/
 - `existing-work-freeze.json` is `repair_authorized`: inventory capture is
   complete, but independent exact-candidate review is still pending.
 - `20260718-d2-portfolio/` covers the 12 open PRs, 26 branches, and 20 open
-  issues captured at `2026-07-18T23:20:48Z`.
+  issues captured at `2026-07-18T23:46:09Z`.
 - The owner authorized exactly one bounded D2 reconciliation PR. The exception
   permits that PR only; publication remains blocked by both pending audit review
   and the distinct release-trust requirements in `bootstrap-status.json`.

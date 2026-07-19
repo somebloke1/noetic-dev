@@ -305,7 +305,9 @@ def _check_required_commands(manifest: Dict[str, Any], errors: List[str]) -> Non
             errors.append(f"required test command missing or failed: {required}")
 
 
-def _check_pr_and_issue(manifest: Dict[str, Any], errors: List[str]) -> None:
+def _check_pr_and_issue(
+    manifest: Dict[str, Any], errors: List[str], target_branch: str
+) -> None:
     pr = manifest.get("pull_request", {})
     repo = manifest.get("repo", {})
     issue = manifest.get("issue", {})
@@ -317,8 +319,11 @@ def _check_pr_and_issue(manifest: Dict[str, Any], errors: List[str]) -> None:
         if title.startswith(prefix):
             errors.append(f"PR title has WIP prefix: {prefix}")
             break
-    if pr.get("base") != "main" or repo.get("base_branch") != "main":
-        errors.append("stacked PR/base branch rejected: PR base and repo.base_branch must both be main")
+    if pr.get("base") != target_branch or repo.get("base_branch") != target_branch:
+        errors.append(
+            "stacked PR/base branch rejected: PR base and repo.base_branch must both be "
+            f"{target_branch}"
+        )
     if pr.get("is_stacked"):
         errors.append("stacked PR rejected: pull_request.is_stacked is true")
 
@@ -379,14 +384,19 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization must be recorded on issue 32")
     url = authorization.get("authorization_url", "")
     if re.fullmatch(
-        r"https://github\.com/somebloke1/noetic-dev/issues/32(?:#issuecomment-[1-9][0-9]*)?",
+        r"https://github\.com/somebloke1/noetic-dev/issues/32#issuecomment-[1-9][0-9]*",
         url,
     ) is None:
         errors.append("owner promotion authorization URL is invalid")
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
+    dev_validated_at = _parse_time(authorization.get("dev_validated_at", ""))
     pinned_at = _parse_time(manifest.get("repo", {}).get("candidate_pinned_at", ""))
     if authorized_at is None:
         errors.append("owner promotion authorization timestamp is invalid")
+    elif dev_validated_at is None:
+        errors.append("protected dev validation timestamp is invalid")
+    elif authorized_at < dev_validated_at:
+        errors.append("owner promotion authorization predates protected dev validation")
     elif pinned_at is not None and authorized_at > pinned_at:
         errors.append("owner promotion authorization postdates candidate pinning")
 
@@ -700,7 +710,12 @@ def _external_integration_blockers(external_evidence: Optional[Dict[str, Any]]) 
     return blockers
 
 
-def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence: Optional[Dict[str, Any]] = None) -> List[str]:
+def verify_authoritative_provenance(
+    manifest: Dict[str, Any],
+    external_evidence: Optional[Dict[str, Any]] = None,
+    *,
+    target_branch: str = "main",
+) -> List[str]:
     """Verify the future protected-runner provenance interface, failing closed.
 
     During bootstrap, caller-provided JSON is parsed for diagnostics only. It is
@@ -742,12 +757,24 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
             "trusted runner canonical manifest digest mismatch: "
             f"computed={computed_manifest_digest}, recorded={artifact.get('manifest_sha256')}"
         )
+    promotion_authorization_digest = canonical_json_sha256(
+        external_evidence.get("promotion_authorization", {})
+    )
+    freeze_review_digest = canonical_json_sha256(
+        external_evidence.get("freeze_review", {})
+    )
     review_evidence_digest = canonical_json_sha256({
         "agent_identities": external_evidence.get("agent_identities", []),
         "approvals": external_evidence.get("approvals", []),
+        "promotion_authorization": external_evidence.get("promotion_authorization", {}),
+        "freeze_review": external_evidence.get("freeze_review", {}),
     })
     if artifact.get("review_evidence_sha256") != review_evidence_digest:
         errors.append("protected review identity/approval evidence digest mismatch")
+    if artifact.get("promotion_authorization_sha256") != promotion_authorization_digest:
+        errors.append("protected promotion authorization evidence digest mismatch")
+    if artifact.get("freeze_review_sha256") != freeze_review_digest:
+        errors.append("protected freeze review evidence digest mismatch")
 
     repository = external_evidence.get("repository", {})
     if repository.get("full_name") != REPO_FULL_NAME:
@@ -770,8 +797,8 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
         errors.append("GitHub provenance event must be pull_request")
     if run.get("head_sha") != repo.get("candidate_sha"):
         errors.append("GitHub provenance run head_sha does not match candidate SHA")
-    if run.get("base_branch") != "main":
-        errors.append("GitHub provenance base branch must be main")
+    if run.get("base_branch") != target_branch:
+        errors.append(f"GitHub provenance base branch must be {target_branch}")
     if run.get("conclusion") != "success":
         errors.append("GitHub provenance run conclusion must be success")
     if not run.get("id") or not run.get("attempt"):
@@ -786,8 +813,8 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
     gh_pr = external_evidence.get("pull_request", {})
     if gh_pr.get("number") != pr.get("number"):
         errors.append("GitHub provenance PR number mismatch")
-    if gh_pr.get("base_ref") != "main":
-        errors.append("GitHub provenance PR base ref must be main")
+    if gh_pr.get("base_ref") != target_branch:
+        errors.append(f"GitHub provenance PR base ref must be {target_branch}")
     if gh_pr.get("head_ref") != repo.get("candidate_branch"):
         errors.append("GitHub provenance PR head ref mismatch")
     if gh_pr.get("head_sha") != repo.get("candidate_sha"):
@@ -853,6 +880,8 @@ def verify_authoritative_provenance(manifest: Dict[str, Any], external_evidence:
             ("job_id", job.get("id")),
             ("event", "pull_request"),
             ("review_evidence_sha256", review_evidence_digest),
+            ("promotion_authorization_sha256", promotion_authorization_digest),
+            ("freeze_review_sha256", freeze_review_digest),
         ]:
             if claims.get(label) != expected:
                 errors.append(f"artifact attestation claim mismatch: {label}")
@@ -982,12 +1011,18 @@ def _check_approvals(manifest: Dict[str, Any], errors: List[str], external_evide
         errors.append("no independent current-SHA high-reasoning agent approval recorded")
 
 
-def _check_terminal_state(manifest: Dict[str, Any], errors: List[str], phase: str) -> None:
+def _check_terminal_state(
+    manifest: Dict[str, Any], errors: List[str], phase: str, target_branch: str
+) -> None:
     transitions = manifest.get("state_transitions", [])
     if not transitions:
         return
     terminal = transitions[-1].get("to")
-    allowed = {"READY_TO_MERGE", "MERGED_TO_MAIN", "POST_MERGE_VALIDATING", "PUBLICATION_READY", "PUBLISHED", "DEPLOYED"}
+    allowed = (
+        {"READY_TO_INTEGRATE_DEV", "MERGED_TO_DEV", "POST_DEV_VALIDATING", "MAIN_PROMOTION_PENDING"}
+        if target_branch == "dev"
+        else {"READY_TO_MERGE", "MERGED_TO_MAIN", "POST_MERGE_VALIDATING", "PUBLICATION_READY", "PUBLISHED", "DEPLOYED"}
+    )
     if phase == "publication":
         allowed = {"PUBLICATION_READY", "PUBLISHED", "DEPLOYED"}
     if terminal not in allowed:
@@ -1047,11 +1082,38 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             errors.append("publication blocked: freeze review did not independently pass")
         if freeze_review.get("audit_sha256") != freeze.get("audit_sha256"):
             errors.append("publication blocked: freeze review audit digest mismatch")
-        if not _is_sha(freeze_review.get("reviewed_candidate_sha", "")):
+        reviewed_candidate_sha = freeze_review.get("reviewed_candidate_sha", "")
+        if not _is_sha(reviewed_candidate_sha):
             errors.append("publication blocked: freeze review candidate SHA is invalid")
+        if reviewed_candidate_sha != freeze.get("reviewed_candidate_sha"):
+            errors.append("publication blocked: freeze review candidate SHA mismatch")
+        if freeze_review.get("pull_request") != freeze.get("reviewed_pull_request"):
+            errors.append("publication blocked: freeze review PR binding mismatch")
+        if freeze_review.get("dev_integration_sha") != freeze.get("dev_integration_sha"):
+            errors.append("publication blocked: freeze review dev integration SHA mismatch")
+        if freeze_review.get("dev_contains_integration_sha") is not True:
+            errors.append("publication blocked: reviewed D2 integration is not verified on dev")
+        if freeze_review.get("issue") != 32:
+            errors.append("publication blocked: freeze review must bind issue 32")
+        repair = freeze.get("authorized_repair", {})
+        if freeze_review.get("head") != repair.get("head") or freeze_review.get("base") != repair.get("base"):
+            errors.append("publication blocked: freeze review branch binding mismatch")
+        evidence_url = freeze_review.get("evidence_url", "")
+        if re.fullmatch(
+            r"https://github\.com/somebloke1/noetic-dev/(?:issues/32|pull/[1-9][0-9]*)#issuecomment-[1-9][0-9]*",
+            evidence_url,
+        ) is None:
+            errors.append("publication blocked: freeze review evidence URL is invalid")
+        reviewed_at = _parse_time(freeze_review.get("reviewed_at", ""))
+        captured_at = _parse_time(freeze.get("captured_at", ""))
+        if reviewed_at is None or captured_at is None or reviewed_at < captured_at:
+            errors.append("publication blocked: freeze review timestamp predates audit capture")
     if (
         freeze.get("status") != "complete"
         or freeze.get("independent_review_completed") is not True
+        or not _is_sha(freeze.get("reviewed_candidate_sha", ""))
+        or not _is_sha(freeze.get("dev_integration_sha", ""))
+        or not isinstance(freeze.get("reviewed_pull_request"), int)
         or freeze.get("blocks_publication") is True
     ):
         errors.append("publication blocked: existing-work freeze/audit is still active")
@@ -1063,34 +1125,54 @@ def check_delivery(
     *,
     phase: str = "pre-merge",
     external_evidence: Optional[Dict[str, Any]] = None,
+    gate_mode: str = "main-promotion",
 ) -> Tuple[bool, List[str], str]:
     """Run fail-closed delivery checks.
 
     ``phase='pre-merge'`` checks merge readiness only. ``phase='publication'``
     additionally requires protected post-merge evidence bound to the main SHA.
     """
+    if gate_mode not in {"dev-integration", "main-promotion"}:
+        return False, [f"unsupported delivery gate mode: {gate_mode}"], gate_mode
+    target_branch = "dev" if gate_mode == "dev-integration" else "main"
+    if phase == "publication" and target_branch != "main":
+        return False, ["publication phase requires main-promotion gate mode"], "publication"
+
     merge_errors: List[str] = []
     from check_evidence_manifest import check as validate_manifest  # noqa: WPS433
 
-    merge_errors.extend(validate_manifest(manifest, manifest_path or "<manifest>"))
+    merge_errors.extend(
+        validate_manifest(
+            manifest,
+            manifest_path or "<manifest>",
+            target_branch=target_branch,
+        )
+    )
 
     # Publication SHA format is safety-critical; surface it even when merge is also blocked.
     publication_sha = manifest.get("publication", {}).get("publication_sha", "")
     if publication_sha and not _is_sha(publication_sha):
         merge_errors.append(f"branch-name publication forbidden: {publication_sha}")
 
-    _check_pr_and_issue(manifest, merge_errors)
-    _check_owner_promotion_authorization(manifest, merge_errors, external_evidence)
+    _check_pr_and_issue(manifest, merge_errors, target_branch)
+    if gate_mode == "main-promotion":
+        _check_owner_promotion_authorization(manifest, merge_errors, external_evidence)
     _check_required_commands(manifest, merge_errors)
     _check_qa_pairing(manifest, merge_errors, manifest_path)
-    _check_terminal_state(manifest, merge_errors, phase)
-    merge_errors.extend(verify_authoritative_provenance(manifest, external_evidence))
+    _check_terminal_state(manifest, merge_errors, phase, target_branch)
+    merge_errors.extend(
+        verify_authoritative_provenance(
+            manifest,
+            external_evidence,
+            target_branch=target_branch,
+        )
+    )
     _check_approvals(manifest, merge_errors, external_evidence)
 
     if phase == "pre-merge":
         if merge_errors:
-            return False, merge_errors, "merge"
-        return True, [], "merge"
+            return False, merge_errors, gate_mode
+        return True, [], gate_mode
 
     publication_errors: List[str] = []
     if merge_errors:
@@ -1144,6 +1226,7 @@ def main() -> int:
     parser.add_argument("--check-bootstrap-blocked", action="store_true", help="Assert bootstrap advisory mode remains honestly blocked")
     parser.add_argument("--external-evidence", help="Protected external GitHub/approval/freeze evidence JSON")
     parser.add_argument("--phase", choices=["pre-merge", "publication"], default="pre-merge")
+    parser.add_argument("--gate-mode", choices=["dev-integration", "main-promotion"], default="main-promotion")
     args = parser.parse_args()
 
     if args.check_bootstrap_blocked:
@@ -1180,7 +1263,8 @@ def main() -> int:
 
     from check_evidence_manifest import check as validate_manifest  # noqa: WPS433
 
-    manifest_errors = validate_manifest(manifest, args.path)
+    target_branch = "dev" if args.gate_mode == "dev-integration" else "main"
+    manifest_errors = validate_manifest(manifest, args.path, target_branch=target_branch)
     if manifest_errors:
         print("Manifest validation failed:", file=sys.stderr)
         for error in manifest_errors:
@@ -1200,6 +1284,7 @@ def main() -> int:
         args.path,
         phase=args.phase,
         external_evidence=external_evidence,
+        gate_mode=args.gate_mode,
     )
     if not passed:
         print(f"Delivery gate FAILED ({gate_type}):", file=sys.stderr)

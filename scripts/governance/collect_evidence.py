@@ -86,7 +86,7 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
     registry = load_registry(policy_root)
 
     candidate_sha = args.candidate_sha
-    base_sha = args.base_sha or get_git_sha(candidate_root, "main")
+    base_sha = args.base_sha or get_git_sha(candidate_root, args.target_branch)
     candidate_tree = get_git_tree_oid(candidate_root, candidate_sha)
     policy_sha = args.policy_sha or get_git_sha(policy_root, "HEAD")
     policy_ref = args.policy_ref or "refs/heads/main"
@@ -207,7 +207,7 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             "remote": get_remote(candidate_root),
             "repository": args.repository,
             "repository_id": args.repository_id,
-            "base_branch": "main",
+            "base_branch": args.target_branch,
             "base_sha": base_sha,
             "candidate_branch": branch,
             "candidate_sha": candidate_sha,
@@ -224,7 +224,7 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             "title": args.pr_title or "",
             "author": args.pr_author or "",
             "draft_state": args.pr_draft,
-            "base": "main",
+            "base": args.target_branch,
             "head_ref": branch,
             "head_sha": candidate_sha,
             "linked_issues": args.issue_numbers or [],
@@ -294,7 +294,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Collect governance evidence manifest")
     parser.add_argument("--run-id", required=True, help="Governance run UUID/string")
     parser.add_argument("--candidate-sha", required=True, help="Full 40-char candidate SHA")
-    parser.add_argument("--base-sha", help="Full 40-char base SHA (default: candidate main)")
+    parser.add_argument("--base-sha", help="Full 40-char base SHA (default: candidate target branch)")
+    parser.add_argument("--target-branch", choices=["dev", "main"], default="main")
     parser.add_argument("--candidate-branch", default="")
     parser.add_argument("--repo-root", default=str(POLICY_ROOT), help="Candidate checkout root")
     parser.add_argument("--policy-root", default=str(POLICY_ROOT), help="Protected policy checkout root")

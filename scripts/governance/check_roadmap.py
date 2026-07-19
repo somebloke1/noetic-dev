@@ -69,7 +69,8 @@ EXPECTED_STAGE_IDS = (
     "D4c", "D4d", "D5", "D6", "D7", "D8", "D9",
 )
 EXPECTED_TRACK_IDS = ("T1", "T2", "T3", "T4")
-EXPECTED_CONFLICT_IDS = ("C2", "C5", "C6", "C7", "C8")
+EXPECTED_PENDING_CONFLICT_IDS = ("C2", "C5", "C6", "C7", "C8")
+EXPECTED_RESOLVED_CONFLICT_IDS = ("C5", "C6", "C7", "C8")
 EXPECTED_EVIDENCE_BY_STAGE = {
     "D0": (
         ("commit", "29196a67349537d6f8a8a711df11b86da0430857"),
@@ -334,7 +335,15 @@ def _validate_evidence(
             (item["kind"], item["reference"])
             for item in stage["evidence"]
         )
-        if actual_evidence != expected_evidence:
+        evidence_matches = actual_evidence == expected_evidence
+        if stage["id"] == "D2" and stage["status"] == "checkpointed":
+            evidence_matches = (
+                len(actual_evidence) == 3
+                and actual_evidence[:2] == expected_evidence
+                and actual_evidence[2][0] == "commit"
+                and actual_evidence[2][1] == baseline
+            )
+        if not evidence_matches:
             errors.append(
                 f"{stage['id']}: schema version 2 evidence catalog changed"
             )
@@ -515,11 +524,11 @@ def _validate_repository_policy(
     if d2["exit_gate"] != EXPECTED_POLICY_EXIT_GATES["D2"]:
         errors.append("D2 requires the exact schema-v2 D2 exit gate")
 
-    c2 = conflicts["C2"]
     if freeze.get("status") != "complete" or freeze.get("blocks_publication") is True:
+        c2 = conflicts.get("C2")
         if d2["status"] != "next":
             errors.append("review-pending freeze requires D2 to remain the next stage")
-        if c2["resolution_stage"] != "D2" or not {"D3a", "D9"}.issubset(c2["blocks"]):
+        if c2 is None or c2["resolution_stage"] != "D2" or not {"D3a", "D9"}.issubset(c2["blocks"]):
             errors.append("review-pending freeze must remain a D2 conflict blocking D3a and D9")
     if freeze.get("status") == "repair_authorized":
         if freeze.get("audit_completed") is not True:
@@ -538,6 +547,19 @@ def _validate_repository_policy(
         }
         if freeze.get("authorized_repair") != expected_repair:
             errors.append("repair-authorized freeze has an invalid bounded PR exception")
+    elif freeze.get("status") == "complete":
+        if freeze.get("independent_review_completed") is not True:
+            errors.append("complete freeze requires independent review completion")
+        if freeze.get("blocks_publication") is not False:
+            errors.append("complete freeze must not itself block publication")
+        if not re.fullmatch(r"[a-f0-9]{40}", freeze.get("reviewed_candidate_sha", "")):
+            errors.append("complete freeze requires reviewed_candidate_sha")
+        if not re.fullmatch(r"[a-f0-9]{40}", freeze.get("dev_integration_sha", "")):
+            errors.append("complete freeze requires dev_integration_sha")
+        if not isinstance(freeze.get("reviewed_pull_request"), int):
+            errors.append("complete freeze requires reviewed_pull_request")
+        if d2["status"] != "checkpointed" or "C2" in conflicts:
+            errors.append("complete freeze requires checkpointed D2 with C2 removed")
 
     if bootstrap.get("publication", {}).get("status") == "blocked":
         if d9["status"] in {"checkpointed", "next"}:
@@ -607,7 +629,12 @@ def validate_roadmap(
     conflict_ids = [conflict["id"] for conflict in state["unresolved_conflicts"]]
     if len(conflict_ids) != len(set(conflict_ids)):
         errors.append("conflict ids must be unique")
-    if tuple(conflict_ids) != EXPECTED_CONFLICT_IDS:
+    expected_conflicts = (
+        EXPECTED_RESOLVED_CONFLICT_IDS
+        if statuses.get("D2") == "checkpointed"
+        else EXPECTED_PENDING_CONFLICT_IDS
+    )
+    if tuple(conflict_ids) != expected_conflicts:
         errors.append("schema version 2 conflict catalog or order changed")
     named_blocks: set[str] = set()
     for conflict in state["unresolved_conflicts"]:

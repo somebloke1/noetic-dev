@@ -52,6 +52,40 @@ class TestRoadmap(unittest.TestCase):
         self.assertNotEqual(validate_schema(predecessor, self.schema), [])
         self.assertNotEqual(validate_schema(self.state, v1_schema), [])
 
+    def test_d2_checkpoint_transition_is_reachable(self) -> None:
+        transitioned = copy.deepcopy(self.state)
+        transitioned["stages"][3]["status"] = "checkpointed"
+        transitioned["stages"][3]["evidence"].append(
+            {"kind": "commit", "reference": transitioned["baseline"]["sha"]}
+        )
+        transitioned["stages"][4]["status"] = "next"
+        transitioned["unresolved_conflicts"] = [
+            item for item in transitioned["unresolved_conflicts"] if item["id"] != "C2"
+        ]
+        markdown = self.markdown.replace(
+            "### D2 - Governance and source convergence [next]",
+            "### D2 - Governance and source convergence [checkpointed]",
+        ).replace(
+            "### D3a - Donor characterization and design decisions [planned]",
+            "### D3a - Donor characterization and design decisions [next]",
+        ).replace(
+            "- **Evidence refs:** `artifact:governance/audits/20260718-d2-portfolio/inventory.json`,\n"
+            "  `issue:https://github.com/somebloke1/noetic-dev/issues/32`.",
+            "- **Evidence refs:** `artifact:governance/audits/20260718-d2-portfolio/inventory.json`,\n"
+            "  `issue:https://github.com/somebloke1/noetic-dev/issues/32`,\n"
+            f"  `commit:{transitioned['baseline']['sha']}`.",
+        ).replace(
+            "- **C2 - D2 portfolio audit awaits protected independent review and integration:** resolve in D2; blocks D3a, D9.\n",
+            "",
+        )
+        transitioned["document_sha256"] = hashlib.sha256(
+            markdown.encode("utf-8")
+        ).hexdigest()
+        self.assertEqual(
+            validate_roadmap(transitioned, self.schema, markdown),
+            [],
+        )
+
     def test_portfolio_audit_is_schema_valid_and_digest_bound(self) -> None:
         audit_path = ROOT / "governance" / "audits" / "20260718-d2-portfolio" / "inventory.json"
         audit = load_json_strict(audit_path)
@@ -443,7 +477,7 @@ class TestRoadmap(unittest.TestCase):
         mutated = copy.deepcopy(self.state)
         mutated["unresolved_conflicts"] = []
         errors = validate_roadmap(mutated, self.schema, self.markdown)
-        self.assert_has_error(errors, "array has fewer than 5 items")
+        self.assert_has_error(errors, "array has fewer than 4 items")
 
     def test_version_two_stage_catalog_is_closed(self) -> None:
         mutated = copy.deepcopy(self.state)

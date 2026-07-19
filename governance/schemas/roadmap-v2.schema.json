@@ -60,7 +60,7 @@
     },
     "unresolved_conflicts": {
       "type": "array",
-      "minItems": 5,
+      "minItems": 4,
       "maxItems": 5,
       "items": {"$ref": "#/definitions/conflict"}
     }

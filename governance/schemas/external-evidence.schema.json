@@ -86,26 +86,33 @@
     "promotion_authorization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authorized", "authorized_by", "dev_sha", "issue", "authorization_url", "authorized_at"],
+      "required": ["authorized", "authorized_by", "dev_sha", "issue", "authorization_url", "authorized_at", "dev_validated_at"],
       "properties": {
         "authorized": {"type": "boolean", "const": true},
         "authorized_by": {"type": "string", "const": "somebloke1"},
         "dev_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "issue": {"type": "integer", "const": 32},
-        "authorization_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/32(?:#issuecomment-[1-9][0-9]*)?$"},
-        "authorized_at": {"type": "string", "minLength": 1}
+        "authorization_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/32#issuecomment-[1-9][0-9]*$"},
+        "authorized_at": {"type": "string", "minLength": 1},
+        "dev_validated_at": {"type": "string", "minLength": 1}
       }
     },
     "freeze_review": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["verdict", "independent", "audit_sha256", "reviewed_candidate_sha", "evidence_url", "reviewed_at"],
+      "required": ["verdict", "independent", "audit_sha256", "reviewed_candidate_sha", "pull_request", "dev_integration_sha", "dev_contains_integration_sha", "issue", "head", "base", "evidence_url", "reviewed_at"],
       "properties": {
         "verdict": {"type": "string", "const": "pass"},
         "independent": {"type": "boolean", "const": true},
         "audit_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "reviewed_candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
-        "evidence_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/(?:issues/32|pull/[1-9][0-9]*)(?:#issuecomment-[1-9][0-9]*)?$"},
+        "pull_request": {"type": "integer", "minimum": 1},
+        "dev_integration_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "dev_contains_integration_sha": {"type": "boolean", "const": true},
+        "issue": {"type": "integer", "const": 32},
+        "head": {"type": "string", "const": "issue-32-canonical-roadmap"},
+        "base": {"type": "string", "const": "dev"},
+        "evidence_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/(?:issues/32|pull/[1-9][0-9]*)#issuecomment-[1-9][0-9]*$"},
         "reviewed_at": {"type": "string", "minLength": 1}
       }
     },

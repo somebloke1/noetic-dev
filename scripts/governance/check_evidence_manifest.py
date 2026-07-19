@@ -156,7 +156,9 @@ def _check_policy(manifest: Dict[str, Any], errors: List[str]) -> None:
             )
 
 
-def _check_repo_and_pr(manifest: Dict[str, Any], errors: List[str]) -> None:
+def _check_repo_and_pr(
+    manifest: Dict[str, Any], errors: List[str], target_branch: str
+) -> None:
     repo = manifest.get("repo", {})
     pr = manifest.get("pull_request", {})
     for field in ["base_sha", "candidate_sha", "candidate_tree_oid"]:
@@ -165,8 +167,10 @@ def _check_repo_and_pr(manifest: Dict[str, Any], errors: List[str]) -> None:
         errors.append("pull_request.head_sha must equal repo.candidate_sha")
     if pr.get("base") != repo.get("base_branch"):
         errors.append("pull_request.base must equal repo.base_branch")
-    if repo.get("base_branch") != "main":
-        errors.append("repo.base_branch must be main for governed delivery")
+    if repo.get("base_branch") != target_branch:
+        errors.append(
+            f"repo.base_branch must be {target_branch} for this governed delivery mode"
+        )
     if repo.get("candidate_pinned_at"):
         _parse_time(repo["candidate_pinned_at"], "repo.candidate_pinned_at", errors)
 
@@ -490,7 +494,12 @@ def _check_schema_references(errors: List[str]) -> None:
             errors.append(f"{path.relative_to(REPO_ROOT)} schema error: {err}")
 
 
-def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
+def check(
+    manifest: Dict[str, Any],
+    path: str = "<manifest>",
+    *,
+    target_branch: str = "main",
+) -> List[str]:
     """Run validation checks. Returns error messages."""
     errors: List[str] = []
 
@@ -510,9 +519,12 @@ def check(manifest: Dict[str, Any], path: str = "<manifest>") -> List[str]:
     if missing:
         return errors + [f"missing required field: {field}" for field in missing]
 
+    if target_branch not in {"dev", "main"}:
+        return errors + [f"unsupported governed target branch: {target_branch}"]
+
     _check_schema_references(errors)
     _check_policy(manifest, errors)
-    _check_repo_and_pr(manifest, errors)
+    _check_repo_and_pr(manifest, errors, target_branch)
     _check_issue(manifest, errors)
     _check_passes(manifest, errors)
     _check_qa(manifest, errors)
