@@ -178,7 +178,7 @@ class TestAgentReview(unittest.TestCase):
 
     @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_patch_output_ceiling_accepts_boundary_and_rejects_next_byte(self):
-        self.assertGreater(MAX_PATCH_BYTES, 236_597)
+        self.assertEqual(MAX_PATCH_BYTES, 640_000)
         program = "import sys; sys.stdout.buffer.write(b'x' * int(sys.argv[1]))"
         for size in [MAX_PATCH_BYTES - 1, MAX_PATCH_BYTES]:
             with self.subTest(size=size):
@@ -221,6 +221,7 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(bounded.call_args_list[4].kwargs["max_stdout"], MAX_FILE_INVENTORY_BYTES)
         self.assertEqual(bounded.call_args_list[5].kwargs["max_stdout"], MAX_PATCH_BYTES)
         self.assertEqual(MAX_FILE_INVENTORY_BYTES, 200_000)
+        self.assertEqual(MAX_PATCH_BYTES, 640_000)
 
     @mock.patch("agent_review_broker.subprocess.Popen", side_effect=FileNotFoundError("missing"))
     def test_subprocess_spawn_failure_is_controlled(self, _popen: mock.Mock):
