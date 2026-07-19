@@ -30,6 +30,9 @@ if [[ ! -d $release ]]; then
   install -d -o root -g root -m 0755 "$release"
   "${git_safe[@]}" --git-dir="$verify_git" archive "$authorized_sha" | /usr/bin/tar -x -C "$release"
 fi
+[[ -z $(/usr/bin/find "$release" -type l -print -quit) ]]
+[[ -f $release/deploy/noetic-dev-promote-main && ! -L $release/deploy/noetic-dev-promote-main ]]
+[[ -f $release/scripts/governance/promote_main.py && ! -L $release/scripts/governance/promote_main.py ]]
 actual_tree=$(
   GIT_INDEX_FILE="$verify_git/index" "${git_safe[@]}" \
     --git-dir="$verify_git" --work-tree="$release" add -A >/dev/null &&

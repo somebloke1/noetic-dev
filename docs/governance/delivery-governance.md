@@ -133,7 +133,10 @@ archive under `/opt/noetic-dev-main-publisher/releases/<sha>` and atomically poi
 the fixed root-owned launcher at that immutable release. This deployment does not
 establish the separate attestation verifier or publication authority by itself.
 Replacement objects are disabled and the extracted archive must reconstruct the
-authorized commit's exact tree. The publisher rejects hidden index flags and unsafe
+authorized commit's exact tree. Every symlink is rejected before installation, and
+both publisher entrypoints must be regular files, so immutable-tree verification
+cannot be converted into mutable external content by later dereference. The
+publisher rejects hidden index flags and unsafe
 local Git configuration, then fetches and pushes only the fixed canonical SSH URL
 from a fresh temporary bare repository under an isolated Git/SSH environment.
 Before touching any remote ref, the publisher must derive a passing complete

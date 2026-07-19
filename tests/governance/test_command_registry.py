@@ -73,10 +73,15 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("/usr/bin/git --no-replace-objects", installer)
         self.assertIn("archive \"$authorized_sha\"", installer)
         self.assertIn("actual_tree", installer)
+        self.assertIn('/usr/bin/find "$release" -type l -print -quit', installer)
+        self.assertIn("! -L $release/deploy/noetic-dev-promote-main", installer)
+        self.assertIn("! -L $release/scripts/governance/promote_main.py", installer)
         self.assertIn("chown -R root:root \"$release\"", installer)
         self.assertIn("chmod -R go-w \"$release\"", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
         self.assertIn("exec /usr/bin/python3", launcher)
+        self.assertFalse((REPO_ROOT / "deploy/noetic-dev-promote-main").is_symlink())
+        self.assertFalse((REPO_ROOT / "scripts/governance/promote_main.py").is_symlink())
 
     def test_registry_rules_prevent_false_equivalences(self):
         rules = self.registry["rules"]
