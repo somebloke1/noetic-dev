@@ -11,6 +11,7 @@ provenance.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -1548,13 +1549,20 @@ def _check_complete_freeze_readiness(
         return
     try:
         from check_roadmap import (  # noqa: WPS433
+            _strict_json_bytes,
             _validate_d2_inventory,
             _validate_d2_protected_review,
         )
 
-        inventory = _load_repo_json(
-            "governance/audits/20260718-d2-portfolio/inventory.json"
+        inventory_path = (
+            REPO_ROOT
+            / "governance/audits/20260718-d2-portfolio/inventory.json"
         )
+        inventory_raw = inventory_path.read_bytes()
+        inventory = _strict_json_bytes(inventory_raw)
+        if not isinstance(inventory, dict):
+            errors.append("existing-work completed inventory is not an object")
+            return
         inventory_schema = _load_schema(
             "governance/schemas/d2-portfolio-audit.schema.json"
         )
@@ -1568,14 +1576,11 @@ def _check_complete_freeze_readiness(
         if inventory.get("verification", {}).get("status") != "protected_receipt_verified":
             errors.append("existing-work inventory lacks a verified protected receipt")
             return
-        inventory_path = (
-            REPO_ROOT
-            / "governance/audits/20260718-d2-portfolio/inventory.json"
-        )
         if (
             freeze.get("audit_artifact")
             != "governance/audits/20260718-d2-portfolio/inventory.json"
-            or freeze.get("audit_sha256") != sha256_file(inventory_path)
+            or freeze.get("audit_sha256")
+            != hashlib.sha256(inventory_raw).hexdigest()
             or freeze.get("captured_at") != inventory.get("captured_at")
             or freeze.get("candidate_open_pr_count")
             != inventory.get("counts", {}).get("open_pull_requests")

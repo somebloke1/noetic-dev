@@ -697,6 +697,38 @@ class TestRoadmap(unittest.TestCase):
         mutate_response(paginated, "branches", add_next_page)
         self.assert_has_error(_validate_d2_inventory(paginated), "pagination was substituted")
 
+        for source, connection_name in (
+            ("open_pull_requests", "pullRequests"),
+            ("branches", "refs"),
+            ("open_issues", "issues"),
+        ):
+            outer_bool_int_confusion = copy.deepcopy(audit)
+
+            def confuse_outer_count(
+                response: dict, key: str = connection_name
+            ) -> None:
+                connection = response["data"]["repository"][key]
+                connection["nodes"] = connection["nodes"][:1]
+                connection["totalCount"] = True
+
+            mutate_response(outer_bool_int_confusion, source, confuse_outer_count)
+            envelope = outer_bool_int_confusion["capture"]["source_envelopes"][source]
+            envelope["pagination"]["item_count"] = 1
+            envelope["pagination"]["total_count"] = 1
+            envelope["response_sha256"] = canonical_json_sha256(
+                {
+                    key: value
+                    for key, value in envelope.items()
+                    if key != "response_sha256"
+                }
+            )
+            refresh_claims(outer_bool_int_confusion)
+            with self.subTest(outer_total_count_bool=source):
+                self.assert_has_error(
+                    _validate_d2_inventory(outer_bool_int_confusion),
+                    "pagination was substituted",
+                )
+
         wrong_type = copy.deepcopy(audit)
         wrong_type["counts"]["branches"] = True
         self.assertNotEqual(validate_schema(wrong_type, audit_schema), [])

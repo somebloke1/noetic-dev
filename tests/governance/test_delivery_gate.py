@@ -733,17 +733,14 @@ class TestDeliveryGatePositive(unittest.TestCase):
                 },
             }
         )
-        original_load = delivery_gate._load_repo_json
-
-        def load_with_verified_inventory(relative: str):
-            if relative == "governance/audits/20260718-d2-portfolio/inventory.json":
-                return inventory
-            return original_load(relative)
+        inventory_bytes = json.dumps(
+            inventory, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        freeze["audit_sha256"] = hashlib.sha256(inventory_bytes).hexdigest()
 
         errors = []
         with mock.patch(
-            "check_delivery_gate._load_repo_json",
-            side_effect=load_with_verified_inventory,
+            "pathlib.Path.read_bytes", return_value=inventory_bytes
         ), mock.patch(
             "check_roadmap._validate_d2_inventory", return_value=[]
         ) as inventory_review, mock.patch(
@@ -769,8 +766,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
             attacked[field] = value
             errors = []
             with self.subTest(complete_freeze_binding=field), mock.patch(
-                "check_delivery_gate._load_repo_json",
-                side_effect=load_with_verified_inventory,
+                "pathlib.Path.read_bytes", return_value=inventory_bytes
             ), mock.patch(
                 "check_roadmap._validate_d2_inventory", return_value=[]
             ) as inventory_review, mock.patch(
@@ -780,6 +776,24 @@ class TestDeliveryGatePositive(unittest.TestCase):
             self.assertIn("does not bind the verified inventory", "\n".join(errors))
             inventory_review.assert_not_called()
             review.assert_not_called()
+
+        divergent_inventory = copy.deepcopy(inventory)
+        divergent_inventory["counts"]["open_pull_requests"] = 999
+        divergent_bytes = json.dumps(
+            divergent_inventory, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        errors = []
+        with mock.patch(
+            "pathlib.Path.read_bytes", return_value=divergent_bytes
+        ), mock.patch(
+            "check_roadmap._validate_d2_inventory", return_value=[]
+        ) as inventory_review, mock.patch(
+            "check_roadmap._validate_d2_protected_review", return_value=[]
+        ) as review:
+            delivery_gate._check_complete_freeze_readiness(freeze, errors)
+        self.assertIn("does not bind the verified inventory", "\n".join(errors))
+        inventory_review.assert_not_called()
+        review.assert_not_called()
 
         freeze["independent_review_completed"] = False
         errors = []
