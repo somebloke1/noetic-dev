@@ -36,6 +36,36 @@ def advisory_external():
     return load_fixture("advisory_external_evidence.json")
 
 
+def pr_api_response(
+    number: int,
+    head_ref: str,
+    head_sha: str,
+    linked_issues: list[int],
+    fetched_at: str,
+):
+    response = {
+        "number": number,
+        "state": "open",
+        "head_ref": head_ref,
+        "head_sha": head_sha,
+        "base_ref": "dev",
+        "linked_issues": linked_issues,
+    }
+    return {
+        "request_url": f"https://api.github.com/repos/somebloke1/noetic-dev/pulls/{number}",
+        "status": 200,
+        "request_id": f"request-{number}",
+        "fetched_at": fetched_at,
+        "authentication": {
+            "verified": True,
+            "source": "protected-integration",
+            "principal": "noetic-dev-delivery-app",
+        },
+        "response_sha256": canonical_json_sha256(response),
+        "response": response,
+    }
+
+
 class TestDeliveryGatePositive(unittest.TestCase):
     def test_main_promotion_requires_exact_owner_authorization(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -114,6 +144,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         external["artifact"]["review_evidence_sha256"] = review_digest
         external["artifact"]["promotion_authorization_sha256"] = promotion_digest
         external["artifact"]["freeze_review_sha256"] = freeze_digest
+        external["artifact"]["freeze_review_pr_api_sha256"] = canonical_json_sha256({})
 
         passed, errors, gate_type = check_delivery(
             manifest,
@@ -161,6 +192,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         )
         external["artifact"]["promotion_authorization_sha256"] = promotion_digest
         external["artifact"]["freeze_review_sha256"] = freeze_digest
+        external["artifact"]["freeze_review_pr_api_sha256"] = canonical_json_sha256({})
         external["artifact"]["review_evidence_sha256"] = review_digest
 
         external["promotion_authorization"]["dev_sha"] = "0" * 40
@@ -217,6 +249,13 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "pr_base_ref": "dev",
             "pr_head_sha": "1" * 40,
             "pr_linked_issues": [32],
+            "pr_api_response": pr_api_response(
+                67,
+                "issue-32-canonical-roadmap",
+                "1" * 40,
+                [32],
+                "2026-07-18T23:46:08Z",
+            ),
             "dev_integration_sha": "2" * 40,
             "dev_contains_integration_sha": True,
             "issue": 32,
@@ -269,6 +308,13 @@ class TestDeliveryGatePositive(unittest.TestCase):
             "pr_base_ref": "dev",
             "pr_head_sha": "1" * 40,
             "pr_linked_issues": [32],
+            "pr_api_response": pr_api_response(
+                67,
+                "issue-32-canonical-roadmap",
+                "1" * 40,
+                [32],
+                "2026-07-19T00:09:00Z",
+            ),
             "dev_integration_sha": "2" * 40,
             "dev_contains_integration_sha": True,
             "issue": 32,
@@ -300,7 +346,14 @@ class TestDeliveryGatePositive(unittest.TestCase):
                 "pull_request": 66,
                 "pr_head_ref": "issue-65-opencode-spike",
                 "pr_head_sha": unrelated_sha,
-                "pr_linked_issues": [65],
+                "pr_linked_issues": [],
+                "pr_api_response": pr_api_response(
+                    66,
+                    "issue-65-opencode-spike",
+                    unrelated_sha,
+                    [],
+                    "2026-07-19T00:09:00Z",
+                ),
                 "evidence_url": local_freeze["review_evidence_url"],
                 "reviewed_at": local_freeze["reviewed_at"],
             }

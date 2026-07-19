@@ -121,6 +121,10 @@ review time to follow inventory capture.
 Protected freeze-review evidence also authenticates the GitHub PR number, exact
 head/base refs, head SHA, and sole linked issue #32; matching caller assertions
 without those GitHub API bindings are rejected.
+The protected integration must retain an authenticated GitHub PR API response
+envelope with request URL/status/ID, capture time, protected principal, canonical
+response digest, and normalized response body. Review fields are derived from that
+body, and the envelope digest is an explicit signed-attestation claim.
 The protected artifact and signed-attestation claim digest include owner promotion
 authorization and freeze-review objects, so either object is substitution-evident.
 

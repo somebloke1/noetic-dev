@@ -783,6 +783,9 @@ def verify_authoritative_provenance(
     freeze_review_digest = canonical_json_sha256(
         external_evidence.get("freeze_review", {})
     )
+    freeze_review_pr_api_digest = canonical_json_sha256(
+        external_evidence.get("freeze_review", {}).get("pr_api_response", {})
+    )
     review_evidence_digest = canonical_json_sha256({
         "agent_identities": external_evidence.get("agent_identities", []),
         "approvals": external_evidence.get("approvals", []),
@@ -795,6 +798,8 @@ def verify_authoritative_provenance(
         errors.append("protected promotion authorization evidence digest mismatch")
     if artifact.get("freeze_review_sha256") != freeze_review_digest:
         errors.append("protected freeze review evidence digest mismatch")
+    if artifact.get("freeze_review_pr_api_sha256") != freeze_review_pr_api_digest:
+        errors.append("protected freeze review PR API response digest mismatch")
 
     repository = external_evidence.get("repository", {})
     if repository.get("full_name") != REPO_FULL_NAME:
@@ -902,6 +907,7 @@ def verify_authoritative_provenance(
             ("review_evidence_sha256", review_evidence_digest),
             ("promotion_authorization_sha256", promotion_authorization_digest),
             ("freeze_review_sha256", freeze_review_digest),
+            ("freeze_review_pr_api_sha256", freeze_review_pr_api_digest),
         ]:
             if claims.get(label) != expected:
                 errors.append(f"artifact attestation claim mismatch: {label}")
@@ -1120,6 +1126,35 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
             errors.append("publication blocked: freeze review PR head SHA mismatch")
         if freeze_review.get("pr_linked_issues") != [32]:
             errors.append("publication blocked: freeze review PR must link only issue 32")
+        pr_api = freeze_review.get("pr_api_response", {})
+        pr_response = pr_api.get("response", {}) if isinstance(pr_api, dict) else {}
+        expected_pr_url = (
+            "https://api.github.com/repos/somebloke1/noetic-dev/pulls/"
+            f"{freeze_review.get('pull_request')}"
+        )
+        if pr_api.get("request_url") != expected_pr_url or pr_api.get("status") != 200:
+            errors.append("publication blocked: freeze review PR API request binding is invalid")
+        authentication = pr_api.get("authentication", {})
+        if (
+            authentication.get("verified") is not True
+            or authentication.get("source") != "protected-integration"
+            or not authentication.get("principal")
+            or not pr_api.get("request_id")
+        ):
+            errors.append("publication blocked: freeze review PR API response is not authenticated")
+        computed_pr_response_digest = canonical_json_sha256(pr_response)
+        if pr_api.get("response_sha256") != computed_pr_response_digest:
+            errors.append("publication blocked: freeze review PR API response digest mismatch")
+        expected_pr_response = {
+            "number": freeze_review.get("pull_request"),
+            "state": pr_response.get("state"),
+            "head_ref": freeze_review.get("pr_head_ref"),
+            "head_sha": freeze_review.get("pr_head_sha"),
+            "base_ref": freeze_review.get("pr_base_ref"),
+            "linked_issues": freeze_review.get("pr_linked_issues"),
+        }
+        if pr_response != expected_pr_response:
+            errors.append("publication blocked: freeze review fields do not derive from PR API response")
         if freeze_review.get("dev_integration_sha") != freeze.get("dev_integration_sha"):
             errors.append("publication blocked: freeze review dev integration SHA mismatch")
         if freeze_review.get("dev_contains_integration_sha") is not True:
@@ -1139,10 +1174,13 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         reviewed_at = _parse_time(freeze_review.get("reviewed_at", ""))
         captured_at = _parse_time(freeze.get("captured_at", ""))
         local_reviewed_at = _parse_time(freeze.get("reviewed_at", ""))
+        fetched_at = _parse_time(pr_api.get("fetched_at", ""))
         if reviewed_at is None or reviewed_at != local_reviewed_at:
             errors.append("publication blocked: freeze review timestamp mismatch")
         if reviewed_at is None or captured_at is None or reviewed_at <= captured_at:
             errors.append("publication blocked: freeze review timestamp must follow audit capture")
+        if fetched_at is None or reviewed_at is None or fetched_at > reviewed_at:
+            errors.append("publication blocked: freeze review PR API capture postdates review")
     if (
         freeze.get("status") != "complete"
         or freeze.get("independent_review_completed") is not True
