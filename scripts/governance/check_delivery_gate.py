@@ -59,6 +59,7 @@ BOOTSTRAP_AUTHORITY_FIELDS = [
     "branch_protection_requires_governance",
     "independent_agent_review_process_established",
     "credential_broker_established",
+    "main_publisher_capability_established",
 ]
 
 
@@ -516,6 +517,66 @@ def promotion_authorization_claims(
     }
 
 
+def _check_main_publisher_capability(
+    manifest: Dict[str, Any],
+    errors: List[str],
+    external_evidence: Optional[Dict[str, Any]],
+) -> None:
+    capability = (external_evidence or {}).get("main_publisher_capability")
+    if not isinstance(capability, dict):
+        errors.append("protected main publisher capability is not established")
+        return
+    expected = {
+        "status": "established",
+        "repository": REPO_FULL_NAME,
+        "target_ref": "refs/heads/main",
+        "bypass_mode": "always",
+        "live_protection_verified": True,
+        "pull_request_bypass": True,
+        "required_status_checks_bypass": True,
+        "force_push_bypass": False,
+    }
+    if any(capability.get(key) != value for key, value in expected.items()):
+        errors.append("protected main publisher capability does not permit the exact fast-forward")
+    if capability.get("principal_type") not in {"Integration", "DeployKey"}:
+        errors.append("protected main publisher principal type is not authorized")
+    if type(capability.get("principal_id")) is not int or capability.get("principal_id", 0) <= 0:
+        errors.append("protected main publisher principal ID is invalid")
+    if capability.get("protection_source") not in {"ruleset", "branch_protection"}:
+        errors.append("protected main publisher protection source is invalid")
+    captured_at = _parse_time(capability.get("captured_at", ""))
+    authorized_at = _parse_time(
+        (external_evidence or {}).get("promotion_authorization", {}).get("authorized_at", "")
+    )
+    pinned_at = _parse_time(manifest.get("repo", {}).get("candidate_pinned_at", ""))
+    if (
+        captured_at is None
+        or authorized_at is None
+        or pinned_at is None
+        or not authorized_at < captured_at < pinned_at
+    ):
+        errors.append("protected main publisher capability capture chronology is invalid")
+    claims = {
+        "repository": REPO_FULL_NAME,
+        "target_ref": "refs/heads/main",
+        "authorized_dev_sha": manifest.get("repo", {}).get("candidate_sha"),
+        "expected_old_main_sha": manifest.get("repo", {}).get("base_sha"),
+        "principal_type": capability.get("principal_type"),
+        "principal_id": capability.get("principal_id"),
+        "capability_sha256": canonical_json_sha256(
+            {
+                key: value
+                for key, value in capability.items()
+                if key != "protected_attestation_receipt"
+            }
+        ),
+    }
+    if not _verify_protected_attestation_receipt(
+        capability.get("protected_attestation_receipt"), claims
+    ):
+        errors.append("protected main publisher capability is not independently verified")
+
+
 def _check_owner_promotion_authorization(
     manifest: Dict[str, Any],
     errors: List[str],
@@ -652,6 +713,7 @@ def _check_owner_promotion_authorization(
         promotion_authorization_claims(manifest, authorization),
     ):
         errors.append("owner promotion authorization is not independently verified")
+    _check_main_publisher_capability(manifest, errors, external_evidence)
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
     comment_created_at = _parse_time(authorization.get("comment_created_at", ""))
     dev_validated_at = _parse_time(authorization.get("dev_validated_at", ""))
@@ -1186,6 +1248,7 @@ def verify_authoritative_provenance(
         receipt = external_evidence.get("protected_attestation_receipt", {})
         post_merge_evidence = external_evidence.get("post_merge", {})
         promotion_execution_evidence = external_evidence.get("promotion_execution", {})
+        publisher_capability_evidence = external_evidence.get("main_publisher_capability", {})
         dev_provenance_evidence = (
             promotion_evidence.get("dev_provenance", {})
             if isinstance(promotion_evidence, dict)
@@ -1218,6 +1281,11 @@ def verify_authoritative_provenance(
                 errors,
                 "protected promotion execution evidence",
             ),
+            "main_publisher_capability_sha256": _external_canonical_sha256(
+                publisher_capability_evidence,
+                errors,
+                "protected main publisher capability evidence",
+            ),
             "freeze_review_sha256": freeze_review_digest,
             "freeze_review_pr_api_sha256": freeze_review_pr_api_digest,
         }
@@ -1232,6 +1300,7 @@ def verify_authoritative_provenance(
             "dev_provenance_sha256",
             "post_merge_sha256",
             "promotion_execution_sha256",
+            "main_publisher_capability_sha256",
             "freeze_review_sha256",
             "freeze_review_pr_api_sha256",
         )
@@ -1826,6 +1895,7 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
             "branch_protection_requires_governance": True,
             "independent_agent_review_process_established": True,
             "credential_broker_established": False,
+            "main_publisher_capability_established": False,
         }
         for field in BOOTSTRAP_AUTHORITY_FIELDS:
             if gate.get(field) is not expected[field]:

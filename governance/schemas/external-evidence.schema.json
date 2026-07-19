@@ -212,6 +212,26 @@
         "finished_at": {"type": "string", "minLength": 1}
       }
     },
+    "main_publisher_capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "repository", "target_ref", "principal_type", "principal_id", "bypass_mode", "protection_source", "live_protection_verified", "pull_request_bypass", "required_status_checks_bypass", "force_push_bypass", "captured_at", "protected_attestation_receipt"],
+      "properties": {
+        "status": {"type": "string", "const": "established"},
+        "repository": {"type": "string", "const": "somebloke1/noetic-dev"},
+        "target_ref": {"type": "string", "const": "refs/heads/main"},
+        "principal_type": {"type": "string", "enum": ["Integration", "DeployKey"]},
+        "principal_id": {"type": "integer", "minimum": 1},
+        "bypass_mode": {"type": "string", "const": "always"},
+        "protection_source": {"type": "string", "enum": ["ruleset", "branch_protection"]},
+        "live_protection_verified": {"type": "boolean", "const": true},
+        "pull_request_bypass": {"type": "boolean", "const": true},
+        "required_status_checks_bypass": {"type": "boolean", "const": true},
+        "force_push_bypass": {"type": "boolean", "const": false},
+        "captured_at": {"type": "string", "minLength": 1},
+        "protected_attestation_receipt": {"$ref": "#/properties/protected_attestation_receipt"}
+      }
+    },
     "freeze_review": {
       "type": "object",
       "additionalProperties": false,

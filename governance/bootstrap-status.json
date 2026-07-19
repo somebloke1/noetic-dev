@@ -3,15 +3,16 @@
   "schema_version": "1",
   "authoritative_delivery_gate": {
     "status": "external_dependency_missing",
-    "required_dependency": "A separately protected required GitHub workflow or repository integration that checks PR head SHAs from protected policy code, captures authenticated GitHub provenance or signed artifact attestations, records protected QA probe/execution evidence outside model control, uses a credential broker before QA tools are enabled, and is required by branch protection.",
+    "required_dependency": "A separately protected required GitHub workflow or repository integration that checks PR head SHAs from protected policy code, captures authenticated GitHub provenance or signed artifact attestations, records protected QA probe/execution evidence outside model control, uses a credential broker before QA tools are enabled, proves a specific protected-main publisher principal has live bypass capability without force-push permission, and is required by branch protection.",
     "protected_policy_ref_established": false,
     "trusted_runner_provenance_established": false,
     "branch_protection_requires_governance": true,
     "independent_agent_review_process_established": true,
-    "credential_broker_established": false
+    "credential_broker_established": false,
+    "main_publisher_capability_established": false
   },
   "publication": {
     "status": "blocked",
-    "reason": "The D2 inventory still awaits protected independent review evidence, and no distinct protected workflow trust root, trusted runner provenance, credential broker, or protected post-merge main-run publication evidence exists. Candidate workflow output remains advisory for release authority."
+    "reason": "The D2 inventory still awaits protected independent review evidence, and no distinct protected workflow trust root, trusted runner provenance, credential broker, authorized protected-main publisher capability, or protected post-merge main-run publication evidence exists. Candidate workflow output remains advisory for release authority."
   }
 }

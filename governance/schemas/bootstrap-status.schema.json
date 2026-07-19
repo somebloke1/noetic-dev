@@ -14,7 +14,8 @@
         "trusted_runner_provenance_established",
         "branch_protection_requires_governance",
         "independent_agent_review_process_established",
-        "credential_broker_established"
+        "credential_broker_established",
+        "main_publisher_capability_established"
       ],
       "properties": {
         "status": {"type": "string"},
@@ -23,7 +24,8 @@
         "trusted_runner_provenance_established": {"type": "boolean"},
         "branch_protection_requires_governance": {"type": "boolean"},
         "independent_agent_review_process_established": {"type": "boolean"},
-        "credential_broker_established": {"type": "boolean"}
+        "credential_broker_established": {"type": "boolean"},
+        "main_publisher_capability_established": {"type": "boolean"}
       }
     },
     "publication": {"type": "object"}

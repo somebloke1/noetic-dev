@@ -19,8 +19,8 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from check_delivery_gate import (  # noqa: E402
     REPO_FULL_NAME,
-    _check_owner_promotion_authorization,
     _trusted_root_executable,
+    check_delivery,
     load_json,
 )
 from hash_tree import canonical_json, sha256_text  # noqa: E402
@@ -111,11 +111,17 @@ def promote(
     manifest: Dict[str, Any],
     external_evidence: Dict[str, Any],
     repo_root: Path,
+    manifest_path: str | None = None,
 ) -> Dict[str, Any]:
-    errors: List[str] = []
-    _check_owner_promotion_authorization(manifest, errors, external_evidence)
-    if errors:
-        raise RuntimeError("; ".join(errors))
+    passed, errors, _gate_type = check_delivery(
+        manifest,
+        manifest_path,
+        phase="pre-merge",
+        external_evidence=external_evidence,
+        gate_mode="main-promotion",
+    )
+    if not passed:
+        raise RuntimeError("main-promotion readiness gate failed: " + "; ".join(errors))
 
     repo = manifest.get("repo", {})
     candidate_sha = repo.get("candidate_sha", "")
@@ -200,7 +206,7 @@ def main() -> int:
     try:
         manifest = load_json(args.manifest)
         external = load_json(args.external_evidence)
-        record = promote(manifest, external, Path.cwd())
+        record = promote(manifest, external, Path.cwd(), args.manifest)
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"promotion blocked: {exc}", file=sys.stderr)
         return 1

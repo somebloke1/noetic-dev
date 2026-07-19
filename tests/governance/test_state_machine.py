@@ -196,6 +196,8 @@ class TestStateMachine(unittest.TestCase):
         conditions = " ".join(transition["conditions"])
         self.assertIn("main.promote_exact", conditions)
         self.assertIn("authenticated publisher execution record", conditions)
+        self.assertIn("complete main-promotion readiness gate", conditions)
+        self.assertIn("specific Integration or DeployKey principal", conditions)
         self.assertIn("force-with-lease", conditions)
         self.assertIn("expected old main SHA", conditions)
         self.assertIn("owner-authorized", conditions)

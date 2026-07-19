@@ -399,6 +399,73 @@ class TestDeliveryGatePositive(unittest.TestCase):
             provenance["validation_run_api_response"]["response"]["head_sha"], candidate_sha
         )
 
+    def test_main_publisher_capability_is_exact_attested_and_fail_closed(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        external["main_publisher_capability"] = {
+            "status": "established",
+            "repository": "somebloke1/noetic-dev",
+            "target_ref": "refs/heads/main",
+            "principal_type": "Integration",
+            "principal_id": 12345,
+            "bypass_mode": "always",
+            "protection_source": "ruleset",
+            "live_protection_verified": True,
+            "pull_request_bypass": True,
+            "required_status_checks_bypass": True,
+            "force_push_bypass": False,
+            "captured_at": "2026-07-11T11:59:59.750000+00:00",
+            "protected_attestation_receipt": protected_attestation_receipt(),
+        }
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ):
+            _passed, errors, _gate_type = check_delivery(
+                manifest, external_evidence=external, gate_mode="main-promotion"
+            )
+        self.assertFalse(
+            any("protected main publisher capability" in error for error in errors), errors
+        )
+
+        attacks = [
+            ("status", "missing"),
+            ("repository", "attacker/repo"),
+            ("target_ref", "refs/heads/dev"),
+            ("principal_type", "User"),
+            ("principal_id", True),
+            ("bypass_mode", "pull_request"),
+            ("live_protection_verified", False),
+            ("pull_request_bypass", False),
+            ("required_status_checks_bypass", False),
+            ("force_push_bypass", True),
+            ("captured_at", "2026-07-11T12:00:00+00:00"),
+        ]
+        for field, value in attacks:
+            with self.subTest(field=field):
+                attacked = copy.deepcopy(external)
+                attacked["main_publisher_capability"][field] = value
+                with mock.patch(
+                    "check_delivery_gate._verify_protected_attestation_receipt",
+                    return_value=True,
+                ):
+                    _passed, errors, _gate_type = check_delivery(
+                        manifest,
+                        external_evidence=attacked,
+                        gate_mode="main-promotion",
+                    )
+                self.assertTrue(
+                    any("protected main publisher" in error for error in errors), errors
+                )
+
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=False
+        ):
+            _passed, errors, _gate_type = check_delivery(
+                manifest, external_evidence=external, gate_mode="main-promotion"
+            )
+        self.assertIn("capability is not independently verified", "\n".join(errors))
+
     def test_main_promotion_rejects_missing_invalid_or_retroactive_pin_time(self):
         manifest = load_fixture("valid_advisory_manifest.json")
         for value in [None, 1, {}, [], "not-a-time", "2026-07-11T12:00:00"]:
@@ -562,6 +629,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
         joined = "\n".join(errors)
         self.assertIn("caller-supplied external evidence is advisory only", joined)
         self.assertIn("credential_broker_established", joined)
+        self.assertIn("main_publisher_capability_established", joined)
         self.assertNotIn("canonical manifest digest mismatch", joined)
 
     def test_github_api_mode_cannot_establish_review_authority(self):
@@ -1654,7 +1722,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
         external = {"promotion_authorization": promotion_authorization(manifest)}
         completed = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
         with (
-            mock.patch("promote_main._check_owner_promotion_authorization"),
+            mock.patch(
+                "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+            ),
             mock.patch(
                 "promote_main._require_git",
                 side_effect=[
@@ -1693,7 +1763,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
         candidate = manifest["repo"]["candidate_sha"]
         external = {"promotion_authorization": {}}
         with (
-            mock.patch("promote_main._check_owner_promotion_authorization"),
+            mock.patch(
+                "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+            ),
             mock.patch(
                 "promote_main._require_git",
                 side_effect=[
@@ -1721,7 +1793,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
         manifest = load_fixture("valid_advisory_manifest.json")
         external = {"promotion_authorization": {}}
         candidate = manifest["repo"]["candidate_sha"]
-        with mock.patch("promote_main._check_owner_promotion_authorization"):
+        with mock.patch(
+            "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+        ):
             with mock.patch(
                 "promote_main._require_git", return_value="core.sshcommand\0"
             ):
@@ -1733,6 +1807,35 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "hidden index"):
                     promote_main.promote(manifest, external, REPO_ROOT)
+
+    def test_publisher_refuses_incomplete_main_promotion_gate(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = {"promotion_authorization": {}}
+        with mock.patch(
+            "promote_main.check_delivery",
+            return_value=(False, ["required review missing"], "main-promotion"),
+        ) as gate:
+            with self.assertRaisesRegex(RuntimeError, "readiness gate failed"):
+                promote_main.promote(
+                    manifest,
+                    external,
+                    REPO_ROOT,
+                    "/protected/manifest.json",
+                )
+        self.assertEqual(gate.call_args.kwargs["phase"], "pre-merge")
+        self.assertEqual(gate.call_args.kwargs["gate_mode"], "main-promotion")
+
+    def test_main_promotion_requires_verified_publisher_capability(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        external = advisory_external()
+        external["promotion_authorization"] = promotion_authorization(manifest)
+        _passed, errors, _gate_type = check_delivery(
+            manifest, external_evidence=external, gate_mode="main-promotion"
+        )
+        self.assertIn(
+            "protected main publisher capability is not established",
+            "\n".join(errors),
+        )
 
     def test_git_process_uses_fixed_binary_and_isolated_configuration(self):
         completed = subprocess.CompletedProcess([], 0, stdout="", stderr="")

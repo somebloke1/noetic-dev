@@ -136,6 +136,15 @@ Replacement objects are disabled and the extracted archive must reconstruct the
 authorized commit's exact tree. The publisher rejects hidden index flags and unsafe
 local Git configuration, then fetches and pushes only the fixed canonical SSH URL
 from a fresh temporary bare repository under an isolated Git/SSH environment.
+Before touching any remote ref, the publisher must derive a passing complete
+`main-promotion` pre-merge delivery gate, not merely validate owner authorization.
+It also requires an independently verified protected capability receipt binding
+the exact candidate/base SHAs to a specific Integration or DeployKey principal
+that live branch-protection evidence authorizes to bypass the PR and required-check
+barriers for this fast-forward without permitting force pushes. Current live
+`main` protection has no such actor, so the operation remains an explicit bootstrap
+blocker; installing the launcher does not make promotion executable or weaken
+protection.
 
 ### Publication gate
 
