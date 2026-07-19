@@ -230,10 +230,16 @@
     "promotion_execution": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["registry_id", "publisher", "authorized_dev_sha", "expected_old_main_sha", "effective_uid", "principal_type", "principal_id", "ssh_public_key_fingerprint", "git_argv", "exit_code", "stdout_sha256", "stderr_sha256", "started_at", "finished_at"],
+      "required": ["registry_id", "publisher", "policy_sha", "policy_tree_sha", "policy_entrypoint_sha256", "publisher_installation_sha256", "installation_authorization_receipt_sha256", "attestation_verifier_sha256", "authorized_dev_sha", "expected_old_main_sha", "effective_uid", "principal_type", "principal_id", "ssh_public_key_fingerprint", "git_argv", "exit_code", "stdout_sha256", "stderr_sha256", "started_at", "finished_at"],
       "properties": {
         "registry_id": {"type": "string", "const": "main.promote_exact"},
         "publisher": {"type": "string", "const": "/usr/local/libexec/noetic-dev/promote-main"},
+        "policy_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "policy_tree_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "policy_entrypoint_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "publisher_installation_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "installation_authorization_receipt_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "attestation_verifier_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "authorized_dev_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "expected_old_main_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
         "effective_uid": {"type": "integer", "const": 0},

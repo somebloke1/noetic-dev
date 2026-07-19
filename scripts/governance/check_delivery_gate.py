@@ -1691,6 +1691,12 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         errors.append("publication blocked: exact protected main ref-update command evidence missing")
     execution = (external_evidence or {}).get("promotion_execution", {})
     capability = (external_evidence or {}).get("main_publisher_capability", {})
+    protected_checkouts = (external_evidence or {}).get("checkouts", {})
+    protected_policy_sha = (
+        protected_checkouts.get("policy_sha")
+        if isinstance(protected_checkouts, dict)
+        else None
+    )
     command = promotion_records[0] if len(promotion_records) == 1 else {}
     execution_started = _parse_time(
         execution.get("started_at") if isinstance(execution, dict) else None
@@ -1704,6 +1710,19 @@ def _check_publication(manifest: Dict[str, Any], errors: List[str], external_evi
         not isinstance(execution, dict)
         or execution.get("registry_id") != "main.promote_exact"
         or execution.get("publisher") != "/usr/local/libexec/noetic-dev/promote-main"
+        or execution.get("policy_sha") != protected_policy_sha
+        or execution.get("policy_sha") == candidate_sha
+        or not _is_sha(execution.get("policy_tree_sha"))
+        or any(
+            type(execution.get(field)) is not str
+            or re.fullmatch(r"[a-f0-9]{64}", execution.get(field, "")) is None
+            for field in (
+                "policy_entrypoint_sha256",
+                "publisher_installation_sha256",
+                "installation_authorization_receipt_sha256",
+                "attestation_verifier_sha256",
+            )
+        )
         or execution.get("authorized_dev_sha") != candidate_sha
         or execution.get("expected_old_main_sha") != expected_old_main_sha
         or type(execution.get("effective_uid")) is not int

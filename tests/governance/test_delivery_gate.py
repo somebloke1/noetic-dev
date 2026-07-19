@@ -162,6 +162,17 @@ def publisher_capability() -> dict:
     }
 
 
+def publisher_installation_record(manifest: dict) -> dict:
+    return {
+        "authorization_receipt_sha256": "1" * 64,
+        "installation_sha256": "2" * 64,
+        "policy_entrypoint_sha256": "3" * 64,
+        "policy_sha": "a" * 40,
+        "policy_tree_sha": "b" * 40,
+        "verifier_sha256": "4" * 64,
+    }
+
+
 def bind_external_evidence(manifest: dict, external: dict) -> None:
     promotion = external.get("promotion_authorization", {})
     freeze = external.get("freeze_review", {})
@@ -1710,6 +1721,12 @@ class TestPublicationBindingFailures(unittest.TestCase):
         external["promotion_execution"] = {
             "registry_id": "main.promote_exact",
             "publisher": "/usr/local/libexec/noetic-dev/promote-main",
+            "policy_sha": external["checkouts"]["policy_sha"],
+            "policy_tree_sha": "b" * 40,
+            "policy_entrypoint_sha256": "3" * 64,
+            "publisher_installation_sha256": "2" * 64,
+            "installation_authorization_receipt_sha256": "1" * 64,
+            "attestation_verifier_sha256": "4" * 64,
             "authorized_dev_sha": publication_sha,
             "expected_old_main_sha": base_sha,
             "effective_uid": 0,
@@ -1773,6 +1790,151 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ),
         }
         return manifest, external
+
+    def _publisher_installation_fixture(self, root: Path, manifest: dict):
+        policy_sha = "a" * 40
+        candidate_sha = manifest["repo"]["candidate_sha"]
+        release = root / "policy-releases" / policy_sha / candidate_sha
+        for relative in promote_main.POLICY_FILES:
+            target = release / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(f"protected policy: {relative}\n", encoding="utf-8")
+        stage0 = root / "fixed" / "noetic-dev-install-main-publisher"
+        verifier = root / "fixed" / "verify-delivery-attestation"
+        launcher = root / "fixed" / "promote-main"
+        for target, content in (
+            (stage0, (release / "deploy/install-main-publisher.sh").read_text(encoding="utf-8")),
+            (verifier, "verifier\n"),
+            (launcher, (release / "deploy/noetic-dev-promote-main").read_text(encoding="utf-8")),
+        ):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            target.chmod(0o700)
+
+        def digest(path: Path) -> str:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+
+        receipt = protected_attestation_receipt()
+        receipt_path = release / "publisher-installation-receipt.json"
+        receipt_path.write_text(canonical_json(receipt), encoding="utf-8")
+        claims = {
+            "candidate_sha": candidate_sha,
+            "candidate_source_ref": "refs/heads/dev",
+            "candidate_tree_sha": "c" * 40,
+            "installer": {"path": str(stage0), "sha256": digest(stage0)},
+            "policy_files_sha256": {
+                relative: digest(release / relative)
+                for relative in promote_main.POLICY_FILES
+            },
+            "policy_sha": policy_sha,
+            "policy_source_ref": "refs/heads/dev",
+            "policy_tree_sha": "b" * 40,
+            "purpose": "install-main-publisher",
+            "repository": "somebloke1/noetic-dev",
+            "verifier": {"path": str(verifier), "sha256": digest(verifier)},
+        }
+        installation = {
+            "authorization_receipt_sha256": digest(receipt_path),
+            "expected_claims": claims,
+            "schema_version": "1",
+        }
+        installation_path = release / "publisher-installation.json"
+        installation_path.write_text(canonical_json(installation), encoding="utf-8")
+        return {
+            "claims": claims,
+            "installation": installation,
+            "installation_path": installation_path,
+            "launcher": launcher,
+            "policy_entrypoint": release / "scripts/governance/promote_main.py",
+            "receipt_path": receipt_path,
+            "stage0": stage0,
+            "verifier": verifier,
+        }
+
+    def _publisher_installation_patches(self, root: Path, fixture: dict):
+        return (
+            mock.patch.multiple(
+                promote_main,
+                PUBLISHER_ROOT=root,
+                POLICY_ENTRYPOINT=fixture["policy_entrypoint"],
+                STAGE0_INSTALLER=fixture["stage0"],
+                PROTECTED_ATTESTATION_VERIFIER=fixture["verifier"],
+                PROTECTED_PUBLISHER=fixture["launcher"],
+            ),
+            mock.patch("promote_main._trusted_root_regular_file", return_value=True),
+            mock.patch("promote_main._trusted_root_executable", return_value=True),
+            mock.patch(
+                "promote_main._verify_protected_attestation_receipt", return_value=True
+            ),
+        )
+
+    def test_publisher_installation_binds_distinct_policy_candidate_and_receipt(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = self._publisher_installation_fixture(root, manifest)
+            patches = self._publisher_installation_patches(root, fixture)
+            with patches[0], patches[1], patches[2], patches[3] as verifier:
+                installation = promote_main._load_publisher_installation(
+                    fixture["installation_path"], manifest
+                )
+            self.assertEqual(installation["policy_sha"], "a" * 40)
+            self.assertEqual(
+                installation["authorization_receipt_sha256"],
+                fixture["installation"]["authorization_receipt_sha256"],
+            )
+            self.assertEqual(verifier.call_args.args[1], fixture["claims"])
+
+    def test_publisher_installation_rejects_candidate_policy_and_mixed_release(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = self._publisher_installation_fixture(root, manifest)
+            attacked = copy.deepcopy(fixture["installation"])
+            attacked["expected_claims"]["policy_sha"] = manifest["repo"]["candidate_sha"]
+            fixture["installation_path"].write_text(canonical_json(attacked), encoding="utf-8")
+            patches = self._publisher_installation_patches(root, fixture)
+            with patches[0], patches[1], patches[2], patches[3]:
+                with self.assertRaisesRegex(RuntimeError, "policy/candidate binding"):
+                    promote_main._load_publisher_installation(
+                        fixture["installation_path"], manifest
+                    )
+
+            fixture = self._publisher_installation_fixture(root, manifest)
+            fixture["policy_entrypoint"] = root / "candidate/promote_main.py"
+            patches = self._publisher_installation_patches(root, fixture)
+            with patches[0], patches[1], patches[2], patches[3]:
+                with self.assertRaisesRegex(RuntimeError, "mixed release paths"):
+                    promote_main._load_publisher_installation(
+                        fixture["installation_path"], manifest
+                    )
+
+    def test_publisher_installation_rejects_digest_and_receipt_substitution(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = self._publisher_installation_fixture(root, manifest)
+            attacked = copy.deepcopy(fixture["installation"])
+            attacked["expected_claims"]["policy_files_sha256"][
+                "scripts/governance/check_delivery_gate.py"
+            ] = "0" * 64
+            fixture["installation_path"].write_text(canonical_json(attacked), encoding="utf-8")
+            patches = self._publisher_installation_patches(root, fixture)
+            with patches[0], patches[1], patches[2], patches[3]:
+                with self.assertRaisesRegex(RuntimeError, "critical policy digest mismatch"):
+                    promote_main._load_publisher_installation(
+                        fixture["installation_path"], manifest
+                    )
+
+            fixture = self._publisher_installation_fixture(root, manifest)
+            patches = self._publisher_installation_patches(root, fixture)
+            with patches[0], patches[1], patches[2], mock.patch(
+                "promote_main._verify_protected_attestation_receipt", return_value=False
+            ):
+                with self.assertRaisesRegex(RuntimeError, "receipt verification failed"):
+                    promote_main._load_publisher_installation(
+                        fixture["installation_path"], manifest
+                    )
 
     def test_premerge_postmerge_claim_cannot_satisfy_publication(self):
         manifest, external = self._publication_candidate()
@@ -1886,6 +2048,12 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ("principal_id", 0),
             ("principal_id", True),
             ("ssh_public_key_fingerprint", "SHA256:" + "B" * 43),
+            ("policy_sha", candidate_sha),
+            ("policy_tree_sha", "b" * 39),
+            ("policy_entrypoint_sha256", None),
+            ("publisher_installation_sha256", "2" * 63),
+            ("installation_authorization_receipt_sha256", True),
+            ("attestation_verifier_sha256", "G" * 64),
         ]:
             with self.subTest(execution_identity=field, value=value):
                 attacked_manifest, attacked_external = self._publication_candidate()
@@ -2028,7 +2196,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ),
             mock.patch("promote_main._git", return_value=completed) as git_run,
         ):
-            record = promote_main.promote(manifest, external, REPO_ROOT)
+            record = promote_main.promote(
+                manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+            )
         expected = [
             "/usr/bin/git",
             "push",
@@ -2080,7 +2250,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ),
         ):
             with self.assertRaisesRegex(RuntimeError, "remote main changed"):
-                promote_main.promote(manifest, external, REPO_ROOT)
+                promote_main.promote(
+                    manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+                )
 
     def test_rejects_hidden_index_flags_and_unsafe_local_git_config(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -2099,13 +2271,17 @@ class TestPublicationBindingFailures(unittest.TestCase):
                 "promote_main._require_git", return_value="core.sshcommand\0"
             ):
                 with self.assertRaisesRegex(RuntimeError, "transport-altering"):
-                    promote_main.promote(manifest, external, REPO_ROOT)
+                    promote_main.promote(
+                        manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+                    )
             with mock.patch(
                 "promote_main._require_git",
                 side_effect=["", candidate, "h tracked.txt"],
             ):
                 with self.assertRaisesRegex(RuntimeError, "hidden index"):
-                    promote_main.promote(manifest, external, REPO_ROOT)
+                    promote_main.promote(
+                        manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+                    )
 
     def test_publisher_refuses_incomplete_main_promotion_gate(self):
         manifest = load_fixture("valid_advisory_manifest.json")
@@ -2122,6 +2298,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
                     manifest,
                     external,
                     REPO_ROOT,
+                    publisher_installation_record(manifest),
                     "/protected/manifest.json",
                 )
         self.assertEqual(gate.call_args.kwargs["phase"], "pre-merge")
@@ -2252,7 +2429,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "promote_main.check_delivery"
         ) as gate:
             with self.assertRaisesRegex(RuntimeError, "must run as root"):
-                promote_main.promote(manifest, external, REPO_ROOT)
+                promote_main.promote(
+                    manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+                )
         gate.assert_not_called()
 
         with mock.patch("promote_main.os.geteuid", return_value=0), mock.patch(
@@ -2261,7 +2440,9 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "promote_main._publisher_key_fingerprint", return_value="SHA256:" + "B" * 43
         ), mock.patch("promote_main._git") as git_run:
             with self.assertRaisesRegex(RuntimeError, "does not match protected capability"):
-                promote_main.promote(manifest, external, REPO_ROOT)
+                promote_main.promote(
+                    manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+                )
         git_run.assert_not_called()
 
     def test_post_main_evidence_rejects_wrong_run_main_and_chronology(self):

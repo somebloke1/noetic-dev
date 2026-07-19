@@ -9,12 +9,34 @@ fi
 
 root=/opt/noetic-dev-main-publisher
 release=$(/usr/bin/readlink -f "$root/current")
+prefix=$root/policy-releases/
 case "$release" in
-  "$root"/releases/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+  "$prefix"*) relative=${release#"$prefix"} ;;
   *)
-    echo "protected publisher release is invalid" >&2
+    echo "protected publisher policy release is invalid" >&2
     exit 1
     ;;
 esac
+policy_sha=${relative%%/*}
+candidate_sha=${relative#*/}
+case "$policy_sha$candidate_sha" in
+  *[!0-9a-f]*|"")
+    echo "protected publisher policy release is invalid" >&2
+    exit 1
+    ;;
+esac
+if [ "${#policy_sha}" -ne 40 ] || [ "${#candidate_sha}" -ne 40 ] || \
+   [ "$policy_sha" = "$candidate_sha" ] || [ "$relative" != "$policy_sha/$candidate_sha" ]; then
+  echo "protected publisher policy release is invalid" >&2
+  exit 1
+fi
+installation=$release/publisher-installation.json
+receipt=$release/publisher-installation-receipt.json
+if [ ! -f "$installation" ] || [ -L "$installation" ] || \
+   [ ! -f "$receipt" ] || [ -L "$receipt" ]; then
+  echo "protected publisher installation evidence is invalid" >&2
+  exit 1
+fi
 exec /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
+  NOETIC_PUBLISHER_INSTALLATION="$installation" \
   /usr/bin/python3 -I "$release/scripts/governance/promote_main.py" "$@"

@@ -131,20 +131,46 @@ wrong lease, wrong source/target, nonzero command, or missing command record blo
 the `MERGED_TO_MAIN` transition and publication. Its structured execution record is
 digest-bound into the protected integration attestation; manifest-provided command
 hashes alone are never accepted as proof that the push occurred.
-The root-only `deploy/install-main-publisher.sh` ignores caller source objects. It
-fetches the canonical repository's current protected `dev` head into a fresh bare
-repository, requires it to equal the requested SHA, and requires the fixed
-root-protected attestation verifier to validate a signed
-`install-main-publisher` authorization receipt for that same repository/ref/SHA.
-Before verifier execution, every path component from the executable through `/`
-is checked with non-dereferencing metadata and must be root-owned, non-symlink,
-and non-writable by group or other; the leaf must also be a regular executable.
-Only then does it install the exact authorized-dev archive under
-`/opt/noetic-dev-main-publisher/releases/<sha>` and atomically point
-the fixed mode-`0700` root-owned launcher at that immutable release. This deployment does not
+`deploy/install-main-publisher.sh` is the source for the fixed root-owned stage-0
+installer `/usr/local/sbin/noetic-dev-install-main-publisher`; a candidate checkout
+must never be executed directly as root. The stage-0 executable must itself be
+installed from a separately protected policy SHA before use. It rejects every
+other invocation path, fetches the canonical repository's full current protected
+`dev` history into a fresh bare repository, requires the requested candidate to be
+the exact current `dev` head, and requires the pinned policy SHA to be a distinct
+ancestor of that candidate. It archive-extracts only the policy SHA. Candidate
+bytes are never installed or executed by the publisher.
+
+Before installation, the fixed root-protected attestation verifier validates a
+signed `install-main-publisher` authorization receipt. Its expected claims bind
+the repository and protected source ref; policy and candidate commit/tree SHAs;
+the stage-0 installer path and digest; verifier path and digest; and digests of the
+launcher, publisher, delivery gate, and every direct policy dependency. Every path
+component from the installer, verifier, key, and installed files through `/` is
+checked with non-dereferencing metadata and must be root-owned, non-symlink, and
+non-writable by group or other. The executable leaves must also be regular and
+executable. A candidate-controlled digest, same policy/candidate SHA, non-ancestor
+policy, mixed release, or invalid receipt blocks before installation.
+
+The installer reconstructs the policy commit's exact Git tree, rejects all
+symlinks, and stores the protected policy at
+`/opt/noetic-dev-main-publisher/policy-releases/<policy-sha>/<candidate-sha>` with
+the authorization receipt and canonical installation manifest. It then installs
+the policy launcher mode `0700` and atomically selects that policy/candidate pair.
+At every invocation the launcher accepts only this two-SHA release shape, starts
+isolated Python with an empty environment, and supplies the fixed installation
+manifest path itself. The protected publisher re-hashes the stage-0 installer,
+verifier, fixed launcher, policy entrypoint, gate, and direct dependencies; proves
+the manifest candidate equals the promotion candidate; and re-verifies the stored
+authorization receipt before running any candidate-supplied gate inputs. It never
+accepts an installation path, SSH key path, or agent socket from its caller.
+
+This candidate cannot serve as its own protected policy release. The corrected
+publisher must first land on protected `dev`, then a distinct protected successor
+candidate may use that earlier SHA as policy. Until that bootstrap and receipt
+exist, exact-SHA main promotion remains blocked. This deployment does not
 establish the separate attestation verifier or publication authority by itself.
-The launcher starts isolated Python with an empty environment and never accepts an
-SSH key path or agent socket from its caller. The separately provisioned
+The separately provisioned
 `/etc/noetic-dev/main-publisher/deploy-key` must be a nonempty root-owned regular
 file with mode `0400`; every parent is root-owned, non-symlink, and non-writable by
 group or other. The installer and publisher derive its public half noninteractively
@@ -153,7 +179,7 @@ identities and use only that fixed key. Its OpenSSH SHA-256 fingerprint and Depl
 ID must equal the independently attested, write-enabled publisher capability and are
 recorded in execution evidence.
 Replacement objects are disabled and the extracted archive must reconstruct the
-authorized commit's exact tree. Every symlink is rejected before installation, and
+protected policy commit's exact tree. Every symlink is rejected before installation, and
 both publisher entrypoints must be regular files, so immutable-tree verification
 cannot be converted into mutable external content by later dereference. The
 publisher rejects hidden index flags and unsafe
