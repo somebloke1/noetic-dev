@@ -33,6 +33,16 @@ class ExplodingList(list):
         raise RuntimeError("iterator exploded")
 
 
+class ExplodingGetDict(dict):
+    def get(self, *_args, **_kwargs):
+        raise RuntimeError("get exploded")
+
+
+class ExplodingItemsDict(dict):
+    def items(self):
+        raise RuntimeError("items exploded")
+
+
 def load_fixture(name: str):
     with open(FIXTURES_DIR / name, encoding="utf-8") as f:
         return json.load(f)
@@ -602,6 +612,64 @@ class TestDeliveryGatePositive(unittest.TestCase):
                         )
                     )
                 run.assert_not_called()
+
+    def test_external_hashing_rejects_exploding_mappings_and_iterators(self):
+        errors = []
+        self.assertIsNone(
+            delivery_gate._external_canonical_sha256(
+                ExplodingItemsDict({"value": 1}), errors, "exploding mapping"
+            )
+        )
+        self.assertIn("exploding mapping is not canonical JSON", errors)
+        errors = []
+        self.assertEqual(
+            delivery_gate._external_member(
+                ExplodingGetDict(), "value", {}, errors, "exploding member"
+            ),
+            {},
+        )
+        self.assertIn("exploding member cannot be read safely", errors)
+
+        manifest = load_fixture("valid_advisory_manifest.json")
+        attacks = [
+            ("promotion_authorization", ExplodingGetDict(), "cannot be read safely"),
+            ("freeze_review", ExplodingGetDict(), "cannot be read safely"),
+            ("post_merge", ExplodingGetDict(), "missing required property run_api_response"),
+        ]
+        for field, value, expected in attacks:
+            with self.subTest(field=field):
+                external = advisory_external()
+                external["mode"] = "protected_integration_receipt"
+                external["protected_attestation_receipt"] = protected_attestation_receipt()
+                external[field] = value
+                with mock.patch(
+                    "check_delivery_gate._verify_protected_attestation_receipt",
+                    return_value=True,
+                ):
+                    errors = verify_authoritative_provenance(manifest, external)
+                self.assertIn(expected, "\n".join(errors))
+
+        external = advisory_external()
+        external["freeze_review"] = {"pr_api_response": ExplodingGetDict()}
+        errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("pr_api_response: missing required property response", "\n".join(errors))
+
+        external = advisory_external()
+        external["promotion_authorization"] = {
+            "dev_provenance": ExplodingGetDict()
+        }
+        external["mode"] = "protected_integration_receipt"
+        external["protected_attestation_receipt"] = protected_attestation_receipt()
+        with mock.patch(
+            "check_delivery_gate._verify_protected_attestation_receipt", return_value=True
+        ):
+            errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("dev_provenance: missing required property branch_api_response", "\n".join(errors))
+
+        external = advisory_external()
+        external["agent_identities"] = ExplodingList()
+        errors = verify_authoritative_provenance(manifest, external)
+        self.assertIn("external evidence schema validation failed safely", "\n".join(errors))
 
     def test_valid_advisory_is_blocked_without_external_evidence(self):
         manifest = load_fixture("valid_advisory_manifest.json")
