@@ -594,7 +594,7 @@ class TestDeliveryGatePositive(unittest.TestCase):
                 external_evidence=advisory_external(),
                 gate_mode="dev-integration",
             )
-        self.assertNotIn("existing-work freeze", "\n".join(errors))
+        self.assertIn("complete freeze schema", "\n".join(errors))
 
         malformed_complete = {"status": "complete"}
         with mock.patch(
@@ -639,6 +639,15 @@ class TestDeliveryGatePositive(unittest.TestCase):
         errors = []
         delivery_gate._check_complete_freeze_readiness(freeze, errors)
         self.assertIn("complete freeze schema", "\n".join(errors))
+
+        for gate_mode in ["dev-integration", "main-promotion"]:
+            with self.subTest(gate_mode=gate_mode), mock.patch(
+                "check_delivery_gate._protected_freeze", return_value={"status": "complete"}
+            ), mock.patch(
+                "check_delivery_gate._check_complete_freeze_readiness"
+            ) as readiness:
+                delivery_gate._check_existing_work_freeze({}, [], gate_mode)
+                readiness.assert_called_once_with({"status": "complete"}, [])
 
     def test_attestation_digest_detects_authorization_substitution(self):
         manifest = load_fixture("valid_advisory_manifest.json")

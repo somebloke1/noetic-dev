@@ -204,7 +204,9 @@ the transition.
 While the freeze is `repair_authorized`, `dev-integration` admits only issue #32,
 PR #67, branch `issue-32-canonical-roadmap` targeting `dev`, with exactly the sole
 linked issue #32. Active freeze state blocks every dev integration; main promotion
-remains blocked until the freeze is complete.
+remains blocked until the freeze is complete. A `complete` value lifts restrictions
+in neither gate mode unless the schema-valid local freeze derives the independently
+verified protected D2 review and exact protected-dev integration evidence.
 
 ### Branch-name publication
 

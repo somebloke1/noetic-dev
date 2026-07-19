@@ -1513,8 +1513,7 @@ def _check_existing_work_freeze(
     freeze = _protected_freeze()
     status = freeze.get("status")
     if status == "complete":
-        if gate_mode == "main-promotion":
-            _check_complete_freeze_readiness(freeze, errors)
+        _check_complete_freeze_readiness(freeze, errors)
         return
     if gate_mode != "dev-integration":
         errors.append("existing-work freeze blocks main promotion until D2 completion")
