@@ -33,6 +33,9 @@ The independently verified final primary and issue-29 index SHA-256 values are
 and `5348f7659cff9e68fe4faf1db39ac1f38a7b12ea80c26d66565e4f1053a87028`.
 The five noncanonical pointers were preserved under the quarantine suffix
 `.git.noetic-quarantine-20260720T005900Z` rather than deleted.
+That suffix records `2026-07-20T00:59:00Z` in UTC, which was still July 19 on
+the host's local calendar; it records the completed correction, not a future
+planned action.
 
 ## Preventive rule
 
