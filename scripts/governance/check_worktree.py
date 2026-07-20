@@ -12,16 +12,6 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlsplit
 
-TOPOLOGY_ENV = {
-    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-    "GIT_COMMON_DIR",
-    "GIT_CONFIG_GLOBAL",
-    "GIT_CONFIG_SYSTEM",
-    "GIT_DIR",
-    "GIT_INDEX_FILE",
-    "GIT_OBJECT_DIRECTORY",
-    "GIT_WORK_TREE",
-}
 SAFE_CONFIG = {
     "core.bare",
     "core.filemode",
@@ -228,11 +218,7 @@ def inspect_worktree(
     repo = repo.resolve()
     errors = [
         f"unsafe Git environment override is set: {name}"
-        for name in sorted(
-            name
-            for name in os.environ
-            if name in TOPOLOGY_ENV or name == "GIT_CONFIG" or name.startswith("GIT_CONFIG_")
-        )
+        for name in sorted(name for name in os.environ if name.startswith("GIT_"))
     ]
     valid_scan_limit = type(scan_entry_limit) is int and scan_entry_limit > 0
     if not valid_scan_limit:
@@ -262,13 +248,23 @@ def inspect_worktree(
     if linked:
         backlink_file = git_dir / "gitdir"
         try:
-            backlink = Path(backlink_file.read_text(encoding="utf-8", errors="strict").strip())
-            if not backlink.is_absolute():
-                backlink = git_dir / backlink
-            if backlink.resolve() != marker.resolve():
-                errors.append("linked worktree backlink does not identify this worktree")
-        except (OSError, UnicodeError, ValueError):
+            backlink_mode = backlink_file.lstat().st_mode
+        except OSError:
             errors.append("linked worktree backlink is missing or unreadable")
+        else:
+            if not stat.S_ISREG(backlink_mode):
+                errors.append("linked worktree backlink must be a regular non-symlink file")
+            else:
+                try:
+                    backlink = Path(
+                        backlink_file.read_text(encoding="utf-8", errors="strict").strip()
+                    )
+                    if not backlink.is_absolute():
+                        backlink = git_dir / backlink
+                    if backlink.resolve() != marker.resolve():
+                        errors.append("linked worktree backlink does not identify this worktree")
+                except (OSError, UnicodeError, ValueError):
+                    errors.append("linked worktree backlink is missing or unreadable")
         if common.name != ".git" or git_dir.parent != common / "worktrees":
             errors.append(
                 "linked worktree administration is not in its common Git worktrees registry"

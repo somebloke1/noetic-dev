@@ -144,6 +144,24 @@ class TestWorktreeDoctor(unittest.TestCase):
         self.assertIn("backlink does not identify", joined)
         self.assertIn("multiple worktree pointers", joined)
 
+    def test_rejects_symlinked_linked_worktree_backlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            backlink_target = base / "backlink"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            backlink_target.write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            (admin / "gitdir").symlink_to(backlink_target)
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("regular non-symlink", "\n".join(result["errors"]))
+
     def test_cli_default_scan_rejects_duplicate_admin_pointer(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -265,6 +283,10 @@ class TestWorktreeDoctor(unittest.TestCase):
                     "GIT_CONFIG_PARAMETERS",
                     "GIT_CONFIG_KEY_0",
                     "GIT_CONFIG_VALUE_0",
+                    "GIT_SSH_COMMAND",
+                    "GIT_ASKPASS",
+                    "GIT_EXTERNAL_DIFF",
+                    "GIT_OPTIONAL_LOCKS",
                 }
             ):
                 with self.subTest(name=name), mock.patch.dict(os.environ, {name: "/tmp/attack"}):
