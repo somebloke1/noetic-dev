@@ -65,11 +65,18 @@ def _read_gitfile(path: Path) -> Path | None:
     return target.resolve()
 
 
-def _common_dir(git_dir: Path) -> Path:
+def _common_dir(git_dir: Path, errors: list[str]) -> Path:
     commondir = git_dir / "commondir"
-    if not commondir.is_file() or commondir.is_symlink():
+    if not commondir.exists():
         return git_dir
-    value = commondir.read_text(encoding="utf-8", errors="strict").strip()
+    if not commondir.is_file() or commondir.is_symlink():
+        errors.append(f"linked worktree commondir must be a regular file: {commondir}")
+        return git_dir
+    try:
+        value = commondir.read_text(encoding="utf-8", errors="strict").strip()
+    except (OSError, UnicodeError):
+        errors.append(f"linked worktree commondir is unreadable: {commondir}")
+        return git_dir
     target = Path(value)
     if not target.is_absolute():
         target = git_dir / target
@@ -110,6 +117,7 @@ def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
     for key in values:
         executable = (
             key in EXECUTABLE_CONFIG
+            or key == "credential.helper"
             or (key.startswith("filter.") and key.endswith((".clean", ".smudge", ".process")))
             or (key.startswith("diff.") and key.endswith(".command"))
             or (key.startswith(("difftool.", "mergetool.")) and key.endswith(".cmd"))
@@ -117,7 +125,7 @@ def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
         )
         if executable:
             errors.append(f"repository-local executable Git config is forbidden: {key}")
-        if key.startswith("include."):
+        if key.startswith(("include.", "includeif.")):
             errors.append(f"repository-local Git config includes are forbidden: {key}")
 
 
@@ -148,9 +156,7 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
         for name in sorted(
             name
             for name in os.environ
-            if name in TOPOLOGY_ENV
-            or name == "GIT_CONFIG_COUNT"
-            or name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+            if name in TOPOLOGY_ENV or name == "GIT_CONFIG" or name.startswith("GIT_CONFIG_")
         )
     ]
     marker = repo / ".git"
@@ -164,7 +170,7 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
         if not git_dir.is_dir():
             errors.append(f"worktree has no valid .git directory or pointer: {repo}")
 
-    common = _common_dir(git_dir) if git_dir.is_dir() else git_dir
+    common = _common_dir(git_dir, errors) if git_dir.is_dir() else git_dir
     if git_dir.parent.name == "worktrees":
         backlink_file = git_dir / "gitdir"
         try:

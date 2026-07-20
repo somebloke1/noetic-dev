@@ -43,7 +43,9 @@ class TestWorktreeDoctor(unittest.TestCase):
             "[filter \"hostile\"]\n\tsmudge = /tmp/hostile.sh\n",
             "[core]\n\tfsmonitor = /tmp/hostile.sh\n",
             "[alias]\n\thostile = !/tmp/hostile.sh\n",
+            "[credential]\n\thelper = !/tmp/hostile.sh\n",
             "[include]\n\tpath = /tmp/hidden-config\n",
+            '[includeIf "gitdir:/tmp/"]\n\tpath = /tmp/hidden-config\n',
         ]
         for attack in attacks:
             with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
@@ -100,6 +102,8 @@ class TestWorktreeDoctor(unittest.TestCase):
                     "GIT_INDEX_FILE",
                     "GIT_COMMON_DIR",
                     "GIT_CONFIG_COUNT",
+                    "GIT_CONFIG_NOSYSTEM",
+                    "GIT_CONFIG_PARAMETERS",
                     "GIT_CONFIG_KEY_0",
                     "GIT_CONFIG_VALUE_0",
                 }
@@ -107,6 +111,22 @@ class TestWorktreeDoctor(unittest.TestCase):
                 with self.subTest(name=name), mock.patch.dict(os.environ, {name: "/tmp/attack"}):
                     result = inspect_worktree(repo)
                 self.assertIn(name, "\n".join(result["errors"]))
+
+    def test_malformed_commondir_returns_failure_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_bytes(b"\xff\xfe")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("commondir is unreadable", "\n".join(result["errors"]))
 
     def test_isolated_git_environment_drops_all_inherited_git_controls(self):
         source = {
