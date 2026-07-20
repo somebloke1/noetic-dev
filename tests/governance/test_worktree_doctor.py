@@ -70,6 +70,11 @@ class TestWorktreeDoctor(unittest.TestCase):
             "[include]\n\tpath = /tmp/hidden-config\n",
             '[includeIf "gitdir:/tmp/"]\n\tpath = /tmp/hidden-config\n',
             "[remote \"hostile\"]\n\turl = ext::/tmp/hostile.sh\n",
+            "[remote \"hostile\"]\n\turl = https://user:secret@github.com/org/repo.git\n",
+            "[remote \"hostile\"]\n\turl = https://user@github.com/org/repo.git\n",
+            "[remote \"hostile\"]\n\turl = https://github.com/org/repo.git?token=secret\n",
+            "[remote \"hostile\"]\n\turl = ssh://git:secret@github.com/org/repo.git\n",
+            "[remote \"hostile\"]\n\turl = https:///missing-host\n",
         ]
         for attack in attacks:
             with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
@@ -85,6 +90,22 @@ class TestWorktreeDoctor(unittest.TestCase):
                 repo = Path(tmp) / "repo"
                 (repo / ".git").mkdir(parents=True)
                 write_config(repo / ".git" / "config", f"[gc]\n\tauto = {value}\n")
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_credential_free_network_remote_urls(self):
+        for value in (
+            "https://github.com/org/repo.git",
+            "ssh://git@github.com/org/repo.git",
+            "git://github.com/org/repo.git",
+        ):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                write_config(
+                    repo / ".git" / "config",
+                    f'[remote "origin"]\n\turl = {value}\n',
+                )
                 result = inspect_worktree(repo)
             self.assertEqual(result["status"], "pass", result["errors"])
 

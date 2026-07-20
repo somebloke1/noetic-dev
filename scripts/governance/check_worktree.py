@@ -10,6 +10,7 @@ import stat
 import subprocess
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlsplit
 
 TOPOLOGY_ENV = {
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -116,7 +117,21 @@ def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
 
 
 def _safe_remote_url(value: str) -> bool:
-    return value.lower().startswith(("https://", "http://", "ssh://", "git://", "file://"))
+    try:
+        parsed = urlsplit(value)
+        if parsed.query or parsed.fragment or parsed.password is not None:
+            return False
+        if parsed.scheme in {"http", "https"}:
+            return parsed.hostname is not None and parsed.username is None
+        if parsed.scheme == "ssh":
+            return parsed.hostname is not None
+        if parsed.scheme == "git":
+            return parsed.hostname is not None and parsed.username is None
+        if parsed.scheme == "file":
+            return bool(parsed.path) and parsed.username is None
+    except ValueError:
+        return False
+    return False
 
 
 def _safe_config_entry(key: str, values: list[str]) -> bool:
