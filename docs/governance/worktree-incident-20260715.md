@@ -1,29 +1,35 @@
-# Worktree administration incident: 2026-07-15
+# Host-local worktree administration incident report: 2026-07-15
 
-## Verified facts
+This document preserves a report of host-local observations. It is not an
+independently verifiable attestation of the historical incident or correction.
 
-An archive-export test inherited a live linked-worktree `GIT_DIR`, set a temporary
+## Reported observations
+
+The host-local investigation reported that an archive-export test inherited a
+live linked-worktree `GIT_DIR`, set a temporary
 `GIT_WORK_TREE` and alternate index, then ran nested tests that invoked `git init`
 and repository-local `git config`. Git persisted the temporary worktree path,
 fixture identity, and executable filter in the shared common config. Three later
 archive exports and two restored/synchronized copies also carried `.git` files
 pointing to the same linked-worktree administration directory.
 
-This created split-brain behavior: Git discovered from physical `main` used the
+The report attributed split-brain behavior to Git discovered from physical `main`
+using the
 primary `main` index against a temporary export, while Git discovered from any
 copied pointer used one shared feature-branch HEAD and index against distinct
 physical trees. The canonical linked-worktree pointer and backlink remained
 reciprocal; `git worktree repair` was therefore neither needed nor appropriate.
 
-## Correction
+## Reported correction
 
-The correction used a quiescent maintenance window, repeated stable baselines, a
+The host-local correction record reports a quiescent maintenance window,
+repeated stable baselines, a
 complete isolated-restore-checked recovery archive, exact removal of four
 contaminated config records, and quarantine-by-rename of five copied pointers.
 Refs, reflogs, HEADs, index semantics and final bytes, registered worktrees,
 tracked/dirty/untracked/ignored files, and the alternate synthetic index were
-preserved. Protected history was not rewritten. An independent non-mutating QA
-pass contemporaneously reported unchanged topology and archive-restore checks.
+reported preserved, with no protected-history rewrite. A separate host-local QA
+record reported unchanged topology and archive-restore checks.
 
 The archive and detailed verification output remain host-local under
 `/home/dgk/noetic-dev-recovery-20260720T005900Z` and

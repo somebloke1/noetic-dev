@@ -111,6 +111,7 @@ class TestWorktreeDoctor(unittest.TestCase):
             "https://github.com/org/repo.git",
             "ssh://git@github.com/org/repo.git",
             "git://github.com/org/repo.git",
+            "git@github.com:org/repo.git",
         ):
             with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
                 repo = Path(tmp) / "repo"
@@ -131,6 +132,24 @@ class TestWorktreeDoctor(unittest.TestCase):
             admin.mkdir(parents=True)
             candidate.mkdir()
             write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_registered_bare_repository_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "project.git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            (common / "config").write_text(
+                "[core]\n\trepositoryformatversion = 0\n\tbare = true\n",
+                encoding="utf-8",
+            )
             (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
             (admin / "commondir").write_text("../..\n", encoding="utf-8")
             (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")

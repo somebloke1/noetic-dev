@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 import subprocess
 from pathlib import Path
@@ -111,6 +112,13 @@ def _safe_remote_url(value: str) -> bool:
         parsed = urlsplit(value)
         if parsed.query or parsed.fragment or parsed.password is not None:
             return False
+        if not parsed.scheme:
+            return re.fullmatch(
+                r"(?:[A-Za-z0-9._+-]+@)?"
+                r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?:"
+                r"(?!-)[^\s?#]+",
+                value,
+            ) is not None
         if parsed.scheme in {"http", "https"}:
             return parsed.hostname is not None and parsed.username is None
         if parsed.scheme == "ssh":
@@ -304,7 +312,7 @@ def inspect_worktree(
                         errors.append("linked worktree backlink does not identify this worktree")
                 except (OSError, RuntimeError, UnicodeError, ValueError):
                     errors.append("linked worktree backlink is missing or unreadable")
-        if common.name != ".git" or git_dir.parent != common / "worktrees":
+        if git_dir.parent != common / "worktrees":
             errors.append(
                 "linked worktree administration is not in its common Git worktrees registry"
             )
