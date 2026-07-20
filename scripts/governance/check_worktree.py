@@ -247,8 +247,10 @@ def inspect_worktree(
                 errors.append("linked worktree backlink does not identify this worktree")
         except (OSError, UnicodeError, ValueError):
             errors.append("linked worktree backlink is missing or unreadable")
-        if common.name != ".git" or common not in git_dir.parents:
-            errors.append("linked worktree commondir is not its owning common Git directory")
+        if common.name != ".git" or git_dir.parent != common / "worktrees":
+            errors.append(
+                "linked worktree administration is not in its common Git worktrees registry"
+            )
 
     if common.is_dir():
         _check_config(_local_config(common / "config", errors), errors)

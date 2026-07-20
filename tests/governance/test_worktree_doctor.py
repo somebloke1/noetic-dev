@@ -196,7 +196,7 @@ class TestWorktreeDoctor(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("backlink does not identify", "\n".join(result["errors"]))
 
-    def test_accepts_reciprocal_link_outside_conventional_worktrees_directory(self):
+    def test_rejects_reciprocal_link_outside_registered_worktrees_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             common = base / "main" / ".git"
@@ -209,7 +209,8 @@ class TestWorktreeDoctor(unittest.TestCase):
             (admin / "commondir").write_text("../..\n", encoding="utf-8")
             (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
             result = inspect_worktree(candidate)
-        self.assertEqual(result["status"], "pass", result["errors"])
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("worktrees registry", "\n".join(result["errors"]))
 
     def test_rejects_git_topology_environment_overrides(self):
         with tempfile.TemporaryDirectory() as tmp:
