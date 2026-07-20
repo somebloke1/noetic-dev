@@ -23,12 +23,19 @@ contaminated config records, and quarantine-by-rename of five copied pointers.
 Refs, reflogs, HEADs, index semantics and final bytes, registered worktrees,
 tracked/dirty/untracked/ignored files, and the alternate synthetic index were
 preserved. Protected history was not rewritten. An independent non-mutating QA
-pass verified the corrected topology and archive evidence.
+pass contemporaneously reported unchanged topology and archive-restore checks.
 
-The retained correction archive is
+The archive and detailed verification output remain host-local under
+`/home/dgk/noetic-dev-recovery-20260720T005900Z` and
+`/home/dgk/noetic-dev-recovery-20260720T011121Z`; they are not tracked by this
+repository or attached to this PR. A future clone therefore cannot independently
+replay those checks from this document. The following names and hashes are audit
+locators for the contemporaneous host-local evidence, not a durable attestation.
+
+The host-local correction archive is
 `noetic-dev-live-state.tar` with SHA-256
 `3e0a67a6bf357c346e48fc9356f3997464d3dc51d08cc8f18e46f96f6e8dfd0e`.
-The independently verified final primary and issue-29 index SHA-256 values are
+The contemporaneously recorded final primary and issue-29 index SHA-256 values are
 `229db10e268f6df8e0300818483e2cca235fc2783cce439f416e4e4f0abee46f`
 and `5348f7659cff9e68fe4faf1db39ac1f38a7b12ea80c26d66565e4f1053a87028`.
 The five noncanonical pointers were preserved under the quarantine suffix

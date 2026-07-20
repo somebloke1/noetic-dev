@@ -224,10 +224,12 @@ def inspect_worktree(
         errors.append("worktree scan entry limit must be a positive integer")
     marker = repo / ".git"
     linked = False
+    primary = False
     if marker.is_symlink():
         errors.append(f"worktree .git marker must not be a symlink: {marker}")
         git_dir = marker
     elif marker.is_dir():
+        primary = True
         git_dir = marker.resolve()
     else:
         target = _read_gitfile(marker)
@@ -236,7 +238,12 @@ def inspect_worktree(
         if not git_dir.is_dir():
             errors.append(f"worktree has no valid .git directory or pointer: {repo}")
 
-    common = _common_dir(git_dir, errors) if git_dir.is_dir() else git_dir
+    if primary:
+        if os.path.lexists(git_dir / "commondir"):
+            errors.append("primary .git directory must not contain commondir")
+        common = git_dir
+    else:
+        common = _common_dir(git_dir, errors) if git_dir.is_dir() else git_dir
     if linked:
         backlink_file = git_dir / "gitdir"
         try:

@@ -36,6 +36,22 @@ class TestWorktreeDoctor(unittest.TestCase):
             result = inspect_worktree(repo)
         self.assertEqual(result["status"], "pass", result["errors"])
 
+    def test_rejects_primary_git_directory_redirected_to_foreign_common_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            foreign = base / "foreign" / ".git"
+            (repo / ".git").mkdir(parents=True)
+            foreign.mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            write_config(foreign / "config")
+            (repo / ".git" / "commondir").write_text(
+                "../../foreign/.git\n", encoding="utf-8"
+            )
+            result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("must not contain commondir", "\n".join(result["errors"]))
+
     def test_rejects_common_worktree_fixture_identity_and_executable_filter(self):
         attacks = [
             "\tworktree = /tmp/candidate\n",
