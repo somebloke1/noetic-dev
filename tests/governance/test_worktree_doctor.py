@@ -120,6 +120,30 @@ class TestWorktreeDoctor(unittest.TestCase):
             result = inspect_worktree(repo)
         self.assertEqual(result["status"], "pass", result["errors"])
 
+    def test_git_parser_absence_and_spawn_failure_are_structured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            with mock.patch("check_worktree.shutil.which", return_value=None):
+                absent = inspect_worktree(repo)
+            with mock.patch(
+                "check_worktree.subprocess.run", side_effect=OSError("cannot execute")
+            ):
+                failed = inspect_worktree(repo)
+        self.assertIn("Git executable is unavailable", "\n".join(absent["errors"]))
+        self.assertIn("could not start", "\n".join(failed["errors"]))
+
+    def test_accepts_exact_sanitized_git_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            sanitized = isolated_git_environment(dict(os.environ))
+            with mock.patch.dict(os.environ, sanitized, clear=True):
+                result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
     def test_accepts_credential_free_network_remote_urls(self):
         for value in (
             "https://github.com/org/repo.git",
@@ -238,12 +262,11 @@ class TestWorktreeDoctor(unittest.TestCase):
             common = base / "main" / ".git"
             admin = common / "worktrees" / "candidate"
             candidate = base / "candidate"
-            duplicate = base / "duplicate"
             additional = base / "additional-scan-root"
+            duplicate = additional / "duplicate"
             admin.mkdir(parents=True)
             candidate.mkdir()
-            duplicate.mkdir()
-            additional.mkdir()
+            duplicate.mkdir(parents=True)
             write_config(common / "config")
             for worktree in (candidate, duplicate):
                 (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")

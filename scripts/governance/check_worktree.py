@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -21,6 +22,12 @@ BOOLEAN_CONFIG = {
     "core.symlinks",
 }
 SCAN_ENTRY_LIMIT = 4096
+SAFE_GIT_ENV = {
+    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_OPTIONAL_LOCKS": "0",
+    "GIT_TERMINAL_PROMPT": "0",
+}
 
 
 def isolated_git_environment(source: dict[str, str] | None = None) -> dict[str, str]:
@@ -29,14 +36,7 @@ def isolated_git_environment(source: dict[str, str] | None = None) -> dict[str, 
     for name in list(env):
         if name.startswith("GIT_"):
             env.pop(name)
-    env.update(
-        {
-            "GIT_CONFIG_GLOBAL": "/dev/null",
-            "GIT_CONFIG_NOSYSTEM": "1",
-            "GIT_OPTIONAL_LOCKS": "0",
-            "GIT_TERMINAL_PROMPT": "0",
-        }
-    )
+    env.update(SAFE_GIT_ENV)
     return env
 
 
@@ -93,12 +93,20 @@ def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
     if not config.is_file() or config.is_symlink():
         errors.append(f"common Git config is missing, non-regular, or a symlink: {config}")
         return {}
-    result = subprocess.run(
-        ["/usr/bin/git", "config", "--file", str(config), "--null", "--list", "--no-includes"],
-        capture_output=True,
-        check=False,
-        env=isolated_git_environment(),
-    )
+    git_binary = shutil.which("git")
+    if git_binary is None:
+        errors.append("Git executable is unavailable on PATH")
+        return {}
+    try:
+        result = subprocess.run(
+            [git_binary, "config", "--file", str(config), "--null", "--list", "--no-includes"],
+            capture_output=True,
+            check=False,
+            env=isolated_git_environment(),
+        )
+    except OSError as error:
+        errors.append(f"Git config parser could not start: {error}")
+        return {}
     if result.returncode != 0:
         errors.append("common Git config cannot be parsed")
         return {}
@@ -286,7 +294,11 @@ def inspect_worktree(
 ) -> dict[str, object]:
     errors = [
         f"unsafe Git environment override is set: {name}"
-        for name in sorted(name for name in os.environ if name.startswith("GIT_"))
+        for name in sorted(
+            name
+            for name, value in os.environ.items()
+            if name.startswith("GIT_") and SAFE_GIT_ENV.get(name) != value
+        )
     ]
     try:
         repo = repo.resolve()
