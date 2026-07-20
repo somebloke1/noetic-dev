@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.governance.check_roadmap import validate_roadmap_files  # noqa: E402
+from scripts.governance.check_worktree import inspect_worktree  # noqa: E402
 from scripts.governance.json_schema import load_json_strict, validate_schema  # noqa: E402
 
 REQUIRED = [
@@ -71,6 +72,7 @@ REQUIRED = [
     "config/opencode-session-policy.json",
     "docs/model-routing-policy.md",
     "docs/governance/route-attestation.md",
+    "docs/governance/worktree-correction-evidence.md",
     "governance/schemas/model-policy.schema.json",
     "governance/schemas/opencode-session-policy.schema.json",
     "governance/schemas/route-evidence.schema.json",
@@ -104,6 +106,7 @@ REQUIRED = [
     "scripts/governance/collect_evidence.py",
     "scripts/governance/check_evidence_manifest.py",
     "scripts/governance/check_delivery_gate.py",
+    "scripts/governance/check_worktree.py",
     "scripts/governance/promote_main.py",
     "scripts/governance/run_isolated_pi.py",
     "scripts/governance/agent_review_broker.py",
@@ -132,6 +135,7 @@ REQUIRED = [
     "tests/governance/test_evidence_manifest.py",
     "tests/governance/test_state_machine.py",
     "tests/governance/test_workflow_pinning.py",
+    "tests/governance/test_worktree_doctor.py",
     "tests/governance/test_run_isolated_pi.py",
     "tests/governance/test_agent_review.py",
     "tests/governance/test_route_attestation.py",
@@ -151,6 +155,10 @@ def fail(message: str, failures: list[str]) -> None:
 
 def main() -> int:
     failures: list[str] = []
+
+    worktree = inspect_worktree(ROOT)
+    for error in worktree["errors"]:
+        fail(f"worktree: {error}", failures)
 
     for relative in REQUIRED:
         if not (ROOT / relative).is_file():

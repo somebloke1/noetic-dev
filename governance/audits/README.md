@@ -12,7 +12,7 @@ governance/audits/<YYYYMMDD>-<topic>/
 
 - `existing-work-freeze.json` is `repair_authorized`: the candidate capture and
   exact-candidate review still await an independently verified protected receipt.
-- `20260718-d2-portfolio/` derives 13 open PRs, 26 branches, and 20 open issues
+- `20260718-d2-portfolio/` derives 2 open PRs, 11 branches, and 5 open issues
   from digest-bound candidate-authenticated GraphQL response envelopes.
 - The owner authorized exactly one bounded D2 reconciliation PR. The exception
   permits that PR only; publication remains blocked by both pending audit review

@@ -164,7 +164,7 @@ listed later are parallel but cannot silently satisfy a stage gate.
   projections:
   - protected `dev` feature integration followed by owner-authorized promotion of
     an exact validated dev SHA to protected `main`;
-  - a response-derived 13-PR/26-branch/20-issue candidate inventory whose
+  - a response-derived 2-PR/11-branch/5-issue candidate inventory whose
     completion awaits an independently verified protected receipt while
     publication remains blocked;
   - ratified P1-P4 canonical notation with fixed human gloss and optional ECN

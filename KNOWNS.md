@@ -233,7 +233,7 @@ GitHub Actions App integration 15368 identifies all repository Actions workflows
 - Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-18
-- Updated: 2026-07-19
+- Updated: 2026-07-20
 - Tags: D2,github,portfolio,branch-protection,P1
 - Source: GitHub REST/GraphQL reads and local Git inspection captured at 2026-07-18T23:20:48Z
 - Confidence: high
@@ -253,5 +253,5 @@ This historical snapshot was superseded after PR #67 opened and protected `dev` 
 - Source: Authenticated GitHub GraphQL response envelopes captured by `scripts/governance/capture_d2_inventory.py` and stored in `governance/audits/20260718-d2-portfolio/inventory.json`
 - Confidence: high for the candidate capture and its declared non-authority; independently protected verification remains pending
 
-The candidate-authenticated response bodies derive 13 open pull requests, 26 branch refs, and 20 open issues for repository ID `1297462728` (`somebloke1/noetic-dev`), with `main@29196a67349537d6f8a8a711df11b86da0430857` and `dev@963171b7dde542c54c63755eec79110b3f631a01`. Each compressed response is bound by raw-body, canonical-response, and envelope digests plus request identity, pagination, and capture chronology. The artifact explicitly records `pending_protected_receipt`; it does not complete the D2 audit or independently authorize the bounded repair.
+The candidate-authenticated response bodies derive 2 open pull requests, 11 branch refs, and 5 open issues for repository ID `1297462728` (`somebloke1/noetic-dev`), with `main@29196a67349537d6f8a8a711df11b86da0430857` and `dev@45a1de8a91a7f96c7d935053045066a55088cb3a`. Each compressed response is bound by raw-body, canonical-response, and envelope digests plus request identity, pagination, and capture chronology. The artifact explicitly records `pending_protected_receipt`; it does not complete the D2 audit or independently authorize the bounded repair.
 <!-- governance-crud:end id=k-20260719-0001 -->

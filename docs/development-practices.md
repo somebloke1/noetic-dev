@@ -27,6 +27,11 @@
   ```
 
 - One issue and one coherent concern per worktree. Do not reuse a dirty worktree for another issue.
+- Before work, run `python3 scripts/governance/check_worktree.py --repo .`; stop on unsafe inherited Git controls, shared config contamination, a non-reciprocal backlink, or duplicate administration pointers.
+- The default duplicate-pointer check examines only the selected root and its direct sibling directories, with a hard 4,096-entry budget; use explicit repeated `--scan-root` values for other controlled locations.
+- Never copy a `.git` file or attach an archive export to live worktree administration. Use a neutral standalone repository or a registered worktree.
+- Worktrees are transient delivery resources, not storage. After adversarial QA accepts an immutable generation, commit and push it, complete the PR and protected review, merge it, and remove the worktree immediately.
+- Keep unfinished intent and blockers in the issue rather than retaining a completed worktree indefinitely.
 - Before deleting a worktree, verify its branch is merged or intentionally retained, then run `git worktree remove` and `git worktree prune`.
 - Do not share generated state, virtual environments, or mutable databases across concurrent worktrees unless the interface explicitly guarantees isolation.
 

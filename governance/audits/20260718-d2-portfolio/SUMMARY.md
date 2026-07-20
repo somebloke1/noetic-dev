@@ -6,9 +6,9 @@ raw-body, canonical-response, and envelope digests.
 
 ## Result
 
-- All 13 candidate-captured open pull requests have an explicit disposition.
-- All 26 remote branches have an explicit disposition.
-- All 20 open issues and their canonical status-label state are represented.
+- Both candidate-captured open pull requests have an explicit disposition.
+- All 11 remote branches have an explicit disposition.
+- All five open issues and their canonical status-label state are represented.
 - PR #66 and issue #65 remain paused non-evidence and were not modified.
 - Dirty local worktrees are outside this remote inventory and remain untouched.
 
@@ -27,7 +27,7 @@ requires a new implementation generation and paired QA pass.
 
 ## Residual Findings
 
-- Issues #25, #27, #29, #57, and #65 lack a canonical `status:*` label.
+- Paused issue #65 lacks a canonical `status:*` label and remains untouched.
 - The distinct protected release trust root remains absent.
 - Publication remains blocked; the portfolio audit is not complete without its
   independently verified protected receipt.
