@@ -20,16 +20,15 @@ TOPOLOGY_ENV = {
     "GIT_OBJECT_DIRECTORY",
     "GIT_WORK_TREE",
 }
-EXECUTABLE_CONFIG = {
-    "core.askpass",
-    "core.editor",
-    "core.fsmonitor",
-    "core.hookspath",
-    "core.pager",
-    "core.sshcommand",
-    "diff.external",
-    "gpg.program",
-    "sequence.editor",
+SAFE_CONFIG = {
+    "core.bare",
+    "core.filemode",
+    "core.ignorecase",
+    "core.logallrefupdates",
+    "core.precomposeunicode",
+    "core.repositoryformatversion",
+    "core.symlinks",
+    "lfs.repositoryformatversion",
 }
 
 
@@ -59,10 +58,13 @@ def _read_gitfile(path: Path) -> Path | None:
         return None
     if not value.lower().startswith("gitdir:"):
         return None
-    target = Path(value.split(":", 1)[1].strip())
-    if not target.is_absolute():
-        target = path.parent / target
-    return target.resolve()
+    try:
+        target = Path(value.split(":", 1)[1].strip())
+        if not target.is_absolute():
+            target = path.parent / target
+        return target.resolve()
+    except (OSError, ValueError):
+        return None
 
 
 def _common_dir(git_dir: Path, errors: list[str]) -> Path:
@@ -77,10 +79,14 @@ def _common_dir(git_dir: Path, errors: list[str]) -> Path:
     except (OSError, UnicodeError):
         errors.append(f"linked worktree commondir is unreadable: {commondir}")
         return git_dir
-    target = Path(value)
-    if not target.is_absolute():
-        target = git_dir / target
-    return target.resolve()
+    try:
+        target = Path(value)
+        if not target.is_absolute():
+            target = git_dir / target
+        return target.resolve()
+    except (OSError, ValueError):
+        errors.append(f"linked worktree commondir is invalid: {commondir}")
+        return git_dir
 
 
 def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
@@ -107,6 +113,22 @@ def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
     return values
 
 
+def _safe_remote_url(value: str) -> bool:
+    return value.lower().startswith(("https://", "http://", "ssh://", "git://", "file://"))
+
+
+def _safe_config_entry(key: str, values: list[str]) -> bool:
+    if key in SAFE_CONFIG:
+        return True
+    if key.startswith("branch.") and key.endswith((".remote", ".merge")):
+        return True
+    if key.startswith("remote.") and key.endswith(".fetch"):
+        return True
+    if key.startswith("remote.") and key.endswith((".url", ".pushurl")):
+        return all(_safe_remote_url(value) for value in values)
+    return False
+
+
 def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
     if values.get("core.worktree"):
         errors.append("common core.worktree must be absent in a normal worktree repository")
@@ -114,19 +136,9 @@ def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
         errors.append("fixture Git user.name leaked into common config")
     if any(value.endswith(".invalid") for value in values.get("user.email", [])):
         errors.append("fixture Git user.email leaked into common config")
-    for key in values:
-        executable = (
-            key in EXECUTABLE_CONFIG
-            or key == "credential.helper"
-            or (key.startswith("filter.") and key.endswith((".clean", ".smudge", ".process")))
-            or (key.startswith("diff.") and key.endswith(".command"))
-            or (key.startswith(("difftool.", "mergetool.")) and key.endswith(".cmd"))
-            or (key.startswith("alias.") and any(value.startswith("!") for value in values[key]))
-        )
-        if executable:
-            errors.append(f"repository-local executable Git config is forbidden: {key}")
-        if key.startswith(("include.", "includeif.")):
-            errors.append(f"repository-local Git config includes are forbidden: {key}")
+    for key, configured_values in values.items():
+        if not _safe_config_entry(key, configured_values):
+            errors.append(f"repository-local Git config key is not allowed: {key}")
 
 
 def _scan_duplicates(scan_roots: Iterable[Path], errors: list[str]) -> None:
@@ -136,7 +148,11 @@ def _scan_duplicates(scan_roots: Iterable[Path], errors: list[str]) -> None:
         if not root.is_dir():
             errors.append(f"worktree scan root is not a directory: {root}")
             continue
-        for marker in root.rglob(".git"):
+        for current, directories, files in os.walk(root):
+            directories[:] = [name for name in directories if name != ".git"]
+            if ".git" not in files:
+                continue
+            marker = Path(current) / ".git"
             target = _read_gitfile(marker)
             if target is not None:
                 identities.setdefault(target, []).append(marker.resolve())
@@ -179,14 +195,15 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
                 backlink = git_dir / backlink
             if backlink.resolve() != marker.resolve():
                 errors.append("linked worktree backlink does not identify this worktree")
-        except (OSError, UnicodeError):
+        except (OSError, UnicodeError, ValueError):
             errors.append("linked worktree backlink is missing or unreadable")
         if common.name != ".git" or git_dir.parent.parent != common:
             errors.append("linked worktree commondir is not its owning common Git directory")
 
     if common.is_dir():
         _check_config(_local_config(common / "config", errors), errors)
-    _scan_duplicates(scan_roots, errors)
+    roots = list(scan_roots)
+    _scan_duplicates(roots or [repo.parent], errors)
     return {
         "schema_version": "1",
         "repo": str(repo),

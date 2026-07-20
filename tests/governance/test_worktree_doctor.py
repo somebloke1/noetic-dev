@@ -44,8 +44,13 @@ class TestWorktreeDoctor(unittest.TestCase):
             "[core]\n\tfsmonitor = /tmp/hostile.sh\n",
             "[alias]\n\thostile = !/tmp/hostile.sh\n",
             "[credential]\n\thelper = !/tmp/hostile.sh\n",
+            "[tar \"hostile\"]\n\tcommand = /tmp/hostile.sh\n",
+            "[uploadpack]\n\tpackObjectsHook = /tmp/hostile.sh\n",
+            "[gpg \"ssh\"]\n\tprogram = /tmp/hostile.sh\n",
+            "[interactive]\n\tdiffFilter = /tmp/hostile.sh\n",
             "[include]\n\tpath = /tmp/hidden-config\n",
             '[includeIf "gitdir:/tmp/"]\n\tpath = /tmp/hidden-config\n',
+            "[remote \"hostile\"]\n\turl = ext::/tmp/hostile.sh\n",
         ]
         for attack in attacks:
             with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
@@ -85,7 +90,7 @@ class TestWorktreeDoctor(unittest.TestCase):
                 (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
             (admin / "commondir").write_text("../..\n", encoding="utf-8")
             (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
-            result = inspect_worktree(impostor, [base])
+            result = inspect_worktree(impostor)
         joined = "\n".join(result["errors"])
         self.assertIn("backlink does not identify", joined)
         self.assertIn("multiple worktree pointers", joined)
@@ -113,20 +118,21 @@ class TestWorktreeDoctor(unittest.TestCase):
                 self.assertIn(name, "\n".join(result["errors"]))
 
     def test_malformed_commondir_returns_failure_instead_of_raising(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            common = base / "main" / ".git"
-            admin = common / "worktrees" / "candidate"
-            candidate = base / "candidate"
-            admin.mkdir(parents=True)
-            candidate.mkdir()
-            write_config(common / "config")
-            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
-            (admin / "commondir").write_bytes(b"\xff\xfe")
-            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
-            result = inspect_worktree(candidate)
-        self.assertEqual(result["status"], "fail")
-        self.assertIn("commondir is unreadable", "\n".join(result["errors"]))
+        for content in (b"\xff\xfe", b"bad\x00path"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                common = base / "main" / ".git"
+                admin = common / "worktrees" / "candidate"
+                candidate = base / "candidate"
+                admin.mkdir(parents=True)
+                candidate.mkdir()
+                write_config(common / "config")
+                (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+                (admin / "commondir").write_bytes(content)
+                (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+                result = inspect_worktree(candidate)
+            self.assertEqual(result["status"], "fail")
+            self.assertIn("commondir is", "\n".join(result["errors"]))
 
     def test_isolated_git_environment_drops_all_inherited_git_controls(self):
         source = {
