@@ -1,0 +1,502 @@
+"""Adversarial tests for read-only Git worktree validation."""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
+if GOV_SCRIPTS not in sys.path:
+    sys.path.insert(0, GOV_SCRIPTS)
+
+from check_worktree import inspect_worktree, isolated_git_environment
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def write_config(path: Path, extra: str = "") -> None:
+    path.write_text(
+        "[core]\n\trepositoryformatversion = 0\n\tbare = false\n" + extra,
+        encoding="utf-8",
+    )
+
+
+class TestWorktreeDoctor(unittest.TestCase):
+    def test_accepts_normal_main_and_standalone_repository(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_rejects_inconsistent_or_unsupported_core_topology_values(self):
+        configs = (
+            "[core]\n\trepositoryformatversion = 0\n\tbare = true\n",
+            "[core]\n\trepositoryformatversion = 1\n\tbare = false\n",
+            "[core]\n\trepositoryformatversion = 0\n\tbare = maybe\n",
+        )
+        for config in configs:
+            with self.subTest(config=config), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                (repo / ".git" / "config").write_text(config, encoding="utf-8")
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "fail")
+
+    def test_rejects_primary_git_directory_redirected_to_foreign_common_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            foreign = base / "foreign" / ".git"
+            (repo / ".git").mkdir(parents=True)
+            foreign.mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            write_config(foreign / "config")
+            (repo / ".git" / "commondir").write_text(
+                "../../foreign/.git\n", encoding="utf-8"
+            )
+            result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("must not contain commondir", "\n".join(result["errors"]))
+
+    def test_rejects_common_worktree_fixture_identity_and_executable_filter(self):
+        attacks = [
+            "\tworktree = /tmp/candidate\n",
+            "[user]\n\tname = Test User\n",
+            "[user]\n\temail = test@example.invalid\n",
+            "[user]\n\temail = missing-at.example.com\n",
+            "[user]\n\temail = too@many@example.com\n",
+            "[filter \"hostile\"]\n\tsmudge = /tmp/hostile.sh\n",
+            "[core]\n\tfsmonitor = /tmp/hostile.sh\n",
+            "[alias]\n\thostile = !/tmp/hostile.sh\n",
+            "[credential]\n\thelper = !/tmp/hostile.sh\n",
+            "[tar \"hostile\"]\n\tcommand = /tmp/hostile.sh\n",
+            "[uploadpack]\n\tpackObjectsHook = /tmp/hostile.sh\n",
+            "[gpg \"ssh\"]\n\tprogram = /tmp/hostile.sh\n",
+            "[interactive]\n\tdiffFilter = /tmp/hostile.sh\n",
+            "[gc]\n\tauto = not-an-integer\n",
+            "[gc]\n\trecentObjectsHook = /tmp/hostile.sh\n",
+            "[include]\n\tpath = /tmp/hidden-config\n",
+            '[includeIf "gitdir:/tmp/"]\n\tpath = /tmp/hidden-config\n',
+            "[remote \"hostile\"]\n\turl = ext::/tmp/hostile.sh\n",
+            "[remote \"hostile\"]\n\turl = https://user:secret@github.com/org/repo.git\n",
+            "[remote \"hostile\"]\n\turl = https://user@github.com/org/repo.git\n",
+            "[remote \"hostile\"]\n\turl = https://github.com/org/repo.git?token=secret\n",
+            "[remote \"hostile\"]\n\turl = ssh://git:secret@github.com/org/repo.git\n",
+            "[remote \"hostile\"]\n\turl = https:///missing-host\n",
+        ]
+        for attack in attacks:
+            with self.subTest(attack=attack), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                write_config(repo / ".git" / "config", attack)
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "fail")
+
+    def test_accepts_actions_checkout_integer_gc_auto(self):
+        for value in ("0", "1", "-1"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                write_config(repo / ".git" / "config", f"[gc]\n\tauto = {value}\n")
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_normal_repository_local_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(
+                repo / ".git" / "config",
+                "[user]\n\tname = Ada Lovelace\n\temail = ada@example.org\n",
+            )
+            result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_git_parser_absence_and_spawn_failure_are_structured(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            with mock.patch("check_worktree.shutil.which", return_value=None):
+                absent = inspect_worktree(repo)
+            with mock.patch(
+                "check_worktree.subprocess.run", side_effect=OSError("cannot execute")
+            ):
+                failed = inspect_worktree(repo)
+        self.assertIn("Git executable is unavailable", "\n".join(absent["errors"]))
+        self.assertIn("could not start", "\n".join(failed["errors"]))
+
+    def test_accepts_exact_sanitized_git_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            sanitized = isolated_git_environment(dict(os.environ))
+            with mock.patch.dict(os.environ, sanitized, clear=True):
+                result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_credential_free_network_remote_urls(self):
+        for value in (
+            "https://github.com/org/repo.git",
+            "ssh://git@github.com/org/repo.git",
+            "git://github.com/org/repo.git",
+            "git@github.com:org/repo.git",
+        ):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                write_config(
+                    repo / ".git" / "config",
+                    f'[remote "origin"]\n\turl = {value}\n',
+                )
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_reciprocal_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_registered_bare_repository_worktree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "project.git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            (common / "config").write_text(
+                "[core]\n\trepositoryformatversion = 0\n\tbare = true\n",
+                encoding="utf-8",
+            )
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_rejects_foreign_backlink_and_duplicate_admin_pointer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            impostor = base / "impostor"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            impostor.mkdir()
+            write_config(common / "config")
+            for worktree in (candidate, impostor):
+                (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(impostor)
+        joined = "\n".join(result["errors"])
+        self.assertIn("backlink does not identify", joined)
+        self.assertIn("multiple worktree pointers", joined)
+
+    def test_rejects_symlinked_linked_worktree_backlink(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            backlink_target = base / "backlink"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            backlink_target.write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            (admin / "gitdir").symlink_to(backlink_target)
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("regular non-symlink", "\n".join(result["errors"]))
+
+    def test_cli_default_scan_rejects_duplicate_admin_pointer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            duplicate = base / "duplicate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            duplicate.mkdir()
+            write_config(common / "config")
+            for worktree in (candidate, duplicate):
+                (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "scripts/governance/check_worktree.py"), "--repo", str(candidate)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("multiple worktree pointers", "\n".join(json.loads(result.stdout)["errors"]))
+
+    def test_explicit_scan_root_extends_default_sibling_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            additional = base / "additional-scan-root"
+            duplicate = additional / "duplicate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            duplicate.mkdir(parents=True)
+            write_config(common / "config")
+            for worktree in (candidate, duplicate):
+                (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate, [additional])
+        self.assertIn("multiple worktree pointers", "\n".join(result["errors"]))
+
+    def test_default_scan_rejects_symlinked_git_file_and_directory_markers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            file_alias = base / "file-alias"
+            directory_alias = base / "directory-alias"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            file_alias.mkdir()
+            directory_alias.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            (file_alias / ".git").symlink_to(candidate / ".git")
+            (directory_alias / ".git").symlink_to(admin, target_is_directory=True)
+            result = inspect_worktree(candidate)
+        joined = "\n".join(result["errors"])
+        self.assertIn(str(file_alias / ".git"), joined)
+        self.assertIn(str(directory_alias / ".git"), joined)
+        self.assertEqual(result["status"], "fail")
+
+    def test_scan_entry_budget_and_traversal_errors_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            extra = base / "extra"
+            (repo / ".git").mkdir(parents=True)
+            extra.mkdir()
+            write_config(repo / ".git" / "config")
+            limited = inspect_worktree(repo, [base], scan_entry_limit=1)
+            with mock.patch("check_worktree.os.scandir", side_effect=PermissionError("denied")):
+                unreadable = inspect_worktree(repo, [base])
+        self.assertIn("entry limit exceeded", "\n".join(limited["errors"]))
+        self.assertIn("scan cannot read", "\n".join(unreadable["errors"]))
+
+    def test_scan_entry_budget_rejects_wrong_types_and_ranges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            for value in (0, -1, True, None, "1", 1.0):
+                with self.subTest(value=value):
+                    result = inspect_worktree(repo, scan_entry_limit=value)  # type: ignore[arg-type]
+                    self.assertEqual(result["status"], "fail")
+                    self.assertIn("positive integer", "\n".join(result["errors"]))
+
+    def test_rejects_foreign_backlink_outside_conventional_worktrees_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "slots" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{base / 'foreign' / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("backlink does not identify", "\n".join(result["errors"]))
+
+    def test_rejects_reciprocal_link_outside_registered_worktrees_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "slots" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("worktrees registry", "\n".join(result["errors"]))
+
+    def test_rejects_git_topology_environment_overrides(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            for name in sorted(
+                {
+                    "GIT_DIR",
+                    "GIT_WORK_TREE",
+                    "GIT_INDEX_FILE",
+                    "GIT_COMMON_DIR",
+                    "GIT_CONFIG_COUNT",
+                    "GIT_CONFIG_NOSYSTEM",
+                    "GIT_CONFIG_PARAMETERS",
+                    "GIT_CONFIG_KEY_0",
+                    "GIT_CONFIG_VALUE_0",
+                    "GIT_SSH_COMMAND",
+                    "GIT_ASKPASS",
+                    "GIT_EXTERNAL_DIFF",
+                    "GIT_OPTIONAL_LOCKS",
+                }
+            ):
+                with self.subTest(name=name), mock.patch.dict(os.environ, {name: "/tmp/attack"}):
+                    result = inspect_worktree(repo)
+                self.assertIn(name, "\n".join(result["errors"]))
+
+    def test_malformed_commondir_returns_failure_instead_of_raising(self):
+        for content in (b"\xff\xfe", b"bad\x00path"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                common = base / "main" / ".git"
+                admin = common / "worktrees" / "candidate"
+                candidate = base / "candidate"
+                admin.mkdir(parents=True)
+                candidate.mkdir()
+                write_config(common / "config")
+                (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+                (admin / "commondir").write_bytes(content)
+                (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+                result = inspect_worktree(candidate)
+            self.assertEqual(result["status"], "fail")
+            self.assertIn("commondir is", "\n".join(result["errors"]))
+
+    def test_linked_worktree_requires_regular_non_symlink_commondir(self):
+        for kind in ("missing", "symlink"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                common = base / "main" / ".git"
+                admin = common / "worktrees" / "candidate"
+                candidate = base / "candidate"
+                admin.mkdir(parents=True)
+                candidate.mkdir()
+                write_config(common / "config")
+                (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+                (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+                if kind == "symlink":
+                    target = base / "commondir-target"
+                    target.write_text("../..\n", encoding="utf-8")
+                    (admin / "commondir").symlink_to(target)
+                result = inspect_worktree(candidate)
+            self.assertEqual(result["status"], "fail")
+            self.assertIn("commondir", "\n".join(result["errors"]))
+
+    def test_symlink_loops_return_structured_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            repo.mkdir()
+            loop_a = base / "loop-a"
+            loop_b = base / "loop-b"
+            loop_a.symlink_to(loop_b)
+            loop_b.symlink_to(loop_a)
+            (repo / ".git").write_text(f"gitdir: {loop_a / 'admin'}\n", encoding="utf-8")
+            gitdir_result = inspect_worktree(repo)
+
+            valid = base / "valid"
+            (valid / ".git").mkdir(parents=True)
+            write_config(valid / ".git" / "config")
+            scan_result = inspect_worktree(valid, [loop_a])
+            repo_result = inspect_worktree(loop_a)
+
+        self.assertEqual(gitdir_result["status"], "fail")
+        self.assertIn("no valid .git", "\n".join(gitdir_result["errors"]))
+        self.assertEqual(scan_result["status"], "fail")
+        self.assertIn("worktree scan root", "\n".join(scan_result["errors"]))
+        self.assertEqual(repo_result["status"], "fail")
+        self.assertTrue(repo_result["errors"])
+
+    def test_isolated_git_environment_drops_all_inherited_git_controls(self):
+        source = {
+            "HOME": "/home/test",
+            "GIT_DIR": "/victim/.git",
+            "GIT_WORK_TREE": "/candidate",
+            "GIT_INDEX_FILE": "/candidate/index",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "core.worktree",
+            "GIT_CONFIG_VALUE_0": "/candidate",
+        }
+        result = isolated_git_environment(source)
+        self.assertEqual(result["HOME"], "/home/test")
+        self.assertEqual(result["GIT_CONFIG_GLOBAL"], "/dev/null")
+        self.assertEqual(result["GIT_OPTIONAL_LOCKS"], "0")
+        self.assertNotIn("GIT_DIR", result)
+        self.assertNotIn("GIT_WORK_TREE", result)
+        self.assertNotIn("GIT_INDEX_FILE", result)
+        self.assertNotIn("GIT_CONFIG_COUNT", result)
+
+    def test_nested_git_tests_cannot_mutate_inherited_live_admin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            victim = base / "victim"
+            victim.mkdir()
+            env = isolated_git_environment({"HOME": str(base)})
+            subprocess.run(["git", "init"], cwd=victim, env=env, check=True, capture_output=True)
+            config = victim / ".git" / "config"
+            before = config.read_bytes()
+            hostile = dict(os.environ)
+            hostile.update(
+                {
+                    "GIT_DIR": str(victim / ".git"),
+                    "GIT_WORK_TREE": str(base / "candidate"),
+                    "GIT_INDEX_FILE": str(base / "synthetic-index"),
+                }
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    "tests.governance.test_run_isolated_pi.TestRunIsolatedPiPolicy.test_validate_candidate_checkout_requires_clean_git_tree",
+                ],
+                cwd=REPO_ROOT,
+                env=hostile,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            after = config.read_bytes()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(before, after)
+
+
+if __name__ == "__main__":
+    unittest.main()
