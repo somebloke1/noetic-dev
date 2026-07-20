@@ -376,6 +376,26 @@ class TestWorktreeDoctor(unittest.TestCase):
             self.assertEqual(result["status"], "fail")
             self.assertIn("commondir is", "\n".join(result["errors"]))
 
+    def test_linked_worktree_requires_regular_non_symlink_commondir(self):
+        for kind in ("missing", "symlink"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                base = Path(tmp)
+                common = base / "main" / ".git"
+                admin = common / "worktrees" / "candidate"
+                candidate = base / "candidate"
+                admin.mkdir(parents=True)
+                candidate.mkdir()
+                write_config(common / "config")
+                (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+                (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+                if kind == "symlink":
+                    target = base / "commondir-target"
+                    target.write_text("../..\n", encoding="utf-8")
+                    (admin / "commondir").symlink_to(target)
+                result = inspect_worktree(candidate)
+            self.assertEqual(result["status"], "fail")
+            self.assertIn("commondir", "\n".join(result["errors"]))
+
     def test_symlink_loops_return_structured_failures(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

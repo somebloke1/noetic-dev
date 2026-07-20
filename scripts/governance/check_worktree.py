@@ -58,12 +58,21 @@ def _read_gitfile(path: Path) -> Path | None:
         return None
 
 
-def _common_dir(git_dir: Path, errors: list[str]) -> Path:
+def _common_dir(git_dir: Path, errors: list[str], required: bool = False) -> Path:
     commondir = git_dir / "commondir"
-    if not commondir.exists():
+    try:
+        commondir_mode = commondir.lstat().st_mode
+    except FileNotFoundError:
+        if required:
+            errors.append("linked worktree commondir is missing")
         return git_dir
-    if not commondir.is_file() or commondir.is_symlink():
-        errors.append(f"linked worktree commondir must be a regular file: {commondir}")
+    except OSError:
+        errors.append(f"linked worktree commondir is unreadable: {commondir}")
+        return git_dir
+    if not stat.S_ISREG(commondir_mode):
+        errors.append(
+            f"linked worktree commondir must be a regular non-symlink file: {commondir}"
+        )
         return git_dir
     try:
         value = commondir.read_text(encoding="utf-8", errors="strict").strip()
@@ -316,7 +325,11 @@ def inspect_worktree(
             errors.append("primary .git directory must not contain commondir")
         common = git_dir
     else:
-        common = _common_dir(git_dir, errors) if git_dir.is_dir() else git_dir
+        common = (
+            _common_dir(git_dir, errors, required=linked)
+            if git_dir.is_dir()
+            else git_dir
+        )
     if linked:
         backlink_file = git_dir / "gitdir"
         try:

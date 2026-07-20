@@ -14,6 +14,15 @@ The UTC evidence interval `2026-07-20T00:55:52Z` through
 which began at `2026-07-20T04:39:05Z`. Thus the UTC date is not future-dated
 relative to the public review event; it differs only from the host's local date.
 
+Protected Governance run
+[`29721803357`](https://github.com/somebloke1/noetic-dev/actions/runs/29721803357)
+later succeeded for exact candidate
+`d2e99712f02b1ee39cae0b696e77aa3bc92dfbab`. Its hosted workflow checkout set
+`persist-credentials: false`, then `validate_repo.py` invoked the worktree doctor
+successfully before the checkout post-job cleanup. This public integration result
+is evidence that no temporary checkout `http.*.extraheader` remained for the
+doctor; credential-bearing local headers intentionally remain forbidden.
+
 Source directories at capture time:
 
 - `/home/dgk/noetic-dev-recovery-20260720T005900Z`
