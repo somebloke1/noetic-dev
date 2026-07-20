@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 import subprocess
 from pathlib import Path
 from typing import Iterable
@@ -30,6 +31,7 @@ SAFE_CONFIG = {
     "core.symlinks",
     "lfs.repositoryformatversion",
 }
+SCAN_ENTRY_LIMIT = 4096
 
 
 def isolated_git_environment(source: dict[str, str] | None = None) -> dict[str, str]:
@@ -147,25 +149,53 @@ def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
             errors.append(f"repository-local Git config key is not allowed: {key}")
 
 
-def _scan_duplicates(scan_roots: Iterable[Path], errors: list[str]) -> None:
+def _scan_duplicates(
+    scan_roots: Iterable[Path], errors: list[str], entry_limit: int
+) -> None:
     identities: dict[Path, list[Path]] = {}
+    entries_seen = 0
     for root in scan_roots:
         root = root.resolve()
         if not root.is_dir():
             errors.append(f"worktree scan root is not a directory: {root}")
             continue
-        for current, directories, files in os.walk(root):
-            has_marker = ".git" in directories or ".git" in files
-            directories[:] = [name for name in directories if name != ".git"]
-            if not has_marker:
+
+        markers = [root / ".git"]
+        try:
+            with os.scandir(root) as children:
+                for child in children:
+                    entries_seen += 1
+                    if entries_seen > entry_limit:
+                        errors.append(
+                            f"worktree scan entry limit exceeded: {entry_limit}"
+                        )
+                        return
+                    try:
+                        if child.is_dir(follow_symlinks=False):
+                            markers.append(Path(child.path) / ".git")
+                    except OSError as error:
+                        errors.append(f"worktree scan cannot inspect {child.path}: {error}")
+        except OSError as error:
+            errors.append(f"worktree scan cannot read {root}: {error}")
+            continue
+
+        for marker in markers:
+            try:
+                mode = marker.lstat().st_mode
+            except FileNotFoundError:
                 continue
-            marker = Path(current) / ".git"
-            if marker.is_symlink():
+            except OSError as error:
+                errors.append(f"worktree scan cannot inspect {marker}: {error}")
+                continue
+            if stat.S_ISLNK(mode):
                 errors.append(f"symlinked .git marker is forbidden: {marker}")
                 continue
-            target = _read_gitfile(marker)
-            if target is not None:
-                identities.setdefault(target, []).append(marker.resolve())
+            if stat.S_ISREG(mode):
+                target = _read_gitfile(marker)
+                if target is not None:
+                    identities.setdefault(target, []).append(marker.resolve())
+            elif not stat.S_ISDIR(mode):
+                errors.append(f"non-regular .git marker is forbidden: {marker}")
     for target, markers in identities.items():
         unique = sorted(set(markers), key=str)
         if len(unique) > 1:
@@ -175,7 +205,11 @@ def _scan_duplicates(scan_roots: Iterable[Path], errors: list[str]) -> None:
             )
 
 
-def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, object]:
+def inspect_worktree(
+    repo: Path,
+    scan_roots: Iterable[Path] = (),
+    scan_entry_limit: int = SCAN_ENTRY_LIMIT,
+) -> dict[str, object]:
     repo = repo.resolve()
     errors = [
         f"unsafe Git environment override is set: {name}"
@@ -185,6 +219,9 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
             if name in TOPOLOGY_ENV or name == "GIT_CONFIG" or name.startswith("GIT_CONFIG_")
         )
     ]
+    valid_scan_limit = type(scan_entry_limit) is int and scan_entry_limit > 0
+    if not valid_scan_limit:
+        errors.append("worktree scan entry limit must be a positive integer")
     marker = repo / ".git"
     linked = False
     if marker.is_symlink():
@@ -216,7 +253,8 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
     if common.is_dir():
         _check_config(_local_config(common / "config", errors), errors)
     roots = list(scan_roots)
-    _scan_duplicates(roots or [repo.parent], errors)
+    if valid_scan_limit:
+        _scan_duplicates(roots or [repo.parent], errors, scan_entry_limit)
     return {
         "schema_version": "1",
         "repo": str(repo),
@@ -231,8 +269,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--scan-root", type=Path, action="append", default=[])
+    parser.add_argument("--scan-entry-limit", type=int, default=SCAN_ENTRY_LIMIT)
     args = parser.parse_args()
-    result = inspect_worktree(args.repo, args.scan_root)
+    if args.scan_entry_limit < 1:
+        parser.error("--scan-entry-limit must be positive")
+    result = inspect_worktree(args.repo, args.scan_root, args.scan_entry_limit)
     print(json.dumps(result, ensure_ascii=True, indent=2, sort_keys=True))
     return 0 if result["status"] == "pass" else 1
 

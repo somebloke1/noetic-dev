@@ -155,6 +155,31 @@ class TestWorktreeDoctor(unittest.TestCase):
         self.assertIn(str(directory_alias / ".git"), joined)
         self.assertEqual(result["status"], "fail")
 
+    def test_scan_entry_budget_and_traversal_errors_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            extra = base / "extra"
+            (repo / ".git").mkdir(parents=True)
+            extra.mkdir()
+            write_config(repo / ".git" / "config")
+            limited = inspect_worktree(repo, [base], scan_entry_limit=1)
+            with mock.patch("check_worktree.os.scandir", side_effect=PermissionError("denied")):
+                unreadable = inspect_worktree(repo, [base])
+        self.assertIn("entry limit exceeded", "\n".join(limited["errors"]))
+        self.assertIn("scan cannot read", "\n".join(unreadable["errors"]))
+
+    def test_scan_entry_budget_rejects_wrong_types_and_ranges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            for value in (0, -1, True, None, "1", 1.0):
+                with self.subTest(value=value):
+                    result = inspect_worktree(repo, scan_entry_limit=value)  # type: ignore[arg-type]
+                    self.assertEqual(result["status"], "fail")
+                    self.assertIn("positive integer", "\n".join(result["errors"]))
+
     def test_rejects_foreign_backlink_outside_conventional_worktrees_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

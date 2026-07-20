@@ -57,11 +57,12 @@ class TestWorkflowPinning(unittest.TestCase):
         self.assertIn("--check-bootstrap-blocked", content)
         self.assertIn("advisory", content.lower())
 
-    def test_worktree_doctor_checkout_does_not_persist_credentials(self):
+    def test_validator_checkout_does_not_persist_credentials(self):
         content = (WORKFLOWS_DIR / "governance.yml").read_text()
-        doctor = content.index("Validate worktree administration")
-        checkout = content.rindex("uses: actions/checkout@", 0, doctor)
-        self.assertIn("persist-credentials: false", content[checkout:doctor])
+        validator = content.index("Validate repository contracts")
+        checkout = content.rindex("uses: actions/checkout@", 0, validator)
+        self.assertIn("persist-credentials: false", content[checkout:validator])
+        self.assertNotIn("Validate worktree administration", content)
 
     def test_protected_dev_triggers_governance_and_agent_review(self):
         governance = (WORKFLOWS_DIR / "governance.yml").read_text()
