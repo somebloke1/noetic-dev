@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
+from check_worktree import isolated_git_environment
 from run_isolated_pi import (
     QA_TOOL_ALLOWLIST,
     ROLE_TOOL_ALLOWLISTS,
@@ -32,6 +34,15 @@ from run_isolated_pi import (
 
 
 class TestRunIsolatedPiPolicy(unittest.TestCase):
+    def setUp(self) -> None:
+        self._git_environment = mock.patch.dict(
+            os.environ,
+            isolated_git_environment(dict(os.environ)),
+            clear=True,
+        )
+        self._git_environment.start()
+        self.addCleanup(self._git_environment.stop)
+
     def test_qa_tool_allowlist_is_empty_until_credential_broker_exists(self):
         self.assertEqual(QA_TOOL_ALLOWLIST, set())
         ok, message, _tools = validate_tools("qa", "")
