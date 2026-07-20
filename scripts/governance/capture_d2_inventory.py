@@ -313,6 +313,15 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
         }
         for item in branch_items
     ]
+    for pull_request in derived_pulls:
+        branch = branch_by_name.get(pull_request["head"])
+        if (
+            branch is None
+            or branch.get("target", {}).get("oid") != pull_request["head_sha"]
+        ):
+            raise RuntimeError(
+                f"PR {pull_request['number']} head changed during portfolio capture"
+            )
     derived_issues = []
     for item in issue_items:
         labels_connection = item["labels"]

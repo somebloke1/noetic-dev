@@ -7,6 +7,7 @@ import copy
 import gzip
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -16,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.governance.check_roadmap import (
+    _git_succeeds,
     _parse_instant,
     _validate_d2_inventory,
     _validate_d2_protected_review,
@@ -663,6 +665,45 @@ class TestRoadmap(unittest.TestCase):
             _validate_d2_inventory(substituted_projection), "not derived from the response body"
         )
 
+        mismatched_head = copy.deepcopy(audit)
+        pr_head = mismatched_head["open_pull_requests"][0]
+        branch = next(
+            item
+            for item in mismatched_head["branches"]
+            if item["name"] == pr_head["head"]
+        )
+        branch["sha"] = "f" * 40
+        branch_envelope = mismatched_head["capture"]["source_envelopes"]["branches"]
+        branch_response = json.loads(
+            gzip.decompress(base64.b64decode(branch_envelope["response_gzip_base64"]))
+        )
+        response_branch = next(
+            item
+            for item in branch_response["data"]["repository"]["refs"]["nodes"]
+            if item["name"] == pr_head["head"]
+        )
+        response_branch["target"]["oid"] = branch["sha"]
+        raw = json.dumps(branch_response, separators=(",", ":")).encode("utf-8") + b"\n"
+        branch_envelope["response_gzip_base64"] = base64.b64encode(
+            gzip.compress(raw, compresslevel=9, mtime=0)
+        ).decode("ascii")
+        branch_envelope["body_sha256"] = hashlib.sha256(raw).hexdigest()
+        branch_envelope["canonical_response_sha256"] = canonical_json_sha256(
+            branch_response
+        )
+        branch_envelope["response_sha256"] = canonical_json_sha256(
+            {
+                key: value
+                for key, value in branch_envelope.items()
+                if key != "response_sha256"
+            }
+        )
+        refresh_claims(mismatched_head)
+        self.assert_has_error(
+            _validate_d2_inventory(mismatched_head),
+            "head SHA disagrees with its branch",
+        )
+
         omitted_response_node = copy.deepcopy(audit)
 
         def omit_pull(response: dict) -> None:
@@ -843,6 +884,23 @@ class TestRoadmap(unittest.TestCase):
         self.assert_has_error(
             _validate_d2_inventory(receipt_in_pending), "must not embed an unverified receipt"
         )
+
+    def test_roadmap_git_checks_use_fixed_binary_and_minimal_environment(self) -> None:
+        completed = subprocess.CompletedProcess([], 0, b"", b"")
+        with mock.patch(
+            "scripts.governance.check_roadmap.trusted_git_binary",
+            return_value="/usr/bin/git",
+        ), mock.patch(
+            "scripts.governance.check_roadmap.subprocess.run",
+            return_value=completed,
+        ) as run:
+            self.assertTrue(_git_succeeds(ROOT, "cat-file", "-e", "HEAD^{commit}"))
+        self.assertEqual(run.call_args.args[0][0], "/usr/bin/git")
+        child = run.call_args.kwargs["env"]
+        self.assertEqual(child["PATH"], os.defpath)
+        self.assertEqual(child["HOME"], "/nonexistent")
+        self.assertNotIn("LD_PRELOAD", child)
+        self.assertNotIn("BASH_ENV", child)
 
     def test_complete_freeze_chronology_compares_instants_not_strings(self) -> None:
         captured = _parse_instant("2026-07-18T23:46:09-12:00")

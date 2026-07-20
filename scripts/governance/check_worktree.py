@@ -28,16 +28,24 @@ SAFE_GIT_ENV = {
     "GIT_OPTIONAL_LOCKS": "0",
     "GIT_TERMINAL_PROMPT": "0",
 }
+SAFE_PROCESS_ENV = {
+    "HOME": "/nonexistent",
+    "LANG": "C",
+    "LC_ALL": "C",
+    "PATH": os.defpath,
+    **SAFE_GIT_ENV,
+}
 
 
 def isolated_git_environment(source: dict[str, str] | None = None) -> dict[str, str]:
-    """Return a child environment that cannot inherit repository administration."""
-    env = dict(os.environ if source is None else source)
-    for name in list(env):
-        if name.startswith("GIT_"):
-            env.pop(name)
-    env.update(SAFE_GIT_ENV)
-    return env
+    """Return the fixed minimal environment used by trusted Git subprocesses."""
+    del source
+    return dict(SAFE_PROCESS_ENV)
+
+
+def trusted_git_binary() -> str | None:
+    """Resolve Git only from the platform's fixed default executable path."""
+    return shutil.which("git", path=os.defpath)
 
 
 def _read_gitfile(path: Path) -> Path | None:
@@ -93,9 +101,9 @@ def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
     if not config.is_file() or config.is_symlink():
         errors.append(f"common Git config is missing, non-regular, or a symlink: {config}")
         return {}
-    git_binary = shutil.which("git")
+    git_binary = trusted_git_binary()
     if git_binary is None:
-        errors.append("Git executable is unavailable on PATH")
+        errors.append("Git executable is unavailable on the trusted system path")
         return {}
     try:
         result = subprocess.run(

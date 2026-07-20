@@ -32,6 +32,10 @@ from scripts.governance.check_delivery_gate import (  # noqa: E402
     _authenticated_github_response,
     _verify_protected_attestation_receipt,
 )
+from scripts.governance.check_worktree import (  # noqa: E402
+    isolated_git_environment,
+    trusted_git_binary,
+)
 
 
 STATE_PATH = Path("governance/roadmap.json")
@@ -445,6 +449,16 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
     if audit["counts"] != expected_counts:
         errors.append("portfolio audit counts are not derived from response bodies")
     branches_by_name = {item["name"]: item["sha"] for item in expected_branches}
+    for pull_request in expected_pulls:
+        branch_sha = branches_by_name.get(pull_request["head"])
+        if branch_sha is None:
+            errors.append(
+                f"portfolio audit PR {pull_request['number']} head branch is absent"
+            )
+        elif branch_sha != pull_request["head_sha"]:
+            errors.append(
+                f"portfolio audit PR {pull_request['number']} head SHA disagrees with its branch"
+            )
     expected_refs = {
         "main": branches_by_name.get("main"),
         "dev": branches_by_name.get("dev"),
@@ -913,12 +927,16 @@ def _validate_markdown_projection(
 
 
 def _git_succeeds(root: Path, *arguments: str) -> bool:
+    git_binary = trusted_git_binary()
+    if git_binary is None:
+        return False
     result = subprocess.run(
-        ["git", *arguments],
+        [git_binary, *arguments],
         cwd=root,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
+        env=isolated_git_environment(),
     )
     return result.returncode == 0
 
@@ -1122,8 +1140,13 @@ def _validate_repository_policy(
         if branches.get(ref_name, {}).get("sha") != audit.get("refs", {}).get(ref_name):
             errors.append(f"portfolio audit {ref_name} ref does not match branch inventory")
     for pull_request in audit.get("open_pull_requests", []):
-        if pull_request.get("head") not in branches:
+        head = branches.get(pull_request.get("head"))
+        if head is None:
             errors.append(f"portfolio audit PR {pull_request.get('number')} head branch is absent")
+        elif head.get("sha") != pull_request.get("head_sha"):
+            errors.append(
+                f"portfolio audit PR {pull_request.get('number')} head SHA disagrees with its branch"
+            )
 
     actual_snapshot = {
         "existing_work_freeze": freeze.get("status"),

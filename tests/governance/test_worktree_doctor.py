@@ -134,6 +134,37 @@ class TestWorktreeDoctor(unittest.TestCase):
         self.assertIn("Git executable is unavailable", "\n".join(absent["errors"]))
         self.assertIn("could not start", "\n".join(failed["errors"]))
 
+    def test_git_parser_ignores_ambient_executable_and_loader_controls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(repo / ".git" / "config")
+            hostile = {
+                "PATH": "/attacker/bin",
+                "LD_PRELOAD": "/attacker/lib.so",
+                "BASH_ENV": "/attacker/startup",
+                "HOME": "/attacker/home",
+            }
+            completed = subprocess.CompletedProcess(
+                [],
+                0,
+                b"core.repositoryformatversion\n0\0core.bare\nfalse\0",
+                b"",
+            )
+            with mock.patch.dict(os.environ, hostile, clear=True), mock.patch(
+                "check_worktree.shutil.which", return_value="/usr/bin/git"
+            ) as which, mock.patch(
+                "check_worktree.subprocess.run", return_value=completed
+            ) as run:
+                result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "pass", result["errors"])
+        which.assert_called_with("git", path=os.defpath)
+        child = run.call_args.kwargs["env"]
+        self.assertEqual(child["PATH"], os.defpath)
+        self.assertEqual(child["HOME"], "/nonexistent")
+        self.assertNotIn("LD_PRELOAD", child)
+        self.assertNotIn("BASH_ENV", child)
+
     def test_accepts_exact_sanitized_git_environment(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
@@ -455,7 +486,8 @@ class TestWorktreeDoctor(unittest.TestCase):
             "GIT_CONFIG_VALUE_0": "/candidate",
         }
         result = isolated_git_environment(source)
-        self.assertEqual(result["HOME"], "/home/test")
+        self.assertEqual(result["HOME"], "/nonexistent")
+        self.assertEqual(result["PATH"], os.defpath)
         self.assertEqual(result["GIT_CONFIG_GLOBAL"], "/dev/null")
         self.assertEqual(result["GIT_OPTIONAL_LOCKS"], "0")
         self.assertNotIn("GIT_DIR", result)
