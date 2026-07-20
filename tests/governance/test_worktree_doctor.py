@@ -57,6 +57,8 @@ class TestWorktreeDoctor(unittest.TestCase):
             "\tworktree = /tmp/candidate\n",
             "[user]\n\tname = Test User\n",
             "[user]\n\temail = test@example.invalid\n",
+            "[user]\n\temail = missing-at.example.com\n",
+            "[user]\n\temail = too@many@example.com\n",
             "[filter \"hostile\"]\n\tsmudge = /tmp/hostile.sh\n",
             "[core]\n\tfsmonitor = /tmp/hostile.sh\n",
             "[alias]\n\thostile = !/tmp/hostile.sh\n",
@@ -92,6 +94,17 @@ class TestWorktreeDoctor(unittest.TestCase):
                 write_config(repo / ".git" / "config", f"[gc]\n\tauto = {value}\n")
                 result = inspect_worktree(repo)
             self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_accepts_normal_repository_local_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / ".git").mkdir(parents=True)
+            write_config(
+                repo / ".git" / "config",
+                "[user]\n\tname = Ada Lovelace\n\temail = ada@example.org\n",
+            )
+            result = inspect_worktree(repo)
+        self.assertEqual(result["status"], "pass", result["errors"])
 
     def test_accepts_credential_free_network_remote_urls(self):
         for value in (

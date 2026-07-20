@@ -127,6 +127,24 @@ def _safe_remote_url(value: str) -> bool:
 def _safe_config_entry(key: str, values: list[str]) -> bool:
     if key in SAFE_CONFIG:
         return True
+    if key == "user.name":
+        return all(0 < len(value) <= 256 and value.isprintable() for value in values)
+    if key == "user.email":
+        for value in values:
+            local, separator, domain = value.partition("@")
+            if (
+                not separator
+                or value.count("@") != 1
+                or not local
+                or not domain
+                or len(value) > 320
+                or not value.isprintable()
+                or any(character.isspace() for character in value)
+                or domain.casefold() == "invalid"
+                or domain.casefold().endswith(".invalid")
+            ):
+                return False
+        return True
     if key == "gc.auto":
         return all(
             bool(number := value.removeprefix("-"))
@@ -145,9 +163,9 @@ def _safe_config_entry(key: str, values: list[str]) -> bool:
 def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
     if values.get("core.worktree"):
         errors.append("common core.worktree must be absent in a normal worktree repository")
-    if any(value == "Test User" for value in values.get("user.name", [])):
+    if any(value.casefold() == "test user" for value in values.get("user.name", [])):
         errors.append("fixture Git user.name leaked into common config")
-    if any(value.endswith(".invalid") for value in values.get("user.email", [])):
+    if any(value.casefold().endswith(".invalid") for value in values.get("user.email", [])):
         errors.append("fixture Git user.email leaked into common config")
     for key, configured_values in values.items():
         if not _safe_config_entry(key, configured_values):
