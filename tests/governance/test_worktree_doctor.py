@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -94,6 +95,30 @@ class TestWorktreeDoctor(unittest.TestCase):
         joined = "\n".join(result["errors"])
         self.assertIn("backlink does not identify", joined)
         self.assertIn("multiple worktree pointers", joined)
+
+    def test_cli_default_scan_rejects_duplicate_admin_pointer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            duplicate = base / "duplicate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            duplicate.mkdir()
+            write_config(common / "config")
+            for worktree in (candidate, duplicate):
+                (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(REPO_ROOT / "scripts/governance/check_worktree.py"), "--repo", str(candidate)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("multiple worktree pointers", "\n".join(json.loads(result.stdout)["errors"]))
 
     def test_rejects_foreign_backlink_outside_conventional_worktrees_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
