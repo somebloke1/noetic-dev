@@ -131,6 +131,30 @@ class TestWorktreeDoctor(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("multiple worktree pointers", "\n".join(json.loads(result.stdout)["errors"]))
 
+    def test_default_scan_rejects_symlinked_git_file_and_directory_markers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            file_alias = base / "file-alias"
+            directory_alias = base / "directory-alias"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            file_alias.mkdir()
+            directory_alias.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            (file_alias / ".git").symlink_to(candidate / ".git")
+            (directory_alias / ".git").symlink_to(admin, target_is_directory=True)
+            result = inspect_worktree(candidate)
+        joined = "\n".join(result["errors"])
+        self.assertIn(str(file_alias / ".git"), joined)
+        self.assertIn(str(directory_alias / ".git"), joined)
+        self.assertEqual(result["status"], "fail")
+
     def test_rejects_foreign_backlink_outside_conventional_worktrees_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

@@ -155,10 +155,14 @@ def _scan_duplicates(scan_roots: Iterable[Path], errors: list[str]) -> None:
             errors.append(f"worktree scan root is not a directory: {root}")
             continue
         for current, directories, files in os.walk(root):
+            has_marker = ".git" in directories or ".git" in files
             directories[:] = [name for name in directories if name != ".git"]
-            if ".git" not in files:
+            if not has_marker:
                 continue
             marker = Path(current) / ".git"
+            if marker.is_symlink():
+                errors.append(f"symlinked .git marker is forbidden: {marker}")
+                continue
             target = _read_gitfile(marker)
             if target is not None:
                 identities.setdefault(target, []).append(marker.resolve())
