@@ -36,6 +36,20 @@ class TestWorktreeDoctor(unittest.TestCase):
             result = inspect_worktree(repo)
         self.assertEqual(result["status"], "pass", result["errors"])
 
+    def test_rejects_inconsistent_or_unsupported_core_topology_values(self):
+        configs = (
+            "[core]\n\trepositoryformatversion = 0\n\tbare = true\n",
+            "[core]\n\trepositoryformatversion = 1\n\tbare = false\n",
+            "[core]\n\trepositoryformatversion = 0\n\tbare = maybe\n",
+        )
+        for config in configs:
+            with self.subTest(config=config), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                (repo / ".git" / "config").write_text(config, encoding="utf-8")
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "fail")
+
     def test_rejects_primary_git_directory_redirected_to_foreign_common_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -217,6 +231,26 @@ class TestWorktreeDoctor(unittest.TestCase):
             )
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("multiple worktree pointers", "\n".join(json.loads(result.stdout)["errors"]))
+
+    def test_explicit_scan_root_extends_default_sibling_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "worktrees" / "candidate"
+            candidate = base / "candidate"
+            duplicate = base / "duplicate"
+            additional = base / "additional-scan-root"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            duplicate.mkdir()
+            additional.mkdir()
+            write_config(common / "config")
+            for worktree in (candidate, duplicate):
+                (worktree / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{candidate / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate, [additional])
+        self.assertIn("multiple worktree pointers", "\n".join(result["errors"]))
 
     def test_default_scan_rejects_symlinked_git_file_and_directory_markers(self):
         with tempfile.TemporaryDirectory() as tmp:

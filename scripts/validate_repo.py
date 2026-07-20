@@ -70,6 +70,7 @@ REQUIRED = [
     "config/opencode-session-policy.json",
     "docs/model-routing-policy.md",
     "docs/governance/route-attestation.md",
+    "docs/governance/worktree-correction-evidence.md",
     "governance/schemas/model-policy.schema.json",
     "governance/schemas/opencode-session-policy.schema.json",
     "governance/schemas/route-evidence.schema.json",

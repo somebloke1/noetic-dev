@@ -13,15 +13,12 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import urlsplit
 
-SAFE_CONFIG = {
-    "core.bare",
+BOOLEAN_CONFIG = {
     "core.filemode",
     "core.ignorecase",
     "core.logallrefupdates",
     "core.precomposeunicode",
-    "core.repositoryformatversion",
     "core.symlinks",
-    "lfs.repositoryformatversion",
 }
 SCAN_ENTRY_LIMIT = 4096
 
@@ -133,8 +130,15 @@ def _safe_remote_url(value: str) -> bool:
 
 
 def _safe_config_entry(key: str, values: list[str]) -> bool:
-    if key in SAFE_CONFIG:
-        return True
+    if key in {"core.repositoryformatversion", "lfs.repositoryformatversion"}:
+        return values == ["0"]
+    if key == "core.bare":
+        return len(values) == 1 and _git_bool(values[0]) is not None
+    if key in BOOLEAN_CONFIG:
+        return len(values) == 1 and (
+            _git_bool(values[0]) is not None
+            or (key == "core.logallrefupdates" and values[0].casefold() == "always")
+        )
     if key == "user.name":
         return all(0 < len(value) <= 256 and value.isprintable() for value in values)
     if key == "user.email":
@@ -168,13 +172,30 @@ def _safe_config_entry(key: str, values: list[str]) -> bool:
     return False
 
 
-def _check_config(values: dict[str, list[str]], errors: list[str]) -> None:
+def _git_bool(value: str) -> bool | None:
+    normalized = value.casefold()
+    if normalized in {"true", "yes", "on", "1"}:
+        return True
+    if normalized in {"false", "no", "off", "0", ""}:
+        return False
+    return None
+
+
+def _check_config(
+    values: dict[str, list[str]], errors: list[str], primary: bool
+) -> None:
     if values.get("core.worktree"):
         errors.append("common core.worktree must be absent in a normal worktree repository")
     if any(value.casefold() == "test user" for value in values.get("user.name", [])):
         errors.append("fixture Git user.name leaked into common config")
     if any(value.casefold().endswith(".invalid") for value in values.get("user.email", [])):
         errors.append("fixture Git user.email leaked into common config")
+    if values.get("core.repositoryformatversion") != ["0"]:
+        errors.append("core.repositoryformatversion must be exactly 0")
+    bare_values = values.get("core.bare", [])
+    bare = _git_bool(bare_values[0]) if len(bare_values) == 1 else None
+    if primary and bare is not False:
+        errors.append("primary worktree core.bare must be false")
     for key, configured_values in values.items():
         if not _safe_config_entry(key, configured_values):
             errors.append(f"repository-local Git config key is not allowed: {key}")
@@ -184,6 +205,7 @@ def _scan_duplicates(
     scan_roots: Iterable[Path], errors: list[str], entry_limit: int
 ) -> None:
     identities: dict[Path, list[Path]] = {}
+    resolved_roots: set[Path] = set()
     entries_seen = 0
     for root in scan_roots:
         try:
@@ -191,6 +213,9 @@ def _scan_duplicates(
         except (OSError, RuntimeError, ValueError) as error:
             errors.append(f"worktree scan root cannot be resolved: {root}: {error}")
             continue
+        if root in resolved_roots:
+            continue
+        resolved_roots.add(root)
         if not root.is_dir():
             errors.append(f"worktree scan root is not a directory: {root}")
             continue
@@ -318,10 +343,10 @@ def inspect_worktree(
             )
 
     if common.is_dir():
-        _check_config(_local_config(common / "config", errors), errors)
-    roots = list(scan_roots)
+        _check_config(_local_config(common / "config", errors), errors, primary)
+    roots = [repo.parent, *scan_roots]
     if valid_scan_limit:
-        _scan_duplicates(roots or [repo.parent], errors, scan_entry_limit)
+        _scan_duplicates(roots, errors, scan_entry_limit)
     return {
         "schema_version": "1",
         "repo": str(repo),

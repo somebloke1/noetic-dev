@@ -2,6 +2,8 @@
 
 This document preserves a report of host-local observations. It is not an
 independently verifiable attestation of the historical incident or correction.
+The tracked redacted evidence manifest is
+[`worktree-correction-evidence.md`](worktree-correction-evidence.md).
 
 ## Reported observations
 
