@@ -3,9 +3,16 @@
 ## Scope
 
 This tracked manifest transcribes non-secret results from host-local correction
-records created on 2026-07-20 UTC. It makes the reported checks and equality
-claims reviewable in the repository. It is not a signature, independent runner
-attestation, or substitute for the unavailable source archive.
+records created on the host's 2026-07-19 local calendar date, after UTC crossed
+to 2026-07-20. It makes the reported checks and equality claims reviewable in
+the repository. It is not a signature, independent runner attestation, or
+substitute for the unavailable source archive.
+
+The UTC evidence interval `2026-07-20T00:55:52Z` through
+`2026-07-20T01:26:43Z` predates protected review run
+[`29717393475`](https://github.com/somebloke1/noetic-dev/actions/runs/29717393475),
+which began at `2026-07-20T04:39:05Z`. Thus the UTC date is not future-dated
+relative to the public review event; it differs only from the host's local date.
 
 Source directories at capture time:
 
