@@ -95,6 +95,22 @@ class TestWorktreeDoctor(unittest.TestCase):
         self.assertIn("backlink does not identify", joined)
         self.assertIn("multiple worktree pointers", joined)
 
+    def test_rejects_foreign_backlink_outside_conventional_worktrees_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            common = base / "main" / ".git"
+            admin = common / "slots" / "candidate"
+            candidate = base / "candidate"
+            admin.mkdir(parents=True)
+            candidate.mkdir()
+            write_config(common / "config")
+            (candidate / ".git").write_text(f"gitdir: {admin}\n", encoding="utf-8")
+            (admin / "commondir").write_text("../..\n", encoding="utf-8")
+            (admin / "gitdir").write_text(f"{base / 'foreign' / '.git'}\n", encoding="utf-8")
+            result = inspect_worktree(candidate)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("backlink does not identify", "\n".join(result["errors"]))
+
     def test_rejects_git_topology_environment_overrides(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"

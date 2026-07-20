@@ -176,18 +176,21 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
         )
     ]
     marker = repo / ".git"
+    linked = False
     if marker.is_symlink():
         errors.append(f"worktree .git marker must not be a symlink: {marker}")
         git_dir = marker
     elif marker.is_dir():
         git_dir = marker.resolve()
     else:
-        git_dir = _read_gitfile(marker) or marker
+        target = _read_gitfile(marker)
+        linked = target is not None
+        git_dir = target or marker
         if not git_dir.is_dir():
             errors.append(f"worktree has no valid .git directory or pointer: {repo}")
 
     common = _common_dir(git_dir, errors) if git_dir.is_dir() else git_dir
-    if git_dir.parent.name == "worktrees":
+    if linked:
         backlink_file = git_dir / "gitdir"
         try:
             backlink = Path(backlink_file.read_text(encoding="utf-8", errors="strict").strip())
@@ -197,7 +200,7 @@ def inspect_worktree(repo: Path, scan_roots: Iterable[Path] = ()) -> dict[str, o
                 errors.append("linked worktree backlink does not identify this worktree")
         except (OSError, UnicodeError, ValueError):
             errors.append("linked worktree backlink is missing or unreadable")
-        if common.name != ".git" or git_dir.parent.parent != common:
+        if common.name != ".git" or common not in git_dir.parents:
             errors.append("linked worktree commondir is not its owning common Git directory")
 
     if common.is_dir():
