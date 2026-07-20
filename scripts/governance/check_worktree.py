@@ -56,7 +56,7 @@ def _read_gitfile(path: Path) -> Path | None:
         if not target.is_absolute():
             target = path.parent / target
         return target.resolve()
-    except (OSError, ValueError):
+    except (OSError, RuntimeError, ValueError):
         return None
 
 
@@ -77,7 +77,7 @@ def _common_dir(git_dir: Path, errors: list[str]) -> Path:
         if not target.is_absolute():
             target = git_dir / target
         return target.resolve()
-    except (OSError, ValueError):
+    except (OSError, RuntimeError, ValueError):
         errors.append(f"linked worktree commondir is invalid: {commondir}")
         return git_dir
 
@@ -160,7 +160,11 @@ def _scan_duplicates(
     identities: dict[Path, list[Path]] = {}
     entries_seen = 0
     for root in scan_roots:
-        root = root.resolve()
+        try:
+            root = root.resolve()
+        except (OSError, RuntimeError, ValueError) as error:
+            errors.append(f"worktree scan root cannot be resolved: {root}: {error}")
+            continue
         if not root.is_dir():
             errors.append(f"worktree scan root is not a directory: {root}")
             continue
@@ -198,7 +202,12 @@ def _scan_duplicates(
             if stat.S_ISREG(mode):
                 target = _read_gitfile(marker)
                 if target is not None:
-                    identities.setdefault(target, []).append(marker.resolve())
+                    try:
+                        marker_identity = marker.resolve()
+                    except (OSError, RuntimeError, ValueError) as error:
+                        errors.append(f"worktree marker cannot be resolved: {marker}: {error}")
+                        continue
+                    identities.setdefault(target, []).append(marker_identity)
             elif not stat.S_ISDIR(mode):
                 errors.append(f"non-regular .git marker is forbidden: {marker}")
     for target, markers in identities.items():
@@ -215,11 +224,23 @@ def inspect_worktree(
     scan_roots: Iterable[Path] = (),
     scan_entry_limit: int = SCAN_ENTRY_LIMIT,
 ) -> dict[str, object]:
-    repo = repo.resolve()
     errors = [
         f"unsafe Git environment override is set: {name}"
         for name in sorted(name for name in os.environ if name.startswith("GIT_"))
     ]
+    try:
+        repo = repo.resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        errors.append(f"repository path cannot be resolved: {repo}: {error}")
+        marker = repo / ".git"
+        return {
+            "schema_version": "1",
+            "repo": str(repo),
+            "git_dir": str(marker),
+            "common_dir": str(marker),
+            "status": "fail",
+            "errors": errors,
+        }
     valid_scan_limit = type(scan_entry_limit) is int and scan_entry_limit > 0
     if not valid_scan_limit:
         errors.append("worktree scan entry limit must be a positive integer")
@@ -263,7 +284,7 @@ def inspect_worktree(
                         backlink = git_dir / backlink
                     if backlink.resolve() != marker.resolve():
                         errors.append("linked worktree backlink does not identify this worktree")
-                except (OSError, UnicodeError, ValueError):
+                except (OSError, RuntimeError, UnicodeError, ValueError):
                     errors.append("linked worktree backlink is missing or unreadable")
         if common.name != ".git" or git_dir.parent != common / "worktrees":
             errors.append(

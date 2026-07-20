@@ -310,6 +310,31 @@ class TestWorktreeDoctor(unittest.TestCase):
             self.assertEqual(result["status"], "fail")
             self.assertIn("commondir is", "\n".join(result["errors"]))
 
+    def test_symlink_loops_return_structured_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            repo = base / "repo"
+            repo.mkdir()
+            loop_a = base / "loop-a"
+            loop_b = base / "loop-b"
+            loop_a.symlink_to(loop_b)
+            loop_b.symlink_to(loop_a)
+            (repo / ".git").write_text(f"gitdir: {loop_a / 'admin'}\n", encoding="utf-8")
+            gitdir_result = inspect_worktree(repo)
+
+            valid = base / "valid"
+            (valid / ".git").mkdir(parents=True)
+            write_config(valid / ".git" / "config")
+            scan_result = inspect_worktree(valid, [loop_a])
+            repo_result = inspect_worktree(loop_a)
+
+        self.assertEqual(gitdir_result["status"], "fail")
+        self.assertIn("no valid .git", "\n".join(gitdir_result["errors"]))
+        self.assertEqual(scan_result["status"], "fail")
+        self.assertIn("worktree scan root", "\n".join(scan_result["errors"]))
+        self.assertEqual(repo_result["status"], "fail")
+        self.assertTrue(repo_result["errors"])
+
     def test_isolated_git_environment_drops_all_inherited_git_controls(self):
         source = {
             "HOME": "/home/test",
