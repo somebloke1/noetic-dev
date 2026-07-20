@@ -120,6 +120,12 @@ def _safe_remote_url(value: str) -> bool:
 def _safe_config_entry(key: str, values: list[str]) -> bool:
     if key in SAFE_CONFIG:
         return True
+    if key == "gc.auto":
+        return all(
+            bool(number := value.removeprefix("-"))
+            and all("0" <= character <= "9" for character in number)
+            for value in values
+        )
     if key.startswith("branch.") and key.endswith((".remote", ".merge")):
         return True
     if key.startswith("remote.") and key.endswith(".fetch"):

@@ -49,6 +49,8 @@ class TestWorktreeDoctor(unittest.TestCase):
             "[uploadpack]\n\tpackObjectsHook = /tmp/hostile.sh\n",
             "[gpg \"ssh\"]\n\tprogram = /tmp/hostile.sh\n",
             "[interactive]\n\tdiffFilter = /tmp/hostile.sh\n",
+            "[gc]\n\tauto = not-an-integer\n",
+            "[gc]\n\trecentObjectsHook = /tmp/hostile.sh\n",
             "[include]\n\tpath = /tmp/hidden-config\n",
             '[includeIf "gitdir:/tmp/"]\n\tpath = /tmp/hidden-config\n',
             "[remote \"hostile\"]\n\turl = ext::/tmp/hostile.sh\n",
@@ -60,6 +62,15 @@ class TestWorktreeDoctor(unittest.TestCase):
                 write_config(repo / ".git" / "config", attack)
                 result = inspect_worktree(repo)
             self.assertEqual(result["status"], "fail")
+
+    def test_accepts_actions_checkout_integer_gc_auto(self):
+        for value in ("0", "1", "-1"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as tmp:
+                repo = Path(tmp) / "repo"
+                (repo / ".git").mkdir(parents=True)
+                write_config(repo / ".git" / "config", f"[gc]\n\tauto = {value}\n")
+                result = inspect_worktree(repo)
+            self.assertEqual(result["status"], "pass", result["errors"])
 
     def test_accepts_reciprocal_linked_worktree(self):
         with tempfile.TemporaryDirectory() as tmp:
