@@ -27,9 +27,12 @@ from scripts.governance.capture_d2_inventory import (  # noqa: E402
     AUTHORIZED_REPAIR_BASE,
     AUTHORIZED_REPAIR_HEAD,
     AUTHORIZED_REPAIR_PR,
+    ISSUE_URL as D2_ISSUE_URL,
     OPERATIONS as D2_INVENTORY_OPERATIONS,
     QUERIES as D2_INVENTORY_QUERIES,
+    PULL_URL as D2_PULL_URL,
     VARIABLES as D2_INVENTORY_VARIABLES,
+    _normalize_external_json,
 )
 from scripts.governance.check_delivery_gate import (  # noqa: E402
     _authenticated_github_response,
@@ -283,6 +286,7 @@ def _d2_repository_from_response(
         or default_branch.get("name") != "dev"
         or type(target) is not dict
         or set(target) != {"oid"}
+        or type(target.get("oid")) is not str
         or re.fullmatch(r"[a-f0-9]{40}", target.get("oid", "")) is None
     ):
         errors.append(f"portfolio audit {source} repository identity is invalid")
@@ -335,6 +339,12 @@ def _d2_connection(
 
 def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    try:
+        audit = _normalize_external_json(audit)
+    except ValueError:
+        return ["portfolio audit is not strict JSON"]
+    if type(audit) is not dict:
+        return ["portfolio audit must be an object"]
     capture = audit["capture"]
     envelopes = capture["source_envelopes"]
     decoded = {
@@ -355,6 +365,14 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
         source: _d2_repository_from_response(decoded[source], source, errors)
         for source in ("open_pull_requests", "branches", "open_issues")
     }
+    default_heads = {
+        repository.get("defaultBranchRef", {}).get("target", {}).get("oid")
+        for repository in repositories.values()
+        if type(repository.get("defaultBranchRef")) is dict
+        and type(repository["defaultBranchRef"].get("target")) is dict
+    }
+    if len(default_heads) != 1:
+        errors.append("portfolio audit default branch changed between responses")
     pull_nodes = _d2_connection(
         repositories["open_pull_requests"],
         "pullRequests",
@@ -390,6 +408,8 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
                 )
             )
             or re.fullmatch(r"[a-f0-9]{40}", item.get("headRefOid", "")) is None
+            or D2_PULL_URL.fullmatch(item.get("url", "")) is None
+            or int(D2_PULL_URL.fullmatch(item["url"]).group(1)) != item["number"]
         ):
             errors.append("portfolio audit PR response identity is invalid")
             continue
@@ -431,6 +451,7 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
             or not item["name"]
             or type(target) is not dict
             or set(target) != {"oid"}
+            or type(target.get("oid")) is not str
             or re.fullmatch(r"[a-f0-9]{40}", target.get("oid", "")) is None
         ):
             errors.append("portfolio audit branch response node shape is invalid")
@@ -451,6 +472,17 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
         if set(item) != {"number", "title", "updatedAt", "url", "labels"}:
             errors.append("portfolio audit issue response node shape is invalid")
             continue
+        if (
+            type(item.get("number")) is not int
+            or any(
+                type(item.get(field)) is not str or not item[field]
+                for field in ("title", "updatedAt", "url")
+            )
+            or D2_ISSUE_URL.fullmatch(item.get("url", "")) is None
+            or int(D2_ISSUE_URL.fullmatch(item["url"]).group(1)) != item["number"]
+        ):
+            errors.append("portfolio audit issue response identity is invalid")
+            continue
         labels_connection = item.get("labels")
         if type(labels_connection) is not dict:
             errors.append("portfolio audit issue labels are missing")
@@ -466,7 +498,12 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
             or labels_connection.get("totalCount") != len(label_nodes)
             or len(label_nodes) > 100
             or page_info.get("hasNextPage") is not False
-            or any(type(label) is not dict or set(label) != {"name"} for label in label_nodes)
+            or any(
+                type(label) is not dict
+                or set(label) != {"name"}
+                or type(label.get("name")) is not str
+                for label in label_nodes
+            )
         ):
             errors.append(f"portfolio audit issue {item.get('number')} labels are incomplete")
             continue
@@ -484,6 +521,8 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
             }
         )
     expected_issues.sort(key=lambda item: item["number"])
+    if len({item["number"] for item in expected_issues}) != len(expected_issues):
+        errors.append("portfolio audit issue numbers are duplicated")
     if audit["open_issues"] != expected_issues:
         errors.append("portfolio audit issue identities are not derived from the response body")
 
@@ -510,6 +549,8 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
         "dev": branches_by_name.get("dev"),
         "default_branch": "dev",
     }
+    if default_heads != {branches_by_name.get("dev")}:
+        errors.append("portfolio audit default branch target disagrees with dev branch")
     if audit["refs"] != expected_refs:
         errors.append("portfolio audit refs are not derived from branch responses")
 

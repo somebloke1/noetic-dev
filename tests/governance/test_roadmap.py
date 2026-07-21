@@ -25,7 +25,11 @@ from scripts.governance.check_roadmap import (
     validate_roadmap,
     validate_roadmap_files,
 )
-from scripts.governance.capture_d2_inventory import _validate_derived_snapshot
+from scripts.governance.capture_d2_inventory import (
+    _repository,
+    _validate_derived_issues,
+    _validate_derived_snapshot,
+)
 from scripts.governance.hash_tree import canonical_json_sha256
 from scripts.governance.json_schema import load_json_strict, validate_schema
 from scripts.governance.migrate_roadmap import (
@@ -706,6 +710,67 @@ class TestRoadmap(unittest.TestCase):
             "head SHA disagrees with its branch",
         )
 
+        default_race = copy.deepcopy(audit)
+
+        def change_default_head(response: dict) -> None:
+            response["data"]["repository"]["defaultBranchRef"]["target"]["oid"] = (
+                "f" * 40
+            )
+
+        mutate_response(default_race, "open_pull_requests", change_default_head)
+        self.assert_has_error(
+            _validate_d2_inventory(default_race),
+            "default branch changed between responses",
+        )
+
+        default_vs_branch = copy.deepcopy(audit)
+        for source in ("open_pull_requests", "branches", "open_issues"):
+            mutate_response(default_vs_branch, source, change_default_head)
+        self.assert_has_error(
+            _validate_d2_inventory(default_vs_branch),
+            "default branch target disagrees with dev branch",
+        )
+
+        substituted_pr_url = copy.deepcopy(audit)
+
+        def change_pr_url(response: dict) -> None:
+            response["data"]["repository"]["pullRequests"]["nodes"][0]["url"] = (
+                "https://github.com/somebloke1/noetic-dev/pull/999"
+            )
+
+        mutate_response(substituted_pr_url, "open_pull_requests", change_pr_url)
+        substituted_pr_url["open_pull_requests"][0]["url"] = (
+            "https://github.com/somebloke1/noetic-dev/pull/999"
+        )
+        self.assert_has_error(
+            _validate_d2_inventory(substituted_pr_url),
+            "PR response identity is invalid",
+        )
+
+        malformed_target = copy.deepcopy(audit)
+
+        def replace_branch_target(response: dict) -> None:
+            response["data"]["repository"]["refs"]["nodes"][0]["target"]["oid"] = 1
+
+        mutate_response(malformed_target, "branches", replace_branch_target)
+        self.assert_has_error(
+            _validate_d2_inventory(malformed_target),
+            "branch response node shape is invalid",
+        )
+
+        duplicate_issue = copy.deepcopy(audit)
+
+        def duplicate_issue_number(response: dict) -> None:
+            nodes = response["data"]["repository"]["issues"]["nodes"]
+            nodes[1]["number"] = nodes[0]["number"]
+            nodes[1]["url"] = nodes[0]["url"]
+
+        mutate_response(duplicate_issue, "open_issues", duplicate_issue_number)
+        self.assert_has_error(
+            _validate_d2_inventory(duplicate_issue),
+            "issue numbers are duplicated",
+        )
+
         omitted_response_node = copy.deepcopy(audit)
 
         def omit_pull(response: dict) -> None:
@@ -941,6 +1006,34 @@ class TestRoadmap(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "repair pull request identity"):
             _validate_derived_snapshot(renamed_pulls, renamed_branches)
 
+        class DictSubclass(dict):
+            pass
+
+        hostile_pulls = copy.deepcopy(pulls)
+        hostile_pulls[0] = DictSubclass(hostile_pulls[0])
+        with self.assertRaisesRegex(RuntimeError, "not strict JSON"):
+            _validate_derived_snapshot(hostile_pulls, branches)
+
+        issues = copy.deepcopy(audit["open_issues"])
+        self.assertEqual(_validate_derived_issues(issues), issues)
+        duplicate_issues = copy.deepcopy(issues)
+        duplicate_issues[1]["number"] = duplicate_issues[0]["number"]
+        duplicate_issues[1]["url"] = duplicate_issues[0]["url"]
+        with self.assertRaisesRegex(RuntimeError, "duplicate identities"):
+            _validate_derived_issues(duplicate_issues)
+        wrong_issue_url = copy.deepcopy(issues)
+        wrong_issue_url[0]["url"] = "https://github.com/somebloke1/noetic-dev/issues/999"
+        with self.assertRaisesRegex(RuntimeError, "invalid or duplicate"):
+            _validate_derived_issues(wrong_issue_url)
+
+        repository = {
+            "databaseId": 1297462728,
+            "nameWithOwner": "somebloke1/noetic-dev",
+            "defaultBranchRef": {"name": "dev", "target": {"oid": 1}},
+        }
+        with self.assertRaisesRegex(RuntimeError, "repository identity"):
+            _repository({"repository": repository})
+
         repository = {
             "refs": {
                 "totalCount": 1,
@@ -960,6 +1053,14 @@ class TestRoadmap(unittest.TestCase):
         errors: list[str] = []
         _d2_connection(repository, "refs", envelope, errors)
         self.assert_has_error(errors, "pagination was substituted")
+
+        class AuditSubclass(dict):
+            pass
+
+        self.assert_has_error(
+            _validate_d2_inventory(AuditSubclass(audit)),
+            "not strict JSON",
+        )
 
     def test_complete_freeze_chronology_compares_instants_not_strings(self) -> None:
         captured = _parse_instant("2026-07-18T23:46:09-12:00")

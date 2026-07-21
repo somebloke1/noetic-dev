@@ -8,6 +8,7 @@ import base64
 import gzip
 import hashlib
 import json
+import math
 import re
 import subprocess
 import sys
@@ -31,6 +32,8 @@ REPOSITORY_ID = 1297462728
 AUTHORIZED_REPAIR_PR = 67
 AUTHORIZED_REPAIR_HEAD = "issue-32-canonical-roadmap"
 AUTHORIZED_REPAIR_BASE = "dev"
+PULL_URL = re.compile(r"https://github\.com/somebloke1/noetic-dev/pull/([1-9][0-9]*)\Z")
+ISSUE_URL = re.compile(r"https://github\.com/somebloke1/noetic-dev/issues/([1-9][0-9]*)\Z")
 GRAPHQL_URL = "https://api.github.com/graphql"
 VARIABLES = {"owner": "somebloke1", "name": "noetic-dev"}
 REPOSITORY_FIELDS = """
@@ -101,6 +104,27 @@ OPERATIONS = {
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _normalize_external_json(value: Any) -> Any:
+    """Copy only exact JSON built-ins; reject subclasses and non-finite values."""
+    value_type = type(value)
+    if value is None or value_type in {bool, int, str}:
+        return value
+    if value_type is float:
+        if not math.isfinite(value):
+            raise ValueError("non-finite external JSON number")
+        return value
+    if value_type is list:
+        return [_normalize_external_json(item) for item in value]
+    if value_type is dict:
+        normalized: dict[str, Any] = {}
+        for key, item in value.items():
+            if type(key) is not str:
+                raise ValueError("external JSON object key is not a string")
+            normalized[key] = _normalize_external_json(item)
+        return normalized
+    raise ValueError(f"unsupported external JSON type: {value_type.__name__}")
 
 
 def _parse_included_response(raw: bytes) -> tuple[int, dict[str, str], bytes, Any]:
@@ -227,6 +251,15 @@ def _with_pagination(
 def _validate_derived_snapshot(
     pulls: list[dict[str, Any]], branches: list[dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
+    try:
+        pulls = _normalize_external_json(pulls)
+        branches = _normalize_external_json(branches)
+    except ValueError as error:
+        raise RuntimeError("D2 snapshot is not strict JSON") from error
+    if type(pulls) is not list or type(branches) is not list:
+        raise RuntimeError("D2 snapshot collections are invalid")
+    if any(type(item) is not dict for item in [*pulls, *branches]):
+        raise RuntimeError("D2 snapshot contains non-object identities")
     branch_names = [item.get("name") for item in branches]
     if (
         any(type(name) is not str or not name for name in branch_names)
@@ -250,6 +283,11 @@ def _validate_derived_snapshot(
             re.fullmatch(r"[a-f0-9]{40}", item["head_sha"]) is None
             for item in pulls
         )
+        or any(
+            PULL_URL.fullmatch(item["url"]) is None
+            or int(PULL_URL.fullmatch(item["url"]).group(1)) != item["number"]
+            for item in pulls
+        )
     ):
         raise RuntimeError("D2 pull-request inventory contains invalid or duplicate identities")
     repair = [item for item in pulls if item["number"] == AUTHORIZED_REPAIR_PR]
@@ -267,6 +305,37 @@ def _validate_derived_snapshot(
                 f"PR {pull_request['number']} head changed during portfolio capture"
             )
     return branch_by_name
+
+
+def _validate_derived_issues(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    try:
+        issues = _normalize_external_json(issues)
+    except ValueError as error:
+        raise RuntimeError("D2 issue snapshot is not strict JSON") from error
+    if type(issues) is not list or any(type(item) is not dict for item in issues):
+        raise RuntimeError("D2 issue snapshot contains invalid identities")
+    numbers = [item.get("number") for item in issues]
+    if (
+        any(type(number) is not int for number in numbers)
+        or len(set(numbers)) != len(numbers)
+        or any(
+            type(item.get(field)) is not str or not item[field]
+            for item in issues
+            for field in ("title", "status", "updated_at", "url")
+        )
+        or any(
+            type(item.get("labels")) is not list
+            or any(type(label) is not str for label in item["labels"])
+            for item in issues
+        )
+        or any(
+            ISSUE_URL.fullmatch(item["url"]) is None
+            or int(ISSUE_URL.fullmatch(item["url"]).group(1)) != item["number"]
+            for item in issues
+        )
+    ):
+        raise RuntimeError("D2 issue snapshot contains invalid or duplicate identities")
+    return issues
 
 
 def _status_from_labels(labels: list[str]) -> str:
@@ -291,12 +360,29 @@ def _annotation_maps(previous: dict[str, Any]) -> tuple[dict[int, str], dict[str
 
 def _repository(data: dict[str, Any]) -> dict[str, Any]:
     repository = data.get("repository")
-    if type(repository) is not dict:
+    default = repository.get("defaultBranchRef") if type(repository) is dict else None
+    target = default.get("target") if type(default) is dict else None
+    if (
+        type(repository) is not dict
+        or repository.get("databaseId") != REPOSITORY_ID
+        or repository.get("nameWithOwner") != REPOSITORY
+        or type(default) is not dict
+        or default.get("name") != "dev"
+        or type(target) is not dict
+        or type(target.get("oid")) is not str
+        or re.fullmatch(r"[a-f0-9]{40}", target["oid"]) is None
+    ):
         raise RuntimeError("GitHub GraphQL omitted repository identity")
     return repository
 
 
 def capture(previous: dict[str, Any]) -> dict[str, Any]:
+    try:
+        previous = _normalize_external_json(previous)
+    except ValueError as error:
+        raise RuntimeError("previous D2 inventory is not strict JSON") from error
+    if type(previous) is not dict:
+        raise RuntimeError("previous D2 inventory must be an object")
     started_at = _now()
     principal_envelope, principal_data, principal_date = _graphql_after(
         "principal", None
@@ -312,32 +398,71 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
     )
     completed_at = _now()
 
-    viewer = principal_data.get("viewer")
+    try:
+        principal_envelope = _normalize_external_json(principal_envelope)
+        principal_data = _normalize_external_json(principal_data)
+        pulls_envelope = _normalize_external_json(pulls_envelope)
+        pulls_data = _normalize_external_json(pulls_data)
+        branches_envelope = _normalize_external_json(branches_envelope)
+        branches_data = _normalize_external_json(branches_data)
+        issues_envelope = _normalize_external_json(issues_envelope)
+        issues_data = _normalize_external_json(issues_data)
+    except ValueError as error:
+        raise RuntimeError("GraphQL inventory response is not strict JSON") from error
+
+    viewer = principal_data.get("viewer") if type(principal_data) is dict else None
     if type(viewer) is not dict or viewer.get("login") != "somebloke1":
         raise RuntimeError("authenticated gh principal is not the repository owner")
     pull_repository = _repository(pulls_data)
     branch_repository = _repository(branches_data)
     issue_repository = _repository(issues_data)
     repositories = (pull_repository, branch_repository, issue_repository)
-    if any(
-        repository.get("databaseId") != REPOSITORY_ID
-        or repository.get("nameWithOwner") != REPOSITORY
-        or repository.get("defaultBranchRef", {}).get("name") != "dev"
+    default_heads = {
+        repository["defaultBranchRef"]["target"]["oid"]
         for repository in repositories
-    ):
-        raise RuntimeError("GraphQL inventory response repository identity changed")
+    }
+    if len(default_heads) != 1:
+        raise RuntimeError("default branch changed during portfolio capture")
 
-    pulls_connection = pull_repository["pullRequests"]
-    branches_connection = branch_repository["refs"]
-    issues_connection = issue_repository["issues"]
+    pulls_connection = pull_repository.get("pullRequests")
+    branches_connection = branch_repository.get("refs")
+    issues_connection = issue_repository.get("issues")
+    if any(
+        type(connection) is not dict
+        for connection in (pulls_connection, branches_connection, issues_connection)
+    ):
+        raise RuntimeError("GraphQL inventory response omitted a connection")
     _with_pagination(pulls_envelope, pulls_connection)
     _with_pagination(branches_envelope, branches_connection)
     _with_pagination(issues_envelope, issues_connection)
 
     pr_annotations, branch_annotations = _annotation_maps(previous)
-    pull_items = sorted(pulls_connection["nodes"], key=lambda item: item["number"])
-    branch_items = sorted(branches_connection["nodes"], key=lambda item: item["name"])
-    issue_items = sorted(issues_connection["nodes"], key=lambda item: item["number"])
+    pull_items = pulls_connection["nodes"]
+    branch_items = branches_connection["nodes"]
+    issue_items = issues_connection["nodes"]
+    if any(
+        type(item) is not dict
+        or set(item)
+        != {
+            "number",
+            "title",
+            "baseRefName",
+            "headRefName",
+            "headRefOid",
+            "updatedAt",
+            "url",
+        }
+        for item in pull_items
+    ):
+        raise RuntimeError("pull-request inventory contains a malformed node")
+    if any(
+        type(item) is not dict
+        or set(item) != {"name", "target"}
+        or type(item.get("target")) is not dict
+        or set(item["target"]) != {"oid"}
+        for item in branch_items
+    ):
+        raise RuntimeError("branch inventory contains a malformed node")
     derived_pulls = [
         {
             "number": item["number"],
@@ -366,15 +491,38 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
     derived_branch_by_name = _validate_derived_snapshot(
         derived_pulls, derived_branches
     )
+    if derived_branch_by_name.get("dev", {}).get("sha") not in default_heads:
+        raise RuntimeError("default branch target disagrees with dev branch inventory")
+    derived_pulls.sort(key=lambda item: item["number"])
+    derived_branches.sort(key=lambda item: item["name"])
     derived_issues = []
     for item in issue_items:
-        labels_connection = item["labels"]
+        if type(item) is not dict:
+            raise RuntimeError("issue inventory contains a non-object node")
+        labels_connection = item.get("labels")
         if (
-            labels_connection["pageInfo"]["hasNextPage"] is not False
+            type(labels_connection) is not dict
+            or type(labels_connection.get("pageInfo")) is not dict
+            or type(labels_connection.get("nodes")) is not list
+            or set(item) != {"number", "title", "updatedAt", "url", "labels"}
+            or type(item.get("number")) is not int
+            or any(
+                type(item.get(field)) is not str or not item[field]
+                for field in ("title", "updatedAt", "url")
+            )
+            or set(labels_connection) != {"totalCount", "pageInfo", "nodes"}
+            or set(labels_connection["pageInfo"]) != {"hasNextPage", "endCursor"}
+            or labels_connection["pageInfo"]["hasNextPage"] is not False
             or type(labels_connection.get("totalCount")) is not int
             or labels_connection["totalCount"] != len(labels_connection["nodes"])
+            or any(
+                type(label) is not dict
+                or set(label) != {"name"}
+                or type(label["name"]) is not str
+                for label in labels_connection["nodes"]
+            )
         ):
-            raise RuntimeError(f"issue {item['number']} label inventory is incomplete")
+            raise RuntimeError(f"issue {item.get('number')} label inventory is incomplete")
         labels = [label["name"] for label in labels_connection["nodes"]]
         derived_issues.append(
             {
@@ -386,6 +534,8 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
                 "url": item["url"],
             }
         )
+    derived_issues = _validate_derived_issues(derived_issues)
+    derived_issues.sort(key=lambda item: item["number"])
 
     source_envelopes = {
         "principal": principal_envelope,
