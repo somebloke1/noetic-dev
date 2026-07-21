@@ -92,7 +92,16 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
     policy_ref = args.policy_ref or "refs/heads/main"
     generator_path = Path(__file__).resolve()
     generator_sha256 = sha256_file(generator_path)
-    candidate_pinned_at = args.candidate_pinned_at or _now()
+    generated_at = _now()
+    generated_time = datetime.fromisoformat(generated_at)
+    candidate_pinned_at = args.candidate_pinned_at or generated_at
+    candidate_pin_time = datetime.fromisoformat(
+        candidate_pinned_at.replace("Z", "+00:00")
+    )
+    if candidate_pin_time.tzinfo is None:
+        raise RuntimeError("candidate pin must include an explicit timezone")
+    if candidate_pin_time > generated_time:
+        raise RuntimeError("candidate pin must not be after manifest generation")
 
     commands: List[Dict[str, Any]] = []
     for registry_id in ["repo.validate", "workflow.pinning", "tests.all"]:
@@ -178,13 +187,13 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             },
         })
 
-    transition_start = datetime.fromisoformat(candidate_pinned_at.replace("Z", "+00:00"))
+    transition_start = candidate_pin_time - timedelta(seconds=4)
     transition_times = [(transition_start + timedelta(seconds=index)).isoformat() for index in range(5)]
     manifest: Dict[str, Any] = {
         "schema_version": "1",
         "manifest_id": str(uuid.uuid4()),
         "run_id": args.run_id,
-        "generated_at": _now(),
+        "generated_at": generated_at,
         "policy": {
             "ref": policy_ref,
             "sha": policy_sha,

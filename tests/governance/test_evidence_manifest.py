@@ -78,14 +78,43 @@ class TestEvidenceManifestValidation(unittest.TestCase):
                 self.assertEqual(collect_evidence.main(), 0)
             manifest = load_json_strict(output)
 
+            future_output = Path(directory) / "future.json"
+            future_argv = list(argv)
+            future_argv[future_argv.index("--candidate-pinned-at") + 1] = (
+                "2099-01-01T00:00:00+00:00"
+            )
+            future_argv[future_argv.index("--output") + 1] = str(future_output)
+            with mock.patch.object(sys, "argv", future_argv), mock.patch.object(
+                collect_evidence, "run_command", side_effect=command
+            ):
+                self.assertEqual(collect_evidence.main(), 1)
+            self.assertFalse(future_output.exists())
+
         schema = load_json_strict(
             REPO_ROOT / "governance/schemas/evidence-manifest.schema.json"
         )
         self.assertEqual(manifest["repo"]["candidate_pinned_at"], pinned_at)
+        self.assertTrue(
+            all(
+                transition["timestamp"] <= pinned_at
+                for transition in manifest["state_transitions"]
+            )
+        )
         self.assertEqual(validate_schema(manifest, schema), [])
         errors = check_manifest(manifest, target_branch="dev")
         self.assertFalse(any("candidate_pinned_at" in error for error in errors))
         self.assertFalse(any("state_transition" in error for error in errors))
+
+        future_manifest = json.loads(json.dumps(manifest))
+        future_manifest["repo"]["candidate_pinned_at"] = (
+            "2099-01-01T00:00:00+00:00"
+        )
+        self.assertTrue(
+            any(
+                "must not follow manifest generation" in error
+                for error in check_manifest(future_manifest, target_branch="dev")
+            )
+        )
 
     def test_registry_templates_match_standalone_and_embedded_placeholders(self):
         registry = {

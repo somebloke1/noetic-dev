@@ -170,7 +170,16 @@ def _check_repo_and_pr(
         errors.append(
             f"repo.base_branch must be {target_branch} for this governed delivery mode"
         )
-    _parse_time(repo.get("candidate_pinned_at", ""), "repo.candidate_pinned_at", errors)
+    candidate_pinned_at = _parse_time(
+        repo.get("candidate_pinned_at", ""),
+        "repo.candidate_pinned_at",
+        errors,
+    )
+    generated_at = _parse_time(
+        manifest.get("generated_at", ""), "generated_at", errors
+    )
+    if candidate_pinned_at and generated_at and candidate_pinned_at > generated_at:
+        errors.append("repo.candidate_pinned_at must not follow manifest generation")
 
 
 def _check_issue(manifest: Dict[str, Any], errors: List[str]) -> None:
