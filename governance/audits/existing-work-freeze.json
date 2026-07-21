@@ -9,8 +9,8 @@
   "audit_required": true,
   "audit_completed": false,
   "audit_artifact": "governance/audits/20260718-d2-portfolio/inventory.json",
-  "audit_sha256": "f7ba0b60a1e4532c611b63b8715586d42f8cc69c817dbb5636d42bb51bc63321",
-  "captured_at": "2026-07-21T14:37:40.377461+00:00",
+  "audit_sha256": "fddf288d632ffe6b91f4448bb2f8efdfdaa5e5fe05e7e323c827f6c5f3f3f8f3",
+  "captured_at": "2026-07-21T15:40:44.332775+00:00",
   "review_gate": "one protected independent adversarial review must verify the exact D2 candidate and inventory receipt claims",
   "independent_review_completed": false,
   "authorized_repair": {

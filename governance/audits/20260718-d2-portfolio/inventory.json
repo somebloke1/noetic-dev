@@ -6,10 +6,10 @@
     "full_name": "somebloke1/noetic-dev",
     "default_branch": "dev"
   },
-  "captured_at": "2026-07-21T14:37:40.377461+00:00",
+  "captured_at": "2026-07-21T15:40:44.332775+00:00",
   "capture": {
-    "started_at": "2026-07-21T14:37:35.693464+00:00",
-    "completed_at": "2026-07-21T14:37:40.377461+00:00",
+    "started_at": "2026-07-21T15:40:39.685657+00:00",
+    "completed_at": "2026-07-21T15:40:44.332775+00:00",
     "collector": "scripts/governance/capture_d2_inventory.py",
     "source_envelopes": {
       "principal": {
@@ -22,8 +22,8 @@
           "variables_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
         },
         "status": 200,
-        "request_id": "9DF0:6CC48:16B31AF:503B26A:6A5F842F",
-        "fetched_at": "2026-07-21T14:37:36.067443+00:00",
+        "request_id": "89EA:39CE9:5FD4713:14ED5234:6A5F92F7",
+        "fetched_at": "2026-07-21T15:40:40.024074+00:00",
         "repository": "somebloke1/noetic-dev",
         "repository_id": 1297462728,
         "authentication": {
@@ -33,12 +33,12 @@
           "protected_verified": false
         },
         "response_headers": {
-          "date": "Tue, 21 Jul 2026 14:37:36 GMT"
+          "date": "Tue, 21 Jul 2026 15:40:39 GMT"
         },
         "body_sha256": "859b5ad0e7a399e1bdabd2b970124c72a40defa3ad0ca0ebdf4611b60ebc18bd",
         "canonical_response_sha256": "859b5ad0e7a399e1bdabd2b970124c72a40defa3ad0ca0ebdf4611b60ebc18bd",
         "response_gzip_base64": "H4sIAAAAAAAC/6tWSkksSVSyqlYqy0wtTy0CsUAiSYnFqZ4pSlaGlqYmxkYGOko5+emZeUpWSsX5ualJOfnZqYZKtbW1APeqj7Y/AAAA",
-        "response_sha256": "5918c87ec35039ce515deadad6d9364ec49ea82733fde2d6e2ed05e32e5c1eb5"
+        "response_sha256": "68e3a9b3777a34a3948f0548523577219f6491a2e51e7c7e9c6d8f13c699deb0"
       },
       "open_pull_requests": {
         "request_url": "https://api.github.com/graphql",
@@ -53,8 +53,8 @@
           "variables_sha256": "a7c6763a8da93009812c263d63969ef91b4ab6832baf2ba5574e569dd99f638a"
         },
         "status": 200,
-        "request_id": "9E08:370678:1742ECA:52D0D73:6A5F8431",
-        "fetched_at": "2026-07-21T14:37:38.056386+00:00",
+        "request_id": "89F6:391442:5D34449:14540149:6A5F92F8",
+        "fetched_at": "2026-07-21T15:40:40.517079+00:00",
         "repository": "somebloke1/noetic-dev",
         "repository_id": 1297462728,
         "authentication": {
@@ -64,12 +64,12 @@
           "protected_verified": false
         },
         "response_headers": {
-          "date": "Tue, 21 Jul 2026 14:37:38 GMT"
+          "date": "Tue, 21 Jul 2026 15:40:40 GMT"
         },
-        "body_sha256": "307f7594553bb51c08795ea66f184551a604aa47a8813819950fe375d28764b8",
-        "canonical_response_sha256": "ef32e8d404accfd24d29992222874fb08ce337ee94cddb6242e6b4c3e63ee329",
-        "response_gzip_base64": "H4sIAAAAAAAC/52STW/UMBCG/8rKJ5A2bOx8OlIPpXup0G5oqYoK4uDY413TrB1ip22o9r8zVkEUBAewfPHMvPPxjB+JEkGQ5pGMMDhvghvn+IrWTng4V6ShjFd5ySpWL4kVB3hvwr69tzCShnh3gK53t0BX1kEwMlFwR5ZEgRZTH16Pwsr9JeiYM2pR8hQQxLiDEM3OYA1S1zKlmnVSZJQxXTDO87qsuKyE7mRRAMuh7mhGjsclGaa+v4QvE/jgY4rggujP3GQxIUO32MG51S669sJv4SG8RRNptOg9LAlYdTaN3sUBbrLrWTI+t/Zmboc36ebz6bw16f12Th/a64v7zdrR7ZX7uunHts7WF+92JycEW7BOAdb+iGNNhy6yKEucyoQ+zqhBhBc7dwejRQDwslkIpRbGu14EUIt2AHuGCRZ+MLeANCJqpLR9TmgPQv20Ge8nSMoicaiVqE1+aL/HtU8YteyoLFLe0VzTVFNdAQPNsjLTuuM156UWedmhbhpUbOYUmRGWsjJJq4TWV7Rqshzvhxgy9ujchzD4ZrXa4d6n7pV0h9Uf176Ka1mVJeJ5RqV6RsU8/AplBOmsND0s1mwhprB3ownzP/DIWCKFddZI0SejE+oght+RcMUrWcssV/iJOOSIRGQyT3nFAXHVXHKma0r/hoRf0brJi6Zg/42kIsdPRzzfAArxorZuAwAA",
-        "response_sha256": "cdd6898824410e1f6c900499309c3a0b398111b60eb820977f583bb3f8477d48",
+        "body_sha256": "4cf4cb142d641dcbe1d31ac16c83551a62fb852c6732ea5ca3f4f7951dec4775",
+        "canonical_response_sha256": "4b2dff82c762d04cde70c59d1a19a0258805e9042474a6e6e4c0fb2911712081",
+        "response_gzip_base64": "H4sIAAAAAAAC/52RTY/TMBCG/0rlE0gNjZ3ETiLtYWkvK9SGXapFC+Lg2OPWbGqH2NltWPW/Y/MhCoIDWD7Y78w79jzzhCT3HNVPaIDeOu3tMMVbVFvu4EqiGpOK5ZQwUs6R4Qd4q/2+eTQwoBo5e4C2s/eAF8aC1yKR8IDmSILiY+dfDtyI/Q2oWDN6g+VbgufDDnyUrQ5vIIyrQpSlopimkAMuVJ6lSmaKMiXaAiTHlSqKCp1Oc9SPXXcDn0Zw3sUS3nreLe1oQkESwnwHV0bZGNpzt4Gjfx0kVCveOZgjMHI5Ds7GBu6y20mQamrM3dT0r9L1x8tpo9PHzZQem9vrx/XK4s3Wfl53Q1Nmq+s3u4sLFL5grITw9vvQ1nhoIwtKQ1fad7FHBdw/29kHGEwAAM/rGZdypp3tuAc5a3owy1Bg5np9D4FGRB0obc4J7YHLn5p2boSEFokNXhG8yQ/v97zmK8YywMKiSKsW5wqnCisGBBTJaKZUW5VVRRXPaRt8Yy/jZy4DM0RSQpOUJbjcYlZnedjvYsrQheDe+97Vi8UuzH1sXwh7WPxx7Is4lgWlAc8ZFXZGRR9/hTKAsEboDmYrMuOj39tB++kfeGQkEdxYowXvksFyeeD970iwAsaJIkypVDIuKCvKXDKZhZMCCDIrYvwvSAje4qImpM7YfyNh6PThFNYXmL4MSW4DAAA=",
+        "response_sha256": "6e1e080afd3617193c96629eb6c708f654a0871ca655c1c9960ab03e98cc3652",
         "pagination": {
           "first": 100,
           "item_count": 2,
@@ -91,8 +91,8 @@
           "variables_sha256": "a7c6763a8da93009812c263d63969ef91b4ab6832baf2ba5574e569dd99f638a"
         },
         "status": 200,
-        "request_id": "9E18:8C265:14A7DF3:48F5DDC:6A5F8433",
-        "fetched_at": "2026-07-21T14:37:39.939935+00:00",
+        "request_id": "9BCC:379454:5DD0692:14790E73:6A5F92FA",
+        "fetched_at": "2026-07-21T15:40:42.468320+00:00",
         "repository": "somebloke1/noetic-dev",
         "repository_id": 1297462728,
         "authentication": {
@@ -102,12 +102,12 @@
           "protected_verified": false
         },
         "response_headers": {
-          "date": "Tue, 21 Jul 2026 14:37:39 GMT"
+          "date": "Tue, 21 Jul 2026 15:40:42 GMT"
         },
-        "body_sha256": "bb4b784cb18c71d96f34ef5b03e5510c07e8fef45be124655226ec787d1613b8",
-        "canonical_response_sha256": "391b92991117bcc6c1f83f02ddfd3a74e72990bd495b92e91082279b1685024d",
-        "response_gzip_base64": "H4sIAAAAAAAC/62TT4/cNgzFv4vPY0Sk/u+xQQ85pC2KADkUOVAiNStkxhrInm0XwX73ygkQIIiTXmr4Ytp6P/I9+tPEtNH08Gnqcmtr3Vp/3p/2aqJV3vD0ABi9cegxnKaFrvK+bo+//71Inx6mtV0lXdpHgVdLk63mmeVpOk0she6X7ZdOS378U8quuZ8dR758sFE/y7aXWx2MKYSsoGDKpAGxWIzRBOdj9lRStlbQSEigp5eX0+i1rPvRrW10ed3uyxACOE03OsubpbT93SOtv8k/2x+jND0UuqxymmTh1/e+tr3zt+9+nYbU0liG1l//Y3tfpeq63mUGmHM7L3WrTzLfejt3uq4HCEGrgs42KUsZk02gggvJFxdg3HmkoJ1S4QCBft6kd5ozLTQC/F4cHCR0mFAjGGPYlKQRo4bkjDJBsyIwkvBIPM6pj4T7fKlF8nO+yCxPlWXJckCK4DGBwJhE2BqhHJKh4sQrlcFnDJgh6nxMujamS92evxLmLrl1PgBljmCtc2CNit5rK5C1ZnQqKcieA4Iqxrr/AHUhrousR5EYHRxo5xkhRjCayLCVUDyRNr6wQ0IS84NZertvwvO5PUlf6MssV+FKW23L0UBOlSAmEHgJgZNlpUZIxXlLCsmk4Z4I0U9pt/rZsYE8WgMD3lPkmFyJoqOIZg4acpairWGmAsWyO9oxjft2taVmugwY8ZVuR/Fz9DlkvRuFUQwMs3TeE4rDuBxijlgCwAHB2bndRubjj5zXW/14tF1DIkG2KiYwZeQ75AWloHa6lBRDjK6Qcekb+SvVI78xQnTkvDbRas+uBArkAbgApOCYlNEqWD+0PryM619dbRCwLAUAAA==",
-        "response_sha256": "41e6c14f57831f452131fb23a3a8809843d4c85cadaf6b2261bea029f0922429",
+        "body_sha256": "401df1c70c08f5738c61b2a063b60e9379fc1043474aebb366104628b82a002a",
+        "canonical_response_sha256": "e54b2cf57226715247a74b61128826a330cc5abde0ded3c92411a24d64521dcc",
+        "response_gzip_base64": "H4sIAAAAAAAC/61TTY/cNgz9Lz6PUVHf2mMXPeSQtCgK5BD0QInkrJAZayB7tl0E+98jJ0CAAk5yqeGDRZnvkXyPnybCDaeHT1PnW1vr1vrLftqjGVd+Q9MD6BSs10HH07Tgld/X7en3fxbu08O0tivnS/vI8MvSeKtlJn6eThOx4P2y/dpxKU9/suyYe+5I+frDhv3M2x5udXBMAMmVGMWDV2wZnFijhIz4ICU7JoQkzqXp9fU0apV1T93ahpfHdl8GEMBpuuGZ3yzS9rsnXN/xv9sfIzQ9CF5WPk280OO9r22v/O1fv00DamnEA+vD/1jeN6i6rneeAebSzkvd6jPPt97OHa/rAQVrp6IpLiuHRWeXQUUfcxAfYbxlqGC8UvGAQod5495xLrjgEPCgfg9Ze5210WCtJSvZaJ0MZG+VjYYUguWsj8DTnPtQuM+XKlxeyoVnfq7ES+EDpgRBZ2AYnTA5y1hitiieg1IFQtFRF0imHDNdG+Glbi/fGObOpXU6ICqUwDnvwVmVQjCOoRhD2qusoASKGpRY539C1BmpLrweSWJN9GB8IA0pgTWIlhxHCYjGBiGvUSPb7/TS231jms/tmfuCX3u5MlXcaluOGvJKItuIEDhGyo6UGiINizlUGm0e02NG/CHbrX6Z2KA8soGFEDBRyl4Sm8RsiKKBUliMs0QoII78kceM3t3VllrwMsiQrng7MppwQC06iCgKWEbx0VIgM76EeYRHN+P+gMG7ud2G5mMj5/VWPx65K45tg+JUymBl6AsSWLNo441ITjElL2h9/g/8FevRvHWC5NEHY5MzgbxEjBgASABy9IRq7Hh0YWD9/TqezwhM05ssBQAA",
+        "response_sha256": "4a5d44e1cb8b988ae79963abea1d3b0b5c4b046e1306b72393d2cf6675ceeba7",
         "pagination": {
           "first": 100,
           "item_count": 11,
@@ -129,8 +129,8 @@
           "variables_sha256": "a7c6763a8da93009812c263d63969ef91b4ab6832baf2ba5574e569dd99f638a"
         },
         "status": 200,
-        "request_id": "9E28:37DD12:14E7E1D:49C20E7:6A5F8434",
-        "fetched_at": "2026-07-21T14:37:40.377275+00:00",
+        "request_id": "9BE2:FB343:61ECA6E:1552D3C1:6A5F92FC",
+        "fetched_at": "2026-07-21T15:40:44.332613+00:00",
         "repository": "somebloke1/noetic-dev",
         "repository_id": 1297462728,
         "authentication": {
@@ -140,12 +140,12 @@
           "protected_verified": false
         },
         "response_headers": {
-          "date": "Tue, 21 Jul 2026 14:37:40 GMT"
+          "date": "Tue, 21 Jul 2026 15:40:44 GMT"
         },
-        "body_sha256": "0fa70b26848eab98c5b6c37db0a3484ee8891970c441cac8fc34a6592fb55a93",
-        "canonical_response_sha256": "0c6f238b90d1ea74af807daab33bb8abb7d2bb850110b3fcc94deda0f4bb7716",
-        "response_gzip_base64": "H4sIAAAAAAAC/92UW2/TMBSA/4rl55YmbnqLxMPYmDSxtbsBGgghxzlpvTl2ZDvroqn/neO2YxdWxIrGA1Ve6uPb+b7jc0tz7jlNb6mFyjjpjW3CvzCacQcHOU1jNhokfTZgwxbVvITP0s8mcw2WptSZEjJlriDuaANeinYO17RFcyh4rfw7y7WYnUIR9gxrcclqgud2Cj4MG4ln0OFQRHHBMsG7MWNFj41GybA/GIkBLzLR6wFLYJjFXbpYtKh0rgYXFnvjudo1tcatei1a8Skc6MKE0Iy7Mdz4YxyiacGVgxYFne/W1plw9Yvup0awUTPRF82k+hAdXe40YxnNx010M9k/mY/3zHx8aeaTfXu8E35nH8dzn7yleAFt8nD+V0yqLrNAIo4xJ+lVyPCsAiGLhggz1dLLayCVNVPLS0eMJn4GBG5A1MuIMNpboxTu0aJ1hdwh38FkKItYvx0N2iw+j5O0O0hZ/0uYYhUGZ95XLu10pqiizt4IU3aeNdFZkerEMS5VPAP1t9TGJ0/yX0n1TQWpBQfcihnO+BlwnvvapXgzcQX5w0iFR0F6zB6NWWms9E16HD8cxvwqo0H79A4kXXxbLCfc4Wf3+PegkBqIyRzYa55JhRt21pxJpTjGnDAVEK5zYoHnpMR0kMxrCmD/iYBHVJ9aYKN7C+8xHyuAlEiZh7ZCpqBr17am9mCX7A+lh8PDoxV+UhklRbNJQnQeD9JekrJkewls9C8kyLJSUCIr7qXRL1KRPK8iel6FqzPnLaJ6qqH74DGcQhWqQvt1tbu6hGULCvso8EDuOaEC6wvUYHAGeprOCK+90aY0tSOrvv1qL6S7+YV0XybnaL6NnA24186k/r5sPeB+aT393sPOL6+w82CHERZyPEZy1ZbOqMCMTCrQu3itdcH72uoNROPheZSkUT+NhtsT7fc2Ek1eWO47WxH9bVHHf1LU+C0WPwD8VxO7pAgAAA==",
-        "response_sha256": "92e24ed3099e70ab85a4dedd0153da9b9f4f6de1accdc613e0f0f7306efa7111",
+        "body_sha256": "9ed4f6a02f56d100dfeea9f529d029ca93cb3f96d043b9035102e3a9af275864",
+        "canonical_response_sha256": "b4af0649ddb53ca4486b3d6c1e84a356e4504631be739e1ebd4f5e1482f2e53f",
+        "response_gzip_base64": "H4sIAAAAAAAC/92UW2/TMBSA/4rl55bGaZK2kXgYG5MmtnY3QAMh5CQnrTfHjmxnXTT1v3PcduzCiljReKDKS318O993fG5pwR2n6S01UGsrnDat/+dHM27hoKApC0eDKAkH4bBDFa/gs3CzyVyBoSm1uoJM6itgPaXBibxbwDXt0AJK3kj3znCVz06h9Hv6tbhkNcFxMwXnh7XAMyhjozgfDsuEJQFEwOIy6gdl0S+TQZlnMRScjco4HtHFokOFtQ1Yv9hpx+WubhRuFXdozadwoErtQzNux3DjjnGIpiWXFjoUVLHbGKv91S/6n9o8HLUTddFO6g/B0eVOOxbBfNwGN5P9k/l4T8/Hl3o+2TfHO/539nE8d9FbihdQuvDnf8WkmirzJBjDnISTPsOzGnJRtiTXUyWcuAZSGz01vLJEK+JmQOAG8mYZybVyRkuJe3RoUyN3KHYwGRoGYdINBt2QnbMo7Q/SMPnipxiJwZlztU17vSmqaLI3ua56z5rorUj1GMOlkmcg/5ba+ORJ/iuprq0hNWCBm3yGM34GrOOusSneLL+C4mGkxqMgPQ4fjRmhjXBtesweDmN+tVagXHoHki6+LZYT7vCH9/j3oBQKiM4smGueCYkb9tacSS05xmyuayBcFcQAL0iF6SCZ1xQQ/icCHlF9aiEc3Vt4j/mYHEiFlLlvK2QKqrFdoxsHZsn+UDg4PDxa4Se1liJvN0kIztkgjaM0jLaXEI7+hQRR1RIqZMWd0OpFKqLnVQTPq7BNZp1BVE819B88hlOofVUot65221SwbEF+HwkOyD0nVGBciRo0zkBP0xnhjdNKV7qxZNW3X+2F9De/kP7L5BzNt5GzAffamVDfl60H7C+tJ4kfdn5xhZ0HO0xuoMBjBJddYbX0zMikBrWL11oXvGuM2kCUDc+DKA2SNBhuTzSJNxKNXljuO1sR/W1Rsz8pavwWix/Xpj6NpAgAAA==",
+        "response_sha256": "581289cfb9391b5a2fb3ca09ae94c63590d899d28104a58d66fc95290760b881",
         "pagination": {
           "first": 100,
           "item_count": 5,
@@ -159,29 +159,29 @@
   "verification": {
     "status": "pending_protected_receipt",
     "required_source": "protected-integration",
-    "required_claims_sha256": "d01d125fcc87b984608afcda69c12fe489e32eaa44cf938e95ef95bcb776d800",
+    "required_claims_sha256": "61ca4fa20212565e9c388ec5402039ac5bf950a7204ca191071d13b57d0dac0f",
     "required_claims": {
       "repository": "somebloke1/noetic-dev",
       "repository_id": 1297462728,
-      "capture_started_at": "2026-07-21T14:37:35.693464+00:00",
-      "capture_completed_at": "2026-07-21T14:37:40.377461+00:00",
+      "capture_started_at": "2026-07-21T15:40:39.685657+00:00",
+      "capture_completed_at": "2026-07-21T15:40:44.332775+00:00",
       "response_sha256": {
-        "principal": "5918c87ec35039ce515deadad6d9364ec49ea82733fde2d6e2ed05e32e5c1eb5",
-        "open_pull_requests": "cdd6898824410e1f6c900499309c3a0b398111b60eb820977f583bb3f8477d48",
-        "branches": "41e6c14f57831f452131fb23a3a8809843d4c85cadaf6b2261bea029f0922429",
-        "open_issues": "92e24ed3099e70ab85a4dedd0153da9b9f4f6de1accdc613e0f0f7306efa7111"
+        "principal": "68e3a9b3777a34a3948f0548523577219f6491a2e51e7c7e9c6d8f13c699deb0",
+        "open_pull_requests": "6e1e080afd3617193c96629eb6c708f654a0871ca655c1c9960ab03e98cc3652",
+        "branches": "4a5d44e1cb8b988ae79963abea1d3b0b5c4b046e1306b72393d2cf6675ceeba7",
+        "open_issues": "581289cfb9391b5a2fb3ca09ae94c63590d899d28104a58d66fc95290760b881"
       },
       "body_sha256": {
         "principal": "859b5ad0e7a399e1bdabd2b970124c72a40defa3ad0ca0ebdf4611b60ebc18bd",
-        "open_pull_requests": "307f7594553bb51c08795ea66f184551a604aa47a8813819950fe375d28764b8",
-        "branches": "bb4b784cb18c71d96f34ef5b03e5510c07e8fef45be124655226ec787d1613b8",
-        "open_issues": "0fa70b26848eab98c5b6c37db0a3484ee8891970c441cac8fc34a6592fb55a93"
+        "open_pull_requests": "4cf4cb142d641dcbe1d31ac16c83551a62fb852c6732ea5ca3f4f7951dec4775",
+        "branches": "401df1c70c08f5738c61b2a063b60e9379fc1043474aebb366104628b82a002a",
+        "open_issues": "9ed4f6a02f56d100dfeea9f529d029ca93cb3f96d043b9035102e3a9af275864"
       }
     }
   },
   "refs": {
     "main": "29196a67349537d6f8a8a711df11b86da0430857",
-    "dev": "88c01f2bca3122f529948679c7afbc55e24e8b13",
+    "dev": "1195c88f6160e4e15f430fd3f67fcb5eda19f559",
     "default_branch": "dev"
   },
   "counts": {
@@ -205,8 +205,8 @@
       "title": "fix(governance): reconcile D2 authority",
       "base": "dev",
       "head": "issue-32-canonical-roadmap",
-      "head_sha": "9d97c8c34d5e29e41f7a3c40979e8fc89c92f811",
-      "updated_at": "2026-07-19T18:45:52Z",
+      "head_sha": "1fe7a2f27ff0d7ac67584d7d3c67fee7ff75a2f2",
+      "updated_at": "2026-07-21T15:22:37Z",
       "url": "https://github.com/somebloke1/noetic-dev/pull/67",
       "governance_disposition": "active bounded D2 roadmap candidate"
     }
@@ -214,7 +214,7 @@
   "branches": [
     {
       "name": "dev",
-      "sha": "88c01f2bca3122f529948679c7afbc55e24e8b13",
+      "sha": "1195c88f6160e4e15f430fd3f67fcb5eda19f559",
       "governance_disposition": "protected autonomous integration branch"
     },
     {
@@ -254,7 +254,7 @@
     },
     {
       "name": "issue-32-canonical-roadmap",
-      "sha": "9d97c8c34d5e29e41f7a3c40979e8fc89c92f811",
+      "sha": "1fe7a2f27ff0d7ac67584d7d3c67fee7ff75a2f2",
       "governance_disposition": "active bounded D2 roadmap candidate"
     },
     {
