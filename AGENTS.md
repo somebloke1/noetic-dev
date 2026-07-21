@@ -47,7 +47,7 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 
 - **Git/GitHub.** Use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before PR merge, deliberate squash/rebase/merge policy, protected `main`, and never commit secrets or bypass governance. Full practice: `docs/development-practices.md`.
 - **Implementation:QA pairing.** For every implementation agent/pass, dispatch exactly one adversarial QA agent/pass; do not weaken this ratio through later mutation or convenience.
-- **Non-interactive sudo.** If elevation is genuinely required, first check `USER_PROVIDED_PASS`; when present, pass it only through non-interactive stdin without printing, logging, or persisting it. If absent or rejected, record the blocker. Never ask for the password or trigger an interactive/GUI credential prompt.
+- **Development-agent sudo.** This applies only to tools and agents developing noetic-dev, never to noetic-dev components or runtime behavior. If elevation is genuinely required, first check `USER_PROVIDED_PASSWORD`; when present, pass it only through non-interactive stdin without printing, logging, or persisting it. If absent or rejected, record the blocker. Never ask for the password or trigger an interactive/GUI credential prompt.
 - **Superior re-instantiation.** Abstract the APM's deterministic invariants, contracts, tests, and lessons, then express a cleaner portable controller. Do not blindly lift the donor implementation.
 
 ## 4. Practices
