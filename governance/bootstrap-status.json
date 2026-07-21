@@ -6,8 +6,8 @@
     "required_dependency": "A separately protected required GitHub workflow or repository integration that checks PR head SHAs from protected policy code, captures authenticated GitHub provenance or signed artifact attestations, records protected QA probe/execution evidence outside model control, uses a credential broker before QA tools are enabled, installs the fixed root-owned publisher stage-0 only from a distinct pinned protected policy ancestor with a protected receipt binding policy/candidate trees and executable digests, proves a specific write-enabled protected-main DeployKey ID and SSH public-key fingerprint matching the fixed root-owned publisher key has live bypass capability without force-push permission, and is required by branch protection.",
     "protected_policy_ref_established": false,
     "trusted_runner_provenance_established": false,
-    "branch_protection_requires_governance": true,
-    "independent_agent_review_process_established": true,
+    "branch_protection_requires_governance": false,
+    "independent_agent_review_process_established": false,
     "credential_broker_established": false,
     "main_publisher_capability_established": false
   },

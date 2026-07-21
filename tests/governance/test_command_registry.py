@@ -94,11 +94,13 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("$mode -eq 8#400", installer)
         self.assertIn("/usr/bin/ssh-keygen -y -P ''", installer)
         self.assertIn("[[ ! -L $current ]]", installer)
-        self.assertIn("[[ $owner -eq 0 ]]", installer)
+        self.assertIn("install_owner=0", installer)
+        self.assertIn("$owner -eq 0 || $owner -eq $install_owner", installer)
         self.assertIn("(mode & 8#022) == 0", installer)
         self.assertIn("current=$(/usr/bin/dirname \"$current\")", installer)
         self.assertIn("GIT_NO_REPLACE_OBJECTS=1", installer)
-        self.assertIn("/usr/bin/git --no-replace-objects", installer)
+        self.assertIn("git_executable=/usr/bin/git", installer)
+        self.assertIn('"$git_executable" --no-replace-objects', installer)
         self.assertIn('archive "$policy_sha"', installer)
         self.assertNotIn('archive "$authorized_sha"', installer)
         self.assertIn("actual_tree", installer)
@@ -111,7 +113,7 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("verifier_sha256", installer)
         self.assertIn("authorization_receipt_sha256", installer)
         self.assertIn("publisher-installation-receipt.json", installer)
-        self.assertIn("chown -R root:root \"$installation_staging\"", installer)
+        self.assertIn("chown -R \"$install_owner:$install_group\" \"$installation_staging\"", installer)
         self.assertIn("chmod -R go-w \"$installation_staging\"", installer)
         self.assertIn("-m 0700", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
@@ -162,7 +164,7 @@ class TestCommandRegistry(unittest.TestCase):
         )
         validation = installer.index('trusted_or_absent_directory_path "$root"')
         root_install = installer.index(
-            '/usr/bin/install -d -o root -g root -m 0755 "$root"'
+            '/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$root"'
         )
         parent_recheck = installer.index(
             'trusted_directory_path "$root/policy-releases/$policy_sha"',

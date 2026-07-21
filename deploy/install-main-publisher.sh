@@ -5,20 +5,15 @@ unset BASH_ENV ENV CDPATH GLOBIGNORE
 umask 077
 
 stage0=/usr/local/sbin/noetic-dev-install-main-publisher
-if [[ $- != *p* || $EUID -ne 0 || $# -ne 3 || $(/usr/bin/readlink -f "$0") != "$stage0" ]]; then
-  echo "usage: sudo $stage0 PROTECTED_POLICY_SHA AUTHORIZED_DEV_SHA PROTECTED_AUTHORIZATION_RECEIPT_JSON" >&2
-  exit 2
-fi
-
-policy_sha=$1
-authorized_sha=$2
-authorization_receipt=$3
 root=/opt/noetic-dev-main-publisher
-release=$root/policy-releases/$policy_sha/$authorized_sha
 canonical_remote=https://github.com/somebloke1/noetic-dev.git
 verifier=/usr/local/libexec/noetic-dev/verify-delivery-attestation
 launcher=/usr/local/libexec/noetic-dev/promote-main
 publisher_key=/etc/noetic-dev/main-publisher/deploy-key
+install_owner=0
+install_group=0
+git_executable=/usr/bin/git
+trust_anchor=/
 
 trusted_executable_path() {
   local current=$1 mode owner
@@ -26,14 +21,14 @@ trusted_executable_path() {
     [[ ! -L $current ]]
     owner=$(/usr/bin/stat -c %u "$current")
     mode=$((8#$(/usr/bin/stat -c %a "$current")))
-    [[ $owner -eq 0 ]]
+    [[ $owner -eq 0 || $owner -eq $install_owner ]]
     (( (mode & 8#022) == 0 ))
     if [[ $current == "$1" ]]; then
       [[ -f $current && -x $current ]]
     else
       [[ -d $current ]]
     fi
-    [[ $current == / ]] && break
+    [[ $current == "$trust_anchor" || $current == / ]] && break
     current=$(/usr/bin/dirname "$current")
   done
 }
@@ -44,7 +39,7 @@ trusted_private_key_path() {
     [[ ! -L $current ]]
     owner=$(/usr/bin/stat -c %u "$current")
     mode=$((8#$(/usr/bin/stat -c %a "$current")))
-    [[ $owner -eq 0 ]]
+    [[ $owner -eq 0 || $owner -eq $install_owner ]]
     (( (mode & 8#022) == 0 ))
     if [[ $current == "$1" ]]; then
       [[ -f $current && $mode -eq 8#400 ]]
@@ -53,7 +48,7 @@ trusted_private_key_path() {
     else
       [[ -d $current ]]
     fi
-    [[ $current == / ]] && break
+    [[ $current == "$trust_anchor" || $current == / ]] && break
     current=$(/usr/bin/dirname "$current")
   done
 }
@@ -64,9 +59,9 @@ trusted_directory_path() {
     [[ ! -L $current ]]
     owner=$(/usr/bin/stat -c %u "$current")
     mode=$((8#$(/usr/bin/stat -c %a "$current")))
-    [[ $owner -eq 0 && -d $current ]]
+    [[ ( $owner -eq 0 || $owner -eq $install_owner ) && -d $current ]]
     (( (mode & 8#022) == 0 ))
-    [[ $current == / ]] && break
+    [[ $current == "$trust_anchor" || $current == / ]] && break
     current=$(/usr/bin/dirname "$current")
   done
 }
@@ -74,7 +69,7 @@ trusted_directory_path() {
 trusted_or_absent_directory_path() {
   local current=$1
   while [[ ! -e $current && ! -L $current ]]; do
-    [[ $current != / ]]
+    [[ $current != "$trust_anchor" && $current != / ]]
     current=$(/usr/bin/dirname "$current")
   done
   trusted_directory_path "$current"
@@ -83,6 +78,12 @@ trusted_or_absent_directory_path() {
 sha256_file() {
   /usr/bin/sha256sum "$1" | /usr/bin/cut -d ' ' -f 1
 }
+
+install_main_publisher() {
+local policy_sha=$1
+local authorized_sha=$2
+local authorization_receipt=$3
+local release=$root/policy-releases/$policy_sha/$authorized_sha
 
 [[ $policy_sha =~ ^[0-9a-f]{40}$ ]]
 [[ $authorized_sha =~ ^[0-9a-f]{40}$ ]]
@@ -96,16 +97,16 @@ trusted_private_key_path "$publisher_key"
 /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
   /usr/bin/ssh-keygen -y -P '' -f "$publisher_key" </dev/null >/dev/null
 
-git_safe=(/usr/bin/env -i PATH=/usr/bin:/bin HOME=/root GIT_NO_REPLACE_OBJECTS=1 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 /usr/bin/git --no-replace-objects)
+git_safe=(/usr/bin/env -i PATH=/usr/bin:/bin HOME=/root GIT_NO_REPLACE_OBJECTS=1 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TERMINAL_PROMPT=0 "$git_executable" --no-replace-objects)
 verify_git=$(/usr/bin/mktemp -d)
 installation_staging=$(/usr/bin/mktemp -d)
 staging=$installation_staging/repository
-/usr/bin/install -d -o root -g root -m 0700 "$staging"
+/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0700 "$staging"
 claims_file=$(/usr/bin/mktemp)
 installation_file=$(/usr/bin/mktemp)
 receipt_snapshot=$(/usr/bin/mktemp)
 trap '/usr/bin/rm -rf "$verify_git" "$installation_staging" "$claims_file" "$installation_file" "$receipt_snapshot"' EXIT
-/usr/bin/install -o root -g root -m 0600 "$authorization_receipt" "$receipt_snapshot"
+/usr/bin/install -o "$install_owner" -g "$install_group" -m 0600 "$authorization_receipt" "$receipt_snapshot"
 [[ $(/usr/bin/stat -c %s "$receipt_snapshot") -le 1048576 ]]
 "${git_safe[@]}" --git-dir="$verify_git" init --bare --quiet
 "${git_safe[@]}" --git-dir="$verify_git" fetch --no-tags \
@@ -204,26 +205,39 @@ trusted_or_absent_directory_path "$root"
 trusted_or_absent_directory_path "$root/policy-releases"
 trusted_or_absent_directory_path "$root/policy-releases/$policy_sha"
 trusted_or_absent_directory_path "$release"
-/usr/bin/install -d -o root -g root -m 0755 "$root" "$root/policy-releases" \
+/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$root" "$root/policy-releases" \
   "$root/policy-releases/$policy_sha"
 trusted_directory_path "$root"
 trusted_directory_path "$root/policy-releases"
 trusted_directory_path "$root/policy-releases/$policy_sha"
 [[ ! -e $release && ! -L $release ]]
-/usr/bin/install -o root -g root -m 0600 "$installation_file" "$installation_staging/publisher-installation.json"
-/usr/bin/install -o root -g root -m 0600 "$receipt_snapshot" "$installation_staging/publisher-installation-receipt.json"
-/usr/bin/chown -R root:root "$installation_staging"
+/usr/bin/install -o "$install_owner" -g "$install_group" -m 0600 "$installation_file" "$installation_staging/publisher-installation.json"
+/usr/bin/install -o "$install_owner" -g "$install_group" -m 0600 "$receipt_snapshot" "$installation_staging/publisher-installation-receipt.json"
+/usr/bin/chown -R "$install_owner:$install_group" "$installation_staging"
 /usr/bin/chmod -R go-w "$installation_staging"
 trusted_directory_path "$root/policy-releases/$policy_sha"
 /usr/bin/mv "$installation_staging" "$release"
 trusted_directory_path "$release"
 trusted_directory_path "$release/repository"
-trusted_or_absent_directory_path /usr/local/libexec/noetic-dev
-/usr/bin/install -d -o root -g root -m 0755 /usr/local/libexec/noetic-dev
-trusted_directory_path /usr/local/libexec/noetic-dev
-/usr/bin/install -o root -g root -m 0700 \
+trusted_or_absent_directory_path "$(/usr/bin/dirname "$launcher")"
+/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$(/usr/bin/dirname "$launcher")"
+trusted_directory_path "$(/usr/bin/dirname "$launcher")"
+/usr/bin/install -o "$install_owner" -g "$install_group" -m 0700 \
   "$release/repository/deploy/noetic-dev-promote-main" \
   "$launcher"
 trusted_directory_path "$root"
 /usr/bin/ln -sfn "$release" "$root/current.new"
 /usr/bin/mv -Tf "$root/current.new" "$root/current"
+}
+
+main() {
+  if [[ $- != *p* || $EUID -ne 0 || $# -ne 3 || $(/usr/bin/readlink -f "$0") != "$stage0" ]]; then
+    echo "usage: sudo $stage0 PROTECTED_POLICY_SHA AUTHORIZED_DEV_SHA PROTECTED_AUTHORIZATION_RECEIPT_JSON" >&2
+    exit 2
+  fi
+  install_main_publisher "$@"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

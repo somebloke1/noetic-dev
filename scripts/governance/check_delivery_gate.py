@@ -2071,8 +2071,8 @@ def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
         expected = {
             "protected_policy_ref_established": False,
             "trusted_runner_provenance_established": False,
-            "branch_protection_requires_governance": True,
-            "independent_agent_review_process_established": True,
+            "branch_protection_requires_governance": False,
+            "independent_agent_review_process_established": False,
             "credential_broker_established": False,
             "main_publisher_capability_established": False,
         }
