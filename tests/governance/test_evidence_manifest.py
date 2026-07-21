@@ -157,6 +157,47 @@ class TestEvidenceManifestValidation(unittest.TestCase):
         errors = check_manifest(manifest)
         self.assertEqual(errors, [], f"expected advisory manifest to validate structurally: {errors}")
 
+    def test_candidate_pinned_transition_must_match_recorded_pin(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        candidate_transition = next(
+            transition
+            for transition in manifest["state_transitions"]
+            if transition["from"] == "IMPLEMENTING"
+            and transition["to"] == "CANDIDATE_PINNED"
+        )
+        candidate_transition["timestamp"] = "2099-01-01T00:00:00+00:00"
+
+        errors = check_manifest(manifest)
+
+        self.assertTrue(
+            any("timestamp must equal repo.candidate_pinned_at" in error for error in errors),
+            errors,
+        )
+
+    def test_schema_invalid_transition_fails_closed_without_exception(self):
+        manifest = load_fixture("valid_advisory_manifest.json")
+        manifest["state_transitions"][0] = 1
+
+        errors = check_manifest(manifest)
+
+        self.assertTrue(any(error.startswith("schema:") for error in errors), errors)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "malformed-transition.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts/governance/check_evidence_manifest.py"),
+                    str(path),
+                ],
+                cwd=REPO_ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_manifest_only_authoritative_claim_is_invalid(self):
         manifest = load_fixture("negative_manifest_only_authoritative_manifest.json")
         errors = check_manifest(manifest)

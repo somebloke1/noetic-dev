@@ -429,14 +429,25 @@ def _check_state_transitions(
     state_ids = set(sm.get("states", {}))
     transition_specs = sm.get("transitions", [])
     transitions = manifest.get("state_transitions", [])
+    if not isinstance(transitions, list):
+        errors.append("state_transitions must be an array")
+        return
     if not transitions:
         errors.append("state_transitions must record the governed delivery path")
         return
 
+    candidate_pinned_at = _parse_time(
+        manifest.get("repo", {}).get("candidate_pinned_at", ""),
+        "repo.candidate_pinned_at",
+        errors,
+    )
     previous_target = None
     previous_time = None
     observed_edges = set()
-    for transition in transitions:
+    for index, transition in enumerate(transitions):
+        if not isinstance(transition, dict):
+            errors.append(f"state_transition {index} must be an object")
+            continue
         source = transition.get("from")
         target = transition.get("to")
         authority = transition.get("authority")
@@ -460,6 +471,17 @@ def _check_state_transitions(
         timestamp = _parse_time(transition.get("timestamp", ""), f"state_transition {source}->{target}", errors)
         if timestamp and previous_time and timestamp <= previous_time:
             errors.append(f"state_transition timestamp did not advance at {source}->{target}")
+        if (
+            source == "IMPLEMENTING"
+            and target == "CANDIDATE_PINNED"
+            and timestamp
+            and candidate_pinned_at
+            and timestamp != candidate_pinned_at
+        ):
+            errors.append(
+                "IMPLEMENTING->CANDIDATE_PINNED timestamp must equal "
+                "repo.candidate_pinned_at"
+            )
         if timestamp:
             previous_time = timestamp
         previous_target = target
@@ -524,6 +546,8 @@ def check(
         errors.extend(f"schema: {err}" for err in schema_errors)
     except Exception as exc:
         errors.append(f"schema validation failed internally: {exc}")
+        return errors
+    if schema_errors:
         return errors
 
     # If required top-level fields are absent, semantic checks would cascade.
