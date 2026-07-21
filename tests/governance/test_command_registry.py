@@ -119,7 +119,7 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn('/usr/bin/ln -sT "$release" "$current_new"', installer)
         self.assertIn("release_created=true", installer)
         self.assertIn("/usr/bin/flock -x", installer)
-        self.assertIn("noetic-dev-main-publisher-install.lock", installer)
+        self.assertIn("/run/noetic-dev-main-publisher/install.lock", installer)
         self.assertIn("-m 0700", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
         self.assertIn("policy-releases", launcher)

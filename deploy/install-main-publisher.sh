@@ -14,7 +14,7 @@ install_owner=0
 install_group=0
 git_executable=/usr/bin/git
 trust_anchor=/
-installation_lock=/run/lock/noetic-dev-main-publisher-install.lock
+installation_lock=/run/noetic-dev-main-publisher/install.lock
 
 trusted_executable_path() {
   local current=$1 mode owner
@@ -217,6 +217,8 @@ with open(sys.argv[2], "w", encoding="utf-8") as target:
 ' "$claims_file" "$installation_file" "$receipt_sha256"
 
 lock_parent=$(/usr/bin/dirname "$installation_lock")
+trusted_or_absent_directory_path "$lock_parent"
+/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$lock_parent"
 trusted_directory_path "$lock_parent"
 if [[ ! -e $installation_lock && ! -L $installation_lock ]]; then
   ( set -o noclobber; : > "$installation_lock" ) 2>/dev/null || true
