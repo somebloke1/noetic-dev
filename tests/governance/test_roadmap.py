@@ -230,6 +230,14 @@ class TestRoadmap(unittest.TestCase):
         freeze = load_json_strict(
             ROOT / "governance/audits/existing-work-freeze.json"
         )
+        audit = load_json_strict(
+            ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
+        )
+        inventory_pr_head = next(
+            item["head_sha"]
+            for item in audit["open_pull_requests"]
+            if item["number"] == 67
+        )
         candidate_sha = "c" * 40
         integration_sha = "d" * 40
 
@@ -267,6 +275,7 @@ class TestRoadmap(unittest.TestCase):
         review = {
             "schema_version": "3",
             "audit_sha256": freeze["audit_sha256"],
+            "inventory_pr_head_sha": inventory_pr_head,
             "reviewed_candidate_sha": candidate_sha,
             "pull_request": 67,
             "pr_api_response": envelope(
@@ -279,6 +288,18 @@ class TestRoadmap(unittest.TestCase):
                     "head_sha": candidate_sha,
                     "base_ref": "dev",
                     "linked_issues": [32],
+                },
+            ),
+            "candidate_compare_api_response": envelope(
+                "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
+                f"{inventory_pr_head}...{candidate_sha}",
+                "2026-07-19T00:00:15+00:00",
+                {
+                    "status": "ahead",
+                    "ahead_by": 1,
+                    "behind_by": 0,
+                    "base_commit": {"sha": inventory_pr_head},
+                    "merge_base_commit": {"sha": inventory_pr_head},
                 },
             ),
             "implementation_generation": {
@@ -389,7 +410,7 @@ class TestRoadmap(unittest.TestCase):
                     return_value=True,
                 ):
                     return _validate_d2_protected_review(
-                        root, completed_freeze, d2
+                        root, completed_freeze, d2, audit
                     )
 
             write_review(review)
@@ -399,13 +420,23 @@ class TestRoadmap(unittest.TestCase):
                 return_value=True,
             ) as verifier:
                 self.assertEqual(
-                    _validate_d2_protected_review(root, completed_freeze, d2), []
+                    _validate_d2_protected_review(
+                        root, completed_freeze, d2, audit
+                    ),
+                    [],
                 )
             claims = verifier.call_args.args[1]
             self.assertEqual(claims["contained_dev_head_sha"], integration_sha)
             self.assertEqual(claims["purpose"], "d2-freeze-completion-v3")
             self.assertEqual(claims["qa_record_sha256"], canonical_json_sha256(qa_record))
             self.assertEqual(claims["qa_protected_run_id"], 29691499052)
+            self.assertEqual(
+                claims["inventory_pr_head_sha"], inventory_pr_head
+            )
+            self.assertEqual(
+                claims["candidate_compare_api_response_sha256"],
+                review["candidate_compare_api_response"]["response_sha256"],
+            )
             self.assertEqual(
                 claims["integration_pr_api_response_sha256"],
                 review["integration_pr_api_response"]["response_sha256"],
@@ -422,7 +453,7 @@ class TestRoadmap(unittest.TestCase):
                 return_value=True,
             ):
                 errors = _validate_d2_protected_review(
-                    root, wrong_authorization, d2
+                    root, wrong_authorization, d2, audit
                 )
             self.assert_has_error(errors, "exact authorized repair")
 
@@ -430,7 +461,9 @@ class TestRoadmap(unittest.TestCase):
                 "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
                 return_value=False,
             ):
-                errors = _validate_d2_protected_review(root, completed_freeze, d2)
+                errors = _validate_d2_protected_review(
+                    root, completed_freeze, d2, audit
+                )
             self.assert_has_error(errors, "receipt is not independently verified")
 
             attacked_review = copy.deepcopy(review)
@@ -443,8 +476,28 @@ class TestRoadmap(unittest.TestCase):
                 "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
                 return_value=True,
             ):
-                errors = _validate_d2_protected_review(root, completed_freeze, d2)
+                errors = _validate_d2_protected_review(
+                    root, completed_freeze, d2, audit
+                )
             self.assert_has_error(errors, "not derived from the authenticated PR response")
+
+            stale_inventory = copy.deepcopy(review)
+            stale_inventory["inventory_pr_head_sha"] = "f" * 40
+            self.assert_has_error(
+                validate_review(stale_inventory), "does not bind the inventory PR head"
+            )
+            unrelated_candidate = copy.deepcopy(review)
+            candidate_response = unrelated_candidate[
+                "candidate_compare_api_response"
+            ]["response"]
+            candidate_response["merge_base_commit"]["sha"] = "f" * 40
+            unrelated_candidate["candidate_compare_api_response"][
+                "response_sha256"
+            ] = canonical_json_sha256(candidate_response)
+            self.assert_has_error(
+                validate_review(unrelated_candidate),
+                "not an authenticated ancestor of the reviewed candidate",
+            )
 
             qa_attacks = []
             missing_qa = copy.deepcopy(review)
@@ -546,7 +599,7 @@ class TestRoadmap(unittest.TestCase):
                     return_value=True,
                 ):
                     errors = _validate_d2_protected_review(
-                        root, completed_freeze, d2
+                        root, completed_freeze, d2, audit
                     )
                     self.assertEqual(errors, [])
 
@@ -601,7 +654,7 @@ class TestRoadmap(unittest.TestCase):
                         return_value=True,
                     ):
                         errors = _validate_d2_protected_review(
-                            root, completed_freeze, d2
+                            root, completed_freeze, d2, audit
                         )
                     self.assertTrue(errors, attack)
 
@@ -613,7 +666,9 @@ class TestRoadmap(unittest.TestCase):
                 "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
                 return_value=True,
             ):
-                errors = _validate_d2_protected_review(root, completed_freeze, attacked)
+                errors = _validate_d2_protected_review(
+                    root, completed_freeze, attacked, audit
+                )
             self.assert_has_error(errors, "exact dev integration SHA")
 
     def test_portfolio_audit_is_schema_valid_and_digest_bound(self) -> None:

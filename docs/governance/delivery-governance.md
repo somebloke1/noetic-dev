@@ -248,6 +248,11 @@ integration SHA from a later authenticated protected-`dev` branch response, incl
 that integration SHA in D2 commit evidence, and pass the fixed protected receipt
 verifier. Local freeze, roadmap, evidence-list, or digest edits alone cannot advance
 the transition.
+Because a Git-tracked inventory necessarily records the remote PR head before its
+own successor is pushed, protected completion must also embed an authenticated
+GitHub comparison proving that exact inventory head is an ancestor of the reviewed
+candidate. The protected receipt binds the audit digest, both candidate SHAs, and
+the comparison-envelope digest; an unrelated or rewritten snapshot is rejected.
 While the freeze is `repair_authorized`, `dev-integration` admits only issue #32,
 PR #67, branch `issue-32-canonical-roadmap` targeting `dev`, with exactly the sole
 linked issue #32. Active freeze state blocks every dev integration; main promotion

@@ -3,7 +3,7 @@
   "title": "D2 Protected Freeze Review Evidence v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "audit_sha256", "reviewed_candidate_sha", "pull_request", "pr_api_response", "implementation_generation", "qa_records", "integration_pr_api_response", "dev_integration_sha", "dev_branch_api_response", "dev_compare_api_response", "issue", "head", "base", "evidence_url", "reviewed_at", "protected_attestation_receipt"],
+  "required": ["schema_version", "audit_sha256", "inventory_pr_head_sha", "reviewed_candidate_sha", "pull_request", "pr_api_response", "candidate_compare_api_response", "implementation_generation", "qa_records", "integration_pr_api_response", "dev_integration_sha", "dev_branch_api_response", "dev_compare_api_response", "issue", "head", "base", "evidence_url", "reviewed_at", "protected_attestation_receipt"],
   "definitions": {
     "authentication": {
       "type": "object",
@@ -44,6 +44,7 @@
   "properties": {
     "schema_version": {"type": "string", "const": "3"},
     "audit_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "inventory_pr_head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "reviewed_candidate_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
     "pull_request": {"type": "integer", "const": 67},
     "pr_api_response": {
@@ -68,6 +69,41 @@
             "head_sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
             "base_ref": {"type": "string", "const": "dev"},
             "linked_issues": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "integer", "const": 32}}
+          }
+        }
+      }
+    },
+    "candidate_compare_api_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_url", "status", "request_id", "fetched_at", "authentication", "response_sha256", "response"],
+      "properties": {
+        "request_url": {"type": "string", "pattern": "^https://api\\.github\\.com/repos/somebloke1/noetic-dev/compare/[a-f0-9]{40}\\.\\.\\.[a-f0-9]{40}$"},
+        "status": {"type": "integer", "const": 200},
+        "request_id": {"type": "string", "minLength": 1},
+        "fetched_at": {"type": "string", "minLength": 1},
+        "authentication": {"$ref": "#/definitions/authentication"},
+        "response_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "response": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "ahead_by", "behind_by", "base_commit", "merge_base_commit"],
+          "properties": {
+            "status": {"type": "string", "enum": ["ahead", "identical"]},
+            "ahead_by": {"type": "integer"},
+            "behind_by": {"type": "integer"},
+            "base_commit": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sha"],
+              "properties": {"sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}}
+            },
+            "merge_base_commit": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["sha"],
+              "properties": {"sha": {"type": "string", "pattern": "^[a-f0-9]{40}$"}}
+            }
           }
         }
       }

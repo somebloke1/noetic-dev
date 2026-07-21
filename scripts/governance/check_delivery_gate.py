@@ -1599,7 +1599,9 @@ def _check_complete_freeze_readiness(
         d2 = next(
             stage for stage in roadmap.get("stages", []) if stage.get("id") == "D2"
         )
-        review_errors = _validate_d2_protected_review(REPO_ROOT, freeze, d2)
+        review_errors = _validate_d2_protected_review(
+            REPO_ROOT, freeze, d2, inventory
+        )
     except Exception:
         errors.append("existing-work protected D2 freeze review derivation failed safely")
         return

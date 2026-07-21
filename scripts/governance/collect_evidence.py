@@ -92,6 +92,7 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
     policy_ref = args.policy_ref or "refs/heads/main"
     generator_path = Path(__file__).resolve()
     generator_sha256 = sha256_file(generator_path)
+    candidate_pinned_at = args.candidate_pinned_at or _now()
 
     commands: List[Dict[str, Any]] = []
     for registry_id in ["repo.validate", "workflow.pinning", "tests.all"]:
@@ -134,8 +135,8 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
                 "candidate_sha": candidate_sha,
                 "base_sha": base_sha,
                 "candidate_tree_oid": candidate_tree,
-                "started_at": args.candidate_pinned_at or _now(),
-                "finished_at": args.candidate_pinned_at or _now(),
+                "started_at": candidate_pinned_at,
+                "finished_at": candidate_pinned_at,
             })
 
     qa_records: List[Dict[str, Any]] = []
@@ -177,7 +178,6 @@ def collect(args: argparse.Namespace) -> Dict[str, Any]:
             },
         })
 
-    candidate_pinned_at = args.candidate_pinned_at or _now()
     transition_start = datetime.fromisoformat(candidate_pinned_at.replace("Z", "+00:00"))
     transition_times = [(transition_start + timedelta(seconds=index)).isoformat() for index in range(5)]
     manifest: Dict[str, Any] = {

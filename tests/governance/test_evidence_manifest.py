@@ -8,11 +8,13 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance")
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
+import collect_evidence  # noqa: E402
 from check_evidence_manifest import _command_matches_registry, check as check_manifest  # noqa: E402
 from hash_tree import (  # noqa: E402
     canonical_json,
@@ -23,6 +25,7 @@ from hash_tree import (  # noqa: E402
     validate_sha_hex,
     validate_sha256_hex,
 )
+from json_schema import load_json_strict, validate_schema  # noqa: E402
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +37,55 @@ def load_fixture(name: str):
 
 
 class TestEvidenceManifestValidation(unittest.TestCase):
+    def test_collector_emits_schema_valid_candidate_pin(self):
+        candidate_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, text=True
+        ).strip()
+        pinned_at = "2026-07-21T15:40:44+00:00"
+
+        def command(registry_id, argv, repo_root, category, phase="pre_merge"):
+            return {
+                "command_id": registry_id,
+                "registry_id": registry_id,
+                "category": category,
+                "phase": phase,
+                "argv": argv,
+                "cwd": str(repo_root),
+                "exit_code": 0,
+                "stdout_sha256": "0" * 64,
+                "stderr_sha256": "0" * 64,
+                "started_at": pinned_at,
+                "finished_at": pinned_at,
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "manifest.json"
+            argv = [
+                "collect_evidence.py",
+                "--run-id", "collector-schema-regression",
+                "--candidate-sha", candidate_sha,
+                "--base-sha", candidate_sha,
+                "--target-branch", "dev",
+                "--candidate-branch", "issue-32-canonical-roadmap",
+                "--repo-root", str(REPO_ROOT),
+                "--policy-root", str(REPO_ROOT),
+                "--candidate-pinned-at", pinned_at,
+                "--output", str(output),
+            ]
+            with mock.patch.object(sys, "argv", argv), mock.patch.object(
+                collect_evidence, "run_command", side_effect=command
+            ):
+                self.assertEqual(collect_evidence.main(), 0)
+            manifest = load_json_strict(output)
+
+        schema = load_json_strict(
+            REPO_ROOT / "governance/schemas/evidence-manifest.schema.json"
+        )
+        self.assertEqual(manifest["repo"]["candidate_pinned_at"], pinned_at)
+        self.assertEqual(validate_schema(manifest, schema), [])
+        errors = check_manifest(manifest, target_branch="dev")
+        self.assertFalse(any("candidate_pinned_at" in error for error in errors))
+
     def test_registry_templates_match_standalone_and_embedded_placeholders(self):
         registry = {
             "example": {

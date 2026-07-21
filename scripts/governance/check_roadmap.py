@@ -648,6 +648,7 @@ def _validate_d2_protected_review(
     root: Path,
     freeze: dict[str, Any],
     d2: dict[str, Any],
+    audit: dict[str, Any],
 ) -> list[str]:
     errors: list[str] = []
     if freeze.get("protected_review_artifact") != str(D2_REVIEW_PATH):
@@ -681,6 +682,20 @@ def _validate_d2_protected_review(
     ):
         errors.append("protected D2 freeze review is not the exact authorized repair")
 
+    inventory_repair = [
+        item
+        for item in audit.get("open_pull_requests", [])
+        if type(item) is dict and item.get("number") == AUTHORIZED_REPAIR_PR
+    ]
+    inventory_pr_head = (
+        inventory_repair[0].get("head_sha") if len(inventory_repair) == 1 else ""
+    )
+    if (
+        re.fullmatch(r"[a-f0-9]{40}", inventory_pr_head or "") is None
+        or review["inventory_pr_head_sha"] != inventory_pr_head
+    ):
+        errors.append("protected D2 review does not bind the inventory PR head")
+
     pr_envelope = review["pr_api_response"]
     pr_response = _authenticated_github_response(
         pr_envelope, errors, "D2 freeze review PR", dict
@@ -699,6 +714,50 @@ def _validate_d2_protected_review(
         or pr_response.get("linked_issues") != [32]
     ):
         errors.append("D2 freeze review is not derived from the authenticated PR response")
+
+    candidate_compare_envelope = review["candidate_compare_api_response"]
+    candidate_comparison = _authenticated_github_response(
+        candidate_compare_envelope,
+        errors,
+        "D2 inventory-to-candidate ancestry",
+        dict,
+    )
+    candidate_sha = review["reviewed_candidate_sha"]
+    expected_candidate_compare_url = (
+        "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
+        f"{inventory_pr_head}...{candidate_sha}"
+    )
+    candidate_base = candidate_comparison.get("base_commit")
+    candidate_merge_base = candidate_comparison.get("merge_base_commit")
+    candidate_ahead = candidate_comparison.get("ahead_by")
+    candidate_behind = candidate_comparison.get("behind_by")
+    identical_candidate = inventory_pr_head == candidate_sha
+    if (
+        candidate_compare_envelope.get("request_url")
+        != expected_candidate_compare_url
+        or not isinstance(candidate_base, dict)
+        or candidate_base.get("sha") != inventory_pr_head
+        or not isinstance(candidate_merge_base, dict)
+        or candidate_merge_base.get("sha") != inventory_pr_head
+        or type(candidate_ahead) is not int
+        or type(candidate_behind) is not int
+        or candidate_behind != 0
+        or (
+            identical_candidate
+            and (
+                candidate_comparison.get("status") != "identical"
+                or candidate_ahead != 0
+            )
+        )
+        or (
+            not identical_candidate
+            and (
+                candidate_comparison.get("status") != "ahead"
+                or candidate_ahead <= 0
+            )
+        )
+    ):
+        errors.append("D2 inventory PR head is not an authenticated ancestor of the reviewed candidate")
 
     implementation = review["implementation_generation"]
     qa_entry = review["qa_records"][0]
@@ -810,6 +869,9 @@ def _validate_d2_protected_review(
 
     reviewed_at = _parse_instant(review.get("reviewed_at"))
     pr_fetched_at = _parse_instant(pr_envelope.get("fetched_at"))
+    candidate_compare_fetched_at = _parse_instant(
+        candidate_compare_envelope.get("fetched_at")
+    )
     implementation_completed_at = _parse_instant(implementation.get("completed_at"))
     qa_completed_at = _parse_instant(qa_record.get("completed_at"))
     merged_at = _parse_instant(integration_pr.get("merged_at"))
@@ -825,10 +887,14 @@ def _validate_d2_protected_review(
         errors.append("D2 freeze review must strictly follow authenticated PR capture")
     if (
         pr_fetched_at is None
+        or candidate_compare_fetched_at is None
         or implementation_completed_at is None
         or qa_completed_at is None
         or reviewed_at is None
-        or not pr_fetched_at < implementation_completed_at < qa_completed_at
+        or not pr_fetched_at
+        < candidate_compare_fetched_at
+        < implementation_completed_at
+        < qa_completed_at
         or qa_completed_at != reviewed_at
     ):
         errors.append("D2 implementation and independent QA chronology is invalid")
@@ -867,9 +933,13 @@ def _validate_d2_protected_review(
         "purpose": "d2-freeze-completion-v3",
         "repository": "somebloke1/noetic-dev",
         "audit_sha256": review["audit_sha256"],
+        "inventory_pr_head_sha": inventory_pr_head,
         "reviewed_candidate_sha": review["reviewed_candidate_sha"],
         "pull_request": review["pull_request"],
         "pr_api_response_sha256": pr_envelope["response_sha256"],
+        "candidate_compare_api_response_sha256": candidate_compare_envelope[
+            "response_sha256"
+        ],
         "implementation_generation_id": implementation["generation_id"],
         "implementation_agent_id": implementation["agent_id"],
         "qa_agent_id": qa_record["agent_id"],
@@ -1338,7 +1408,9 @@ def _validate_repository_policy(
             errors.append("complete freeze requires an exact review comment URL")
         if d2["status"] != "checkpointed" or "C2" in conflicts:
             errors.append("complete freeze requires checkpointed D2 with C2 removed")
-        errors.extend(_validate_d2_protected_review(root.resolve(), freeze, d2))
+        errors.extend(
+            _validate_d2_protected_review(root.resolve(), freeze, d2, audit)
+        )
 
     if bootstrap.get("publication", {}).get("status") == "blocked":
         if d9["status"] in {"checkpointed", "next"}:
