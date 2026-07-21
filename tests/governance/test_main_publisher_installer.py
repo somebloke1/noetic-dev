@@ -180,6 +180,7 @@ install_main_publisher "${11}" "${12}" "${13}"
             repository = release / "repository"
             self.assertTrue((repository / "policy-only.txt").is_file())
             self.assertFalse((repository / "candidate-only.txt").exists())
+            self.assertEqual((repository / "deploy/install-main-publisher.sh").stat().st_mode & 0o022, 0)
             self.assertEqual(
                 launcher.read_bytes(),
                 (repository / "deploy/noetic-dev-promote-main").read_bytes(),
@@ -256,6 +257,55 @@ install_main_publisher "${11}" "${12}" "${13}"
                 (collision_root / "policy-releases" / policy_sha / candidate_sha).exists()
             )
 
+            for blocker_type in ("file", "symlink"):
+                blocked_root = temporary / f"current-new-{blocker_type}"
+                blocked_root.mkdir()
+                blocked_root.chmod(0o755)
+                blocker = blocked_root / "current.new"
+                if blocker_type == "file":
+                    blocker.write_text("preexisting\n", encoding="utf-8")
+                else:
+                    blocker.symlink_to(blocked_root / "missing")
+                blocked = self._run_installer(
+                    stage0=stage0,
+                    install_root=blocked_root,
+                    remote=remote,
+                    verifier=verifier,
+                    launcher=fixed / f"current-new-{blocker_type}-launcher",
+                    key=key,
+                    git_wrapper=git_wrapper,
+                    policy_sha=policy_sha,
+                    candidate_sha=candidate_sha,
+                    receipt=receipt,
+                )
+                self.assertNotEqual(blocked.returncode, 0)
+                self.assertTrue(blocker.exists() or blocker.is_symlink())
+                self.assertFalse(
+                    (blocked_root / "policy-releases" / policy_sha / candidate_sha).exists()
+                )
+
+            current_directory_root = temporary / "current-directory"
+            current_directory_root.mkdir()
+            current_directory_root.chmod(0o755)
+            (current_directory_root / "current").mkdir()
+            current_directory = self._run_installer(
+                stage0=stage0,
+                install_root=current_directory_root,
+                remote=remote,
+                verifier=verifier,
+                launcher=fixed / "current-directory-launcher",
+                key=key,
+                git_wrapper=git_wrapper,
+                policy_sha=policy_sha,
+                candidate_sha=candidate_sha,
+                receipt=receipt,
+            )
+            self.assertNotEqual(current_directory.returncode, 0)
+            self.assertTrue((current_directory_root / "current").is_dir())
+            self.assertFalse(
+                (current_directory_root / "policy-releases" / policy_sha / candidate_sha).exists()
+            )
+
             writable_parent = temporary / "writable-launcher"
             writable_parent.mkdir()
             writable_parent.chmod(0o777)
@@ -308,6 +358,25 @@ install_main_publisher "${11}" "${12}" "${13}"
             self.assertNotEqual(dangling.returncode, 0)
             self.assertTrue(dangling_launcher.is_symlink())
             self.assertFalse(dangling_root.exists())
+
+            launcher_directory = fixed / "directory-promote-main"
+            launcher_directory.mkdir()
+            directory_root = temporary / "launcher-directory-rejected"
+            directory_result = self._run_installer(
+                stage0=stage0,
+                install_root=directory_root,
+                remote=remote,
+                verifier=verifier,
+                launcher=launcher_directory,
+                key=key,
+                git_wrapper=git_wrapper,
+                policy_sha=policy_sha,
+                candidate_sha=candidate_sha,
+                receipt=receipt,
+            )
+            self.assertNotEqual(directory_result.returncode, 0)
+            self.assertTrue(launcher_directory.is_dir())
+            self.assertFalse(directory_root.exists())
 
 
 if __name__ == "__main__":
