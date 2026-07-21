@@ -115,6 +115,9 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("publisher-installation-receipt.json", installer)
         self.assertIn("chown -R \"$install_owner:$install_group\" \"$installation_staging\"", installer)
         self.assertIn("chmod -R go-w \"$installation_staging\"", installer)
+        self.assertIn('[[ ! -e $current_new && ! -L $current_new ]]', installer)
+        self.assertIn('/usr/bin/ln -sT "$release" "$current_new"', installer)
+        self.assertIn("release_created=true", installer)
         self.assertIn("-m 0700", installer)
         self.assertIn("/opt/noetic-dev-main-publisher", launcher)
         self.assertIn("policy-releases", launcher)
@@ -144,9 +147,18 @@ class TestCommandRegistry(unittest.TestCase):
             bash_env = temporary / "bash-env"
             bash_env.write_text(f"/usr/bin/touch {marker}\n", encoding="utf-8")
             env = dict(os.environ)
-            env.update({"PATH": f"{temporary}:/usr/bin:/bin", "BASH_ENV": str(bash_env)})
+            env.update(
+                {
+                    "PATH": f"{temporary}:/usr/bin:/bin",
+                    "BASH_ENV": str(bash_env),
+                    "git_executable": str(fake_bash),
+                    "install_group": "1234",
+                    "install_owner": "1234",
+                    "trust_anchor": str(temporary),
+                }
+            )
             result = subprocess.run(
-                [str(installer)],
+                [str(installer), "a" * 40, "b" * 40, str(bash_env)],
                 capture_output=True,
                 text=True,
                 timeout=10,

@@ -79,11 +79,13 @@ sha256_file() {
   /usr/bin/sha256sum "$1" | /usr/bin/cut -d ' ' -f 1
 }
 
-install_main_publisher() {
+install_main_publisher() (
 local policy_sha=$1
 local authorized_sha=$2
 local authorization_receipt=$3
 local release=$root/policy-releases/$policy_sha/$authorized_sha
+local launcher_parent current_new launcher_staging
+local release_created=false current_new_created=false installation_complete=false
 
 [[ $policy_sha =~ ^[0-9a-f]{40}$ ]]
 [[ $authorized_sha =~ ^[0-9a-f]{40}$ ]]
@@ -105,7 +107,18 @@ staging=$installation_staging/repository
 claims_file=$(/usr/bin/mktemp)
 installation_file=$(/usr/bin/mktemp)
 receipt_snapshot=$(/usr/bin/mktemp)
-trap '/usr/bin/rm -rf "$verify_git" "$installation_staging" "$claims_file" "$installation_file" "$receipt_snapshot"' EXIT
+cleanup_installation() {
+  local status=$?
+  /usr/bin/rm -rf "$verify_git" "$installation_staging" "$claims_file" \
+    "$installation_file" "$receipt_snapshot"
+  [[ -z ${launcher_staging:-} ]] || /usr/bin/rm -f "$launcher_staging"
+  [[ $current_new_created == false ]] || /usr/bin/rm -f "$current_new"
+  if [[ $release_created == true && $installation_complete == false ]]; then
+    /usr/bin/rm -rf -- "$release"
+  fi
+  return "$status"
+}
+trap cleanup_installation EXIT
 /usr/bin/install -o "$install_owner" -g "$install_group" -m 0600 "$authorization_receipt" "$receipt_snapshot"
 [[ $(/usr/bin/stat -c %s "$receipt_snapshot") -le 1048576 ]]
 "${git_safe[@]}" --git-dir="$verify_git" init --bare --quiet
@@ -201,6 +214,14 @@ with open(sys.argv[2], "w", encoding="utf-8") as target:
     json.dump(installation, target, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
 ' "$claims_file" "$installation_file" "$receipt_sha256"
 
+launcher_parent=$(/usr/bin/dirname "$launcher")
+trusted_or_absent_directory_path "$launcher_parent"
+/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$launcher_parent"
+trusted_directory_path "$launcher_parent"
+[[ ! -e $launcher || -f $launcher && ! -L $launcher ]]
+current_new=$root/current.new
+[[ ! -e $current_new && ! -L $current_new ]]
+[[ ! -e $root/current || -L $root/current ]]
 trusted_or_absent_directory_path "$root"
 trusted_or_absent_directory_path "$root/policy-releases"
 trusted_or_absent_directory_path "$root/policy-releases/$policy_sha"
@@ -211,24 +232,28 @@ trusted_directory_path "$root"
 trusted_directory_path "$root/policy-releases"
 trusted_directory_path "$root/policy-releases/$policy_sha"
 [[ ! -e $release && ! -L $release ]]
+launcher_staging=$(/usr/bin/mktemp "$launcher_parent/.promote-main.XXXXXX")
+/usr/bin/install -o "$install_owner" -g "$install_group" -m 0700 \
+  "$installation_staging/repository/deploy/noetic-dev-promote-main" \
+  "$launcher_staging"
+/usr/bin/ln -sT "$release" "$current_new"
+current_new_created=true
 /usr/bin/install -o "$install_owner" -g "$install_group" -m 0600 "$installation_file" "$installation_staging/publisher-installation.json"
 /usr/bin/install -o "$install_owner" -g "$install_group" -m 0600 "$receipt_snapshot" "$installation_staging/publisher-installation-receipt.json"
 /usr/bin/chown -R "$install_owner:$install_group" "$installation_staging"
 /usr/bin/chmod -R go-w "$installation_staging"
 trusted_directory_path "$root/policy-releases/$policy_sha"
 /usr/bin/mv "$installation_staging" "$release"
+release_created=true
 trusted_directory_path "$release"
 trusted_directory_path "$release/repository"
-trusted_or_absent_directory_path "$(/usr/bin/dirname "$launcher")"
-/usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$(/usr/bin/dirname "$launcher")"
-trusted_directory_path "$(/usr/bin/dirname "$launcher")"
-/usr/bin/install -o "$install_owner" -g "$install_group" -m 0700 \
-  "$release/repository/deploy/noetic-dev-promote-main" \
-  "$launcher"
 trusted_directory_path "$root"
-/usr/bin/ln -sfn "$release" "$root/current.new"
-/usr/bin/mv -Tf "$root/current.new" "$root/current"
-}
+/usr/bin/mv -fT "$launcher_staging" "$launcher"
+launcher_staging=
+/usr/bin/mv -Tf "$current_new" "$root/current"
+current_new_created=false
+installation_complete=true
+)
 
 main() {
   if [[ $- != *p* || $EUID -ne 0 || $# -ne 3 || $(/usr/bin/readlink -f "$0") != "$stage0" ]]; then

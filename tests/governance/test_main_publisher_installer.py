@@ -234,6 +234,62 @@ install_main_publisher "${11}" "${12}" "${13}"
             self.assertNotEqual(wrong_head.returncode, 0)
             self.assertFalse(wrong_head_root.exists())
 
+            collision_root = temporary / "collision"
+            collision_root.mkdir()
+            collision_root.chmod(0o755)
+            (collision_root / "current.new").mkdir()
+            collision = self._run_installer(
+                stage0=stage0,
+                install_root=collision_root,
+                remote=remote,
+                verifier=verifier,
+                launcher=fixed / "collision-promote-main",
+                key=key,
+                git_wrapper=git_wrapper,
+                policy_sha=policy_sha,
+                candidate_sha=candidate_sha,
+                receipt=receipt,
+            )
+            self.assertNotEqual(collision.returncode, 0)
+            self.assertTrue((collision_root / "current.new").is_dir())
+            self.assertFalse(
+                (collision_root / "policy-releases" / policy_sha / candidate_sha).exists()
+            )
+
+            writable_parent = temporary / "writable-launcher"
+            writable_parent.mkdir()
+            writable_parent.chmod(0o777)
+            rejected_root = temporary / "writable-parent-rejected"
+            writable = self._run_installer(
+                stage0=stage0,
+                install_root=rejected_root,
+                remote=remote,
+                verifier=verifier,
+                launcher=writable_parent / "promote-main",
+                key=key,
+                git_wrapper=git_wrapper,
+                policy_sha=policy_sha,
+                candidate_sha=candidate_sha,
+                receipt=receipt,
+            )
+            self.assertNotEqual(writable.returncode, 0)
+            self.assertFalse(rejected_root.exists())
+            writable_parent.chmod(0o700)
+            retry = self._run_installer(
+                stage0=stage0,
+                install_root=rejected_root,
+                remote=remote,
+                verifier=verifier,
+                launcher=writable_parent / "promote-main",
+                key=key,
+                git_wrapper=git_wrapper,
+                policy_sha=policy_sha,
+                candidate_sha=candidate_sha,
+                receipt=receipt,
+            )
+            self.assertEqual(retry.returncode, 0, retry.stderr)
+            self.assertTrue((rejected_root / "current").is_symlink())
+
 
 if __name__ == "__main__":
     unittest.main()
