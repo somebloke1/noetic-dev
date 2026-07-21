@@ -290,6 +290,25 @@ install_main_publisher "${11}" "${12}" "${13}"
             self.assertEqual(retry.returncode, 0, retry.stderr)
             self.assertTrue((rejected_root / "current").is_symlink())
 
+            dangling_launcher = fixed / "dangling-promote-main"
+            dangling_launcher.symlink_to(fixed / "missing-launcher-target")
+            dangling_root = temporary / "dangling-launcher-rejected"
+            dangling = self._run_installer(
+                stage0=stage0,
+                install_root=dangling_root,
+                remote=remote,
+                verifier=verifier,
+                launcher=dangling_launcher,
+                key=key,
+                git_wrapper=git_wrapper,
+                policy_sha=policy_sha,
+                candidate_sha=candidate_sha,
+                receipt=receipt,
+            )
+            self.assertNotEqual(dangling.returncode, 0)
+            self.assertTrue(dangling_launcher.is_symlink())
+            self.assertFalse(dangling_root.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

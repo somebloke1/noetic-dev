@@ -218,7 +218,9 @@ launcher_parent=$(/usr/bin/dirname "$launcher")
 trusted_or_absent_directory_path "$launcher_parent"
 /usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$launcher_parent"
 trusted_directory_path "$launcher_parent"
-[[ ! -e $launcher || -f $launcher && ! -L $launcher ]]
+if [[ -e $launcher || -L $launcher ]]; then
+  [[ -f $launcher && ! -L $launcher ]]
+fi
 current_new=$root/current.new
 [[ ! -e $current_new && ! -L $current_new ]]
 [[ ! -e $root/current || -L $root/current ]]
