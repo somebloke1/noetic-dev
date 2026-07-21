@@ -1101,6 +1101,7 @@ class TestRoadmap(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "inventory.json"
+            output.write_bytes(b'{"sentinel":true}\n')
             stderr = io.StringIO()
             with mock.patch.object(
                 sys, "argv", ["capture_d2_inventory.py", "--output", str(output)]
@@ -1109,9 +1110,33 @@ class TestRoadmap(unittest.TestCase):
                 return_value={"schema_version": "2"},
             ), contextlib.redirect_stderr(stderr):
                 self.assertEqual(d2_capture.main(), 1)
-            self.assertFalse(output.exists())
+            self.assertEqual(output.read_bytes(), b'{"sentinel":true}\n')
             self.assertIn("failed schema validation", stderr.getvalue())
             self.assertNotIn("Traceback", stderr.getvalue())
+
+            for failure in ("fsync", "read", "replace"):
+                output.write_bytes(b"existing-inventory")
+                patches = {
+                    "fsync": mock.patch(
+                        "scripts.governance.capture_d2_inventory.os.fsync",
+                        side_effect=OSError("fsync failed"),
+                    ),
+                    "read": mock.patch.object(
+                        Path, "read_bytes", side_effect=OSError("read failed")
+                    ),
+                    "replace": mock.patch(
+                        "scripts.governance.capture_d2_inventory.os.replace",
+                        side_effect=OSError("replace failed"),
+                    ),
+                }
+                with self.subTest(atomic_failure=failure), patches[failure], self.assertRaises(
+                    OSError
+                ):
+                    d2_capture._write_inventory_atomic(output, {"valid": True})
+                self.assertEqual(output.read_bytes(), b"existing-inventory")
+                self.assertEqual(
+                    list(Path(tmp).glob(f".{output.name}.*.tmp")), []
+                )
 
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(

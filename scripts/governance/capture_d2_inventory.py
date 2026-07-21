@@ -14,6 +14,7 @@ import pwd
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -627,6 +628,39 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
+    payload = (json.dumps(inventory, indent=2, ensure_ascii=True) + "\n").encode(
+        "utf-8"
+    )
+    digest = hashlib.sha256(payload).hexdigest()
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        try:
+            handle = os.fdopen(descriptor, "wb")
+            descriptor = -1
+            with handle:
+                os.fchmod(handle.fileno(), 0o644)
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            if descriptor >= 0:
+                os.close(descriptor)
+        if temporary.read_bytes() != payload:
+            raise OSError("temporary D2 inventory verification failed")
+        os.replace(temporary, output)
+    except Exception:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+    return digest
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -643,15 +677,14 @@ def main() -> int:
         )
         if validate_schema(inventory, schema):
             raise RuntimeError("captured D2 inventory failed schema validation")
-        args.output.write_text(
-            json.dumps(inventory, indent=2, ensure_ascii=True) + "\n",
-            encoding="utf-8",
-        )
-        digest = hashlib.sha256(args.output.read_bytes()).hexdigest()
+        digest = _write_inventory_atomic(args.output, inventory)
     except Exception as exc:
         print(f"D2 inventory capture failed: {exc}", file=sys.stderr)
         return 1
-    print(digest)
+    try:
+        print(digest)
+    except OSError:
+        pass
     return 0
 
 

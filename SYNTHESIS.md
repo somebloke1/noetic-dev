@@ -206,7 +206,7 @@ A question worth making crystal clear: **where does the harvested material actua
 
 **Proposed shape of the composition root:** `docs/` (form spec + this architecture), the governance ledgers, `spec/` (the cognitional-event schema), `config/` (endpoint registry, genus-router binding, LiteLLM, local endpoints), `compose/` (how spine + organs + planes run together), and component references.
 
-**Two practical consequences:** (a) `git init` this workspace — it isn't versioned yet, and a composition root must be; (b) the framework may want its own **name** — "synthesis" names the *act*, not the *thing* — your call. And as you did with noetic-pi vs noetic-pi-docker, keep the *basis* (this integration root) distinct from the *composed running framework* (the product).
+**Two practical consequences:** (a) preserve this now-versioned composition root and its protected `dev`/`main` delivery topology; do not reinitialize or bypass it; (b) keep the **noetic-dev** name for the composed framework while treating `synthesis` as the historical workspace/composition-root path. As with noetic-pi versus noetic-pi-docker, keep the *basis* (this integration root) distinct from the *composed running framework* (the product).
 
 **Why thin rather than a swallowing monorepo:** it preserves each component's portability (Telos stays Pi+OpenCode-portable; the organs stay independently testable with their donor test suites) and avoids re-creating noetic-pi's `pi-mono` entanglement in a new location. The composition root is durable; the components hanging off it stay recyclable.
 

@@ -23,7 +23,7 @@
 
   ```bash
   mkdir -p ../synthesis-worktrees
-  git worktree add ../synthesis-worktrees/issue-42-event-schema -b issue-42-event-schema main
+  git worktree add ../synthesis-worktrees/issue-42-event-schema -b issue-42-event-schema dev
   ```
 
 - One issue and one coherent concern per worktree. Do not reuse a dirty worktree for another issue.
@@ -82,16 +82,23 @@ Use child issues or task lists for independently verifiable units. Blocked issue
 
 ## 8. GitHub Project discipline
 
-Recommended fields:
+GitHub Project [#8](https://github.com/users/somebloke1/projects/8) is the
+mandatory lifecycle-status projection. Every repository issue and PR appears
+exactly once. `Status` is its only manually maintained field; priority, phase,
+and component remain issue labels, while dependencies and exit gates remain in
+issues and the Git-tracked roadmap.
 
-- Status: Backlog / Ready / In progress / In review / Blocked / Done
-- Priority: P0–P3
-- Cognitional phase: P1 / P2 / P3 / P4
-- Component: form / telos / controller / programs / events / observability / attach / substrate
-- Risk: low / medium / high
-- Effort: XS / S / M / L / XL
+- Backlog: open but not accepted as ready work.
+- Ready: accepted and dependency-ready, with no active implementation.
+- In Progress: an implementation/remediation generation or worktree is active.
+- In Review: an immutable candidate is pushed and awaits checks, review, or merge.
+- Blocked: a named dependency, rejected generation, or explicit pause prevents work.
+- Done: closed or merged after verified disposition.
 
-Move items only when the authoritative issue/PR state supports the transition. Avoid decorative status churn.
+Reconcile the project whenever an issue or PR is created, closed, merged,
+activated, paused, rejected, or advanced to review, and before declaring a queue
+drain complete. If the projection cannot be kept current, close or delete it
+rather than preserve ambiguous operational residue.
 
 ## 9. Release and rollback
 
