@@ -14,6 +14,7 @@ install_owner=0
 install_group=0
 git_executable=/usr/bin/git
 trust_anchor=/
+installation_lock=/run/lock/noetic-dev-main-publisher-install.lock
 
 trusted_executable_path() {
   local current=$1 mode owner
@@ -86,6 +87,7 @@ local authorization_receipt=$3
 local release=$root/policy-releases/$policy_sha/$authorized_sha
 local launcher_parent current_new launcher_staging
 local release_created=false current_new_created=false installation_complete=false
+local lock_parent lock_owner lock_mode installation_lock_fd
 
 [[ $policy_sha =~ ^[0-9a-f]{40}$ ]]
 [[ $authorized_sha =~ ^[0-9a-f]{40}$ ]]
@@ -214,6 +216,18 @@ with open(sys.argv[2], "w", encoding="utf-8") as target:
     json.dump(installation, target, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
 ' "$claims_file" "$installation_file" "$receipt_sha256"
 
+lock_parent=$(/usr/bin/dirname "$installation_lock")
+trusted_directory_path "$lock_parent"
+if [[ ! -e $installation_lock && ! -L $installation_lock ]]; then
+  ( set -o noclobber; : > "$installation_lock" ) 2>/dev/null || true
+fi
+[[ -f $installation_lock && ! -L $installation_lock ]]
+lock_owner=$(/usr/bin/stat -c %u "$installation_lock")
+lock_mode=$((8#$(/usr/bin/stat -c %a "$installation_lock")))
+[[ $lock_owner -eq 0 || $lock_owner -eq $install_owner ]]
+(( (lock_mode & 8#022) == 0 ))
+exec {installation_lock_fd}<>"$installation_lock"
+/usr/bin/flock -x "$installation_lock_fd"
 launcher_parent=$(/usr/bin/dirname "$launcher")
 trusted_or_absent_directory_path "$launcher_parent"
 /usr/bin/install -d -o "$install_owner" -g "$install_group" -m 0755 "$launcher_parent"

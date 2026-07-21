@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -37,7 +38,7 @@ def run(*argv: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]
 
 
 class TestMainPublisherInstaller(unittest.TestCase):
-    def _build_remote(self, root: Path) -> tuple[Path, str, str]:
+    def _build_remote(self, root: Path, marker: str = "primary") -> tuple[Path, str, str]:
         remote = root / "remote"
         remote.mkdir()
         self.assertEqual(run("git", "init", "-b", "dev", cwd=remote).returncode, 0)
@@ -55,7 +56,9 @@ class TestMainPublisherInstaller(unittest.TestCase):
             if relative == "deploy/install-main-publisher.sh":
                 target.write_bytes(INSTALLER.read_bytes())
             else:
-                target.write_text(f"protected policy: {relative}\n", encoding="utf-8")
+                target.write_text(
+                    f"protected policy {marker}: {relative}\n", encoding="utf-8"
+                )
             target.chmod(0o755 if relative.startswith("deploy/") else 0o644)
         (remote / "policy-only.txt").write_text("protected policy\n", encoding="utf-8")
         self.assertEqual(run("git", "add", ".", cwd=remote).returncode, 0)
@@ -94,6 +97,7 @@ git_executable=$8
 install_owner=$9
 install_group=${10}
 trust_anchor=${14}
+installation_lock=${15}
 install_main_publisher "${11}" "${12}" "${13}"
 """
         return run(
@@ -116,6 +120,7 @@ install_main_publisher "${11}" "${12}" "${13}"
             candidate_sha,
             str(receipt),
             str(stage0.parent.parent),
+            str(stage0.parent.parent / "install.lock"),
         )
 
     def test_installer_fetches_policy_verifies_receipt_and_installs_atomically(self):
@@ -377,6 +382,47 @@ install_main_publisher "${11}" "${12}" "${13}"
             self.assertNotEqual(directory_result.returncode, 0)
             self.assertTrue(launcher_directory.is_dir())
             self.assertFalse(directory_root.exists())
+
+            secondary_root = temporary / "secondary"
+            secondary_root.mkdir()
+            remote_two, policy_two, candidate_two = self._build_remote(
+                secondary_root, marker="secondary"
+            )
+            concurrent_root = temporary / "concurrent"
+            concurrent_launcher = fixed / "concurrent-promote-main"
+            calls = (
+                (remote, policy_sha, candidate_sha),
+                (remote_two, policy_two, candidate_two),
+            )
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(
+                    executor.map(
+                        lambda call: self._run_installer(
+                            stage0=stage0,
+                            install_root=concurrent_root,
+                            remote=call[0],
+                            verifier=verifier,
+                            launcher=concurrent_launcher,
+                            key=key,
+                            git_wrapper=git_wrapper,
+                            policy_sha=call[1],
+                            candidate_sha=call[2],
+                            receipt=receipt,
+                        ),
+                        calls,
+                    )
+                )
+            self.assertEqual([result.returncode for result in results], [0, 0])
+            selected_release = (concurrent_root / "current").resolve()
+            expected_releases = {
+                concurrent_root / "policy-releases" / policy_sha / candidate_sha,
+                concurrent_root / "policy-releases" / policy_two / candidate_two,
+            }
+            self.assertIn(selected_release, expected_releases)
+            self.assertEqual(
+                concurrent_launcher.read_bytes(),
+                (selected_release / "repository/deploy/noetic-dev-promote-main").read_bytes(),
+            )
 
 
 if __name__ == "__main__":
