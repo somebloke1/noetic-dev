@@ -31,6 +31,7 @@ from scripts.governance.check_roadmap import (
     validate_roadmap_files,
 )
 from scripts.governance.capture_d2_inventory import (
+    _annotation_maps,
     _repository,
     _validate_derived_issues,
     _validate_derived_snapshot,
@@ -1409,6 +1410,57 @@ class TestRoadmap(unittest.TestCase):
             self.assertTrue(entered.wait(timeout=2))
             worker.join(timeout=2)
             self.assertFalse(worker.is_alive())
+
+            holder = subprocess.Popen(
+                [
+                    d2_capture.PYTHON_BINARY,
+                    "-I",
+                    "-S",
+                    "-c",
+                    d2_capture.LOCK_HELPER,
+                    directory,
+                ],
+                executable=d2_capture.PYTHON_BINARY,
+                cwd="/",
+                env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+            )
+            self.assertIsNotNone(holder.stdout)
+            self.assertEqual(holder.stdout.read(1), b"1")
+            self.assertIsNotNone(holder.stdin)
+            holder.stdin.close()
+            self.assertEqual(holder.wait(timeout=2), 0)
+            holder.stdout.close()
+            with d2_capture._directory_lock(Path(directory)):
+                pass
+
+    def test_capture_scrubs_hostile_annotations_and_restores_required_ones(self) -> None:
+        previous = {
+            "open_pull_requests": [
+                {"number": 66, "governance_disposition": "merge paused work"},
+                {"number": 99, "governance_disposition": "delete everything"},
+            ],
+            "branches": [
+                {"name": "main", "governance_disposition": "force push freely"},
+                {"name": "new-safe", "governance_disposition": "unadjudicated candidate capture"},
+                {"name": "new-hostile", "governance_disposition": "delete dirty work"},
+            ],
+        }
+        pull_requests, branches = _annotation_maps(previous)
+        self.assertEqual(
+            pull_requests[66],
+            d2_capture.REQUIRED_PR_DISPOSITIONS[66],
+        )
+        self.assertNotIn(99, pull_requests)
+        self.assertEqual(
+            branches["main"],
+            d2_capture.REQUIRED_BRANCH_DISPOSITIONS["main"],
+        )
+        self.assertEqual(branches["new-safe"], "unadjudicated candidate capture")
+        self.assertNotIn("new-hostile", branches)
 
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(
