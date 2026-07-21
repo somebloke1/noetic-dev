@@ -29,16 +29,21 @@ def _no_duplicates_object_pairs_hook(pairs: Iterable[Tuple[str, Any]]) -> dict[s
     return result
 
 
+def parse_json_strict(raw: str | bytes) -> Any:
+    """Parse JSON while rejecting duplicate keys and non-finite constants."""
+    return json.loads(
+        raw,
+        object_pairs_hook=_no_duplicates_object_pairs_hook,
+        parse_constant=lambda value: (_ for _ in ()).throw(
+            ValueError(f"non-deterministic JSON number: {value}")
+        ),
+    )
+
+
 def load_json_strict(path: str | Path) -> Any:
     """Load JSON while rejecting duplicate object keys."""
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(
-            f,
-            object_pairs_hook=_no_duplicates_object_pairs_hook,
-            parse_constant=lambda value: (_ for _ in ()).throw(
-                ValueError(f"non-deterministic JSON number: {value}")
-            ),
-        )
+        return parse_json_strict(f.read())
 
 
 def _json_type(value: Any) -> str:

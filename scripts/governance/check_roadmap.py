@@ -1019,7 +1019,7 @@ def _git_succeeds(root: Path, *arguments: str) -> bool:
         return False
     try:
         result = subprocess.run(
-            [git_binary, *arguments],
+            [git_binary, "--no-replace-objects", *arguments],
             cwd=root,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

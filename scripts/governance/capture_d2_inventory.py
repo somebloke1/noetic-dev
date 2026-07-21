@@ -9,6 +9,8 @@ import gzip
 import hashlib
 import json
 import math
+import os
+import pwd
 import re
 import subprocess
 import sys
@@ -24,7 +26,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.governance.hash_tree import canonical_json_sha256  # noqa: E402
-from scripts.governance.json_schema import load_json_strict  # noqa: E402
+from scripts.governance.json_schema import (  # noqa: E402
+    load_json_strict,
+    parse_json_strict,
+    validate_schema,
+)
 
 
 REPOSITORY = "somebloke1/noetic-dev"
@@ -35,6 +41,7 @@ AUTHORIZED_REPAIR_BASE = "dev"
 PULL_URL = re.compile(r"https://github\.com/somebloke1/noetic-dev/pull/([1-9][0-9]*)\Z")
 ISSUE_URL = re.compile(r"https://github\.com/somebloke1/noetic-dev/issues/([1-9][0-9]*)\Z")
 GRAPHQL_URL = "https://api.github.com/graphql"
+GH_BINARY = "/usr/bin/gh"
 VARIABLES = {"owner": "somebloke1", "name": "noetic-dev"}
 REPOSITORY_FIELDS = """
   databaseId
@@ -106,6 +113,18 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
+def _github_environment() -> dict[str, str]:
+    home = Path(pwd.getpwuid(os.getuid()).pw_dir)
+    return {
+        "HOME": str(home),
+        "GH_CONFIG_DIR": str(home / ".config/gh"),
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "NO_COLOR": "1",
+    }
+
+
 def _normalize_external_json(value: Any) -> Any:
     """Copy only exact JSON built-ins; reject subclasses and non-finite values."""
     value_type = type(value)
@@ -146,9 +165,9 @@ def _parse_included_response(raw: bytes) -> tuple[int, dict[str, str], bytes, An
             name, value = line.split(":", 1)
             headers[name.strip().lower()] = value.strip()
     try:
-        response = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError("gh api response body was not JSON") from exc
+        response = _normalize_external_json(parse_json_strict(body))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise RuntimeError("gh api response body was not strict JSON") from exc
     return status, headers, body, response
 
 
@@ -156,15 +175,23 @@ def _graphql(name: str) -> tuple[dict[str, Any], dict[str, Any]]:
     query = QUERIES[name].strip() + "\n"
     operation = OPERATIONS[name]
     variables = {} if name == "principal" else VARIABLES
-    argv = ["gh", "api", "--include", "graphql", "-f", f"query={query}"]
+    argv = [GH_BINARY, "api", "--include", "graphql", "-f", f"query={query}"]
     for key, value in variables.items():
         argv.extend(["-F", f"{key}={value}"])
-    result = subprocess.run(
-        argv,
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            argv,
+            executable=GH_BINARY,
+            cwd=ROOT,
+            env=_github_environment(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("trusted GitHub CLI execution failed") from exc
     if result.returncode != 0:
         raise RuntimeError("authenticated gh api GraphQL request failed")
     status, headers, raw_body, response = _parse_included_response(result.stdout)
@@ -608,13 +635,23 @@ def main() -> int:
         default=ROOT / "governance/audits/20260718-d2-portfolio/inventory.json",
     )
     args = parser.parse_args()
-    previous = load_json_strict(args.output) if args.output.exists() else {}
-    inventory = capture(previous)
-    args.output.write_text(
-        json.dumps(inventory, indent=2, ensure_ascii=True) + "\n",
-        encoding="utf-8",
-    )
-    print(hashlib.sha256(args.output.read_bytes()).hexdigest())
+    try:
+        previous = load_json_strict(args.output) if args.output.exists() else {}
+        inventory = capture(previous)
+        schema = load_json_strict(
+            ROOT / "governance/schemas/d2-portfolio-audit.schema.json"
+        )
+        if validate_schema(inventory, schema):
+            raise RuntimeError("captured D2 inventory failed schema validation")
+        args.output.write_text(
+            json.dumps(inventory, indent=2, ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
+        digest = hashlib.sha256(args.output.read_bytes()).hexdigest()
+    except Exception as exc:
+        print(f"D2 inventory capture failed: {exc}", file=sys.stderr)
+        return 1
+    print(digest)
     return 0
 
 

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import base64
 import copy
+import contextlib
 import gzip
 import hashlib
+import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import timedelta
@@ -16,6 +19,7 @@ from email.utils import format_datetime, parsedate_to_datetime
 from pathlib import Path
 from unittest import mock
 
+import scripts.governance.capture_d2_inventory as d2_capture
 from scripts.governance.check_roadmap import (
     _d2_connection,
     _git_succeeds,
@@ -966,6 +970,8 @@ class TestRoadmap(unittest.TestCase):
         child = run.call_args.kwargs["env"]
         self.assertEqual(child["PATH"], os.defpath)
         self.assertEqual(child["HOME"], "/nonexistent")
+        self.assertEqual(child["GIT_NO_REPLACE_OBJECTS"], "1")
+        self.assertEqual(run.call_args.args[0][1], "--no-replace-objects")
         self.assertNotIn("LD_PRELOAD", child)
         self.assertNotIn("BASH_ENV", child)
         with mock.patch(
@@ -976,6 +982,136 @@ class TestRoadmap(unittest.TestCase):
             side_effect=OSError("cannot execute"),
         ):
             self.assertFalse(_git_succeeds(ROOT, "cat-file", "-e", "HEAD^{commit}"))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repository = Path(tmp)
+            env = {
+                "HOME": "/nonexistent",
+                "LANG": "C",
+                "LC_ALL": "C",
+                "PATH": os.defpath,
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_OPTIONAL_LOCKS": "0",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+
+            def git(*arguments: str) -> subprocess.CompletedProcess:
+                return subprocess.run(
+                    ["/usr/bin/git", *arguments],
+                    cwd=repository,
+                    env=env,
+                    capture_output=True,
+                    check=True,
+                )
+
+            git("init", "--quiet")
+            git(
+                "-c",
+                "user.name=QA",
+                "-c",
+                "user.email=qa@example.com",
+                "commit",
+                "--allow-empty",
+                "--quiet",
+                "-m",
+                "first",
+            )
+            first = git("rev-parse", "HEAD").stdout.decode("ascii").strip()
+            git("switch", "--orphan", "other")
+            git(
+                "-c",
+                "user.name=QA",
+                "-c",
+                "user.email=qa@example.com",
+                "commit",
+                "--allow-empty",
+                "--quiet",
+                "-m",
+                "second",
+            )
+            second = git("rev-parse", "HEAD").stdout.decode("ascii").strip()
+            git("replace", "--graft", second, first)
+            self.assertEqual(
+                subprocess.run(
+                    ["/usr/bin/git", "merge-base", "--is-ancestor", first, second],
+                    cwd=repository,
+                    env=env,
+                    check=False,
+                ).returncode,
+                0,
+            )
+            self.assertFalse(
+                _git_succeeds(repository, "merge-base", "--is-ancestor", first, second)
+            )
+
+    def test_capture_uses_strict_fixed_github_boundary_and_controlled_cli(self) -> None:
+        raw = (
+            b"HTTP/2 200\r\n"
+            b"date: Tue, 21 Jul 2026 11:10:08 GMT\r\n"
+            b"x-github-request-id: QA:1\r\n\r\n"
+            b'{"data":{"viewer":{"databaseId":1,"login":"somebloke1"}}}'
+        )
+        completed = subprocess.CompletedProcess([], 0, raw, b"")
+        hostile = {
+            "PATH": "/tmp/hostile",
+            "BASH_ENV": "/tmp/hostile-env",
+            "LD_PRELOAD": "/tmp/hostile.so",
+            "GH_TOKEN": "attacker-token",
+            "GH_HOST": "attacker.invalid",
+        }
+        with mock.patch.dict(os.environ, hostile, clear=True), mock.patch(
+            "scripts.governance.capture_d2_inventory.subprocess.run",
+            return_value=completed,
+        ) as run:
+            envelope, data = d2_capture._graphql("principal")
+        self.assertEqual(data["viewer"]["login"], "somebloke1")
+        self.assertEqual(envelope["request_id"], "QA:1")
+        command = run.call_args.args[0]
+        child = run.call_args.kwargs
+        self.assertEqual(command[0], "/usr/bin/gh")
+        self.assertEqual(child["executable"], "/usr/bin/gh")
+        self.assertEqual(child["stdin"], subprocess.DEVNULL)
+        self.assertEqual(child["stdout"], subprocess.PIPE)
+        self.assertEqual(child["stderr"], subprocess.DEVNULL)
+        self.assertEqual(child["timeout"], 30)
+        self.assertNotIn("GH_TOKEN", child["env"])
+        self.assertNotIn("GH_HOST", child["env"])
+        self.assertNotIn("LD_PRELOAD", child["env"])
+        self.assertNotIn("BASH_ENV", child["env"])
+
+        for body in (
+            b'{"data":{"viewer":{"login":"bad","login":"somebloke1"}}}',
+            b'{"data":{"viewer":{"databaseId":NaN,"login":"somebloke1"}}}',
+        ):
+            with self.subTest(body=body), self.assertRaisesRegex(
+                RuntimeError, "not strict JSON"
+            ):
+                d2_capture._parse_included_response(
+                    raw.split(b"\r\n\r\n", 1)[0] + b"\r\n\r\n" + body
+                )
+
+        with mock.patch(
+            "scripts.governance.capture_d2_inventory.subprocess.run",
+            side_effect=FileNotFoundError("missing"),
+        ), self.assertRaisesRegex(
+            RuntimeError, "trusted GitHub CLI execution failed"
+        ):
+            d2_capture._graphql("principal")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "inventory.json"
+            stderr = io.StringIO()
+            with mock.patch.object(
+                sys, "argv", ["capture_d2_inventory.py", "--output", str(output)]
+            ), mock.patch(
+                "scripts.governance.capture_d2_inventory.capture",
+                return_value={"schema_version": "2"},
+            ), contextlib.redirect_stderr(stderr):
+                self.assertEqual(d2_capture.main(), 1)
+            self.assertFalse(output.exists())
+            self.assertIn("failed schema validation", stderr.getvalue())
+            self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(
