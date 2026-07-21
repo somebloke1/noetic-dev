@@ -47,16 +47,38 @@ GH_BINARY = "/usr/bin/gh"
 PYTHON_BINARY = "/usr/bin/python3"
 LOCK_HELPER = """import fcntl
 import os
-import select
 import sys
 
 directory = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY)
 fcntl.flock(directory, fcntl.LOCK_EX)
 os.write(1, b"1")
-readable, _, _ = select.select([0], [], [], 120)
-if readable:
-    os.read(0, 1)
+os.read(0, 1)
 """
+UNADJUDICATED_DISPOSITION = "unadjudicated candidate capture"
+REQUIRED_PR_DISPOSITIONS = {
+    66: "paused bounded experiment; non-evidence for roadmap readiness; leave issue and PR untouched",
+    67: "active bounded D2 roadmap candidate",
+}
+REQUIRED_BRANCH_DISPOSITIONS = {
+    "dev": "protected autonomous integration branch",
+    "issue-11-cognitive-programs": "retain donor without PR",
+    "issue-27-terra-canary": "preserve stale canary and dirty material",
+    "issue-29-broker-lifecycle-evidence": "retain model-governance evidence",
+    "issue-29-modality-evidence-record": "retain model-governance evidence",
+    "issue-29-modality-readiness": "retain model-governance evidence",
+    "issue-29-routed-governance-remediation": "retain remediation donor",
+    "issue-29-routed-pi-recovery": "retain closed-PR donor",
+    "issue-32-canonical-roadmap": "active bounded D2 roadmap candidate",
+    "issue-65-opencode-spike": "paused bounded experiment; leave untouched",
+    "main": "protected release branch; user-approved promotion only",
+}
+ALLOWED_DISPOSITIONS = frozenset(
+    {
+        UNADJUDICATED_DISPOSITION,
+        *REQUIRED_PR_DISPOSITIONS.values(),
+        *REQUIRED_BRANCH_DISPOSITIONS.values(),
+    }
+)
 VARIABLES = {"owner": "somebloke1", "name": "noetic-dev"}
 REPOSITORY_FIELDS = """
   databaseId
@@ -390,13 +412,18 @@ def _annotation_maps(previous: dict[str, Any]) -> tuple[dict[int, str], dict[str
         item["number"]: item.get("governance_disposition", item.get("disposition", ""))
         for item in previous.get("open_pull_requests", [])
         if type(item) is dict and type(item.get("number")) is int
+        and item.get("governance_disposition", item.get("disposition", ""))
+        in ALLOWED_DISPOSITIONS
     }
     branch_annotations = {
         item["name"]: item.get("governance_disposition", item.get("disposition", ""))
         for item in previous.get("branches", [])
         if type(item) is dict and type(item.get("name")) is str
+        and item.get("governance_disposition", item.get("disposition", ""))
+        in ALLOWED_DISPOSITIONS
     }
-    pr_annotations.setdefault(67, "active bounded D2 roadmap candidate")
+    pr_annotations.update(REQUIRED_PR_DISPOSITIONS)
+    branch_annotations.update(REQUIRED_BRANCH_DISPOSITIONS)
     return pr_annotations, branch_annotations
 
 
@@ -515,7 +542,7 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
             "updated_at": item["updatedAt"],
             "url": item["url"],
             "governance_disposition": pr_annotations.get(
-                item["number"], "unadjudicated candidate capture"
+                item["number"], UNADJUDICATED_DISPOSITION
             ),
         }
         for item in pull_items
@@ -525,7 +552,7 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
             "name": item["name"],
             "sha": item["target"]["oid"],
             "governance_disposition": branch_annotations.get(
-                item["name"], "unadjudicated candidate capture"
+                item["name"], UNADJUDICATED_DISPOSITION
             ),
         }
         for item in branch_items

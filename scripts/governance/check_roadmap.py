@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 from scripts.governance.json_schema import load_json_strict, validate_schema  # noqa: E402
 from scripts.governance.hash_tree import canonical_json_sha256  # noqa: E402
 from scripts.governance.capture_d2_inventory import (  # noqa: E402
+    ALLOWED_DISPOSITIONS,
     AUTHORIZED_REPAIR_BASE,
     AUTHORIZED_REPAIR_HEAD,
     AUTHORIZED_REPAIR_PR,
@@ -31,6 +32,8 @@ from scripts.governance.capture_d2_inventory import (  # noqa: E402
     OPERATIONS as D2_INVENTORY_OPERATIONS,
     QUERIES as D2_INVENTORY_QUERIES,
     PULL_URL as D2_PULL_URL,
+    REQUIRED_BRANCH_DISPOSITIONS,
+    REQUIRED_PR_DISPOSITIONS,
     VARIABLES as D2_INVENTORY_VARIABLES,
     _normalize_external_json,
 )
@@ -431,6 +434,15 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
     ]
     if actual_pulls != expected_pulls:
         errors.append("portfolio audit PR identities are not derived from the response body")
+    for item in audit["open_pull_requests"]:
+        disposition = item.get("governance_disposition")
+        if disposition not in ALLOWED_DISPOSITIONS:
+            errors.append("portfolio audit PR governance disposition is not allowed")
+        expected_disposition = REQUIRED_PR_DISPOSITIONS.get(item.get("number"))
+        if expected_disposition is not None and disposition != expected_disposition:
+            errors.append(
+                f"portfolio audit PR {item.get('number')} governance disposition changed"
+            )
 
     if len({item["number"] for item in expected_pulls}) != len(expected_pulls):
         errors.append("portfolio audit PR numbers are duplicated")
@@ -466,6 +478,15 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
     ]
     if actual_branches != expected_branches:
         errors.append("portfolio audit branch identities are not derived from the response body")
+    for item in audit["branches"]:
+        disposition = item.get("governance_disposition")
+        if disposition not in ALLOWED_DISPOSITIONS:
+            errors.append("portfolio audit branch governance disposition is not allowed")
+        expected_disposition = REQUIRED_BRANCH_DISPOSITIONS.get(item.get("name"))
+        if expected_disposition is not None and disposition != expected_disposition:
+            errors.append(
+                f"portfolio audit branch {item.get('name')} governance disposition changed"
+            )
 
     expected_issues = []
     for item in issue_nodes:
@@ -648,6 +669,17 @@ def _validate_d2_protected_review(
     errors.extend(f"protected D2 freeze review: {error}" for error in schema_errors)
     if schema_errors:
         return errors
+
+    authorized_repair = freeze.get("authorized_repair")
+    if (
+        type(authorized_repair) is not dict
+        or review["pull_request"] != AUTHORIZED_REPAIR_PR
+        or review["pull_request"] != authorized_repair.get("pull_request")
+        or review["issue"] != authorized_repair.get("issue")
+        or review["head"] != authorized_repair.get("head")
+        or review["base"] != authorized_repair.get("base")
+    ):
+        errors.append("protected D2 freeze review is not the exact authorized repair")
 
     pr_envelope = review["pr_api_response"]
     pr_response = _authenticated_github_response(
@@ -1293,8 +1325,8 @@ def _validate_repository_policy(
             errors.append("complete freeze requires reviewed_candidate_sha")
         if not re.fullmatch(r"[a-f0-9]{40}", freeze.get("dev_integration_sha", "")):
             errors.append("complete freeze requires dev_integration_sha")
-        if not isinstance(freeze.get("reviewed_pull_request"), int):
-            errors.append("complete freeze requires reviewed_pull_request")
+        if freeze.get("reviewed_pull_request") != AUTHORIZED_REPAIR_PR:
+            errors.append("complete freeze requires the authorized reviewed_pull_request")
         reviewed_at = _parse_instant(freeze.get("reviewed_at"))
         captured_at = _parse_instant(freeze.get("captured_at"))
         if reviewed_at is None or captured_at is None or reviewed_at <= captured_at:

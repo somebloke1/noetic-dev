@@ -21,7 +21,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:  # Optional; the fallback scanner keeps the checker dependency-light.
     import yaml as _yaml  # type: ignore
@@ -39,7 +39,7 @@ from check_evidence_manifest import (  # noqa: E402
     normalize_qa_records,
     pass_records_by_id,
 )
-from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text, validate_sha_hex  # noqa: E402
+from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_file, sha256_text  # noqa: E402
 from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # noqa: E402
 from route_evidence import protected_ci_snapshot  # noqa: E402
 
@@ -955,7 +955,6 @@ def _check_probe_execution_binding(
 
 def _check_qa_pairing(manifest: Dict[str, Any], errors: List[str], manifest_path: Optional[str]) -> None:
     repo = manifest.get("repo", {})
-    policy = manifest.get("policy", {})
     pass_ids = all_pass_ids(manifest)
     records_by_pass = pass_records_by_id(manifest)
     qa_records = normalize_qa_records(manifest)

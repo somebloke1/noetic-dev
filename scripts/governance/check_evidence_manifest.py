@@ -13,7 +13,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[1]
@@ -21,7 +21,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from hash_tree import (  # noqa: E402
-    canonical_json_sha256,
     manifest_digest_excluding_own,
     validate_sha_hex,
     validate_sha256_hex,

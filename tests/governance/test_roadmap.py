@@ -36,7 +36,11 @@ from scripts.governance.capture_d2_inventory import (
     _validate_derived_snapshot,
 )
 from scripts.governance.hash_tree import canonical_json_sha256
-from scripts.governance.json_schema import load_json_strict, validate_schema
+from scripts.governance.json_schema import (
+    load_json_strict,
+    parse_json_strict,
+    validate_schema,
+)
 from scripts.governance.migrate_roadmap import (
     CANONICAL_V1_SHA256,
     RoadmapMigrationError,
@@ -68,6 +72,13 @@ class TestRoadmap(unittest.TestCase):
             any(fragment in error for error in errors),
             f"expected {fragment!r} in {errors!r}",
         )
+
+    def test_strict_json_rejects_all_non_finite_number_forms(self) -> None:
+        for value in ("NaN", "Infinity", "-Infinity", "1e309", "-1e309"):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                ValueError, "non-deterministic JSON number"
+            ):
+                parse_json_strict(f'{{"value":{value}}}')
 
     def test_exact_roadmap_contract_is_valid(self) -> None:
         self.assertEqual(validate_roadmap(self.state, self.schema, self.markdown, ROOT), [])
@@ -403,6 +414,17 @@ class TestRoadmap(unittest.TestCase):
                 review["dev_compare_api_response"]["response_sha256"],
             )
 
+            wrong_authorization = copy.deepcopy(completed_freeze)
+            wrong_authorization["authorized_repair"]["pull_request"] = 68
+            with mock.patch(
+                "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
+                return_value=True,
+            ):
+                errors = _validate_d2_protected_review(
+                    root, wrong_authorization, d2
+                )
+            self.assert_has_error(errors, "exact authorized repair")
+
             with mock.patch(
                 "scripts.governance.check_roadmap._verify_protected_attestation_receipt",
                 return_value=False,
@@ -618,6 +640,10 @@ class TestRoadmap(unittest.TestCase):
         unbound_complete["blocks_publication"] = False
         self.assertNotEqual(validate_schema(unbound_complete, freeze_schema), [])
 
+        wrong_review_pr = copy.deepcopy(freeze)
+        wrong_review_pr["reviewed_pull_request"] = 68
+        self.assertNotEqual(validate_schema(wrong_review_pr, freeze_schema), [])
+
     def test_portfolio_capture_rejects_omission_substitution_pagination_type_chronology_and_receipt_attacks(self) -> None:
         audit_path = ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
         audit = load_json_strict(audit_path)
@@ -674,6 +700,34 @@ class TestRoadmap(unittest.TestCase):
         substituted_projection["open_pull_requests"][0]["title"] = "plausible substitute"
         self.assert_has_error(
             _validate_d2_inventory(substituted_projection), "not derived from the response body"
+        )
+
+        for collection, identity_key, identity in (
+            ("open_pull_requests", "number", 66),
+            ("branches", "name", "issue-27-terra-canary"),
+            ("branches", "name", "issue-65-opencode-spike"),
+        ):
+            with self.subTest(collection=collection, identity=identity):
+                reversed_disposition = copy.deepcopy(audit)
+                item = next(
+                    candidate
+                    for candidate in reversed_disposition[collection]
+                    if candidate[identity_key] == identity
+                )
+                item["governance_disposition"] = "active bounded D2 roadmap candidate"
+                self.assert_has_error(
+                    _validate_d2_inventory(reversed_disposition),
+                    "governance disposition changed",
+                )
+
+        unknown_disposition = copy.deepcopy(audit)
+        unknown_disposition["branches"][0]["governance_disposition"] = (
+            "delete dirty donor branch"
+        )
+        self.assertNotEqual(validate_schema(unknown_disposition, audit_schema), [])
+        self.assert_has_error(
+            _validate_d2_inventory(unknown_disposition),
+            "governance disposition is not allowed",
         )
 
         mismatched_head = copy.deepcopy(audit)
@@ -1297,6 +1351,8 @@ class TestRoadmap(unittest.TestCase):
         self.assertEqual(child["stdout"], subprocess.PIPE)
         self.assertEqual(child["stderr"], subprocess.DEVNULL)
         self.assertTrue(child["close_fds"])
+        self.assertNotIn("select", d2_capture.LOCK_HELPER)
+        self.assertIn("os.read(0, 1)", d2_capture.LOCK_HELPER)
         process.stdin.write.assert_called_once_with(b"1")
         process.stdin.flush.assert_called_once_with()
         process.wait.assert_called_once_with(timeout=12)
@@ -1337,6 +1393,22 @@ class TestRoadmap(unittest.TestCase):
         ), self.assertRaisesRegex(OSError, "cannot start helper"):
             with d2_capture._directory_lock(Path("/tmp")):
                 pass
+
+        with tempfile.TemporaryDirectory() as directory:
+            entered = threading.Event()
+
+            def contend() -> None:
+                with d2_capture._directory_lock(Path(directory)):
+                    entered.set()
+
+            with d2_capture._directory_lock(Path(directory)):
+                worker = threading.Thread(target=contend)
+                worker.start()
+                self.assertFalse(entered.wait(timeout=0.25))
+                self.assertTrue(worker.is_alive())
+            self.assertTrue(entered.wait(timeout=2))
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
 
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(

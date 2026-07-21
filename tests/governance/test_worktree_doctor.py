@@ -15,7 +15,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_worktree import inspect_worktree, isolated_git_environment
+from check_worktree import inspect_worktree, isolated_git_environment  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

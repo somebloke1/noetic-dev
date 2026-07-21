@@ -11,9 +11,10 @@ semantic enforcement.
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
-from typing import Any, Callable, Iterable, List, Tuple
+from typing import Any, Iterable, List, Tuple
 
 
 class DuplicateKeyError(ValueError):
@@ -31,9 +32,16 @@ def _no_duplicates_object_pairs_hook(pairs: Iterable[Tuple[str, Any]]) -> dict[s
 
 def parse_json_strict(raw: str | bytes) -> Any:
     """Parse JSON while rejecting duplicate keys and non-finite constants."""
+    def finite_float(value: str) -> float:
+        parsed = float(value)
+        if not math.isfinite(parsed):
+            raise ValueError(f"non-deterministic JSON number: {value}")
+        return parsed
+
     return json.loads(
         raw,
         object_pairs_hook=_no_duplicates_object_pairs_hook,
+        parse_float=finite_float,
         parse_constant=lambda value: (_ for _ in ()).throw(
             ValueError(f"non-deterministic JSON number: {value}")
         ),

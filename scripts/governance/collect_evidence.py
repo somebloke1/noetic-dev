@@ -16,7 +16,7 @@ import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 POLICY_ROOT = SCRIPT_DIR.parents[1]

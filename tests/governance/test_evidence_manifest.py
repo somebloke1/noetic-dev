@@ -13,8 +13,8 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_evidence_manifest import _command_matches_registry, check as check_manifest
-from hash_tree import (
+from check_evidence_manifest import _command_matches_registry, check as check_manifest  # noqa: E402
+from hash_tree import (  # noqa: E402
     canonical_json,
     canonical_json_sha256,
     manifest_digest_excluding_own,
@@ -23,7 +23,6 @@ from hash_tree import (
     validate_sha_hex,
     validate_sha256_hex,
 )
-from json_schema import DuplicateKeyError, load_json_strict
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
