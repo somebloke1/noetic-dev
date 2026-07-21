@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 from scripts.governance.check_roadmap import (
+    _d2_connection,
     _git_succeeds,
     _parse_instant,
     _validate_d2_inventory,
@@ -24,6 +25,7 @@ from scripts.governance.check_roadmap import (
     validate_roadmap,
     validate_roadmap_files,
 )
+from scripts.governance.capture_d2_inventory import _validate_derived_snapshot
 from scripts.governance.hash_tree import canonical_json_sha256
 from scripts.governance.json_schema import load_json_strict, validate_schema
 from scripts.governance.migrate_roadmap import (
@@ -901,6 +903,63 @@ class TestRoadmap(unittest.TestCase):
         self.assertEqual(child["HOME"], "/nonexistent")
         self.assertNotIn("LD_PRELOAD", child)
         self.assertNotIn("BASH_ENV", child)
+        with mock.patch(
+            "scripts.governance.check_roadmap.trusted_git_binary",
+            return_value="/usr/bin/git",
+        ), mock.patch(
+            "scripts.governance.check_roadmap.subprocess.run",
+            side_effect=OSError("cannot execute"),
+        ):
+            self.assertFalse(_git_succeeds(ROOT, "cat-file", "-e", "HEAD^{commit}"))
+
+    def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
+        audit = load_json_strict(
+            ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
+        )
+        pulls = copy.deepcopy(audit["open_pull_requests"])
+        branches = copy.deepcopy(audit["branches"])
+        self.assertTrue(_validate_derived_snapshot(pulls, branches))
+
+        duplicate = copy.deepcopy(branches)
+        duplicate.append(copy.deepcopy(duplicate[0]))
+        with self.assertRaisesRegex(RuntimeError, "duplicate identities"):
+            _validate_derived_snapshot(pulls, duplicate)
+
+        malformed = copy.deepcopy(branches)
+        malformed[0]["sha"] = "not-a-commit-oid"
+        with self.assertRaisesRegex(RuntimeError, "invalid or duplicate"):
+            _validate_derived_snapshot(pulls, malformed)
+
+        renamed_pulls = copy.deepcopy(pulls)
+        renamed_branches = copy.deepcopy(branches)
+        repair = next(item for item in renamed_pulls if item["number"] == 67)
+        repair_branch = next(
+            item for item in renamed_branches if item["name"] == repair["head"]
+        )
+        repair["head"] = "renamed-d2-head"
+        repair_branch["name"] = "renamed-d2-head"
+        with self.assertRaisesRegex(RuntimeError, "repair pull request identity"):
+            _validate_derived_snapshot(renamed_pulls, renamed_branches)
+
+        repository = {
+            "refs": {
+                "totalCount": 1,
+                "pageInfo": {"hasNextPage": False, "endCursor": "cursor"},
+                "nodes": [{"name": "dev", "target": {"oid": "a" * 40}}],
+            }
+        }
+        envelope = {
+            "pagination": {
+                "first": 100,
+                "item_count": True,
+                "total_count": True,
+                "has_next_page": False,
+                "end_cursor": "cursor",
+            }
+        }
+        errors: list[str] = []
+        _d2_connection(repository, "refs", envelope, errors)
+        self.assert_has_error(errors, "pagination was substituted")
 
     def test_complete_freeze_chronology_compares_instants_not_strings(self) -> None:
         captured = _parse_instant("2026-07-18T23:46:09-12:00")

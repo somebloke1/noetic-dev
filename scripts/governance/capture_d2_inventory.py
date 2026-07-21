@@ -8,6 +8,7 @@ import base64
 import gzip
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -27,6 +28,9 @@ from scripts.governance.json_schema import load_json_strict  # noqa: E402
 
 REPOSITORY = "somebloke1/noetic-dev"
 REPOSITORY_ID = 1297462728
+AUTHORIZED_REPAIR_PR = 67
+AUTHORIZED_REPAIR_HEAD = "issue-32-canonical-roadmap"
+AUTHORIZED_REPAIR_BASE = "dev"
 GRAPHQL_URL = "https://api.github.com/graphql"
 VARIABLES = {"owner": "somebloke1", "name": "noetic-dev"}
 REPOSITORY_FIELDS = """
@@ -200,7 +204,10 @@ def _with_pagination(
     page_info = connection.get("pageInfo")
     if type(nodes) is not list or type(page_info) is not dict:
         raise RuntimeError("GitHub GraphQL connection was malformed")
-    if page_info.get("hasNextPage") is not False:
+    if (
+        page_info.get("hasNextPage") is not False
+        or type(connection.get("totalCount")) is not int
+    ):
         raise RuntimeError("D2 inventory exceeds its single complete GraphQL page")
     if type(connection.get("totalCount")) is not int or connection["totalCount"] != len(nodes):
         raise RuntimeError("GitHub GraphQL connection count is incomplete")
@@ -215,6 +222,51 @@ def _with_pagination(
         {key: value for key, value in envelope.items() if key != "response_sha256"}
     )
     return envelope
+
+
+def _validate_derived_snapshot(
+    pulls: list[dict[str, Any]], branches: list[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    branch_names = [item.get("name") for item in branches]
+    if (
+        any(type(name) is not str or not name for name in branch_names)
+        or len(set(branch_names)) != len(branch_names)
+        or any(
+            re.fullmatch(r"[a-f0-9]{40}", item.get("sha", "")) is None
+            for item in branches
+        )
+    ):
+        raise RuntimeError("D2 branch inventory contains invalid or duplicate identities")
+    pull_numbers = [item.get("number") for item in pulls]
+    if (
+        any(type(number) is not int for number in pull_numbers)
+        or len(set(pull_numbers)) != len(pull_numbers)
+        or any(
+            type(item.get(field)) is not str or not item[field]
+            for item in pulls
+            for field in ("title", "base", "head", "head_sha", "updated_at", "url")
+        )
+        or any(
+            re.fullmatch(r"[a-f0-9]{40}", item["head_sha"]) is None
+            for item in pulls
+        )
+    ):
+        raise RuntimeError("D2 pull-request inventory contains invalid or duplicate identities")
+    repair = [item for item in pulls if item["number"] == AUTHORIZED_REPAIR_PR]
+    if (
+        len(repair) != 1
+        or repair[0]["head"] != AUTHORIZED_REPAIR_HEAD
+        or repair[0]["base"] != AUTHORIZED_REPAIR_BASE
+    ):
+        raise RuntimeError("bounded D2 repair pull request identity changed")
+    branch_by_name = {item["name"]: item for item in branches}
+    for pull_request in pulls:
+        branch = branch_by_name.get(pull_request["head"])
+        if branch is None or branch["sha"] != pull_request["head_sha"]:
+            raise RuntimeError(
+                f"PR {pull_request['number']} head changed during portfolio capture"
+            )
+    return branch_by_name
 
 
 def _status_from_labels(labels: list[str]) -> str:
@@ -286,8 +338,6 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
     pull_items = sorted(pulls_connection["nodes"], key=lambda item: item["number"])
     branch_items = sorted(branches_connection["nodes"], key=lambda item: item["name"])
     issue_items = sorted(issues_connection["nodes"], key=lambda item: item["number"])
-    branch_by_name = {item["name"]: item for item in branch_items}
-
     derived_pulls = [
         {
             "number": item["number"],
@@ -313,15 +363,9 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
         }
         for item in branch_items
     ]
-    for pull_request in derived_pulls:
-        branch = branch_by_name.get(pull_request["head"])
-        if (
-            branch is None
-            or branch.get("target", {}).get("oid") != pull_request["head_sha"]
-        ):
-            raise RuntimeError(
-                f"PR {pull_request['number']} head changed during portfolio capture"
-            )
+    derived_branch_by_name = _validate_derived_snapshot(
+        derived_pulls, derived_branches
+    )
     derived_issues = []
     for item in issue_items:
         labels_connection = item["labels"]
@@ -386,8 +430,8 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
             "required_claims": required_claims,
         },
         "refs": {
-            "main": branch_by_name["main"]["target"]["oid"],
-            "dev": branch_by_name["dev"]["target"]["oid"],
+            "main": derived_branch_by_name["main"]["sha"],
+            "dev": derived_branch_by_name["dev"]["sha"],
             "default_branch": default_branch["name"],
         },
         "counts": {

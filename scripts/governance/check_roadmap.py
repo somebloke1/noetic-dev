@@ -24,6 +24,9 @@ if str(ROOT) not in sys.path:
 from scripts.governance.json_schema import load_json_strict, validate_schema  # noqa: E402
 from scripts.governance.hash_tree import canonical_json_sha256  # noqa: E402
 from scripts.governance.capture_d2_inventory import (  # noqa: E402
+    AUTHORIZED_REPAIR_BASE,
+    AUTHORIZED_REPAIR_HEAD,
+    AUTHORIZED_REPAIR_PR,
     OPERATIONS as D2_INVENTORY_OPERATIONS,
     QUERIES as D2_INVENTORY_QUERIES,
     VARIABLES as D2_INVENTORY_VARIABLES,
@@ -307,6 +310,10 @@ def _d2_connection(
         set(connection) != {"totalCount", "pageInfo", "nodes"}
         or set(page_info) != {"hasNextPage", "endCursor"}
         or type(connection.get("totalCount")) is not int
+        or type(pagination.get("first")) is not int
+        or type(pagination.get("item_count")) is not int
+        or type(pagination.get("total_count")) is not int
+        or pagination.get("has_next_page") is not False
         or connection.get("totalCount") != len(nodes)
         or len(nodes) > 100
         or page_info.get("hasNextPage") is not False
@@ -362,12 +369,29 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
     )
 
     expected_pulls = []
-    for item in sorted(pull_nodes, key=lambda node: node.get("number", 0)):
+    for item in pull_nodes:
         if set(item) != {
             "number", "title", "baseRefName", "headRefName", "headRefOid",
             "updatedAt", "url",
         }:
             errors.append("portfolio audit PR response node shape is invalid")
+            continue
+        if (
+            type(item.get("number")) is not int
+            or any(
+                type(item.get(field)) is not str or not item[field]
+                for field in (
+                    "title",
+                    "baseRefName",
+                    "headRefName",
+                    "headRefOid",
+                    "updatedAt",
+                    "url",
+                )
+            )
+            or re.fullmatch(r"[a-f0-9]{40}", item.get("headRefOid", "")) is None
+        ):
+            errors.append("portfolio audit PR response identity is invalid")
             continue
         expected_pulls.append(
             {
@@ -380,6 +404,7 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
                 "url": item["url"],
             }
         )
+    expected_pulls.sort(key=lambda item: item["number"])
     actual_pulls = [
         {key: value for key, value in item.items() if key != "governance_disposition"}
         for item in audit["open_pull_requests"]
@@ -387,13 +412,33 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
     if actual_pulls != expected_pulls:
         errors.append("portfolio audit PR identities are not derived from the response body")
 
+    if len({item["number"] for item in expected_pulls}) != len(expected_pulls):
+        errors.append("portfolio audit PR numbers are duplicated")
+    repair = [item for item in expected_pulls if item["number"] == AUTHORIZED_REPAIR_PR]
+    if (
+        len(repair) != 1
+        or repair[0]["head"] != AUTHORIZED_REPAIR_HEAD
+        or repair[0]["base"] != AUTHORIZED_REPAIR_BASE
+    ):
+        errors.append("bounded D2 repair pull request identity changed")
+
     expected_branches = []
-    for item in sorted(branch_nodes, key=lambda node: node.get("name", "")):
+    for item in branch_nodes:
         target = item.get("target")
-        if set(item) != {"name", "target"} or type(target) is not dict or set(target) != {"oid"}:
+        if (
+            set(item) != {"name", "target"}
+            or type(item.get("name")) is not str
+            or not item["name"]
+            or type(target) is not dict
+            or set(target) != {"oid"}
+            or re.fullmatch(r"[a-f0-9]{40}", target.get("oid", "")) is None
+        ):
             errors.append("portfolio audit branch response node shape is invalid")
             continue
         expected_branches.append({"name": item["name"], "sha": target["oid"]})
+    expected_branches.sort(key=lambda item: item["name"])
+    if len({item["name"] for item in expected_branches}) != len(expected_branches):
+        errors.append("portfolio audit branch names are duplicated")
     actual_branches = [
         {key: value for key, value in item.items() if key != "governance_disposition"}
         for item in audit["branches"]
@@ -402,7 +447,7 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
         errors.append("portfolio audit branch identities are not derived from the response body")
 
     expected_issues = []
-    for item in sorted(issue_nodes, key=lambda node: node.get("number", 0)):
+    for item in issue_nodes:
         if set(item) != {"number", "title", "updatedAt", "url", "labels"}:
             errors.append("portfolio audit issue response node shape is invalid")
             continue
@@ -438,6 +483,7 @@ def _validate_d2_inventory(audit: dict[str, Any]) -> list[str]:
                 "url": item["url"],
             }
         )
+    expected_issues.sort(key=lambda item: item["number"])
     if audit["open_issues"] != expected_issues:
         errors.append("portfolio audit issue identities are not derived from the response body")
 
@@ -930,14 +976,17 @@ def _git_succeeds(root: Path, *arguments: str) -> bool:
     git_binary = trusted_git_binary()
     if git_binary is None:
         return False
-    result = subprocess.run(
-        [git_binary, *arguments],
-        cwd=root,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-        env=isolated_git_environment(),
-    )
+    try:
+        result = subprocess.run(
+            [git_binary, *arguments],
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            env=isolated_git_environment(),
+        )
+    except OSError:
+        return False
     return result.returncode == 0
 
 
