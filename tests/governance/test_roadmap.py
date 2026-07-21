@@ -1462,6 +1462,55 @@ class TestRoadmap(unittest.TestCase):
         self.assertEqual(branches["new-safe"], "unadjudicated candidate capture")
         self.assertNotIn("new-hostile", branches)
 
+    def test_capture_transaction_serializes_load_capture_validate_and_write(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "inventory.json"
+            output.write_text('{"version":0}\n', encoding="utf-8")
+            first_entered = threading.Event()
+            release_first = threading.Event()
+            second_entered = threading.Event()
+            errors: list[Exception] = []
+
+            def controlled_capture(previous: dict) -> dict:
+                if previous == {"version": 0}:
+                    first_entered.set()
+                    if not release_first.wait(timeout=2):
+                        raise RuntimeError("first capture release timed out")
+                    return {"version": 1}
+                if previous == {"version": 1}:
+                    second_entered.set()
+                    return {"version": 2}
+                raise RuntimeError(f"stale or unexpected prior inventory: {previous}")
+
+            def run_capture() -> None:
+                try:
+                    d2_capture._capture_and_write(output)
+                except Exception as exc:
+                    errors.append(exc)
+
+            with mock.patch(
+                "scripts.governance.capture_d2_inventory.capture",
+                side_effect=controlled_capture,
+            ), mock.patch(
+                "scripts.governance.capture_d2_inventory.validate_schema",
+                return_value=[],
+            ):
+                first = threading.Thread(target=run_capture)
+                second = threading.Thread(target=run_capture)
+                first.start()
+                self.assertTrue(first_entered.wait(timeout=2))
+                second.start()
+                self.assertFalse(second_entered.wait(timeout=0.25))
+                release_first.set()
+                first.join(timeout=2)
+                second.join(timeout=2)
+
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(errors, [])
+            self.assertTrue(second_entered.is_set())
+            self.assertEqual(load_json_strict(output), {"version": 2})
+
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(
             ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"

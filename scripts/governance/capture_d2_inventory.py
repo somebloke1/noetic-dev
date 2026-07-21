@@ -800,6 +800,18 @@ def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
         return _write_inventory_locked(output, inventory)
 
 
+def _capture_and_write(output: Path) -> str:
+    with _directory_lock(output.parent):
+        previous = load_json_strict(output) if output.exists() else {}
+        inventory = capture(previous)
+        schema = load_json_strict(
+            ROOT / "governance/schemas/d2-portfolio-audit.schema.json"
+        )
+        if validate_schema(inventory, schema):
+            raise RuntimeError("captured D2 inventory failed schema validation")
+        return _write_inventory_locked(output, inventory)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -809,14 +821,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        previous = load_json_strict(args.output) if args.output.exists() else {}
-        inventory = capture(previous)
-        schema = load_json_strict(
-            ROOT / "governance/schemas/d2-portfolio-audit.schema.json"
-        )
-        if validate_schema(inventory, schema):
-            raise RuntimeError("captured D2 inventory failed schema validation")
-        digest = _write_inventory_atomic(args.output, inventory)
+        digest = _capture_and_write(args.output)
     except Exception as exc:
         try:
             print(f"D2 inventory capture failed: {exc}", file=sys.stderr)
