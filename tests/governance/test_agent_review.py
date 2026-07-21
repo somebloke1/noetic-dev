@@ -17,9 +17,9 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from agent_review_broker import BWRAP, MAX_FILE_INVENTORY_BYTES, MAX_PATCH_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, fetch_exact_diff, gh_json, load_litellm_token, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_token, validate_litellm_transport, validate_pr, validate_request, validate_runtime
-from genus_router_mcp import GenusRouterError, GenusRouterToolError
-from route_evidence import validate_route_evidence
+from agent_review_broker import BWRAP, MAX_FILE_INVENTORY_BYTES, MAX_PATCH_BYTES, Handler, ReviewError, ReviewExecutionError, UnixServer, build_prompt, fetch_exact_diff, gh_json, load_litellm_token, load_model_policy, parse_review_output, resolve_agent_review_route, review, run_bounded, run_terra, strict_json, validate_litellm_token, validate_litellm_transport, validate_pr, validate_request, validate_runtime  # noqa: E402
+from genus_router_mcp import GenusRouterError, GenusRouterToolError  # noqa: E402
+from route_evidence import validate_route_evidence  # noqa: E402
 
 
 COMPONENT_SHA = "f2b839b0cfc737c4c1f0a46d3d519d414529545c"
@@ -178,7 +178,7 @@ class TestAgentReview(unittest.TestCase):
 
     @unittest.skipUnless(BWRAP.is_file(), "bubblewrap is required")
     def test_patch_output_ceiling_accepts_boundary_and_rejects_next_byte(self):
-        self.assertEqual(MAX_PATCH_BYTES, 640_000)
+        self.assertEqual(MAX_PATCH_BYTES, 700_000)
         program = "import sys; sys.stdout.buffer.write(b'x' * int(sys.argv[1]))"
         for size in [MAX_PATCH_BYTES - 1, MAX_PATCH_BYTES]:
             with self.subTest(size=size):
@@ -221,7 +221,7 @@ class TestAgentReview(unittest.TestCase):
         self.assertEqual(bounded.call_args_list[4].kwargs["max_stdout"], MAX_FILE_INVENTORY_BYTES)
         self.assertEqual(bounded.call_args_list[5].kwargs["max_stdout"], MAX_PATCH_BYTES)
         self.assertEqual(MAX_FILE_INVENTORY_BYTES, 200_000)
-        self.assertEqual(MAX_PATCH_BYTES, 640_000)
+        self.assertEqual(MAX_PATCH_BYTES, 700_000)
 
     @mock.patch("agent_review_broker.subprocess.Popen", side_effect=FileNotFoundError("missing"))
     def test_subprocess_spawn_failure_is_controlled(self, _popen: mock.Mock):
