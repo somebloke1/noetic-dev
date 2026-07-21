@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import gzip
 import hashlib
 import json
@@ -628,11 +629,25 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
-    residues = sorted(output.parent.glob(f".{output.name}.*.tmp"))
+def _inventory_residues(output: Path) -> list[Path]:
+    prefix = f".{output.name}."
+    return sorted(
+        entry
+        for entry in output.parent.iterdir()
+        if entry.name.startswith(prefix) and entry.name.endswith(".tmp")
+    )
+
+
+def _display_paths(paths: list[Path]) -> str:
+    return ", ".join(repr(str(path)) for path in paths)
+
+
+def _write_inventory_locked(output: Path, inventory: dict[str, Any]) -> str:
+    residues = _inventory_residues(output)
     if residues:
         raise RuntimeError(
-            f"existing D2 inventory temporary residue requires cleanup: {residues[0]}"
+            "existing D2 inventory temporary residue requires cleanup: "
+            f"{_display_paths(residues)}"
         )
     payload = (json.dumps(inventory, indent=2, ensure_ascii=True) + "\n").encode(
         "utf-8"
@@ -669,10 +684,29 @@ def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
         if cleanup_error is not None:
             raise RuntimeError(
                 f"D2 inventory write failed ({original}); temporary residue "
-                f"requires cleanup: {temporary}"
+                f"requires cleanup: {_display_paths([temporary])}"
             ) from cleanup_error
         raise
     return digest
+
+
+def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
+    directory = os.open(output.parent, os.O_RDONLY | os.O_DIRECTORY)
+    locked = False
+    try:
+        fcntl.flock(directory, fcntl.LOCK_EX)
+        locked = True
+        return _write_inventory_locked(output, inventory)
+    finally:
+        if locked:
+            try:
+                fcntl.flock(directory, fcntl.LOCK_UN)
+            except OSError:
+                pass
+        try:
+            os.close(directory)
+        except OSError:
+            pass
 
 
 def main() -> int:

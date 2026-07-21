@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import timedelta
 from email.utils import format_datetime, parsedate_to_datetime
@@ -1176,6 +1177,63 @@ class TestRoadmap(unittest.TestCase):
                 side_effect=RuntimeError("capture failed"),
             ), mock.patch.object(sys, "stderr", closed_stderr):
                 self.assertEqual(d2_capture.main(), 1)
+
+            concurrent = Path(tmp) / "concurrent.json"
+            concurrent.write_bytes(b"existing-inventory")
+            barrier = threading.Barrier(3)
+            concurrent_errors: list[Exception] = []
+
+            def fail_concurrently() -> None:
+                barrier.wait()
+                try:
+                    d2_capture._write_inventory_atomic(concurrent, {"valid": True})
+                except Exception as exc:
+                    concurrent_errors.append(exc)
+
+            workers = [threading.Thread(target=fail_concurrently) for _ in range(2)]
+            with mock.patch(
+                "scripts.governance.capture_d2_inventory.os.fsync",
+                side_effect=OSError("fsync failed"),
+            ), mock.patch.object(
+                Path, "unlink", side_effect=OSError("unlink failed")
+            ):
+                for worker in workers:
+                    worker.start()
+                barrier.wait()
+                for worker in workers:
+                    worker.join(timeout=5)
+            self.assertTrue(all(not worker.is_alive() for worker in workers))
+            self.assertEqual(len(concurrent_errors), 2)
+            concurrent_residues = list(
+                Path(tmp).glob(f".{concurrent.name}.*.tmp")
+            )
+            self.assertEqual(len(concurrent_residues), 1)
+            concurrent_residues[0].unlink()
+
+            hostile_name = Path(tmp) / "inventory[qa]\n\x1b.json"
+            hostile_name.write_bytes(b"existing-inventory")
+            with mock.patch(
+                "scripts.governance.capture_d2_inventory.os.fsync",
+                side_effect=OSError("fsync failed"),
+            ), mock.patch.object(
+                Path, "unlink", side_effect=OSError("unlink failed")
+            ), self.assertRaisesRegex(RuntimeError, "temporary residue") as raised:
+                d2_capture._write_inventory_atomic(hostile_name, {"valid": True})
+            message = str(raised.exception)
+            self.assertIn(r"\n", message)
+            self.assertIn(r"\x1b", message)
+            self.assertNotIn("\n", message)
+            self.assertNotIn("\x1b", message)
+            with self.assertRaisesRegex(RuntimeError, "existing.*temporary residue"):
+                d2_capture._write_inventory_atomic(hostile_name, {"valid": True})
+            hostile_residues = [
+                entry
+                for entry in Path(tmp).iterdir()
+                if entry.name.startswith(f".{hostile_name.name}.")
+                and entry.name.endswith(".tmp")
+            ]
+            self.assertEqual(len(hostile_residues), 1)
+            hostile_residues[0].unlink()
 
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(

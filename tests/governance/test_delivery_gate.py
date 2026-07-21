@@ -19,15 +19,20 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-import check_delivery_gate as delivery_gate
-import promote_main
-from check_delivery_gate import (
+import check_delivery_gate as delivery_gate  # noqa: E402
+import promote_main  # noqa: E402
+from check_delivery_gate import (  # noqa: E402
     check_bootstrap_blocked,
     check_delivery,
     check_pinning,
     verify_authoritative_provenance,
 )
-from hash_tree import canonical_json, canonical_json_sha256, manifest_digest_excluding_own, sha256_text
+from hash_tree import (  # noqa: E402
+    canonical_json,
+    canonical_json_sha256,
+    manifest_digest_excluding_own,
+    sha256_text,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
