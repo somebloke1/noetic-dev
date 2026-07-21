@@ -1271,6 +1271,73 @@ class TestRoadmap(unittest.TestCase):
             )
             self.assertEqual(d2_capture._inventory_residues(committed), [])
 
+    def test_capture_lock_helper_is_fixed_isolated_and_controlled(self) -> None:
+        process = mock.Mock()
+        process.stdin = mock.Mock()
+        process.stdout = mock.Mock()
+        process.stdout.read.return_value = b"1"
+        process.poll.return_value = None
+        process.wait.return_value = 0
+        with mock.patch(
+            "scripts.governance.capture_d2_inventory.subprocess.Popen",
+            return_value=process,
+        ) as popen:
+            with d2_capture._directory_lock(Path("/tmp/qa lock;$(false)")):
+                pass
+        command = popen.call_args.args[0]
+        child = popen.call_args.kwargs
+        self.assertEqual(command[:5], ["/usr/bin/python3", "-I", "-S", "-c", d2_capture.LOCK_HELPER])
+        self.assertEqual(command[5], "/tmp/qa lock;$(false)")
+        self.assertEqual(child["executable"], "/usr/bin/python3")
+        self.assertEqual(child["cwd"], "/")
+        self.assertEqual(
+            child["env"], {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
+        )
+        self.assertEqual(child["stdin"], subprocess.PIPE)
+        self.assertEqual(child["stdout"], subprocess.PIPE)
+        self.assertEqual(child["stderr"], subprocess.DEVNULL)
+        self.assertTrue(child["close_fds"])
+        process.stdin.write.assert_called_once_with(b"1")
+        process.stdin.flush.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=12)
+        process.terminate.assert_not_called()
+        process.kill.assert_not_called()
+
+        release_failure = mock.Mock()
+        release_failure.stdin = mock.Mock()
+        release_failure.stdout = mock.Mock()
+        release_failure.stdout.read.return_value = b"1"
+        release_failure.stdin.write.side_effect = RuntimeError("closed pipe")
+        release_failure.poll.return_value = None
+        release_failure.wait.return_value = 0
+        with mock.patch(
+            "scripts.governance.capture_d2_inventory.subprocess.Popen",
+            return_value=release_failure,
+        ):
+            with d2_capture._directory_lock(Path("/tmp")):
+                pass
+        release_failure.terminate.assert_called_once_with()
+        release_failure.wait.assert_called_once_with(timeout=12)
+
+        startup_failure = mock.Mock()
+        startup_failure.stdin = mock.Mock()
+        startup_failure.stdout = mock.Mock()
+        startup_failure.stdout.read.return_value = b"0"
+        startup_failure.poll.return_value = 1
+        with mock.patch(
+            "scripts.governance.capture_d2_inventory.subprocess.Popen",
+            return_value=startup_failure,
+        ), self.assertRaisesRegex(RuntimeError, "directory lock failed"):
+            with d2_capture._directory_lock(Path("/tmp")):
+                pass
+
+        with mock.patch(
+            "scripts.governance.capture_d2_inventory.subprocess.Popen",
+            side_effect=OSError("cannot start helper"),
+        ), self.assertRaisesRegex(OSError, "cannot start helper"):
+            with d2_capture._directory_lock(Path("/tmp")):
+                pass
+
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(
             ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
