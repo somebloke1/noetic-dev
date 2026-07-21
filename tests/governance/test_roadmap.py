@@ -233,6 +233,8 @@ class TestRoadmap(unittest.TestCase):
         audit = load_json_strict(
             ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
         )
+        audit = copy.deepcopy(audit)
+        audit["captured_at"] = "2026-07-18T23:59:00+00:00"
         inventory_pr_head = next(
             item["head_sha"]
             for item in audit["open_pull_requests"]
@@ -293,7 +295,7 @@ class TestRoadmap(unittest.TestCase):
             "candidate_compare_api_response": envelope(
                 "https://api.github.com/repos/somebloke1/noetic-dev/compare/"
                 f"{inventory_pr_head}...{candidate_sha}",
-                "2026-07-19T00:00:15+00:00",
+                "2026-07-19T00:00:45+00:00",
                 {
                     "status": "ahead",
                     "ahead_by": 1,
@@ -438,6 +440,10 @@ class TestRoadmap(unittest.TestCase):
                 review["candidate_compare_api_response"]["response_sha256"],
             )
             self.assertEqual(
+                claims["candidate_compare_api_envelope_sha256"],
+                canonical_json_sha256(review["candidate_compare_api_response"]),
+            )
+            self.assertEqual(
                 claims["integration_pr_api_response_sha256"],
                 review["integration_pr_api_response"]["response_sha256"],
             )
@@ -497,6 +503,14 @@ class TestRoadmap(unittest.TestCase):
             self.assert_has_error(
                 validate_review(unrelated_candidate),
                 "not an authenticated ancestor of the reviewed candidate",
+            )
+            reversed_chronology = copy.deepcopy(review)
+            reversed_chronology["candidate_compare_api_response"]["fetched_at"] = (
+                "2026-07-18T23:58:00+00:00"
+            )
+            self.assert_has_error(
+                validate_review(reversed_chronology),
+                "implementation and independent QA chronology is invalid",
             )
 
             qa_attacks = []

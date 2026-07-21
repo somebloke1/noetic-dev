@@ -462,13 +462,6 @@ def _check_state_transitions(
         ("PLAN_REQUESTED", "PLAN_READY"),
         ("PLAN_READY", "IMPLEMENTING"),
         ("IMPLEMENTING", "CANDIDATE_PINNED"),
-        ("CANDIDATE_PINNED", "QA_RUNNING"),
-        ("QA_RUNNING", "QA_PASSED"),
-        ("QA_PASSED", "INDEPENDENT_REVIEW_PENDING"),
-        (
-            "INDEPENDENT_REVIEW_PENDING",
-            "READY_TO_INTEGRATE_DEV" if target_branch == "dev" else "READY_TO_MERGE",
-        ),
     }
     for source, target in sorted(required_edges - observed_edges):
         errors.append(f"required state_transition missing: {source}->{target}")

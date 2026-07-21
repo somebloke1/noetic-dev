@@ -868,6 +868,7 @@ def _validate_d2_protected_review(
             errors.append(f"protected D2 freeze review does not match freeze field {freeze_key}")
 
     reviewed_at = _parse_instant(review.get("reviewed_at"))
+    inventory_captured_at = _parse_instant(audit.get("captured_at"))
     pr_fetched_at = _parse_instant(pr_envelope.get("fetched_at"))
     candidate_compare_fetched_at = _parse_instant(
         candidate_compare_envelope.get("fetched_at")
@@ -887,13 +888,15 @@ def _validate_d2_protected_review(
         errors.append("D2 freeze review must strictly follow authenticated PR capture")
     if (
         pr_fetched_at is None
+        or inventory_captured_at is None
         or candidate_compare_fetched_at is None
         or implementation_completed_at is None
         or qa_completed_at is None
         or reviewed_at is None
-        or not pr_fetched_at
-        < candidate_compare_fetched_at
+        or not inventory_captured_at
+        < pr_fetched_at
         < implementation_completed_at
+        < candidate_compare_fetched_at
         < qa_completed_at
         or qa_completed_at != reviewed_at
     ):
@@ -940,6 +943,9 @@ def _validate_d2_protected_review(
         "candidate_compare_api_response_sha256": candidate_compare_envelope[
             "response_sha256"
         ],
+        "candidate_compare_api_envelope_sha256": canonical_json_sha256(
+            candidate_compare_envelope
+        ),
         "implementation_generation_id": implementation["generation_id"],
         "implementation_agent_id": implementation["agent_id"],
         "qa_agent_id": qa_record["agent_id"],

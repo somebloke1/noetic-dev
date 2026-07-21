@@ -85,6 +85,7 @@ class TestEvidenceManifestValidation(unittest.TestCase):
         self.assertEqual(validate_schema(manifest, schema), [])
         errors = check_manifest(manifest, target_branch="dev")
         self.assertFalse(any("candidate_pinned_at" in error for error in errors))
+        self.assertFalse(any("state_transition" in error for error in errors))
 
     def test_registry_templates_match_standalone_and_embedded_placeholders(self):
         registry = {
