@@ -306,7 +306,7 @@ Git/GitHub coordination is part of developing noetic-dev, not a runtime feature 
 3. Fable at high reasoning reviews the next immutable PR snapshot. Sol may serve as reviewer only under a distinct reviewer role/run identity and never review its own implementation or QA work.
 4. A finding produces `changes-needed` and a separate remediation generation; the changed SHA receives a fresh independent review.
 5. Issue labels are authoritative lifecycle state: `ready` before work, `in_progress` while a branch/PR exists, `blocked` or `checkpointed` only with a named condition, and `done` only after verified merge/closure.
-6. Project status is the coordination projection: active PR-backed work is `In Review`; unstarted work is `Ready`; named blockers are `Blocked`; only merged/closed accepted work is `Done`.
+6. Project status is the coordination projection: active implementation or remediation is `In Progress`; a pushed immutable candidate awaiting checks, review, or merge is `In Review`; unstarted dependency-ready work is `Ready`; named blockers and explicit pauses are `Blocked`; only merged/closed accepted work is `Done`.
 7. Actions are recorded distinctly as queued, in progress, completed-success, completed-failure, cancelled, or missing. A successful validator is never reported as tests, review, merge readiness, or publication.
 8. The orchestrator updates metadata only from authoritative evidence and records every unresolved remote protection, credential, identity, or infrastructure condition without converting it into a human-action dependency.
 

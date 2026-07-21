@@ -1138,6 +1138,45 @@ class TestRoadmap(unittest.TestCase):
                     list(Path(tmp).glob(f".{output.name}.*.tmp")), []
                 )
 
+            output.write_bytes(b"existing-inventory")
+            with mock.patch(
+                "scripts.governance.capture_d2_inventory.os.fsync",
+                side_effect=OSError("fsync failed"),
+            ), mock.patch.object(
+                Path, "unlink", side_effect=OSError("unlink failed")
+            ), self.assertRaisesRegex(RuntimeError, "temporary residue"):
+                d2_capture._write_inventory_atomic(output, {"valid": True})
+            residues = list(Path(tmp).glob(f".{output.name}.*.tmp"))
+            self.assertEqual(len(residues), 1)
+            with self.assertRaisesRegex(RuntimeError, "existing.*temporary residue"):
+                d2_capture._write_inventory_atomic(output, {"valid": True})
+            residues[0].unlink()
+
+            audit = load_json_strict(
+                ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"
+            )
+            output.write_bytes(b'{"sentinel":true}\n')
+            closed_stdout = io.StringIO()
+            closed_stdout.close()
+            with mock.patch.object(
+                sys, "argv", ["capture_d2_inventory.py", "--output", str(output)]
+            ), mock.patch(
+                "scripts.governance.capture_d2_inventory.capture",
+                return_value=audit,
+            ), mock.patch.object(sys, "stdout", closed_stdout):
+                self.assertEqual(d2_capture.main(), 0)
+            self.assertEqual(load_json_strict(output), audit)
+
+            closed_stderr = io.StringIO()
+            closed_stderr.close()
+            with mock.patch.object(
+                sys, "argv", ["capture_d2_inventory.py", "--output", str(output)]
+            ), mock.patch(
+                "scripts.governance.capture_d2_inventory.capture",
+                side_effect=RuntimeError("capture failed"),
+            ), mock.patch.object(sys, "stderr", closed_stderr):
+                self.assertEqual(d2_capture.main(), 1)
+
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(
             ROOT / "governance/audits/20260718-d2-portfolio/inventory.json"

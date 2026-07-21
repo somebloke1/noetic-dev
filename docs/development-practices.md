@@ -6,7 +6,7 @@
 
 - GitHub issues define accepted units of work and acceptance criteria.
 - Pull requests are the review, QA, and merge record.
-- GitHub Project tracks coordination fields; it does not replace issues or PRs.
+- GitHub Project #8 projects lifecycle status; it does not replace issues or PRs.
 - `KNOWNS.md` records verified evidence; `DECISIONS.md` records judgment; `OPEN_QUESTIONS.md` records uncertainty.
 - Goalchain state carries active purpose and learnings across sessions.
 

@@ -629,6 +629,11 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
 
 
 def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
+    residues = sorted(output.parent.glob(f".{output.name}.*.tmp"))
+    if residues:
+        raise RuntimeError(
+            f"existing D2 inventory temporary residue requires cleanup: {residues[0]}"
+        )
     payload = (json.dumps(inventory, indent=2, ensure_ascii=True) + "\n").encode(
         "utf-8"
     )
@@ -652,11 +657,20 @@ def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
         if temporary.read_bytes() != payload:
             raise OSError("temporary D2 inventory verification failed")
         os.replace(temporary, output)
-    except Exception:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+    except Exception as original:
+        cleanup_error: OSError | None = None
+        for _attempt in range(3):
+            try:
+                temporary.unlink(missing_ok=True)
+                cleanup_error = None
+                break
+            except OSError as exc:
+                cleanup_error = exc
+        if cleanup_error is not None:
+            raise RuntimeError(
+                f"D2 inventory write failed ({original}); temporary residue "
+                f"requires cleanup: {temporary}"
+            ) from cleanup_error
         raise
     return digest
 
@@ -679,11 +693,14 @@ def main() -> int:
             raise RuntimeError("captured D2 inventory failed schema validation")
         digest = _write_inventory_atomic(args.output, inventory)
     except Exception as exc:
-        print(f"D2 inventory capture failed: {exc}", file=sys.stderr)
+        try:
+            print(f"D2 inventory capture failed: {exc}", file=sys.stderr)
+        except Exception:
+            pass
         return 1
     try:
         print(digest)
-    except OSError:
+    except Exception:
         pass
     return 0
 

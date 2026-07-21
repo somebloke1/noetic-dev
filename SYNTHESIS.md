@@ -219,8 +219,7 @@ Your own `on_emergent_fidelity` thesis says alignment begins with **self-appropr
 ## 6. Open questions blocking full confidence
 
 1. **Client scope** (oq-20260711-0001): which coding assistants are first-class? "Any MCP client" firmly confirms the telos spine + harvest-not-host path; "Pi only" would license using noetic-pi's mechanisms in place. **Default assumed: any MCP client.**
-2. **Notation choice:** A/I/R/D vs P1–P4 — a decision you should make, not one to leave plural.
-3. **saeproj coupling:** is trained-model substrate a near-term dependency or a long-horizon research bet? (Recommend: long-horizon; do not gate the framework on it.)
+2. **saeproj coupling:** is trained-model substrate a near-term dependency or a long-horizon research bet? (Recommend: long-horizon; do not gate the framework on it.)
 
 ---
 

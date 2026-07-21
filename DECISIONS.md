@@ -170,7 +170,7 @@ OPEN (user judgment, from prior turn, still live): is the plane read-only observ
 - Status: accepted
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-07-21
 - Tags: target-project,composition-root,integration-home,synthesis,harvest-not-host,recommendation
 - Confidence: 0.8
 
@@ -195,7 +195,7 @@ WHERE EACH NEW/HARVESTED THING LIVES (answers 'where do we bring what is harvest
 
 CONCRETE SHAPE (proposed) for synthesis-as-composition-root: docs/ (cognitive-backbone.md form spec, SYNTHESIS.md architecture) + governance ledgers + spec/ (cognitional-event schema) + config/ (endpoint registry, genus-router binding, LiteLLM, 2x3090 endpoints) + compose/ (how spine+organs+planes run together) + component references (telos, disciplines-service, pipeline-service, observability-plane, tmux-attach).
 
-PRACTICAL NEXT STEPS implied: (a) `git init` the synthesis workspace (currently not a repo) so the composition root is versioned; (b) optionally give the FRAMEWORK its own name ('synthesis' names the ACT, not the THING) - user's call; (c) distinguish synthesis-as-basis (development/integration) from the composed running framework (product), mirroring the user's own noetic-pi vs noetic-pi-docker split.
+PRACTICAL CONSEQUENCES, now enacted: (a) preserve the versioned composition root and its protected `dev`/`main` topology; the former initialization step is complete and is not a current instruction; (b) use the ratified `noetic-dev` name for the framework while retaining `synthesis` as the local composition-root path; (c) distinguish synthesis-as-basis (development/integration) from the composed running framework (product), mirroring the user's own noetic-pi vs noetic-pi-docker split.
 
 WHY THIN not a swallowing monorepo: preserves portability of each component (telos stays Pi+OpenCode portable; organs stay independently testable with their donor test suites), matches the 'durable planes + swappable peripherals' signature, and avoids re-creating noetic-pi's pi-mono entanglement in a new place.
 <!-- governance-crud:end id=dec-20260711-0007 -->
