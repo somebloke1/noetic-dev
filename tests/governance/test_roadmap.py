@@ -1135,9 +1135,7 @@ class TestRoadmap(unittest.TestCase):
                 ):
                     d2_capture._write_inventory_atomic(output, {"valid": True})
                 self.assertEqual(output.read_bytes(), b"existing-inventory")
-                self.assertEqual(
-                    list(Path(tmp).glob(f".{output.name}.*.tmp")), []
-                )
+                self.assertEqual(d2_capture._inventory_residues(output), [])
 
             output.write_bytes(b"existing-inventory")
             with mock.patch(
@@ -1147,7 +1145,7 @@ class TestRoadmap(unittest.TestCase):
                 Path, "unlink", side_effect=OSError("unlink failed")
             ), self.assertRaisesRegex(RuntimeError, "temporary residue"):
                 d2_capture._write_inventory_atomic(output, {"valid": True})
-            residues = list(Path(tmp).glob(f".{output.name}.*.tmp"))
+            residues = d2_capture._inventory_residues(output)
             self.assertEqual(len(residues), 1)
             with self.assertRaisesRegex(RuntimeError, "existing.*temporary residue"):
                 d2_capture._write_inventory_atomic(output, {"valid": True})
@@ -1204,9 +1202,7 @@ class TestRoadmap(unittest.TestCase):
                     worker.join(timeout=5)
             self.assertTrue(all(not worker.is_alive() for worker in workers))
             self.assertEqual(len(concurrent_errors), 2)
-            concurrent_residues = list(
-                Path(tmp).glob(f".{concurrent.name}.*.tmp")
-            )
+            concurrent_residues = d2_capture._inventory_residues(concurrent)
             self.assertEqual(len(concurrent_residues), 1)
             concurrent_residues[0].unlink()
 
@@ -1220,20 +1216,60 @@ class TestRoadmap(unittest.TestCase):
             ), self.assertRaisesRegex(RuntimeError, "temporary residue") as raised:
                 d2_capture._write_inventory_atomic(hostile_name, {"valid": True})
             message = str(raised.exception)
-            self.assertIn(r"\n", message)
-            self.assertIn(r"\x1b", message)
             self.assertNotIn("\n", message)
             self.assertNotIn("\x1b", message)
             with self.assertRaisesRegex(RuntimeError, "existing.*temporary residue"):
                 d2_capture._write_inventory_atomic(hostile_name, {"valid": True})
-            hostile_residues = [
-                entry
-                for entry in Path(tmp).iterdir()
-                if entry.name.startswith(f".{hostile_name.name}.")
-                and entry.name.endswith(".tmp")
-            ]
+            hostile_residues = d2_capture._inventory_residues(hostile_name)
             self.assertEqual(len(hostile_residues), 1)
             hostile_residues[0].unlink()
+
+            diagnostic_residue = Path(tmp) / (
+                d2_capture._inventory_residue_prefix(hostile_name)
+                + "qa\n\x1b.tmp"
+            )
+            diagnostic_residue.write_bytes(b"residue")
+            with self.assertRaisesRegex(
+                RuntimeError, "existing.*temporary residue"
+            ) as diagnostic:
+                d2_capture._write_inventory_atomic(hostile_name, {"valid": True})
+            diagnostic_message = str(diagnostic.exception)
+            self.assertIn(r"\n", diagnostic_message)
+            self.assertIn(r"\x1b", diagnostic_message)
+            self.assertNotIn("\n", diagnostic_message)
+            self.assertNotIn("\x1b", diagnostic_message)
+            diagnostic_residue.unlink()
+
+            short_name = Path(tmp) / "inventory"
+            long_name = Path(tmp) / "inventory.extra"
+            short_name.write_bytes(b"short")
+            unrelated = Path(tmp) / (
+                d2_capture._inventory_residue_prefix(long_name) + "qa.tmp"
+            )
+            unrelated.write_bytes(b"unrelated")
+            d2_capture._write_inventory_atomic(short_name, {"valid": True})
+            self.assertTrue(unrelated.exists())
+            unrelated.unlink()
+
+            committed = Path(tmp) / "committed.json"
+            committed.write_bytes(b"old")
+            real_replace = os.replace
+
+            def commit_then_raise(source, destination) -> None:
+                real_replace(source, destination)
+                raise OSError("ambiguous replace result")
+
+            with mock.patch(
+                "scripts.governance.capture_d2_inventory.os.replace",
+                side_effect=commit_then_raise,
+            ):
+                digest = d2_capture._write_inventory_atomic(
+                    committed, {"valid": True}
+                )
+            self.assertEqual(
+                digest, hashlib.sha256(committed.read_bytes()).hexdigest()
+            )
+            self.assertEqual(d2_capture._inventory_residues(committed), [])
 
     def test_capture_rejects_duplicate_malformed_and_renamed_identities(self) -> None:
         audit = load_json_strict(

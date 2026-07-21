@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
-import fcntl
+import contextlib
 import gzip
 import hashlib
 import json
@@ -44,6 +44,19 @@ PULL_URL = re.compile(r"https://github\.com/somebloke1/noetic-dev/pull/([1-9][0-
 ISSUE_URL = re.compile(r"https://github\.com/somebloke1/noetic-dev/issues/([1-9][0-9]*)\Z")
 GRAPHQL_URL = "https://api.github.com/graphql"
 GH_BINARY = "/usr/bin/gh"
+PYTHON_BINARY = "/usr/bin/python3"
+LOCK_HELPER = """import fcntl
+import os
+import select
+import sys
+
+directory = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY)
+fcntl.flock(directory, fcntl.LOCK_EX)
+os.write(1, b"1")
+readable, _, _ = select.select([0], [], [], 120)
+if readable:
+    os.read(0, 1)
+"""
 VARIABLES = {"owner": "somebloke1", "name": "noetic-dev"}
 REPOSITORY_FIELDS = """
   databaseId
@@ -629,8 +642,13 @@ def capture(previous: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _inventory_residue_prefix(output: Path) -> str:
+    name_digest = hashlib.sha256(os.fsencode(output.name)).hexdigest()
+    return f".d2-inventory-{name_digest}."
+
+
 def _inventory_residues(output: Path) -> list[Path]:
-    prefix = f".{output.name}."
+    prefix = _inventory_residue_prefix(output)
     return sorted(
         entry
         for entry in output.parent.iterdir()
@@ -640,6 +658,58 @@ def _inventory_residues(output: Path) -> list[Path]:
 
 def _display_paths(paths: list[Path]) -> str:
     return ", ".join(repr(str(path)) for path in paths)
+
+
+@contextlib.contextmanager
+def _directory_lock(directory: Path):
+    process = subprocess.Popen(
+        [PYTHON_BINARY, "-I", "-S", "-c", LOCK_HELPER, str(directory)],
+        executable=PYTHON_BINARY,
+        cwd="/",
+        env={"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"},
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+    try:
+        if process.stdout is None or process.stdout.read(1) != b"1":
+            raise RuntimeError("D2 inventory directory lock failed")
+        yield
+    finally:
+        if process.poll() is None:
+            released = False
+            if process.stdin is not None:
+                try:
+                    process.stdin.write(b"1")
+                    process.stdin.flush()
+                    released = True
+                except Exception:
+                    pass
+            if not released:
+                try:
+                    process.terminate()
+                except Exception:
+                    pass
+            try:
+                process.wait(timeout=12)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                except Exception:
+                    pass
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+        for stream in (process.stdin, process.stdout):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
 
 
 def _write_inventory_locked(output: Path, inventory: dict[str, Any]) -> str:
@@ -654,7 +724,7 @@ def _write_inventory_locked(output: Path, inventory: dict[str, Any]) -> str:
     )
     digest = hashlib.sha256(payload).hexdigest()
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
+        prefix=_inventory_residue_prefix(output), suffix=".tmp", dir=output.parent
     )
     temporary = Path(temporary_name)
     try:
@@ -671,7 +741,15 @@ def _write_inventory_locked(output: Path, inventory: dict[str, Any]) -> str:
                 os.close(descriptor)
         if temporary.read_bytes() != payload:
             raise OSError("temporary D2 inventory verification failed")
-        os.replace(temporary, output)
+        try:
+            os.replace(temporary, output)
+        except Exception:
+            try:
+                committed = not temporary.exists() and output.read_bytes() == payload
+            except OSError:
+                committed = False
+            if not committed:
+                raise
     except Exception as original:
         cleanup_error: OSError | None = None
         for _attempt in range(3):
@@ -691,22 +769,8 @@ def _write_inventory_locked(output: Path, inventory: dict[str, Any]) -> str:
 
 
 def _write_inventory_atomic(output: Path, inventory: dict[str, Any]) -> str:
-    directory = os.open(output.parent, os.O_RDONLY | os.O_DIRECTORY)
-    locked = False
-    try:
-        fcntl.flock(directory, fcntl.LOCK_EX)
-        locked = True
+    with _directory_lock(output.parent):
         return _write_inventory_locked(output, inventory)
-    finally:
-        if locked:
-            try:
-                fcntl.flock(directory, fcntl.LOCK_UN)
-            except OSError:
-                pass
-        try:
-            os.close(directory)
-        except OSError:
-            pass
 
 
 def main() -> int:
