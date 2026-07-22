@@ -102,6 +102,7 @@ install_main_publisher "${11}" "${12}" "${13}"
 """
         return run(
             "/usr/bin/bash",
+            "-p",
             "-x",
             "-c",
             script,

@@ -76,7 +76,7 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("$EUID -ne 0", installer)
         self.assertTrue(installer.startswith("#!/usr/bin/bash -p\n"))
         self.assertIn("$- != *p*", installer)
-        self.assertIn("unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP", installer)
+        self.assertIn("builtin unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP", installer)
         self.assertIn("/usr/local/sbin/noetic-dev-install-main-publisher", installer)
         self.assertIn('$(/usr/bin/readlink -f "$0") != "$stage0"', installer)
         self.assertNotIn("NOETIC_SOURCE", installer)
@@ -181,8 +181,10 @@ class TestCommandRegistry(unittest.TestCase):
             result = subprocess.run(
                 [
                     "/usr/bin/bash",
+                    "-p",
                     "-c",
-                    'source "$1"; [[ -z ${TMPDIR+x} && -z ${TMP+x} && -z ${TEMP+x} ]]',
+                    'unset() { return 0; }; source "$1"; '
+                    '[[ -z ${TMPDIR+x} && -z ${TMP+x} && -z ${TEMP+x} ]]',
                     "temp-control-test",
                     str(installer),
                 ],
@@ -198,6 +200,27 @@ class TestCommandRegistry(unittest.TestCase):
                 },
             )
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_stage0_rejects_non_privileged_sourcing_before_execution(self):
+        installer = REPO_ROOT / "deploy/install-main-publisher.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                ["/usr/bin/bash", "-c", 'source "$1"', "source-mode-test", str(installer)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+                env={
+                    **os.environ,
+                    "BASH_FUNC_unset%%": "() { return 0; }",
+                    "TEMP": directory,
+                    "TMP": directory,
+                    "TMPDIR": directory,
+                },
+            )
+            artifacts = list(Path(directory).iterdir())
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(artifacts, [])
 
     def test_stage0_validates_publisher_root_before_install_or_move(self):
         installer = (REPO_ROOT / "deploy/install-main-publisher.sh").read_text(
