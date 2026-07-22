@@ -85,30 +85,9 @@ class TestMainPublisherInstaller(unittest.TestCase):
         candidate_sha: str,
         receipt: Path,
     ) -> subprocess.CompletedProcess[str]:
-        script = """
-NOETIC_INSTALLER_TEST_MODE=1
-source "$1"
-stage0=$2
-root=$3
-canonical_remote=$4
-verifier=$5
-launcher=$6
-publisher_key=$7
-git_executable=$8
-install_owner=$9
-install_group=${10}
-trust_anchor=${14}
-installation_lock=${15}
-install_main_publisher "${11}" "${12}" "${13}"
-"""
         return run(
-            "/usr/bin/bash",
-            "-p",
-            "-x",
-            "-c",
-            script,
-            "installer-test",
             str(INSTALLER),
+            "--test",
             str(stage0),
             str(install_root),
             str(remote),

@@ -1,23 +1,47 @@
 #!/usr/bin/bash -p
-if [[ $- != *p* || ( ${BASH_SOURCE[0]} != "$0" && ( $EUID -eq 0 || ${NOETIC_INSTALLER_TEST_MODE:-} != 1 ) ) ]]; then
+if [[ $- != *p* || ${BASH_SOURCE[0]} != "$0" ]]; then
   return 2 2>/dev/null || exit 2
+fi
+test_mode=false
+if [[ ${1:-} == --test ]]; then
+  [[ $EUID -ne 0 && $# -eq 15 ]] || exit 2
+  test_mode=true
+  shift
 fi
 set -euo pipefail
 PATH=/usr/bin:/bin
-unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP NOETIC_INSTALLER_TEST_MODE
+unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP
 umask 077
 
-stage0=/usr/local/sbin/noetic-dev-install-main-publisher
-root=/opt/noetic-dev-main-publisher
-canonical_remote=https://github.com/somebloke1/noetic-dev.git
-verifier=/usr/local/libexec/noetic-dev/verify-delivery-attestation
-launcher=/usr/local/libexec/noetic-dev/promote-main
-publisher_key=/etc/noetic-dev/main-publisher/deploy-key
-install_owner=0
-install_group=0
-git_executable=/usr/bin/git
-trust_anchor=/
-installation_lock=/run/noetic-dev-main-publisher/install.lock
+if [[ $test_mode == true ]]; then
+  stage0=$1
+  root=$2
+  canonical_remote=$3
+  verifier=$4
+  launcher=$5
+  publisher_key=$6
+  git_executable=$7
+  install_owner=$8
+  install_group=$9
+  test_policy_sha=${10}
+  test_candidate_sha=${11}
+  test_receipt=${12}
+  trust_anchor=${13}
+  installation_lock=${14}
+  [[ $install_owner -eq $EUID && $install_group -eq $(/usr/bin/id -g) ]]
+else
+  stage0=/usr/local/sbin/noetic-dev-install-main-publisher
+  root=/opt/noetic-dev-main-publisher
+  canonical_remote=https://github.com/somebloke1/noetic-dev.git
+  verifier=/usr/local/libexec/noetic-dev/verify-delivery-attestation
+  launcher=/usr/local/libexec/noetic-dev/promote-main
+  publisher_key=/etc/noetic-dev/main-publisher/deploy-key
+  install_owner=0
+  install_group=0
+  git_executable=/usr/bin/git
+  trust_anchor=/
+  installation_lock=/run/noetic-dev-main-publisher/install.lock
+fi
 
 trusted_executable_path() {
   local current=$1 mode owner
@@ -284,6 +308,8 @@ main() {
   install_main_publisher "$@"
 }
 
-if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+if [[ $test_mode == true ]]; then
+  install_main_publisher "$test_policy_sha" "$test_candidate_sha" "$test_receipt"
+else
   main "$@"
 fi

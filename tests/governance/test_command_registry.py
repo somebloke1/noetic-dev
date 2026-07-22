@@ -77,7 +77,7 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertTrue(installer.startswith("#!/usr/bin/bash -p\n"))
         self.assertIn("$- != *p*", installer)
         self.assertIn(
-            "unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP NOETIC_INSTALLER_TEST_MODE",
+            "unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP",
             installer,
         )
         self.assertIn("/usr/local/sbin/noetic-dev-install-main-publisher", installer)
@@ -177,32 +177,6 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
         self.assertFalse(marker_exists)
-
-    def test_stage0_clears_inherited_temporary_directory_controls(self):
-        installer = REPO_ROOT / "deploy/install-main-publisher.sh"
-        with tempfile.TemporaryDirectory() as directory:
-            result = subprocess.run(
-                [
-                    "/usr/bin/bash",
-                    "-p",
-                    "-c",
-                    'NOETIC_INSTALLER_TEST_MODE=1; source "$1"; '
-                    '[[ -z ${TMPDIR+x} && -z ${TMP+x} && -z ${TEMP+x} ]]',
-                    "temp-control-test",
-                    str(installer),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-                check=False,
-                env={
-                    **os.environ,
-                    "TEMP": directory,
-                    "TMP": directory,
-                    "TMPDIR": directory,
-                },
-            )
-        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_stage0_rejects_non_privileged_sourcing_before_execution(self):
         installer = REPO_ROOT / "deploy/install-main-publisher.sh"
