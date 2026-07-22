@@ -1,7 +1,7 @@
 #!/usr/bin/bash -p
 set -euo pipefail
 PATH=/usr/bin:/bin
-unset BASH_ENV ENV CDPATH GLOBIGNORE
+unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP
 umask 077
 
 stage0=/usr/local/sbin/noetic-dev-install-main-publisher
