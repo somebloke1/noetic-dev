@@ -1,11 +1,11 @@
 #!/usr/bin/bash -p
-if [[ $- != *p* ]]; then
+if [[ $- != *p* || ( ${BASH_SOURCE[0]} != "$0" && ( $EUID -eq 0 || ${NOETIC_INSTALLER_TEST_MODE:-} != 1 ) ) ]]; then
   return 2 2>/dev/null || exit 2
 fi
-builtin set -euo pipefail
+set -euo pipefail
 PATH=/usr/bin:/bin
-builtin unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP
-builtin umask 077
+unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP NOETIC_INSTALLER_TEST_MODE
+umask 077
 
 stage0=/usr/local/sbin/noetic-dev-install-main-publisher
 root=/opt/noetic-dev-main-publisher

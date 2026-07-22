@@ -86,6 +86,7 @@ class TestMainPublisherInstaller(unittest.TestCase):
         receipt: Path,
     ) -> subprocess.CompletedProcess[str]:
         script = """
+NOETIC_INSTALLER_TEST_MODE=1
 source "$1"
 stage0=$2
 root=$3

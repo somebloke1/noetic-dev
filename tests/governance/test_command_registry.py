@@ -76,7 +76,10 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("$EUID -ne 0", installer)
         self.assertTrue(installer.startswith("#!/usr/bin/bash -p\n"))
         self.assertIn("$- != *p*", installer)
-        self.assertIn("builtin unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP", installer)
+        self.assertIn(
+            "unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP NOETIC_INSTALLER_TEST_MODE",
+            installer,
+        )
         self.assertIn("/usr/local/sbin/noetic-dev-install-main-publisher", installer)
         self.assertIn('$(/usr/bin/readlink -f "$0") != "$stage0"', installer)
         self.assertNotIn("NOETIC_SOURCE", installer)
@@ -183,7 +186,7 @@ class TestCommandRegistry(unittest.TestCase):
                     "/usr/bin/bash",
                     "-p",
                     "-c",
-                    'unset() { return 0; }; source "$1"; '
+                    'NOETIC_INSTALLER_TEST_MODE=1; source "$1"; '
                     '[[ -z ${TMPDIR+x} && -z ${TMP+x} && -z ${TEMP+x} ]]',
                     "temp-control-test",
                     str(installer),
