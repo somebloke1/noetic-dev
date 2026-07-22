@@ -212,10 +212,18 @@ class TestCommandRegistry(unittest.TestCase):
         uid = str(os.getuid())
         gid = str(os.getgid())
         cases = [
+            ("empty uid", "", gid),
+            ("empty gid", uid, ""),
+            ("non-decimal uid", "uid", gid),
+            ("non-decimal gid", uid, "gid"),
             ("symbolic uid", f"{uid}+0", gid),
             ("symbolic gid", uid, f"{gid}+0"),
             ("signed uid", f"+{uid}", gid),
+            ("signed gid", uid, f"+{gid}"),
+            ("whitespace uid", f"{uid} ", gid),
             ("whitespace gid", uid, f"{gid} "),
+            ("leading-zero uid", f"0{uid}", gid),
+            ("leading-zero gid", uid, f"0{gid}"),
         ]
         for label, install_owner, install_group in cases:
             with self.subTest(label=label):
