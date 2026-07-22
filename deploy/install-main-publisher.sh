@@ -1,5 +1,5 @@
 #!/usr/bin/bash -p
-if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+if [[ ${BASH_LINENO[0]-} == 0 && /proc/$$/fd/255 -ef ${BASH_SOURCE[0]} ]]; then
 [[ $- == *p* ]] || exit 2
 set -euo pipefail
 PATH=/usr/bin:/bin

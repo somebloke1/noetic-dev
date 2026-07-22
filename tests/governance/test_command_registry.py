@@ -75,6 +75,8 @@ class TestCommandRegistry(unittest.TestCase):
         )
         self.assertIn("actual_uid=$(/usr/bin/id -u)", installer)
         self.assertTrue(installer.startswith("#!/usr/bin/bash -p\n"))
+        self.assertIn("${BASH_LINENO[0]-} == 0", installer)
+        self.assertIn("/proc/$$/fd/255 -ef ${BASH_SOURCE[0]}", installer)
         self.assertIn("[[ $- == *p* ]] || exit 2", installer)
         self.assertIn(
             "unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP",
@@ -179,32 +181,52 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertIn("usage:", result.stderr)
         self.assertFalse(marker_exists)
 
-    def test_stage0_rejects_non_privileged_sourcing_before_execution(self):
+    def test_stage0_rejects_privileged_source_impersonation_before_execution(self):
         installer = REPO_ROOT / "deploy/install-main-publisher.sh"
+        source_probe = r'''
+marker=$1
+old_path=$PATH
+old_umask=$(umask)
+export BASH_ENV=$marker/bash-env TMPDIR=$marker TMP=$marker TEMP=$marker
+function return { /usr/bin/touch "$marker/return-called"; :; }
+function unset { /usr/bin/touch "$marker/unset-called"; :; }
+function /usr/bin/false { /usr/bin/touch "$marker/false-called"; :; }
+function /usr/bin/id {
+  /usr/bin/touch "$marker/id-called"
+  case ${1:-} in
+    -u) printf '424242\n' ;;
+    -g) printf '434343\n' ;;
+  esac
+}
+. "$0" --test /usr/bin/bash "$marker/root" "$marker/policy" /usr/bin/bash \
+  "$marker/launcher" "$marker/key" /usr/bin/git 424242 434343 \
+  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "$marker/receipt" / "$marker/lock"
+source_status=$?
+[[ $source_status == 1 ]] || exit 10
+[[ $PATH == "$old_path" ]] || exit 11
+[[ $(umask) == "$old_umask" ]] || exit 12
+[[ $BASH_ENV == "$marker/bash-env" ]] || exit 13
+[[ $TMPDIR == "$marker" && $TMP == "$marker" && $TEMP == "$marker" ]] || exit 14
+'''
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
                 [
                     "/usr/bin/bash",
+                    "-p",
                     "-c",
-                    'function /usr/bin/false { return 0; }; source "$1"',
-                    "source-mode-test",
+                    source_probe,
                     str(installer),
+                    directory,
                 ],
                 capture_output=True,
                 text=True,
                 timeout=10,
                 check=False,
-                env={
-                    **os.environ,
-                    "BASH_FUNC_return%%": "() { return 0; }",
-                    "BASH_FUNC_unset%%": "() { return 0; }",
-                    "TEMP": directory,
-                    "TMP": directory,
-                    "TMPDIR": directory,
-                },
+                env=os.environ,
             )
             artifacts = list(Path(directory).iterdir())
-        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(artifacts, [])
 
     def test_stage0_rejects_malformed_test_identity(self):
