@@ -1,17 +1,18 @@
 #!/usr/bin/bash -p
-if [[ $- != *p* || ${BASH_SOURCE[0]} != "$0" ]]; then
-  return 2 2>/dev/null || exit 2
-fi
-test_mode=false
-if [[ ${1:-} == --test ]]; then
-  [[ $EUID -ne 0 && $# -eq 15 ]] || exit 2
-  test_mode=true
-  shift
-fi
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+[[ $- == *p* ]] || exit 2
 set -euo pipefail
 PATH=/usr/bin:/bin
 unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP
 umask 077
+actual_uid=$(/usr/bin/id -u)
+actual_gid=$(/usr/bin/id -g)
+test_mode=false
+if [[ ${1:-} == --test ]]; then
+  [[ $actual_uid != 0 && $# -eq 15 ]] || exit 2
+  test_mode=true
+  shift
+fi
 
 if [[ $test_mode == true ]]; then
   stage0=$1
@@ -28,7 +29,8 @@ if [[ $test_mode == true ]]; then
   test_receipt=${12}
   trust_anchor=${13}
   installation_lock=${14}
-  [[ $install_owner -eq $EUID && $install_group -eq $(/usr/bin/id -g) ]]
+  [[ $install_owner =~ ^[0-9]+$ && $install_owner == "$actual_uid" ]]
+  [[ $install_group =~ ^[0-9]+$ && $install_group == "$actual_gid" ]]
 else
   stage0=/usr/local/sbin/noetic-dev-install-main-publisher
   root=/opt/noetic-dev-main-publisher
@@ -301,7 +303,7 @@ installation_complete=true
 )
 
 main() {
-  if [[ $- != *p* || $EUID -ne 0 || $# -ne 3 || $(/usr/bin/readlink -f "$0") != "$stage0" ]]; then
+  if [[ $actual_uid != 0 || $# -ne 3 || $(/usr/bin/readlink -f "$0") != "$stage0" ]]; then
     echo "usage: sudo $stage0 PROTECTED_POLICY_SHA AUTHORIZED_DEV_SHA PROTECTED_AUTHORIZATION_RECEIPT_JSON" >&2
     exit 2
   fi
@@ -312,4 +314,7 @@ if [[ $test_mode == true ]]; then
   install_main_publisher "$test_policy_sha" "$test_candidate_sha" "$test_receipt"
 else
   main "$@"
+fi
+else
+  [[ 1 == 0 ]]
 fi

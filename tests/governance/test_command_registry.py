@@ -73,9 +73,9 @@ class TestCommandRegistry(unittest.TestCase):
         launcher = (REPO_ROOT / "deploy/noetic-dev-promote-main").read_text(
             encoding="utf-8"
         )
-        self.assertIn("$EUID -ne 0", installer)
+        self.assertIn("actual_uid=$(/usr/bin/id -u)", installer)
         self.assertTrue(installer.startswith("#!/usr/bin/bash -p\n"))
-        self.assertIn("$- != *p*", installer)
+        self.assertIn("[[ $- == *p* ]] || exit 2", installer)
         self.assertIn(
             "unset BASH_ENV ENV CDPATH GLOBIGNORE TMPDIR TMP TEMP",
             installer,
@@ -156,6 +156,7 @@ class TestCommandRegistry(unittest.TestCase):
                 {
                     "PATH": f"{temporary}:/usr/bin:/bin",
                     "BASH_ENV": str(bash_env),
+                    "EUID": "123",
                     "git_executable": str(fake_bash),
                     "install_group": "1234",
                     "install_owner": "1234",
@@ -182,13 +183,20 @@ class TestCommandRegistry(unittest.TestCase):
         installer = REPO_ROOT / "deploy/install-main-publisher.sh"
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
-                ["/usr/bin/bash", "-c", 'source "$1"', "source-mode-test", str(installer)],
+                [
+                    "/usr/bin/bash",
+                    "-c",
+                    'function /usr/bin/false { return 0; }; source "$1"',
+                    "source-mode-test",
+                    str(installer),
+                ],
                 capture_output=True,
                 text=True,
                 timeout=10,
                 check=False,
                 env={
                     **os.environ,
+                    "BASH_FUNC_return%%": "() { return 0; }",
                     "BASH_FUNC_unset%%": "() { return 0; }",
                     "TEMP": directory,
                     "TMP": directory,
@@ -196,8 +204,30 @@ class TestCommandRegistry(unittest.TestCase):
                 },
             )
             artifacts = list(Path(directory).iterdir())
-        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(artifacts, [])
+
+    def test_stage0_rejects_symbolic_test_identity(self):
+        installer = REPO_ROOT / "deploy/install-main-publisher.sh"
+        result = subprocess.run(
+            [
+                str(installer),
+                "--test",
+                *(["unused"] * 7),
+                f"{os.getuid()}+0",
+                str(os.getgid()),
+                "a" * 40,
+                "b" * 40,
+                "/tmp/receipt",
+                "/",
+                "/tmp/install.lock",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
 
     def test_stage0_validates_publisher_root_before_install_or_move(self):
         installer = (REPO_ROOT / "deploy/install-main-publisher.sh").read_text(
