@@ -207,27 +207,37 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(artifacts, [])
 
-    def test_stage0_rejects_symbolic_test_identity(self):
+    def test_stage0_rejects_malformed_test_identity(self):
         installer = REPO_ROOT / "deploy/install-main-publisher.sh"
-        result = subprocess.run(
-            [
-                str(installer),
-                "--test",
-                *(["unused"] * 7),
-                f"{os.getuid()}+0",
-                str(os.getgid()),
-                "a" * 40,
-                "b" * 40,
-                "/tmp/receipt",
-                "/",
-                "/tmp/install.lock",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        self.assertNotEqual(result.returncode, 0)
+        uid = str(os.getuid())
+        gid = str(os.getgid())
+        cases = [
+            ("symbolic uid", f"{uid}+0", gid),
+            ("symbolic gid", uid, f"{gid}+0"),
+            ("signed uid", f"+{uid}", gid),
+            ("whitespace gid", uid, f"{gid} "),
+        ]
+        for label, install_owner, install_group in cases:
+            with self.subTest(label=label):
+                result = subprocess.run(
+                    [
+                        str(installer),
+                        "--test",
+                        *(["unused"] * 7),
+                        install_owner,
+                        install_group,
+                        "a" * 40,
+                        "b" * 40,
+                        "/tmp/receipt",
+                        "/",
+                        "/tmp/install.lock",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0)
 
     def test_stage0_validates_publisher_root_before_install_or_move(self):
         installer = (REPO_ROOT / "deploy/install-main-publisher.sh").read_text(
