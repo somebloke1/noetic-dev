@@ -124,7 +124,7 @@ local lock_parent lock_owner lock_mode installation_lock_fd
 [[ -f $authorization_receipt && ! -L $authorization_receipt ]]
 [[ $(/usr/bin/stat -c %s "$authorization_receipt") -le 1048576 ]]
 trusted_executable_path "$stage0"
-trusted_executable_path /usr/bin/bash
+[[ $test_mode == true ]] || trusted_executable_path /usr/bin/bash
 trusted_executable_path "$verifier"
 trusted_private_key_path "$publisher_key"
 /usr/bin/env -i PATH=/usr/bin:/bin HOME=/root \
