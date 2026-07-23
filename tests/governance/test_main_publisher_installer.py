@@ -105,7 +105,7 @@ class TestMainPublisherInstaller(unittest.TestCase):
         )
 
     def test_installer_fetches_policy_verifies_receipt_and_installs_atomically(self):
-        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
             remote, policy_sha, candidate_sha = self._build_remote(temporary)
             fixed = temporary / "fixed"

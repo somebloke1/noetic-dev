@@ -185,7 +185,7 @@ def _validate(value: Any, schema: dict[str, Any], root: dict[str, Any], path: st
         for key, sub_schema in properties.items():
             if key in value:
                 errors.extend(_validate(value[key], sub_schema, root, f"{path}.{key}"))
-        if schema.get("additionalProperties") is False:
+        if schema.get("additionalProperties", not (root.get("x-closed") and "properties" in schema)) is False:
             allowed = set(properties)
             for key in value:
                 if key not in allowed:

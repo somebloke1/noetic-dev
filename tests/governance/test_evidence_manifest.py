@@ -175,6 +175,10 @@ class TestEvidenceManifestValidation(unittest.TestCase):
         )
 
     def test_schema_invalid_transition_fails_closed_without_exception(self):
+        for nested in (False, True):
+            attacked = load_fixture("valid_advisory_manifest.json")
+            (attacked["repo"] if nested else attacked)["unexpected"] = True
+            self.assertTrue(any(e.startswith("schema:") for e in check_manifest(attacked)))
         manifest = load_fixture("valid_advisory_manifest.json")
         manifest["state_transitions"][0] = 1
 

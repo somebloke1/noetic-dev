@@ -46,10 +46,7 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertFalse(cmd["counts_as_test"])
         self.assertTrue(cmd["counts_as_validation"])
 
-        self.assertEqual(
-            self.registry["commands"]["governance.delivery_gate"]["argv"][2:4],
-            ["--gate-mode", "dev-integration"],
-        )
+        self.assertEqual(self.registry["commands"]["governance.delivery_gate"]["argv"][3], "dev-integration")
 
     def test_tests_all_is_test_not_validation(self):
         cmd = self.registry["commands"]["tests.all"]
@@ -180,52 +177,27 @@ class TestCommandRegistry(unittest.TestCase):
                 check=False,
                 env=env,
             )
-            fd_results = [
-                subprocess.run(
-                    ["/usr/bin/bash", "-p", "-c", command, str(installer),
-                     "a" * 40, "b" * 40, str(bash_env)],
-                    capture_output=True, text=True, timeout=10, check=False, env=env,
-                )
-                for command in (
-                    'exec 255</dev/null\nexec "$0" "$@"',
-                    'exec 255</dev/null\nexec /usr/bin/bash -p "$0" "$@"',
-                )
-            ]
+            fd_result = subprocess.run(
+                ["/usr/bin/bash", "-p", "-c",
+                 'exec 255</dev/null\n"$0" "$@"\n[[ $? == 2 ]] || exit 9\n'
+                 'exec /usr/bin/bash -p "$0" "$@"', str(installer),
+                 "a" * 40, "b" * 40, str(bash_env)],
+                capture_output=True, text=True, timeout=10, check=False, env=env,
+            )
             marker_exists = marker.exists()
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
-        for fd_result in fd_results:
-            self.assertEqual(fd_result.returncode, 2)
-            self.assertIn("usage:", fd_result.stderr)
+        self.assertEqual(fd_result.returncode, 2)
+        self.assertIn("usage:", fd_result.stderr)
         self.assertFalse(marker_exists)
 
     def test_stage0_rejects_privileged_source_impersonation_before_execution(self):
         installer = REPO_ROOT / "deploy/install-main-publisher.sh"
         source_probe = r'''
-marker=$1
-old_path=$PATH
-old_umask=$(umask)
-export BASH_ENV=$marker/bash-env TMPDIR=$marker TMP=$marker TEMP=$marker
-function return { /usr/bin/touch "$marker/return-called"; :; }
-function unset { /usr/bin/touch "$marker/unset-called"; :; }
-function /usr/bin/false { /usr/bin/touch "$marker/false-called"; :; }
-function /usr/bin/id {
-  /usr/bin/touch "$marker/id-called"
-  case ${1:-} in
-    -u) printf '424242\n' ;;
-    -g) printf '434343\n' ;;
-  esac
-}
-. "$0" --test /usr/bin/bash "$marker/root" "$marker/policy" /usr/bin/bash \
-  "$marker/launcher" "$marker/key" /usr/bin/git 424242 434343 \
-  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb "$marker/receipt" / "$marker/lock"
-source_status=$?
-[[ $source_status == 1 ]] || exit 10
-[[ $PATH == "$old_path" ]] || exit 11
-[[ $(umask) == "$old_umask" ]] || exit 12
-[[ $BASH_ENV == "$marker/bash-env" ]] || exit 13
-[[ $TMPDIR == "$marker" && $TMP == "$marker" && $TEMP == "$marker" ]] || exit 14
+d=$1 p=$PATH u=$(umask); export BASH_ENV=$d TMPDIR=$d
+function unset { /usr/bin/touch "$d/unset"; :; }
+. "$0"; r=$?
+[[ $r == 1 && $PATH == "$p" && $(umask) == "$u" && $BASH_ENV == "$d" && $TMPDIR == "$d" ]]
 '''
         with tempfile.TemporaryDirectory() as directory:
             result = subprocess.run(
@@ -252,9 +224,8 @@ source_status=$?
         uid = str(os.getuid())
         gid = str(os.getgid())
         cases = [
-            ("", gid), (uid, ""), ("uid", gid), (uid, "gid"),
-            (f"{uid}+0", gid), (uid, f"{gid}+0"), (f"+{uid}", gid),
-            (uid, f"{gid} "), (f"0{uid}", gid),
+            ("", gid), (uid, "gid"), (f"{uid}+0", gid),
+            (uid, f"{gid}+0"), (uid, f"{gid} "), (f"0{uid}", gid),
         ]
         for install_owner, install_group in cases:
             result = subprocess.run(

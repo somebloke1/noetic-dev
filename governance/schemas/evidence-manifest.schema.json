@@ -3,6 +3,7 @@
   "title": "Evidence Manifest Schema",
   "description": "Authoritative/advisory delivery evidence for noetic-dev governance. Semantic gates are enforced by scripts/governance/check_*.py.",
   "type": "object",
+  "x-closed": true,
   "required": [
     "schema_version",
     "manifest_id",
@@ -76,6 +77,7 @@
         "generator_path": {"type": "string"},
         "generator_sha256": {"$ref": "#/definitions/sha256"},
         "trusted_runner": {"type": "boolean"},
+        "file_hashes": {"type": "object"},
         "workflow": {"type": "object"},
         "checkout": {"type": "object"},
         "runner_attestation": {"type": "object"}
