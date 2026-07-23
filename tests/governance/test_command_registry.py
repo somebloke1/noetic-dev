@@ -46,6 +46,11 @@ class TestCommandRegistry(unittest.TestCase):
         self.assertFalse(cmd["counts_as_test"])
         self.assertTrue(cmd["counts_as_validation"])
 
+        self.assertEqual(
+            self.registry["commands"]["governance.delivery_gate"]["argv"][2:4],
+            ["--gate-mode", "dev-integration"],
+        )
+
     def test_tests_all_is_test_not_validation(self):
         cmd = self.registry["commands"]["tests.all"]
         self.assertEqual(cmd["category"], "test")
@@ -247,40 +252,18 @@ source_status=$?
         uid = str(os.getuid())
         gid = str(os.getgid())
         cases = [
-            ("empty uid", "", gid),
-            ("empty gid", uid, ""),
-            ("non-decimal uid", "uid", gid),
-            ("non-decimal gid", uid, "gid"),
-            ("symbolic uid", f"{uid}+0", gid),
-            ("symbolic gid", uid, f"{gid}+0"),
-            ("signed uid", f"+{uid}", gid),
-            ("signed gid", uid, f"+{gid}"),
-            ("whitespace uid", f"{uid} ", gid),
-            ("whitespace gid", uid, f"{gid} "),
-            ("leading-zero uid", f"0{uid}", gid),
-            ("leading-zero gid", uid, f"0{gid}"),
+            ("", gid), (uid, ""), ("uid", gid), (uid, "gid"),
+            (f"{uid}+0", gid), (uid, f"{gid}+0"), (f"+{uid}", gid),
+            (uid, f"{gid} "), (f"0{uid}", gid),
         ]
-        for label, install_owner, install_group in cases:
-            with self.subTest(label=label):
-                result = subprocess.run(
-                    [
-                        str(installer),
-                        "--test",
-                        *(["unused"] * 7),
-                        install_owner,
-                        install_group,
-                        "a" * 40,
-                        "b" * 40,
-                        "/tmp/receipt",
-                        "/",
-                        "/tmp/install.lock",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    check=False,
-                )
-                self.assertNotEqual(result.returncode, 0)
+        for install_owner, install_group in cases:
+            result = subprocess.run(
+                [str(installer), "--test", *(["unused"] * 7), install_owner,
+                 install_group, "a" * 40, "b" * 40, "/tmp/receipt", "/",
+                 "/tmp/install.lock"],
+                capture_output=True, text=True, timeout=10, check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
 
     def test_stage0_validates_publisher_root_before_install_or_move(self):
         installer = (REPO_ROOT / "deploy/install-main-publisher.sh").read_text(

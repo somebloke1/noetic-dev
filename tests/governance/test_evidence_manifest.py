@@ -196,6 +196,7 @@ class TestEvidenceManifestValidation(unittest.TestCase):
                 check=False,
             )
         self.assertEqual(result.returncode, 1)
+        self.assertIn("schema:", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
     def test_manifest_only_authoritative_claim_is_invalid(self):
