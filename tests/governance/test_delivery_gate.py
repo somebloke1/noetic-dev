@@ -224,9 +224,10 @@ def promotion_authorization(manifest: dict) -> dict:
         "updated_at": "2026-07-11T11:59:58+00:00",
     }
     comment_id = 1
+    expires_at = "2099-07-11T11:59:59+00:00"
     comment_body = (
         f"noetic-dev-main-promotion: authorize {candidate_sha} "
-        f"from {manifest['repo']['base_sha']}"
+        f"from {manifest['repo']['base_sha']} until {expires_at}"
     )
     comment_url = (
         "https://github.com/somebloke1/noetic-dev/issues/32#issuecomment-1"
@@ -283,6 +284,7 @@ def promotion_authorization(manifest: dict) -> dict:
         ),
         "authorization_url": comment_url,
         "authorized_at": "2026-07-11T11:59:59+00:00",
+        "expires_at": expires_at,
         "dev_validated_at": "2026-07-11T11:59:58+00:00",
         "protected_authorization_receipt": protected_attestation_receipt(),
     }
@@ -300,6 +302,26 @@ class TestDeliveryGatePositive(unittest.TestCase):
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertNotIn("owner promotion authorization missing", "\n".join(errors))
         self.assertNotIn("owner-authorized dev SHA", "\n".join(errors))
+        authorization_claims = delivery_gate.promotion_authorization_claims(
+            manifest, external["promotion_authorization"]
+        )
+
+        external["promotion_authorization"]["expires_at"] = "2000-01-01T00:00:00+00:00"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        joined = "\n".join(errors)
+        self.assertIn("authorization expiry is invalid", joined)
+        self.assertIn("exact affirmative record", joined)
+        self.assertNotEqual(
+            authorization_claims,
+            delivery_gate.promotion_authorization_claims(
+                manifest, external["promotion_authorization"]
+            ),
+        )
+
+        external["promotion_authorization"]["expires_at"] = "2026-07-12T00:00:00+00:00"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("authorization has expired", "\n".join(errors))
+        external["promotion_authorization"]["expires_at"] = "2099-07-11T11:59:59+00:00"
 
         external["promotion_authorization"]["dev_sha"] = "0" * 40
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)

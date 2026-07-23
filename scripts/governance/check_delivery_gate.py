@@ -19,7 +19,7 @@ import re
 import stat
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -714,7 +714,8 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization comment lacks OWNER association")
     expected_body = (
         f"noetic-dev-main-promotion: authorize {candidate_sha} "
-        f"from {manifest.get('repo', {}).get('base_sha')}"
+        f"from {manifest.get('repo', {}).get('base_sha')} "
+        f"until {authorization.get('expires_at')}"
     )
     if authorization.get("comment_body") != expected_body:
         errors.append("owner promotion authorization comment body is not the exact affirmative record")
@@ -750,6 +751,7 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization is not independently verified")
     _check_main_publisher_capability(manifest, errors, external_evidence)
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
+    expires_at = _parse_time(authorization.get("expires_at", ""))
     comment_created_at = _parse_time(authorization.get("comment_created_at", ""))
     comment_fetched_at = _parse_time(
         comment_envelope.get("fetched_at") if isinstance(comment_envelope, dict) else None
@@ -758,6 +760,10 @@ def _check_owner_promotion_authorization(
     pinned_at = _parse_time(manifest.get("repo", {}).get("candidate_pinned_at", ""))
     if authorized_at is None:
         errors.append("owner promotion authorization timestamp is invalid")
+    elif expires_at is None or expires_at <= authorized_at:
+        errors.append("owner promotion authorization expiry is invalid")
+    elif expires_at <= datetime.now(timezone.utc):
+        errors.append("owner promotion authorization has expired")
     elif comment_created_at is None or comment_created_at != authorized_at:
         errors.append("owner promotion authorization time does not match authenticated comment creation")
     elif dev_validated_at is None:

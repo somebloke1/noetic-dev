@@ -107,7 +107,7 @@
     "promotion_authorization": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "dev_provenance", "promotion_method", "source_ref", "target_ref", "expected_old_main_sha", "expected_main_sha", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "comment_api_response", "authorization_url", "authorized_at", "dev_validated_at", "protected_authorization_receipt"],
+      "required": ["authorized", "authorized_by", "dev_sha", "dev_validation_sha", "dev_provenance", "promotion_method", "source_ref", "target_ref", "expected_old_main_sha", "expected_main_sha", "issue", "comment_id", "comment_source", "comment_verified", "comment_author", "comment_author_association", "comment_body", "comment_created_at", "comment_api_response", "authorization_url", "authorized_at", "expires_at", "dev_validated_at", "protected_authorization_receipt"],
       "properties": {
         "authorized": {"type": "boolean", "const": true},
         "authorized_by": {"type": "string", "const": "somebloke1"},
@@ -223,6 +223,7 @@
         },
         "authorization_url": {"type": "string", "pattern": "^https://github\\.com/somebloke1/noetic-dev/issues/32#issuecomment-[1-9][0-9]*$"},
         "authorized_at": {"type": "string", "minLength": 1},
+        "expires_at": {"type": "string", "minLength": 1},
         "dev_validated_at": {"type": "string", "minLength": 1},
         "protected_authorization_receipt": {"$ref": "#/properties/protected_attestation_receipt"}
       }
