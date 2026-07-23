@@ -175,43 +175,23 @@ class TestCommandRegistry(unittest.TestCase):
                 check=False,
                 env=env,
             )
-            fd_results = []
-            for label, direct_command in [
-                ("shebang", 'exec 255</dev/null\nexec "$0" "$@"'),
-                (
-                    "explicit bash",
-                    'exec 255</dev/null\nexec /usr/bin/bash -p "$0" "$@"',
-                ),
-            ]:
-                fd_results.append(
-                    (
-                        label,
-                        subprocess.run(
-                            [
-                                "/usr/bin/bash",
-                                "-p",
-                                "-c",
-                                direct_command,
-                                str(installer),
-                                "a" * 40,
-                                "b" * 40,
-                                str(bash_env),
-                            ],
-                            capture_output=True,
-                            text=True,
-                            timeout=10,
-                            check=False,
-                            env=env,
-                        ),
-                    )
+            fd_results = [
+                subprocess.run(
+                    ["/usr/bin/bash", "-p", "-c", command, str(installer),
+                     "a" * 40, "b" * 40, str(bash_env)],
+                    capture_output=True, text=True, timeout=10, check=False, env=env,
                 )
+                for command in (
+                    'exec 255</dev/null\nexec "$0" "$@"',
+                    'exec 255</dev/null\nexec /usr/bin/bash -p "$0" "$@"',
+                )
+            ]
             marker_exists = marker.exists()
         self.assertEqual(result.returncode, 2)
         self.assertIn("usage:", result.stderr)
-        for label, fd_result in fd_results:
-            with self.subTest(label=label):
-                self.assertEqual(fd_result.returncode, 2)
-                self.assertIn("usage:", fd_result.stderr)
+        for fd_result in fd_results:
+            self.assertEqual(fd_result.returncode, 2)
+            self.assertIn("usage:", fd_result.stderr)
         self.assertFalse(marker_exists)
 
     def test_stage0_rejects_privileged_source_impersonation_before_execution(self):

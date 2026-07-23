@@ -2217,9 +2217,12 @@ class TestPublicationBindingFailures(unittest.TestCase):
             "main_publisher_capability": publisher_capability(),
         }
         completed = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+        gate_pass = (True, [], "main-promotion")
+        required_git = ["", candidate, "", "", "", "", ""]
         with (
             mock.patch(
-                "promote_main.check_delivery", return_value=(True, [], "main-promotion")
+                "promote_main.check_delivery",
+                side_effect=[gate_pass, (False, ["authorization expired"], "main-promotion")],
             ) as gate,
             mock.patch("promote_main.os.geteuid", return_value=0),
             mock.patch(
@@ -2228,16 +2231,8 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ),
             mock.patch(
                 "promote_main._require_git",
-                side_effect=[
-                    "",
-                    candidate,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                ],
-            ),
+                side_effect=required_git,
+            ) as required_git_mock,
             mock.patch(
                 "promote_main._remote_heads",
                 return_value={
@@ -2247,6 +2242,15 @@ class TestPublicationBindingFailures(unittest.TestCase):
             ),
             mock.patch("promote_main._git", return_value=completed) as git_run,
         ):
+            with self.assertRaisesRegex(RuntimeError, "readiness gate failed"):
+                promote_main.promote(
+                    manifest, external, REPO_ROOT, publisher_installation_record(manifest)
+                )
+            self.assertEqual(git_run.call_count, 1)
+            gate.side_effect = None
+            gate.return_value = gate_pass
+            required_git_mock.side_effect = required_git
+            git_run.reset_mock()
             record = promote_main.promote(
                 manifest, external, REPO_ROOT, publisher_installation_record(manifest)
             )
@@ -2261,7 +2265,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
         self.assertEqual(record["git_argv"], expected)
         self.assertEqual(record["effective_uid"], 0)
         self.assertEqual(record["principal_id"], 12345)
-        self.assertEqual(gate.call_count, 2)
+        self.assertEqual(gate.call_count, 4)
         self.assertEqual(record["ssh_public_key_fingerprint"], TEST_DEPLOY_KEY_FINGERPRINT)
         self.assertEqual(git_run.call_args.args[1:], tuple(expected[1:]))
 

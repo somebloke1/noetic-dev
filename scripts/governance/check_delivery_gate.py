@@ -44,7 +44,7 @@ from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # 
 from route_evidence import protected_ci_snapshot  # noqa: E402
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
-RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
+RFC3339_RE = re.compile(r"^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\.[0-9]+)?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$")
 PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
 IMAGE_DIGEST_RE = re.compile(r"@sha256:[a-f0-9]{64}$")
 WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
