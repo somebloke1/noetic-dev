@@ -295,7 +295,7 @@ Before authoritative conditions exist:
 - Local validation/tests may produce diagnostics.
 - Publication, deployment, tagging, and merge-readiness remain `BLOCKED`.
 - Branch-name publication is always forbidden.
-- Protected `dev` branch checks and the independent-agent-review process are established. The protected policy ref, trusted runner provenance, and credential broker remain unresolved in `governance/bootstrap-status.json` until independently verified.
+- Candidate workflows run `dev` checks and agent review, but both are advisory until independently verified; `branch_protection_requires_governance` and `independent_agent_review_process_established` remain false in `governance/bootstrap-status.json`. The protected policy ref, trusted runner provenance, and credential broker are also unresolved.
 - The D2 inventory remains review-pending. Protected external evidence must bind an independent exact-candidate review to its digest before the freeze may complete; the distinct protected trust root and post-main evidence also remain mandatory.
 
 ## Model profiles
