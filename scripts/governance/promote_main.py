@@ -422,15 +422,15 @@ def promote(
     manifest_path: str | None = None,
 ) -> Dict[str, Any]:
     _require_root()
-    passed, errors, _gate_type = check_delivery(
-        manifest,
-        manifest_path,
-        phase="pre-merge",
-        external_evidence=external_evidence,
-        gate_mode="main-promotion",
-    )
-    if not passed:
-        raise RuntimeError("main-promotion readiness gate failed: " + "; ".join(errors))
+    def require_current_gate() -> None:
+        passed, errors, _gate_type = check_delivery(
+            manifest, manifest_path, phase="pre-merge",
+            external_evidence=external_evidence, gate_mode="main-promotion",
+        )
+        if not passed:
+            raise RuntimeError("main-promotion readiness gate failed: " + "; ".join(errors))
+
+    require_current_gate()
 
     capability = external_evidence.get("main_publisher_capability", {})
     actual_fingerprint = _publisher_key_fingerprint()
@@ -497,6 +497,7 @@ def promote(
         )
         if ancestry.returncode != 0 or old_main_sha == candidate_sha:
             raise RuntimeError("authorized dev is not strictly ahead of main")
+        require_current_gate()
         started_at = _now()
         result = _git(transfer_root, *argv[1:])
         finished_at = _now()

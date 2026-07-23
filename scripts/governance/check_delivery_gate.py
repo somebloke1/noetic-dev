@@ -44,6 +44,7 @@ from json_schema import DuplicateKeyError, load_json_strict, validate_schema  # 
 from route_evidence import protected_ci_snapshot  # noqa: E402
 
 SHA1_RE = re.compile(r"^[a-f0-9]{40}$")
+RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 PINNED_ACTION_RE = re.compile(r"^[a-f0-9]{40}$")
 IMAGE_DIGEST_RE = re.compile(r"@sha256:[a-f0-9]{64}$")
 WIP_PREFIXES = ("[WIP]", "WIP:", "Draft:", "Do not merge:", "Checkpoint:")
@@ -751,7 +752,8 @@ def _check_owner_promotion_authorization(
         errors.append("owner promotion authorization is not independently verified")
     _check_main_publisher_capability(manifest, errors, external_evidence)
     authorized_at = _parse_time(authorization.get("authorized_at", ""))
-    expires_at = _parse_time(authorization.get("expires_at", ""))
+    expiry_value = authorization.get("expires_at", "")
+    expires_at = _parse_time(expiry_value) if isinstance(expiry_value, str) and RFC3339_RE.fullmatch(expiry_value) else None
     comment_created_at = _parse_time(authorization.get("comment_created_at", ""))
     comment_fetched_at = _parse_time(
         comment_envelope.get("fetched_at") if isinstance(comment_envelope, dict) else None

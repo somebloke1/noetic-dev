@@ -321,6 +321,9 @@ class TestDeliveryGatePositive(unittest.TestCase):
         external["promotion_authorization"]["expires_at"] = "2026-07-12T00:00:00+00:00"
         _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
         self.assertIn("authorization has expired", "\n".join(errors))
+        external["promotion_authorization"]["expires_at"] = "2099-07-11T11:59:59+00:00:01"
+        _passed, errors, _gate_type = check_delivery(manifest, external_evidence=external)
+        self.assertIn("authorization expiry is invalid", "\n".join(errors))
         external["promotion_authorization"]["expires_at"] = "2099-07-11T11:59:59+00:00"
 
         external["promotion_authorization"]["dev_sha"] = "0" * 40
@@ -2217,7 +2220,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
         with (
             mock.patch(
                 "promote_main.check_delivery", return_value=(True, [], "main-promotion")
-            ),
+            ) as gate,
             mock.patch("promote_main.os.geteuid", return_value=0),
             mock.patch(
                 "promote_main._publisher_key_fingerprint",
@@ -2258,6 +2261,7 @@ class TestPublicationBindingFailures(unittest.TestCase):
         self.assertEqual(record["git_argv"], expected)
         self.assertEqual(record["effective_uid"], 0)
         self.assertEqual(record["principal_id"], 12345)
+        self.assertEqual(gate.call_count, 2)
         self.assertEqual(record["ssh_public_key_fingerprint"], TEST_DEPLOY_KEY_FINGERPRINT)
         self.assertEqual(git_run.call_args.args[1:], tuple(expected[1:]))
 
