@@ -147,18 +147,21 @@ class TestMainPublisherInstaller(unittest.TestCase):
             receipt.chmod(0o600)
             install_root = temporary / "installed"
             launcher = fixed / "promote-main"
+            common = {
+                "stage0": stage0,
+                "remote": remote,
+                "verifier": verifier,
+                "key": key,
+                "git_wrapper": git_wrapper,
+                "policy_sha": policy_sha,
+            }
 
             result = self._run_installer(
-                stage0=stage0,
                 install_root=install_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=launcher,
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -191,32 +194,22 @@ class TestMainPublisherInstaller(unittest.TestCase):
             rejected_receipt.chmod(0o600)
             rejected_root = temporary / "rejected"
             rejected = self._run_installer(
-                stage0=stage0,
                 install_root=rejected_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=fixed / "rejected-promote-main",
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=rejected_receipt,
+                **common,
             )
             self.assertNotEqual(rejected.returncode, 0)
             self.assertFalse(rejected_root.exists())
 
             wrong_head_root = temporary / "wrong-head"
             wrong_head = self._run_installer(
-                stage0=stage0,
                 install_root=wrong_head_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=fixed / "wrong-head-promote-main",
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha="f" * 40,
                 receipt=receipt,
+                **common,
             )
             self.assertNotEqual(wrong_head.returncode, 0)
             self.assertFalse(wrong_head_root.exists())
@@ -226,16 +219,11 @@ class TestMainPublisherInstaller(unittest.TestCase):
             collision_root.chmod(0o755)
             (collision_root / "current.new").mkdir()
             collision = self._run_installer(
-                stage0=stage0,
                 install_root=collision_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=fixed / "collision-promote-main",
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertNotEqual(collision.returncode, 0)
             self.assertTrue((collision_root / "current.new").is_dir())
@@ -253,16 +241,11 @@ class TestMainPublisherInstaller(unittest.TestCase):
                 else:
                     blocker.symlink_to(blocked_root / "missing")
                 blocked = self._run_installer(
-                    stage0=stage0,
                     install_root=blocked_root,
-                    remote=remote,
-                    verifier=verifier,
                     launcher=fixed / f"current-new-{blocker_type}-launcher",
-                    key=key,
-                    git_wrapper=git_wrapper,
-                    policy_sha=policy_sha,
                     candidate_sha=candidate_sha,
                     receipt=receipt,
+                    **common,
                 )
                 self.assertNotEqual(blocked.returncode, 0)
                 self.assertTrue(blocker.exists() or blocker.is_symlink())
@@ -275,16 +258,11 @@ class TestMainPublisherInstaller(unittest.TestCase):
             current_directory_root.chmod(0o755)
             (current_directory_root / "current").mkdir()
             current_directory = self._run_installer(
-                stage0=stage0,
                 install_root=current_directory_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=fixed / "current-directory-launcher",
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertNotEqual(current_directory.returncode, 0)
             self.assertTrue((current_directory_root / "current").is_dir())
@@ -297,31 +275,21 @@ class TestMainPublisherInstaller(unittest.TestCase):
             writable_parent.chmod(0o777)
             rejected_root = temporary / "writable-parent-rejected"
             writable = self._run_installer(
-                stage0=stage0,
                 install_root=rejected_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=writable_parent / "promote-main",
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertNotEqual(writable.returncode, 0)
             self.assertFalse(rejected_root.exists())
             writable_parent.chmod(0o700)
             retry = self._run_installer(
-                stage0=stage0,
                 install_root=rejected_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=writable_parent / "promote-main",
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertEqual(retry.returncode, 0, retry.stderr)
             self.assertTrue((rejected_root / "current").is_symlink())
@@ -330,16 +298,11 @@ class TestMainPublisherInstaller(unittest.TestCase):
             dangling_launcher.symlink_to(fixed / "missing-launcher-target")
             dangling_root = temporary / "dangling-launcher-rejected"
             dangling = self._run_installer(
-                stage0=stage0,
                 install_root=dangling_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=dangling_launcher,
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertNotEqual(dangling.returncode, 0)
             self.assertTrue(dangling_launcher.is_symlink())
@@ -349,16 +312,11 @@ class TestMainPublisherInstaller(unittest.TestCase):
             launcher_directory.mkdir()
             directory_root = temporary / "launcher-directory-rejected"
             directory_result = self._run_installer(
-                stage0=stage0,
                 install_root=directory_root,
-                remote=remote,
-                verifier=verifier,
                 launcher=launcher_directory,
-                key=key,
-                git_wrapper=git_wrapper,
-                policy_sha=policy_sha,
                 candidate_sha=candidate_sha,
                 receipt=receipt,
+                **common,
             )
             self.assertNotEqual(directory_result.returncode, 0)
             self.assertTrue(launcher_directory.is_dir())
