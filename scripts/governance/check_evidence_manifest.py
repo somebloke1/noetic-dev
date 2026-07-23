@@ -542,12 +542,13 @@ def check(
     errors: List[str] = []
 
     try:
-        schema_errors = validate_schema(manifest, _load_schema())
-        errors.extend(f"schema: {err}" for err in schema_errors)
+        errors.extend(
+            f"schema: {err}" for err in validate_schema(manifest, _load_schema())
+        )
     except Exception as exc:
         errors.append(f"schema validation failed internally: {exc}")
         return errors
-    if schema_errors:
+    if errors:
         return errors
 
     # If required top-level fields are absent, semantic checks would cascade.
