@@ -11,11 +11,15 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 3. **Executive governance:** a superior portable re-instantiation of the noetic-pi/pi2 APM lessons orders deterministic multi-agent work.
 4. **Cognitive programs:** disciplines and development pipelines run on the executive controller while semantic judgment remains with agents.
 5. **Observability/control:** structured cognitional events feed web and TUI renderers; tmux and browser PTYs are optional attach mechanisms.
-6. **Model substrate:** genus-router selects models; LiteLLM normalizes primary access; direct local endpoints remain possible.
+6. **Model substrate:** genus-router selects models; every generative, vision, embedding, and ASR caller uses LiteLLM; plural local llama.cpp, Ollama, and future backends remain replaceable below that access boundary.
 
 ## Start here
 
 - [`SYNTHESIS.md`](SYNTHESIS.md) — adjudicated architecture and migration path
+- [`ROADMAP.md`](ROADMAP.md) — dependency-ordered construction, Git integration, QA, rollback, and residue disposition
+- [`docs/original-intent-traceability.md`](docs/original-intent-traceability.md) — governing scope, source traceability, and complete-system gates
+- [`docs/full-portfolio-capability-map.md`](docs/full-portfolio-capability-map.md) — component homes, donor evidence, dependency order, and authentic-slice gate
+- [`docs/workspace-residue-inventory-2026-08-01.md`](docs/workspace-residue-inventory-2026-08-01.md) — exact retained worktree, stash, and non-secret runtime identities
 - [`docs/cognitive-backbone.md`](docs/cognitive-backbone.md) — canonical P1–P4 form
 - [`AGENTS.md`](AGENTS.md) — project governance and invariants
 - [`docs/development-practices.md`](docs/development-practices.md) — git, worktree, issue, PR, CI, and merge discipline
@@ -36,7 +40,7 @@ Telos, the executive controller, cognitive programs, and attach adapters should 
 
 ## Current phase
 
-Architecture and governance bootstrap. The immediate frontier is to specify the superior executive controller before implementation, preserving proven donor invariants while correcting donor coupling and failure modes.
+Architecture and governance bootstrap. The local first-slice component, runtime, authority, event, persistence, and rollback selections are adjudicated; their new component homes remain honestly absent and unpinned. The immediate frontier is T0 governed integration, then one independently QA-paired initialization per component and versioned connective contracts, without allowing delivery machinery or optional transport to gate architecture work.
 
 ## License
 
