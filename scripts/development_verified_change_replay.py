@@ -207,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         source = load_json_strict(args.source)
         sys.stdout.buffer.write(_render(replay_m0_verified_change(packet, source)))
         return 0
-    except (OSError, UnicodeError, ValueError) as exc:
+    except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         print(f"verified-change M0 replay failed: {exc}", file=sys.stderr)
         return 1
 

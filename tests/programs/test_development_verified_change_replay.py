@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import ast
 import copy
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -185,10 +187,37 @@ class DevelopmentVerifiedChangeReplayTest(unittest.TestCase):
                 capture_output=True,
                 check=False,
             )
+            packet_path.write_text("[" * 5000 + '"x"' + "]" * 5000, encoding="ascii")
+            source_path.write_text(json.dumps(self.source), encoding="ascii")
+            deeply_nested = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), str(packet_path), str(source_path)],
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+            )
         self.assertEqual(failed.returncode, 1)
         self.assertEqual(failed.stdout, b"")
         self.assertIn(b"verified-change M0 replay failed:", failed.stderr)
         self.assertNotIn(b"Traceback", failed.stderr)
+        self.assertEqual(deeply_nested.returncode, 1)
+        self.assertEqual(deeply_nested.stdout, b"")
+        self.assertIn(b"nesting exceeds recursion limit", deeply_nested.stderr)
+        self.assertNotIn(b"Traceback", deeply_nested.stderr)
+
+    def test_main_normalizes_direct_loader_recursion(self) -> None:
+        stderr = io.StringIO()
+        with (
+            mock.patch.object(
+                replay,
+                "load_json_strict",
+                side_effect=RecursionError("synthetic decoder recursion"),
+            ),
+            redirect_stderr(stderr),
+        ):
+            result = replay.main(["packet.json", "source.json"])
+        self.assertEqual(result, 1)
+        self.assertIn("synthetic decoder recursion", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_argument_errors_return_two_and_leaf_has_no_effect_imports(self) -> None:
         completed = subprocess.run(
