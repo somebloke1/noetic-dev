@@ -1,7 +1,7 @@
 # The Cognitive Backbone — Canonical Notation Reference
 
-**Status:** Draft for user ratification (resolves migration step 1 of `SYNTHESIS.md`; answers part of `OPEN_QUESTIONS.md` oq notation choice).
-**Scope:** This is the **form** layer of the synthesis. It is invariant across every client-scope and architecture decision, so it is safe to fix now, independently of the open questions.
+**Status:** Accepted canonical reference under `dec-20260801-0002`; the earlier recommendation was ratified on 2026-08-01.
+**Scope:** This is the **form** layer of the synthesis. It is invariant across client/runtime and architecture choices; unresolved operational questions do not reopen the canonical crosswalk.
 **Primary sources:** Lonergan, *Insight* (`saeproj/docs/foundational/the-notion-of-judgment.txt`, `transcendental-method-structured.txt`); `on_emergent_fidelity.txt`; `theoretical_foundations.md`; `cognitional_notation/FOUNDATION.md`.
 
 ---
@@ -41,9 +41,9 @@ They are the same structure. The synthesis needs **one** primary notation that e
 
 ---
 
-## 3. Recommendation: `P1–P4` as canonical, with a fixed gloss and an optional modal annotation
+## 3. Canonical decision: `P1–P4`, with a fixed gloss and an optional modal annotation
 
-**Recommended default: the `P1–P4` level notation** as the canonical, machine- and structure-facing form, for four reasons:
+**Canonical default: the `P1–P4` level notation** is the machine- and structure-facing form, for four reasons:
 
 1. **Already load-bearing in your operational code.** noetic-pi already uses `p1`–`p4` as functional agent roles, and cognitive-disciplines is built as a "P1–P4 cognitive cycle." Adopting P1–P4 canonically ratifies what your most-used code already does — zero migration for the biggest surfaces.
 2. **Language-neutral and identifier-safe.** `p1`…`p4` are stable identifiers for pipeline phases, gate names, agent roles, log tags, and ledger sections. The ECN letters are English-specific (`A/I/R/D`) and `R` collides with the recursion operator `R(...)`; the verbs and imperatives are English-bound and verbose.
@@ -71,10 +71,11 @@ The form recurs at every scale (this is the embodiment principle from the reprod
 
 ---
 
-## 5. The irreducible decision left to you
+## 5. Ratification and change control
 
-Everything above is P1–P3 groundwork. The remaining act is P4 — yours to make:
+The user completed the P4 act on 2026-08-01 through the constitutional-form adjudication recorded in `dec-20260801-0002`:
 
-- **Ratify or amend** the recommended default (`P1–P4` canonical + imperative gloss + optional ECN `^!`/`^?` modal markers). If you prefer the ECN letters or the verbs as the primary surface, say so and this reference flips; the crosswalk stays the same.
+- **Ratified:** `P1–P4` is canonical, paired with the imperative gloss and optional ECN `^!`/`^?` modal markers.
+- **Change control:** a later explicit human adjudication may revise the primary surface, but must preserve a versioned crosswalk and migration path rather than silently reintroducing plural notation.
 
-Once ratified, this file becomes the single source every other project references instead of re-deriving its own notation.
+This file is the single reference every component uses instead of re-deriving its own notation.

@@ -30,11 +30,12 @@ DISCIPLINE (mirrors the user's P1-P4 cognitional model + AGENTS.md separation of
 ## dec-20260711-0002: Synthesis backbone: telos spine + SMC cognitive form + harvested noetic-pi organs
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-01
 - Tags: backbone,synthesis,recommendation,telos,smc
+- Source: Superseded for current implementation authority by dec-20260801-0001, dec-20260801-0002, dec-20260801-0004, dec-20260801-0006, and the superior-re-instantiation invariant; historical donor analysis retained
 - Confidence: 0.85
 
 ADJUDICATED RECOMMENDATION (confidence 0.85; refined by k-20260711-0004 spine-capacity probe; still conditioned on client-scope oq-20260711-0001).
@@ -190,11 +191,12 @@ WHY THIN not a swallowing monorepo: preserves portability of each component (tel
 ## dec-20260711-0008: Elevate the deterministic orchestration controller (harvested APM) to a first-class executive plane between telos and agents
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-01
 - Tags: orchestration,apm,executive-plane,deterministic,telos,layering,harvest,correction
+- Source: Superseded for implementation authority by dec-20260801-0002, dec-20260801-0004, dec-20260801-0006, and dec-20260801-0007; deterministic APM invariants remain donor evidence for superior re-instantiation
 - Confidence: 0.8
 
 Prompted by user correction (2026-07-11): 'the APM was not just an optional sidekick to the cog discipline and pipeline tools, it was approximating a deterministic state machine for pipelines'; and user question on 'the means of ordering multi-agent orchestration'. Grounded in k-20260711-0007. Confidence 0.8.\n\nCORRECTION TO EARLIER FRAMING: dec-0002 listed noetic-pi's mechanisms as 'organs' harvested by telos, which under-weighted the APM orchestration state machine. Refined model: the framework has TWO different kinds of governance, both necessary and distinct:\n1. TELEOLOGICAL governance = telos (P4): WHY - purpose, goalchains, evolution, reproductive clause. Steers.\n2. EXECUTIVE / ORCHESTRATION governance = the harvested APM state machine: HOW/WHEN - deterministic sequencing of multi-agent work. Controls.\n\nARCHITECTURE LAYERING (ordering lives in the executive plane):\n  telos (teleology, P4)\n  -> delegation dispatcher (the new seam; turns a delegated sub-goal into dispatched work)\n  -> DETERMINISTIC ORCHESTRATION CONTROLLER (harvested APM): decomposes into WUs/waves, enforces typed dependency-role ordering legality, sequences waves, runs QA-gate + remediation cycles, spawns/retires agents by ordinal, commits per wave, selects models via genus-router\n  -> AGENTS doing non-deterministic P1-P4 cognitive work per WU\n  -> observability plane observes the whole via the cognitional-event stream\n\nKEY POINTS:\n- The 'disciplines' organ and the 'design_intentions->design->implementation_procedure->implementation pipeline' are NOT separate from this - they RUN ON the orchestration controller. Pipeline = a specific WU/wave program; disciplines = P1-P4 loops dispatched by the same controller. So the earlier 'two organs' (disciplines, pipeline) are better seen as PROGRAMS running on ONE executive organ.\n- The orchestration controller MUST stay deterministic (structural/harness mechanics); semantic judgment stays with agents. Never collapse the two (matches cognitive-disciplines' governing principle and noetic-pi's hard-won separation).\n- Ordering means: sequenced waves + typed dependency-role legality (launch_required vs governing vs future-produced), QA-gate cycling, commit boundaries. Harvest this whole state machine; do not reinvent it (it carries ~1,100 APM tests and multiple compliance campaigns of hardening).\n\nIMPLICATION for target project (dec-0007): the orchestration controller is a major harvested COMPONENT (from noetic-pi packages/apm), referenced by the composition root, and is where the pipeline + disciplines execute. It is arguably the single most valuable harvest.\n\nOPEN QUESTION raised to user: should the orchestration controller be harvested as-is (deterministic APM state machine as a standalone MCP service) or partially re-expressed? Recommendation: harvest as-is behind an MCP facade first (it is proven); refine later.
@@ -218,12 +220,12 @@ Final user decision, 2026-07-11, superseding the brief provisional `abide` name 
 ## dec-20260713-0001: Promote dev to main through a monotonic two-stage protection transition
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-13
-- Updated: 2026-07-13
+- Updated: 2026-08-01
 - Tags: P3,P4,github,promotion,branch-protection,bootstrap
-- Source: k-20260713-0001,k-20260713-0002,k-20260713-0003; GitHub branch protection and workflow APIs; GitHub pull_request_target and required-check documentation
+- Source: k-20260713-0001,k-20260713-0002,k-20260713-0003; superseded by dec-20260715-0006 and dec-20260715-0007; historical protection-transition evidence retained
 - Confidence: high
 
 Adopt a monotonic bootstrap rather than replacing main protections in one leap. First, while main retains its app-bound legacy validate check, one approval, admin enforcement, strictness, linear history, and conversation resolution, land and verify on protected dev a promotion-compatible workflow: it must emit legacy validate for a main-targeting PR and run agent-review from an immutable protected default-branch policy/client rather than the pre-bootstrap main base. After routed review is live and the publication freeze is cleared, open a dev-to-main bridge PR and require both observed checks plus the existing human approval; merge only under the old main gate. Second, after the new workflows exist on main and the intended GitHub-Actions checks have succeeded in-repository, update main protection in one full PUT to add the app-bound new validation and agent-review checks while retaining legacy validate and one approval; read back and exercise a canary. Only after the canary proves latest-SHA binding and failures block merge may a second atomic PUT remove the legacy validate compatibility check and reduce approvals to zero while preserving all new required checks and other protections. Never create an interval with fewer controls. This decision authorizes design only; the active freeze, failed routed Pi frontier, and failed PR #28 agent-review still block execution.
@@ -233,12 +235,12 @@ Adopt a monotonic bootstrap rather than replacing main protections in one leap. 
 ## dec-20260713-0002: Classify frozen existing work without clearing the freeze
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-13
-- Updated: 2026-07-13
+- Updated: 2026-08-01
 - Tags: P3,P4,audit,freeze,disposition,stacked-prs
-- Source: k-20260713-0004; exact GitHub PR heads/files/checks and branch topology; current model-governance decisions
+- Source: k-20260713-0004; superseded as an integration path by dec-20260715-0006, dec-20260715-0007, dec-20260801-0005, and the current ROADMAP.md; historical dispositions remain donor evidence
 - Confidence: medium-high
 
 Adopt these audit dispositions, which classify preservation strategy but do not approve or merge content. Retain PR #2 as the first architecture candidate, blocked until agent-review is required on dev, then retarget/rebase and review its exact new SHA. Retain PRs #4, #16, #17, #18, and #19 as a dependency-ordered controller/events/Telos candidate chain; each must be rebased only after its predecessor is accepted and must receive current routed exact-SHA review. Recreate/update PR #15 because its roadmap contains stale model-access and sequencing assumptions, while preserving its useful dependency structure. Preserve PR #20 as time-stamped ContextForge research evidence but recreate/revalidate all live topology, security, and continuity claims before acceptance. Supersede/reject PR #21's exact snapshot because direct provider/local model access contradicts mandatory LiteLLM governance; rewrite Issue #10 from the verified genus-router/LiteLLM policy rather than patching the stale contract. Preserve PR #22's attach ideas but recreate it on an accepted base independent of rejected PR #21. Preserve orphan branch issue-11-cognitive-programs/e25083c only as a recyclable candidate; do not open a PR until controller contracts, routed review, and the freeze permit it. Treat PR #28 separately as blocked canary/remediation work under subgoal-781. Do not close, retarget, rebase, cherry-pick, or merge any candidate until the durable audit artifact is independently reviewed; keep the freeze active.
@@ -383,12 +385,12 @@ Accepted under subgoal-813. `issue-23-governance-correction` tip `8517e7e` and m
 ## dec-20260715-0004: Order the noetic-dev PR queue by routed-review infrastructure, canary, then legacy dependency spine
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-15
-- Updated: 2026-07-15
+- Updated: 2026-08-01
 - Tags: P3,P4,pr-orchestrator,emergent-probability,noetic-dev,ordering
-- Source: complete 12-PR paginated inventory; protected policy sources; branch protections; exact dependency/file-overlap graph
+- Source: complete 12-PR paginated inventory; superseded by dec-20260715-0006, dec-20260715-0007, and the current ROADMAP.md; historical ordering evidence retained
 - Confidence: 0.95
 
 Accepted for pr-orchestrator v1 with `QUIET_TIMER=60`, `PR_PROC_PATTERN=serial`, repository `github.com/somebloke1/noetic-dev`, and policy fingerprint `sha256:dd91c0026830f9e6908c06be3591ee202a050b6525f26d5b546afc9977829312` from protected `dev@33e8bbd`. Initial order: #31, #28, #2, #4, #15, #16, #17, #18, #19, #20, #21, #22. #31 is first because mandatory genus-router/LiteLLM review routing is the conditioning scheme for trustworthy `agent-review`, protected-dev canary survival, and all later exact-head reviews; its deterministic checks are green, it is mergeable, and Issue #8 now supplies systemd credentials, but production byte-limit failure and missing exact independent approval remain. #28 follows because it is the canary and overlaps #31's broker/review surfaces; its dirty local worktree is preserved and prevents unsafe branch repair. #2 is the legacy root but remains on protected `main` and cannot responsibly advance until the `dev` review scheme functions. #4 unlocks the longest technical successor chain; #15 is its roadmap sibling; #16-#22 follow exact stacked bases. Confidence 0.95. Counterevidence: #31 is large (48 commits/46 files) and therefore high survival risk, but delaying it leaves every downstream review path structurally blocked; its frontier remains recyclable because it is still an unmerged `dev` PR.
@@ -398,12 +400,12 @@ Accepted for pr-orchestrator v1 with `QUIET_TIMER=60`, `PR_PROC_PATTERN=serial`,
 ## dec-20260715-0005: Keep PR #31 bounded and publish the verified routing remediation as a follow-up
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-15
-- Updated: 2026-07-15
+- Updated: 2026-08-01
 - Tags: P3,P4,noetic-dev,pr-31,agent-review,remediation,publication-topology,least-disturbance
-- Source: k-20260715-0010;https://github.com/somebloke1/noetic-dev/pull/31;chain-49/subgoal-704;chain-49/subgoal-813
+- Source: k-20260715-0010; https://github.com/somebloke1/noetic-dev/pull/31; superseded by dec-20260715-0006, dec-20260715-0007, and the current ROADMAP.md; historical bounded-snapshot evidence retained
 - Confidence: high
 
 PR #31 must remain at its existing bounded head 4177a9d for exact-head review and protected merge. The independently PASSed routing/governance remediation tree 6bd55d94 must be frozen separately, used as the immutable candidate runtime needed to review PR #31, and published only after PR #31 merges as a follow-up based on updated dev. This preserves reviewability: the PR #31 snapshot is 724,398 bytes, while combining the remediation into that PR would produce an 813,262-byte snapshot beyond both configured capture and model-input bounds. The follow-up delta is 179,992 bytes. This decision authorizes neither an unrequested commit nor a protection bypass; immutable commit, deployment, review, and publication must still follow repository authority and exact implementation:QA evidence.
@@ -552,7 +554,7 @@ Maintain explicit live tracks and success gates for: Telos dispatch and completi
 - Created: 2026-08-01
 - Updated: 2026-08-01
 - Tags: qa,governance,stop-loss,emergent-probability,means-end,development-practice
-- Source: AGENTS.md;docs/development-practices.md;docs/user/emergent_probability.txt;user-directive:2026-08-01
+- Source: AGENTS.md;docs/development-practices.md;initial-user-msg.md;user-directive:2026-08-01
 - Confidence: high
 
 Preserve exact implementation:QA pairing: each frozen implementation or remediation generation receives exactly one independent adversarial QA pass against its accepted acceptance and threat contract. A rejected or transcriptless generation blocks only dependent continuation; it does not block independent portfolio progress. Repeated rejection triggers explicit P3 scope/threat and means-end reassessment instead of automatically expanding hardening obligations. Delivery governance, portfolio audit, publication trust, ContextForge continuity and residue cleanup condition the work but may not indefinitely prevent independent architecture, donor characterization, contract design or authentic runtime development. Prefer stable reusable bases, bounded recyclable experiments and clear completion/parking semantics over perpetual goal generation.
