@@ -287,13 +287,19 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
+    failure_profile = "M0"
     try:
         packet = load_json_strict(args.packet)
         source = load_json_strict(args.source)
+        if (
+            type(source) is dict
+            and source.get("schema_version") == M1_TRACE_VERSION
+        ):
+            failure_profile = "M1"
         sys.stdout.buffer.write(_render(replay_verified_change(packet, source)))
         return 0
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:
-        print(f"verified-change replay failed: {exc}", file=sys.stderr)
+        print(f"verified-change {failure_profile} replay failed: {exc}", file=sys.stderr)
         return 1
 
 

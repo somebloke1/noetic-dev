@@ -205,7 +205,7 @@ class DevelopmentVerifiedChangeReplayTest(unittest.TestCase):
             )
         self.assertEqual(failed.returncode, 1)
         self.assertEqual(failed.stdout, b"")
-        self.assertIn(b"verified-change replay failed:", failed.stderr)
+        self.assertIn(b"verified-change M0 replay failed:", failed.stderr)
         self.assertNotIn(b"Traceback", failed.stderr)
         self.assertEqual(deeply_nested.returncode, 1)
         self.assertEqual(deeply_nested.stdout, b"")
@@ -273,6 +273,24 @@ class DevelopmentVerifiedChangeReplayTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr.decode())
         self.assertEqual(completed.stdout, M1_EXPECTED_PATH.read_bytes())
         self.assertEqual(completed.stderr, b"")
+
+    def test_cli_labels_failure_after_identifying_valid_m1_source(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packet_path = root / "mismatched-packet.json"
+            source_path = root / "m1-source.json"
+            packet_path.write_text(json.dumps(self.packet), encoding="ascii")
+            source_path.write_text(json.dumps(self.m1_source), encoding="ascii")
+            completed = subprocess.run(
+                [sys.executable, str(SCRIPT_PATH), str(packet_path), str(source_path)],
+                cwd=ROOT,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, b"")
+        self.assertIn(b"verified-change M1 replay failed:", completed.stderr)
+        self.assertNotIn(b"Traceback", completed.stderr)
 
     def test_main_normalizes_direct_loader_recursion(self) -> None:
         stderr = io.StringIO()
