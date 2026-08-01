@@ -86,7 +86,7 @@ Answered and superseded as a live gate by `dec-20260715-0007`, `dec-20260801-000
 - Source: chain-49/subgoal-704;systemctl show noetic-dev-agent-review-broker.service noetic-dev-actions-runner.service;stat /opt/noetic-dev-agent-review /run/noetic-dev /var/lib/noetic-dev-runner
 - Confidence: high
 
-At 2026-07-15T16:14Z the current shell had neither USER_SUPPLIED_PASSWORD nor passwordless sudo. Production services and the GitHub runner remain active, but the verified remediation cannot be installed as a root-owned immutable release, the protected socket and runner internals cannot be reprobed, and restart/rollback/credential-denial gates cannot be rerun without authorized non-interactive elevation. Governance forbids requesting a password or triggering an interactive/GUI prompt. Resolution requires either a future USER_SUPPLIED_PASSWORD channel used only through non-interactive stdin, a narrowly scoped passwordless deployment mechanism, or an independently operated deployment that returns exact AR-11 evidence.
+At 2026-07-15T16:14Z the current shell had neither USER_PROVIDED_PASSWORD nor passwordless sudo. Production services and the GitHub runner remain active, but the verified remediation cannot be installed as a root-owned immutable release, the protected socket and runner internals cannot be reprobed, and restart/rollback/credential-denial gates cannot be rerun without authorized non-interactive elevation. Governance forbids requesting a password or triggering an interactive/GUI prompt. Resolution requires either a future USER_PROVIDED_PASSWORD channel used only through non-interactive stdin, a narrowly scoped passwordless deployment mechanism, or an independently operated deployment that returns exact AR-11 evidence.
 <!-- governance-crud:end id=oq-20260715-0001 -->
 
 <!-- governance-crud:start id=oq-20260801-0001 -->
@@ -113,7 +113,7 @@ Answered for the first authentic local slice by `dec-20260801-0006` and `dec-202
 - Created: 2026-08-01
 - Updated: 2026-08-01
 - Tags: observability,control,authority,web,tui
-- Source: dec-20260711-0004;dec-20260711-0006;dec-20260801-0002
+- Source: superseded dec-20260711-0004 and dec-20260711-0006 as historical rationale; current dec-20260801-0002, dec-20260801-0003, and dec-20260801-0004
 - Confidence: high
 
 The first event-derived web/TUI observability plane is read-only. Determine whether any later surface may approve gates, steer Telos, dispatch or cancel delegations, or invoke effects. Any affirmative answer requires authenticated principals, typed commands, scoped capabilities, expiry/revocation, audit events, separation from projections and independent adversarial verification. The open question does not defer read-only observability.

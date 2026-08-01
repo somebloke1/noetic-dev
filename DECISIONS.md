@@ -86,11 +86,12 @@ STATUS NOTE: this is a PROPOSED recommendation awaiting the user's irreducible P
 ## dec-20260711-0004: Web interface = portable observability+control plane over cognitional events; client is a reversible runtime choice
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-01
 - Tags: web,observability,control-plane,client,reversible,events,resolution
+- Source: Superseded for current architecture authority by dec-20260801-0002, dec-20260801-0003, dec-20260801-0004, dec-20260801-0006, and dec-20260801-0007; event-derived observability and reversible-client insights remain donor rationale
 - Confidence: 0.78
 
 Refinement prompted by user input (2026-07-11) and grounded in k-20260711-0005. Confidence 0.78.
@@ -127,11 +128,12 @@ Superseded by explicit clause-v7/v8 model governance and dec-20260713-0006. The 
 ## dec-20260711-0006: Interface stack: observability+control plane over tmux-native attach (pi2) as the minimalist default; browser-PTY optional
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-01
 - Tags: interface,tmux,pi2,observability,attach,control-plane,resolution
+- Source: Superseded for current architecture authority by dec-20260801-0002, dec-20260801-0003, dec-20260801-0004, and dec-20260801-0006; tmux-first attach and read-only-first observability remain preserved in the current decisions and roadmap
 - Confidence: 0.76
 
 Refines dec-0004 with the pi2/tmux data point (k-0006). User note: pi2 multi-panes agents via tmux, a different paradigm than noetic-pi's browser/PTY. Confidence 0.76.
@@ -154,11 +156,12 @@ OPEN (user judgment, from prior turn, still live): is the plane read-only observ
 ## dec-20260711-0007: Target project = the synthesis workspace, promoted to a THIN composition root (integration home of the framework)
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-01
 - Tags: target-project,composition-root,integration-home,synthesis,harvest-not-host,recommendation
+- Source: Superseded for current component-home and implementation authority by dec-20260801-0001, dec-20260801-0003, dec-20260801-0004, dec-20260801-0006, and dec-20260801-0009; the thin-root boundary remains preserved
 - Confidence: 0.8
 
 User question (2026-07-11): what is the target project for this synthesis - the current project? where harvested pieces become the synthetic form? Confidence 0.8 (recommendation; user ratification is the P4 act).
@@ -572,7 +575,7 @@ Preserve exact implementation:QA pairing: each frozen implementation or remediat
 - Source: initial-user-msg.md;SYNTHESIS.md;docs/full-portfolio-capability-map.md;oq-20260801-0001;chain-90/subgoal-1637;local-version-evidence:2026-08-01
 - Confidence: high
 
-For the first authentic noetic-dev slice, select these independently versioned homes under `somebloke1`: Telos retains typed dispatch in `telos`; create `noetic-controller` for the deterministic controller and its private state store; create `noetic-programs` for `bounded-change-inquiry/v1` and later `development_pipeline.v1`; create `noetic-evidence` with separately testable `journal` and `memory` packages; create `noetic-opencode-adapter` for the first runtime, scoped workspace effect executor, and model bridge; create `noetic-resources` for versioned skills and semantic-agent packages; and create `noetic-model-substrate` for secret-free LiteLLM/genus/local-model registration and deployment contracts while genus-router itself remains independent. For later complete-system tranches, create `noetic-pi-adapter`, `noetic-observer`, `noetic-attach-tmux`, `noetic-serena-adapter`, and `noetic-mentality`; additional runtime adapters use `noetic-<client>-adapter` homes unless a later evidence-backed decision selects an existing independent repository. The noetic-dev root owns schemas, pins, composition, and integration proof only. Select OpenCode 1.18.9 as the first reference-runtime target because Telos already projects into it and it is the lean headless candidate; select Pi 0.80.3 as the second-adapter target because it is the richest independent donor/runtime. These are reversible adapter choices, not architectural authorities. Every new component repository has no implementation SHA yet: repository initialization is its first explicit implementation generation, and no composition manifest may call it pinned until that generation receives exactly one independent QA and yields an immutable commit SHA. This decision refines and supersedes only the stale component-home, client-selection, and implementation-readiness projections in `dec-20260711-0004`, `dec-20260711-0006`, and `dec-20260711-0007`; it preserves their accepted thin-root, event-derived-observability, and replaceable-adapter boundaries.
+For the first authentic noetic-dev slice, select these independently versioned homes under `somebloke1`: Telos retains typed dispatch in `telos`; create `noetic-controller` for the deterministic controller and its private state store; create `noetic-programs` for `bounded-change-inquiry/v1` and later `development_pipeline.v1`; create `noetic-evidence` with separately testable `journal` and `memory` packages; create `noetic-opencode-adapter` for the first runtime, scoped workspace effect executor, and model bridge; create `noetic-resources` for versioned skills and semantic-agent packages; and create `noetic-model-substrate` for secret-free LiteLLM/genus/local-model registration and deployment contracts while genus-router itself remains independent. For later complete-system tranches, create `noetic-pi-adapter`, `noetic-observer`, `noetic-attach-tmux`, `noetic-serena-adapter`, and `noetic-mentality`; additional runtime adapters use `noetic-<client>-adapter` homes unless a later evidence-backed decision selects an existing independent repository. The noetic-dev root owns schemas, pins, composition, and integration proof only. Select OpenCode 1.18.9 as the first reference-runtime target because Telos already projects into it and it is the lean headless candidate; select Pi 0.80.3 as the second-adapter target because it is the richest independent donor/runtime. These are reversible adapter choices, not architectural authorities. Every new component repository has no implementation SHA yet: repository initialization is its first explicit implementation generation, and no composition manifest may call it pinned until that generation receives exactly one independent QA and yields an immutable commit SHA. This decision supersedes `dec-20260711-0004`, `dec-20260711-0006`, and `dec-20260711-0007` as current authority while explicitly re-adopting their thin-root, event-derived-observability, and replaceable-adapter boundaries under the current homes and gates.
 <!-- governance-crud:end id=dec-20260801-0006 -->
 
 <!-- governance-crud:start id=dec-20260801-0007 -->

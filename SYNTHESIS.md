@@ -89,7 +89,7 @@ A precise correction to avoid a false expectation: **Telos steers; it does not s
 
 This makes the picture *more* faithful to `P4 governs recursively`, not less: **Telos is P4 (the governor); the host agent — or a small delegation dispatcher you build — is the P1–P3 enactor that calls the MCP organs.** The dispatcher is the essential new seam identified by the original synthesis. Later source verification and decisions `dec-20260801-0006`–`0009` make the broader implementation burden explicit: the portable controller, programs, event journal, semantic memory, runtime/effect adapters, resources, observer, and attach adapters also require independently testable canonical homes. Donors supply invariants; they do not make those absent implementations exist.
 
-### The executive plane: a deterministic orchestration controller (k-20260711-0007, dec-20260711-0008)
+### The executive plane: a deterministic orchestration controller (k-20260711-0007; historical `dec-20260711-0008`; current `dec-20260801-0002/0004/0006/0007`)
 
 A correction worth making explicit, because it changes the shape: the APM is **not an optional sidekick** to the disciplines and pipeline tools. It is a near-deterministic **state machine** for multi-agent pipelines, and the disciplines and the design→implementation pipeline *run on it*. So the framework has **two distinct kinds of governance**, both necessary:
 
@@ -115,7 +115,7 @@ That gives the real execution layering:
 
 So what I earlier called "two organs" (disciplines, pipeline) are better understood as **programs that run on one executive organ**: the pipeline is a particular wave program; a discipline (phronesis / EP-audit / differentiated-cognition) is a P1–P4 loop the same controller dispatches. The orchestration controller is therefore the **single most valuable harvest** in the whole plan.
 
-### The interface: an observability + control plane, not a terminal multiplexer (k-20260711-0005, dec-20260711-0004)
+### The interface: an observability + control plane, not a terminal multiplexer (k-20260711-0005; historical `dec-20260711-0004`; current `dec-20260801-0002/0003/0004/0007`)
 
 You like noetic-pi's web paradigm but are unsure about embedding PTY terminals in a browser, and you want a client that is minimalistic, highly capable, portable, and the best *medium for expressing this design*. These pull against each other only if the interface and the client stay fused, the way noetic-pi fuses them today. They don't have to.
 
@@ -127,7 +127,7 @@ So the move is:
 - **Demote the PTY-terminal multiplexer** to an optional "attach a terminal" view, not the core abstraction.
 - **The client becomes a reversible choice, not the backbone.** Portability and the web paradigm now coexist: swap the runtime underneath without losing the interface.
 
-**Attaching to live agents is a separate, swappable layer — and you already have the minimalist version of it.** Your `pi2` project multi-panes agents through a project-scoped **tmux** server (each agent is a pane; succession opens the successor in an adjacent pane), which is the same agent-population/disciplines family as noetic-pi but terminal-native and browser-free (k-20260711-0006). That gives a clean three-layer interface stack (dec-20260711-0006):
+**Attaching to live agents is a separate, swappable layer — and you already have the minimalist version of it.** Your `pi2` project multi-panes agents through a project-scoped **tmux** server (each agent is a pane; succession opens the successor in an adjacent pane), which is the same agent-population/disciplines family as noetic-pi but terminal-native and browser-free (k-20260711-0006). That historical donor stack from superseded `dec-20260711-0006` is retained under current `dec-20260801-0003/0004/0006`:
 
 1. **Observability + control plane** — the durable value, event-driven, renders to *either* a web view *or* a TUI. Build once against the event stream.
 2. **Attach / live-visibility** — how you actually watch or enter a running agent, and it's swappable: **tmux multi-paning (from `pi2`) is the recommended default** because it matches your "minimalistic, terminal-native" instinct, works over ssh, and you already have it working; the **browser PTY multiplexer (from noetic-pi)** stays optional for when a browser is already your surface.
@@ -170,11 +170,11 @@ Each step leaves a runnable, more-integrated system; none requires the noetic-pi
 - **cognitive-disciplines (Codex plugin):** harvest its contracts and fixtures into `somebloke1/noetic-programs`; Codex is one measured later `noetic-codex-adapter` candidate under the common runtime contract, not a condition on the program home.
 - **cf-controlplane / ContextForge:** demote to optional transport; stop treating it as an integration backbone.
 - **noetic-pi export saga:** stop trying to make the whole instance portable; harvest mechanisms instead.
-- **noetic-pi web app:** split it — *keep and elevate* the observability + control plane (event-driven, portable); *demote* the PTY-terminal multiplexer (`terminal.ts`) to an optional attach-view. Don't preserve or discard the web app as a whole; preserve the observability, drop the terminal-as-core-abstraction (dec-20260711-0004).
+- **noetic-pi web app:** split it — *keep and elevate* the observability + control plane (event-driven, portable); *demote* the PTY-terminal multiplexer (`terminal.ts`) to an optional attach-view. Don't preserve or discard the web app as a whole; preserve the observability, drop the terminal-as-core-abstraction (historical `dec-20260711-0004`, retained by current `dec-20260801-0003/0004`).
 
 ---
 
-## 4b. The target project: `synthesis` as a thin composition root (dec-20260711-0007)
+## 4b. The target project: `synthesis` as a thin composition root (historical `dec-20260711-0007`; current `dec-20260801-0001/0003/0004/0006`)
 
 A question worth making crystal clear: **where does the harvested material actually become the synthetic form?** The answer is *this* workspace — but with a promotion and a discipline.
 
@@ -221,4 +221,4 @@ Your own `on_emergent_fidelity` thesis says alignment begins with **self-appropr
 
 ---
 
-*This document is the P4 deliverable of the synthesis goal chain. Findings that ground it are in `KNOWNS.md`; the adjudication is `DECISIONS.md` dec-20260711-0002; unresolved issues are in `OPEN_QUESTIONS.md`.*
+*This document is the P4 deliverable of the synthesis goal chain. Findings that ground it are in `KNOWNS.md`; current adjudication is in accepted `DECISIONS.md` entries `dec-20260801-0001` through `dec-20260801-0009`; superseded decisions remain historical rationale; unresolved issues are in `OPEN_QUESTIONS.md`.*
