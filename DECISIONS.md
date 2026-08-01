@@ -442,12 +442,12 @@ This decision supersedes conflicting active authority in dec-20260713-0001 (GitH
 - Status: accepted
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-15
-- Updated: 2026-07-15
+- Updated: 2026-08-01
 - Tags: P4,github,simplification,autonomous-dev,main-protection,credential
-- Source: Explicit user corrections and instruction to simplify, tend the goalchain, represent all work, and proceed; /tmp/noetic-dev-github-discipline-simple.md
+- Source: Explicit user corrections and instruction to simplify, tend the goalchain, represent all work, and proceed; this self-contained ledger record supersedes unavailable temporary drafts
 - Confidence: high
 
-The user explicitly simplified the ratified GitHub discipline after rejecting the speculative credential/control-plane apparatus. The authoritative operating rule is `/tmp/noetic-dev-github-discipline-simple.md`.
+The user explicitly simplified the ratified GitHub discipline after rejecting the speculative credential/control-plane apparatus. This complete ledger entry is the durable authoritative operating rule; the temporary draft that preceded it is unavailable and non-authoritative.
 
 Only `main` branch protection is required. `dev` is the autonomous integration branch. Use the existing working credential for GitHub issues, branches, commits, pushes, PRs, visible QA evidence, and merges into `dev`. If a second credential is ever useful, it is only a simple automation identity, especially to author a main promotion PR that the user can approve; it does not imply a credential architecture.
 
@@ -455,7 +455,7 @@ Represent all work visibly in one authoritative GitHub bootstrap issue and comme
 
 No credential removal/rotation, Actions shutdown, runner quarantine, five-App system, external check authorities, fenced merge brokers, policy-context rotation, drift control plane, or credential audit is authorized or required. The local E0 capture remains historical evidence only and is not a gate.
 
-This decision supersedes the GitHub/credential mechanics of dec-20260715-0006 and `/tmp/noetic-dev-github-discipline-amendment-v5.md`. It preserves the broader recurrent-trace intention, P1-P4 differentiation, donor preservation, genus-router/LiteLLM model governance, and exact implementation:QA pairing.
+This decision supersedes the GitHub/credential mechanics of dec-20260715-0006 and its unavailable historical amendment draft. It preserves the broader recurrent-trace intention, P1-P4 differentiation, donor preservation, genus-router/LiteLLM model governance, and exact implementation:QA pairing.
 <!-- governance-crud:end id=dec-20260715-0007 -->
 
 <!-- governance-crud:start id=dec-20260717-0001 -->
