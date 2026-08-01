@@ -15,11 +15,12 @@ This repository is deliberately thin. It owns the canonical contracts, governanc
 
 ## Start here
 
+- [`initial-user-msg.md`](initial-user-msg.md) — digest-bound public-redacted founding request
 - [`SYNTHESIS.md`](SYNTHESIS.md) — adjudicated architecture and migration path
 - [`ROADMAP.md`](ROADMAP.md) — dependency-ordered construction, Git integration, QA, rollback, and residue disposition
 - [`docs/original-intent-traceability.md`](docs/original-intent-traceability.md) — governing scope, source traceability, and complete-system gates
 - [`docs/full-portfolio-capability-map.md`](docs/full-portfolio-capability-map.md) — component homes, donor evidence, dependency order, and authentic-slice gate
-- [`docs/workspace-residue-inventory-2026-08-01.md`](docs/workspace-residue-inventory-2026-08-01.md) — exact retained worktree, stash, and non-secret runtime identities
+- [`docs/workspace-residue-inventory-2026-08-01.md`](docs/workspace-residue-inventory-2026-08-01.md) — privacy-preserving residue commitments, blockers, and resumption criteria
 - [`docs/cognitive-backbone.md`](docs/cognitive-backbone.md) — canonical P1–P4 form
 - [`AGENTS.md`](AGENTS.md) — project governance and invariants
 - [`docs/development-practices.md`](docs/development-practices.md) — git, worktree, issue, PR, CI, and merge discipline

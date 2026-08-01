@@ -1,49 +1,95 @@
-I've been experimenting the past year with the following, and I'm trying to find the best basis for integration into a single development and cognitive framework. I'm a student in graduate AI/ML program at carnegie mellon. I want you to research this thoroughly and reflectively, and help me find the correct (and practically correct!) backbone and synthesis. 
+# Initial User Request - Public Redacted Source Record
 
-1. Code Assistants (in no specific order)
- - Claude Code
- - Codex CLI
- - Codex Desktop
- - Claude Desktop
- - Pi Coding Assistant
- - Goose
- - OpenCode
- - Various assistants in vscode
+**Access-controlled original SHA-256:** `dfc61598617e5e7e214709cfc73c5ce50e155a3545bd00053be85b83d98dfc7b`
+**Recorded:** 2026-07-11
 
-2. Web Orchestration + Development Pipelines + Cognitive Disciplines (~/workspace/noetic-pi and more recent ~/workspace/noetic-pi-docker to disambiguate developed product from development basis)
- - Built over Pi Coding Assistant
- - Has "APM" (agent population manager) state machine
- - APM interacts with "agent mesh" extension in Pi
- - Has cognitive disciplines with agentic pipelines structured on normative cognitive process
- - Has development pipelines with phases: design_intent->abstract_design->implementation_procedure_design->implementation
- - Each development pipeline phase has a cycles=n loop(QA->Remediation) and is multi-agent
- - Agents are given unique ordinals
- - Also has embedding and summarization for sessions
+This versioned record preserves the complete technical intention that governs
+noetic-dev. It redacts a personal educational affiliation and replaces local
+absolute home-directory prefixes with repository-relative project names. No
+technical capability, architectural question, project identity, or requested
+outcome is removed. The original snapshot remains access-controlled and can be
+verified against the digest above by an authorized local operator.
 
-3. "Telos" goalchain project (~/workspace/telos)
- - goalchains, subgoals, principles & immutables, reproductive clause
- - intent to make it multi-agent in some respect
- - MCP/extension integration with OpenCode and Pi, works in both
+I have been experimenting over the past year with the following, and I am trying
+to find the best basis for integration into a single development and cognitive
+framework. Research this thoroughly and reflectively, and help me find the
+correct, and practically correct, backbone and synthesis.
 
-4. Inference Engines local with 2x 3090 RTX GPUs
- - llama.cpp with Qwen3.6-A3B + vision
- - ollama with snowflake embedding model
- - another ollama instance with Qwen3-ASR-1.7B
- - possibly others, I don't recall
+## 1. Code assistants
 
-5. Model training project (~/workspace/saeproj)
- - Insight is that there might be benefit to training models to recognize universally-invariant patterns in the processes that generate any instance of intelligent artifact - attentiveness/description, inquiry/insight, critical-reflection/judgment, deliberation/decision
- - Based on gemma model training
- - Has been worked on intermittently
- - Tied to user's notion that current AI/ML engineering is like alchemy without the periodic table, lacking any common standard model of cognition
+- Claude Code
+- Codex CLI
+- Codex Desktop
+- Claude Desktop
+- Pi Coding Assistant
+- Goose
+- OpenCode
+- Various assistants in VS Code
 
-6. IBM ContextForge Exploration (server listening on 4444)
- - Original idea was single MCP host with flexible distribution patterns with stdio-packet and packet-stdio bridges
- - project cf-controlplane is a messy effort to make it easier but not fruitful thus far
+## 2. Web orchestration, development pipelines and cognitive disciplines
 
-7. (~/workspace/genus-router) project
- - idea here was a MCP server for model selection based on composite/intersection of multiple dimensions of task-to-capability relationships across those dimensions
+Projects: `noetic-pi` and the more recent `noetic-pi-docker`, distinguishing the
+developed product from its development basis.
 
-8. General themes of sound cognitive modeling
- - /home/dgk/workspace/saeproj/docs/[transcendental-method-structured.txt,on_emergent_fidelity.txt,the-notion-of-judgement.txt,theoretical_foundations.md]
+- Built over Pi Coding Assistant.
+- Has an APM (agent population manager) state machine.
+- APM interacts with an agent-mesh extension in Pi.
+- Has cognitive disciplines with agentic pipelines structured on normative
+  cognitive process.
+- Has development phases:
+  `design_intent -> abstract_design -> implementation_procedure_design -> implementation`.
+- Each phase has a bounded `QA -> remediation` loop and is multi-agent.
+- Agents receive unique ordinals.
+- Includes session embedding and summarization.
 
+## 3. Telos goalchain project
+
+Project: `telos`.
+
+- Goalchains, sub-goals, principles, immutables and a reproductive clause.
+- Intent to make it multi-agent in some respect.
+- MCP/extension integration works with both OpenCode and Pi.
+
+## 4. Local inference engines
+
+- Local multi-GPU inference capacity.
+- llama.cpp with a Qwen generative model and vision capability.
+- Ollama with a Snowflake embedding model.
+- Another Ollama instance with Qwen ASR.
+- Potential additional local models remain to be inventoried.
+
+## 5. Model-training research
+
+Project: `saeproj`.
+
+- Investigates whether models benefit from recognizing universally invariant
+  patterns in processes that generate intelligent artifacts: attentiveness and
+  description, inquiry and insight, critical reflection and judgment, and
+  deliberation and decision.
+- Uses Gemma-family model training.
+- Has been developed intermittently.
+- Motivated by the view that current AI/ML engineering resembles alchemy without
+  a periodic table because it lacks a common standard model of cognition.
+
+## 6. IBM ContextForge exploration
+
+- Original idea: one MCP host with flexible distribution using stdio-packet and
+  packet-stdio bridges.
+- `cf-controlplane` is a messy, not-yet-fruitful effort to make this easier.
+
+## 7. Genus-router
+
+Project: `genus-router`.
+
+- An MCP server for model selection from the composite/intersection of multiple
+  task-to-capability dimensions.
+
+## 8. Foundational cognitive-modeling sources
+
+The foundational source family lives under `saeproj/docs/foundational/` and
+includes:
+
+- `transcendental-method-structured.txt`
+- `on_emergent_fidelity.txt`
+- `the-notion-of-judgement.txt`
+- `theoretical_foundations.md`
