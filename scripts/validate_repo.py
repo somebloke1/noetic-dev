@@ -51,8 +51,10 @@ REQUIRED = [
     "spec/programs/development.verified-change/v1/golden/valid-bounded-remediation-packet.json",
     "spec/programs/development.verified-change/v1/golden/expected-projection.json",
     "scripts/development_verified_change.py",
+    "scripts/development_verified_change_explain.py",
     "tests/programs/__init__.py",
     "tests/programs/test_development_verified_change.py",
+    "tests/programs/test_development_verified_change_explain.py",
     # Provider-free terminal observability read model (issue #39)
     "docs/development-verified-change-terminal-observability-v1.md",
     "spec/programs/development.verified-change/v1/terminal-observability-contract.json",
