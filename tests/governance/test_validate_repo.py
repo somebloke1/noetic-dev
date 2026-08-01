@@ -56,6 +56,10 @@ class LedgerStatusValidationTests(unittest.TestCase):
                 ['- Status: ["accepted"]'],
             ),
             "wrong_case": crud_block("test-20260801-0004", ["- Status: Accepted"]),
+            "empty_with_continuation": crud_block(
+                "test-20260801-0005",
+                ["- Status:", "accepted"],
+            ),
         }
         for name, text in cases.items():
             with self.subTest(name=name):

@@ -138,7 +138,7 @@ CRUD_BLOCK_RE = re.compile(
     r"<!-- governance-crud:end id=(?P=id) -->",
     re.DOTALL,
 )
-STATUS_RE = re.compile(r"^- Status:\s*(?P<status>.*?)\s*$", re.MULTILINE)
+STATUS_RE = re.compile(r"^- Status:[ \t]*(?P<status>.*?)[ \t]*$", re.MULTILINE)
 LEDGER_STATUS_VOCABULARIES = {
     "KNOWNS.md": ("verified", "superseded", "refuted"),
     "DECISIONS.md": ("accepted", "rejected", "superseded"),
