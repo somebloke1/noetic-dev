@@ -1,14 +1,15 @@
 # Initial User Request - Public Redacted Source Record
 
-**Access-controlled original SHA-256:** `dfc61598617e5e7e214709cfc73c5ce50e155a3545bd00053be85b83d98dfc7b`
+**Historical original SHA-256:** `dfc61598617e5e7e214709cfc73c5ce50e155a3545bd00053be85b83d98dfc7b`
 **Recorded:** 2026-07-11
 
 This versioned record preserves the complete technical intention that governs
 noetic-dev. It redacts a personal educational affiliation and replaces local
 absolute home-directory prefixes with repository-relative project names. No
 technical capability, architectural question, project identity, or requested
-outcome is removed. The original snapshot remains access-controlled and can be
-verified against the digest above by an authorized local operator.
+outcome is removed. The original snapshot already exists in public repository
+history. This projection minimizes current personal/path disclosure but does not
+claim to erase or make that historical blob private.
 
 I have been experimenting over the past year with the following, and I am trying
 to find the best basis for integration into a single development and cognitive
@@ -52,10 +53,10 @@ Project: `telos`.
 
 ## 4. Local inference engines
 
-- Local multi-GPU inference capacity.
-- llama.cpp with a Qwen generative model and vision capability.
+- Local inference capacity using 2x RTX 3090 GPUs.
+- llama.cpp with Qwen3.6-A3B and vision capability.
 - Ollama with a Snowflake embedding model.
-- Another Ollama instance with Qwen ASR.
+- Another Ollama instance with Qwen3-ASR-1.7B.
 - Potential additional local models remain to be inventoried.
 
 ## 5. Model-training research
@@ -73,6 +74,7 @@ Project: `saeproj`.
 
 ## 6. IBM ContextForge exploration
 
+- A ContextForge server was listening on port 4444 at the time of the request.
 - Original idea: one MCP host with flexible distribution using stdio-packet and
   packet-stdio bridges.
 - `cf-controlplane` is a messy, not-yet-fruitful effort to make this easier.
