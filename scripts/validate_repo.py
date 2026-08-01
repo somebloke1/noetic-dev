@@ -104,7 +104,6 @@ REQUIRED = [
     "scripts/governance/agent_review_broker.py",
     "scripts/governance/genus_router_mcp.py",
     "scripts/governance/request_agent_review.py",
-    "scripts/governance/request_agent_review.py",
     "scripts/governance/route_evidence.py",
     "scripts/governance/route_attestation.py",
     "scripts/governance/capture_protected_ci.py",
@@ -127,15 +126,63 @@ REQUIRED = [
     "tests/governance/test_run_isolated_pi.py",
     "tests/governance/test_agent_review.py",
     "tests/governance/test_route_attestation.py",
+    "tests/governance/test_validate_repo.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
 FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
 LINK_RE = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)]+)\)")
 ANCHOR_RE = re.compile(r"governance-crud:(?:start|end) id=([a-z]+-[0-9-]+)")
+CRUD_BLOCK_RE = re.compile(
+    r"<!-- governance-crud:start id=(?P<id>[a-z]+-[0-9-]+) -->\n"
+    r"(?P<body>.*?)\n"
+    r"<!-- governance-crud:end id=(?P=id) -->",
+    re.DOTALL,
+)
+STATUS_RE = re.compile(r"^- Status:\s*(?P<status>.*?)\s*$", re.MULTILINE)
+LEDGER_STATUS_VOCABULARIES = {
+    "KNOWNS.md": ("verified", "superseded", "refuted"),
+    "DECISIONS.md": ("accepted", "rejected", "superseded"),
+    "OPEN_QUESTIONS.md": ("open", "blocked", "answered", "superseded"),
+    "ABEYANT_INTENTIONS.md": ("parked", "honored", "superseded"),
+}
 
 
 def fail(message: str, failures: list[str]) -> None:
     failures.append(message)
+
+
+def required_declaration_errors(required: list[str]) -> list[str]:
+    counts: dict[str, int] = {}
+    for relative in required:
+        counts[relative] = counts.get(relative, 0) + 1
+    return [
+        f"duplicate required file declaration: {relative}"
+        for relative, count in sorted(counts.items())
+        if count > 1
+    ]
+
+
+def ledger_status_errors(relative: str, text: str) -> list[str]:
+    allowed = LEDGER_STATUS_VOCABULARIES.get(relative)
+    if allowed is None:
+        return []
+
+    errors: list[str] = []
+    for match in CRUD_BLOCK_RE.finditer(text):
+        entry_id = match.group("id")
+        statuses = [item.group("status") for item in STATUS_RE.finditer(match.group("body"))]
+        if len(statuses) != 1:
+            errors.append(
+                f"{relative}:{entry_id}: expected exactly one status declaration; "
+                f"found {len(statuses)}"
+            )
+        elif statuses[0] not in allowed:
+            expected = ", ".join(allowed)
+            errors.append(
+                f"{relative}:{entry_id}: unsupported status {statuses[0]!r}; "
+                f"expected one of {expected}"
+            )
+    return errors
 
 
 def main() -> int:
@@ -144,6 +191,9 @@ def main() -> int:
     worktree = inspect_worktree(ROOT)
     for error in worktree["errors"]:
         fail(f"worktree: {error}", failures)
+
+    for error in required_declaration_errors(REQUIRED):
+        fail(error, failures)
 
     for relative in REQUIRED:
         if not (ROOT / relative).is_file():
@@ -175,6 +225,8 @@ def main() -> int:
                     fail(f"{relative}: broken local link: {target}", failures)
         for anchor in ANCHOR_RE.findall(text):
             anchor_counts[anchor] = anchor_counts.get(anchor, 0) + 1
+        for error in ledger_status_errors(relative.as_posix(), text):
+            fail(error, failures)
 
     for anchor, count in anchor_counts.items():
         if count != 2:
