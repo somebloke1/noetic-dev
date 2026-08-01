@@ -1,4 +1,4 @@
-"""Tests for incremental M0 verified-change replay."""
+"""Tests for fixed-profile incremental verified-change replay."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from unittest import mock
 import scripts.development_verified_change as program
 import scripts.development_verified_change_explain as explain
 import scripts.development_verified_change_replay as replay
+import scripts.m1_trace as m1_trace
 from scripts.m0_trace import load_json_strict
 from scripts.m0_trace import validate_and_project as validate_m0_trace
 
@@ -27,6 +28,7 @@ PROGRAM_ROOT = ROOT / "spec/programs/development.verified-change/v1"
 PACKET_PATH = PROGRAM_ROOT / "golden/valid-bounded-remediation-packet.json"
 M0_TRACE_PATH = ROOT / "spec/m0/v0/golden/valid-telos-adjudication-trace.json"
 M1_TRACE_PATH = ROOT / "spec/m1/v0/golden/valid-telos-recoverability-trace.json"
+M1_EXPECTED_PATH = PROGRAM_ROOT / "golden/expected-terminal-status.json"
 SCRIPT_PATH = ROOT / "scripts/development_verified_change_replay.py"
 
 
@@ -45,7 +47,9 @@ def terminal_final(source_projection: dict[str, Any]) -> dict[str, Any]:
 class DevelopmentVerifiedChangeReplayTest(unittest.TestCase):
     def setUp(self) -> None:
         self.packet = load_json_strict(PACKET_PATH)
+        self.m1_packet = copy.deepcopy(self.packet)
         self.source = load_json_strict(M0_TRACE_PATH)
+        self.m1_source = load_json_strict(M1_TRACE_PATH)
         source_projection = validate_m0_trace(self.source)
         self.packet["execution_profile"] = program.M0_PROFILE
         self.packet["source_trace_version"] = program.M0_TRACE_VERSION
@@ -150,9 +154,13 @@ class DevelopmentVerifiedChangeReplayTest(unittest.TestCase):
         with self.assertRaisesRegex(replay.ReplayValidationError, "incomplete replay"):
             replay.replay_m0_verified_change(self.packet, incomplete)
 
-        m1_source = load_json_strict(M1_TRACE_PATH)
         with self.assertRaisesRegex(replay.ReplayValidationError, "schema_version"):
-            replay.replay_m0_verified_change(self.packet, m1_source)
+            replay.replay_m0_verified_change(self.packet, self.m1_source)
+
+        incomplete_m1 = copy.deepcopy(self.m1_source)
+        incomplete_m1["records"].pop()
+        with self.assertRaisesRegex(replay.ReplayValidationError, "incomplete replay"):
+            replay.replay_m1_verified_change(self.m1_packet, incomplete_m1)
 
         wrong_shape = copy.deepcopy(self.source)
         wrong_shape["extra"] = True
@@ -197,12 +205,74 @@ class DevelopmentVerifiedChangeReplayTest(unittest.TestCase):
             )
         self.assertEqual(failed.returncode, 1)
         self.assertEqual(failed.stdout, b"")
-        self.assertIn(b"verified-change M0 replay failed:", failed.stderr)
+        self.assertIn(b"verified-change replay failed:", failed.stderr)
         self.assertNotIn(b"Traceback", failed.stderr)
         self.assertEqual(deeply_nested.returncode, 1)
         self.assertEqual(deeply_nested.stdout, b"")
         self.assertIn(b"nesting exceeds recursion limit", deeply_nested.stderr)
         self.assertNotIn(b"Traceback", deeply_nested.stderr)
+
+    def test_m1_uses_canonical_fixed_transitions_and_terminal_golden(self) -> None:
+        self.assertEqual(program.M1_TRACE_VERSION, m1_trace.TRACE_VERSION)
+        self.assertEqual(
+            replay.M1_STEPS,
+            tuple((event_type, to_state) for _, event_type, to_state in m1_trace.TRANSITIONS),
+        )
+        controller = replay.M1ReplayController(self.m1_packet)
+        expected_states = [state for _, state in replay.M1_STEPS]
+        for index, record in enumerate(self.m1_source["records"]):
+            self.assertEqual(controller.accept(record), expected_states[index])
+            self.assertEqual(controller.admitted_count, index + 1)
+        self.assertTrue(controller.complete)
+        self.assertEqual(
+            controller.finish(),
+            explain.explain_verified_change(self.m1_packet, self.m1_source),
+        )
+
+    def test_m1_terminal_validation_is_atomic_and_called_once_per_attempt(self) -> None:
+        controller = replay.M1ReplayController(self.m1_packet)
+        for record in self.m1_source["records"][:-1]:
+            controller.accept(record)
+        invalid = copy.deepcopy(self.m1_source["records"][-1])
+        invalid["payload"]["disposition"] = "blocked"
+        with mock.patch.object(
+            replay,
+            "explain_verified_change",
+            wraps=explain.explain_verified_change,
+        ) as terminal:
+            with self.assertRaises(ValueError):
+                controller.accept(invalid)
+            self.assertEqual(controller.state, "result_reported")
+            self.assertEqual(controller.admitted_count, 10)
+            self.assertFalse(controller.complete)
+            controller.accept(self.m1_source["records"][-1])
+            self.assertEqual(terminal.call_count, 2)
+        self.assertTrue(controller.complete)
+
+    def test_generic_replay_selects_only_m0_and_m1(self) -> None:
+        self.assertEqual(
+            replay.replay_verified_change(self.packet, self.source),
+            replay.replay_m0_verified_change(self.packet, self.source),
+        )
+        self.assertEqual(
+            replay.replay_verified_change(self.m1_packet, self.m1_source),
+            replay.replay_m1_verified_change(self.m1_packet, self.m1_source),
+        )
+        unsupported = copy.deepcopy(self.source)
+        unsupported["schema_version"] = "noetic.m2.unsupported/v0"
+        with self.assertRaisesRegex(replay.ReplayValidationError, "unsupported"):
+            replay.replay_verified_change(self.packet, unsupported)
+
+    def test_cli_emits_exact_existing_m1_terminal_status_golden(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), str(PACKET_PATH), str(M1_TRACE_PATH)],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr.decode())
+        self.assertEqual(completed.stdout, M1_EXPECTED_PATH.read_bytes())
+        self.assertEqual(completed.stderr, b"")
 
     def test_main_normalizes_direct_loader_recursion(self) -> None:
         stderr = io.StringIO()
