@@ -254,3 +254,26 @@ Adopt the smallest durable recurrence design: repair route_evidence.py to use th
 
 Do not claim that integration_id 15368 authenticates a workflow path. In this public user-owned repository, native required workflows and push path restrictions are unavailable. A strong resolution requires either transfer to a Team organization with required workflows or a separately hosted GitHub App with its private key outside candidate Actions and a required App-bound check. Defer app registration/service creation because it introduces a new high-value credential and operational service beyond the minimal recurrence repair; retain the risk as explicit and do not treat current required checks as cryptographic workflow provenance.
 <!-- governance-crud:end id=dec-20260717-0002 -->
+
+<!-- governance-crud:start id=dec-20260802-0001 -->
+## dec-20260802-0001: Ratify P1-P4 as the canonical form under human authority
+
+- Ledger: decisions
+- Status: accepted
+- Repository: somebloke1/noetic-dev
+- Created: 2026-08-02
+- Updated: 2026-08-02
+- Tags: constitution,P1-P4,human-authority,telos,cognition
+- Source: Explicit user P4 ratification on 2026-08-02; founding charge; verified current foundational sources under `saeproj/docs/foundational/`
+- Confidence: high
+
+Ratify `R(P1 -> P2 -> P3 -> P4 -> R)` as noetic-dev's canonical cognitive form, with the fixed human gloss `P1 be attentive`, `P2 be intelligent`, `P3 be reasonable`, and `P4 be responsible`. ECN `^?` and `^!` remain optional sought/enacted modality annotations rather than a competing notation.
+
+P1-P4 names recurrent authentic operations, not deterministic states, agent roles, software layers, or components. No component maps one-to-one to a P-level. Structural validation may establish form, attribution, and transition legality, but it cannot establish insight, judgment, responsibility, consciousness, or self-affirmation.
+
+Human responsibility is irreducible at the framework governance boundary. Agents may produce attributed evidence, insights, judgments, and recommendations; they must not be personified as the responsible subject. Telos durably mediates humanly authorized purpose and continuation, but Telos is not P4 and does not replace human responsibility. The deterministic controller governs legal execution mechanics without becoming cognition or semantic authority.
+
+This decision ratifies only the constitutional form and authority boundary. It does not claim that current M0/M1 fixtures, protected delivery governance, Telos continuation, or any runtime/component implements authentic P1-P4 cognition. Runtime, model, persistence, component, and trajectory claims require separate bounded decisions and evidence.
+
+Current foundational source locations were verified under `saeproj/docs/foundational/`; this observation does not rewrite the frozen historical wording or paths in `initial-user-msg.md`.
+<!-- governance-crud:end id=dec-20260802-0001 -->

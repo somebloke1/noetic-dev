@@ -2,8 +2,9 @@
 
 **Author:** synthesis agent (goal chain `chain-1`)
 **Date:** 2026-07-11
-**Status:** Recommendation, confidence 0.85 (raised from 0.78 after verifying organ extractability — `KNOWNS.md` k-20260711-0003; still conditioned on the client-scope open question, `OPEN_QUESTIONS.md` oq-20260711-0001)
+**Status:** Historical architecture synthesis dated 2026-07-11. Its P1-P4 constitutional form is ratified by `DECISIONS.md` `dec-20260802-0001`; remaining runtime, model, component, and trajectory projections retain historical recommendation status pending separate bounded convergence against current protected evidence.
 **Evidence base:** `KNOWNS.md` (verified findings), `DECISIONS.md` (adjudications). Source-cited throughout.
+**Authority boundary:** Where this historical text equates Telos, a software layer, or a component with one P-level, `docs/cognitive-backbone.md` and `dec-20260802-0001` control: Telos mediates humanly authorized purpose but is not P4, deterministic state is not cognition, and human responsibility remains irreducible.
 
 ---
 

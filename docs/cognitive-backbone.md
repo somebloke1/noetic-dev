@@ -1,8 +1,8 @@
 # The Cognitive Backbone — Canonical Notation Reference
 
-**Status:** Draft for user ratification (resolves migration step 1 of `SYNTHESIS.md`; answers part of `OPEN_QUESTIONS.md` oq notation choice).
-**Scope:** This is the **form** layer of the synthesis. It is invariant across every client-scope and architecture decision, so it is safe to fix now, independently of the open questions.
-**Primary sources:** Lonergan, *Insight* (`saeproj/docs/foundational/the-notion-of-judgment.txt`, `transcendental-method-structured.txt`); `on_emergent_fidelity.txt`; `theoretical_foundations.md`; `cognitional_notation/FOUNDATION.md`.
+**Status:** Accepted canonical form, ratified by the user on 2026-08-02 and recorded in `DECISIONS.md` as `dec-20260802-0001`.
+**Scope:** This is the **form** layer of the synthesis. It is invariant across client, runtime, model, transport, and component choices; acceptance of the form does not establish implementation readiness.
+**Primary sources:** Lonergan, *Insight*; `saeproj/docs/foundational/transcendental-method-structured.txt`; `saeproj/docs/foundational/on_emergent_fidelity.txt`; `saeproj/docs/foundational/the-notion-of-judgment.txt`; `saeproj/docs/foundational/theoretical_foundations.md`; `saeproj/docs/foundational/self_appropriation.md`; `cognitional_notation/FOUNDATION.md`.
 
 ---
 
@@ -21,8 +21,9 @@ Four levels, named by the principal operation on each:
 
 Two structural facts that the framework must honor:
 
-- **P4 governs recursively:** `R(P1 → P2 → P3 → P4 → R)`. Responsibility is not merely the last step; it governs and integrates the whole cycle (*on_emergent_fidelity*). This is why **Telos (P4/purpose) is the spine that governs the operational organs (P1–P3)** — the architecture mirrors the form.
+- **P4 governs recursively:** `R(P1 → P2 → P3 → P4 → R)`. Responsibility is not merely the last step; it governs and integrates the whole cycle (*on_emergent_fidelity*). At the framework governance boundary, responsibility remains irreducibly human. Agents may contribute attributed judgments and recommendations, while Telos mediates durable humanly authorized purpose and continuation without becoming P4 or the responsible subject.
 - **Intussusception:** each operation transforms its predecessors — attention becomes *intelligent* attention, then *reflective* attention, then *responsible/creative* attention. The levels are distinct but not separable; later levels presuppose and complement earlier ones (Lonergan: "later steps presuppose earlier contributions and add to them").
+- **No component-to-level equivalence:** P1–P4 names authentic operations, not deterministic states, agent roles, software layers, or components. Every genuinely cognitive activity is evaluated against the whole recurrent form. A controller may establish structural legality, but deterministic transition is not cognition; Telos may preserve purpose, but stored purpose is not responsibility.
 
 ---
 
@@ -41,9 +42,9 @@ They are the same structure. The synthesis needs **one** primary notation that e
 
 ---
 
-## 3. Recommendation: `P1–P4` as canonical, with a fixed gloss and an optional modal annotation
+## 3. Canonical decision: `P1–P4`, with a fixed gloss and an optional modal annotation
 
-**Recommended default: the `P1–P4` level notation** as the canonical, machine- and structure-facing form, for four reasons:
+**Accepted default: the `P1–P4` level notation** as the canonical, machine- and structure-facing form, for four reasons:
 
 1. **Already load-bearing in your operational code.** noetic-pi already uses `p1`–`p4` as functional agent roles, and cognitive-disciplines is built as a "P1–P4 cognitive cycle." Adopting P1–P4 canonically ratifies what your most-used code already does — zero migration for the biggest surfaces.
 2. **Language-neutral and identifier-safe.** `p1`…`p4` are stable identifiers for pipeline phases, gate names, agent roles, log tags, and ledger sections. The ECN letters are English-specific (`A/I/R/D`) and `R` collides with the recursion operator `R(...)`; the verbs and imperatives are English-bound and verbose.
@@ -71,10 +72,10 @@ The form recurs at every scale (this is the embodiment principle from the reprod
 
 ---
 
-## 5. The irreducible decision left to you
+## 5. Ratification and amendment
 
-Everything above is P1–P3 groundwork. The remaining act is P4 — yours to make:
+The user completed the P4 ratification on 2026-08-02. `P1–P4` with the imperative gloss and optional ECN `^!`/`^?` markers is the canonical notation for noetic-dev.
 
-- **Ratify or amend** the recommended default (`P1–P4` canonical + imperative gloss + optional ECN `^!`/`^?` modal markers). If you prefer the ECN letters or the verbs as the primary surface, say so and this reference flips; the crosswalk stays the same.
+This file is the cross-project notation reference. A future amendment requires explicit human authority, a recorded decision, and evidence that the revised form preserves the differentiated operations and their recurrent relation.
 
-Once ratified, this file becomes the single source every other project references instead of re-deriving its own notation.
+Ratification establishes the form and its authority boundary. It does not claim that an agent, Telos, a deterministic controller, an event trace, or any current component performs authentic cognition or human responsibility.
