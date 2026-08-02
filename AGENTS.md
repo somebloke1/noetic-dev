@@ -18,7 +18,7 @@
 
 ## 1. Project intention
 
-Build and progressively harden **noetic-dev**, a portable development and cognitive framework. This repository is its **thin composition root**: it owns canonical contracts, governance, configuration, composition, and integration proof while independently testable components remain in their own homes.
+Build **noetic-dev** as a portable development and cognitive framework. This repository is its **thin composition root**: it owns canonical contracts, governance, configuration, composition, and integration proof while independently testable components remain in their own homes. Product delivery comes first; hardening is added only when the user requests it or a demonstrated product failure requires it.
 
 The adjudicated architecture lives in `SYNTHESIS.md`; its evidence and judgments live in the mentality ledgers (`KNOWNS.md`, `DECISIONS.md`, `OPEN_QUESTIONS.md`). Primary sources of truth are `initial-user-msg.md`, the verified projects under `~/workspace/`, and the user's foundational cognitive docs under `saeproj/docs/foundational/`.
 
@@ -37,6 +37,10 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 
 ## 3. Standards & norms
 
+- **Direct user authority.** The user's explicit instruction is sufficient authority for ordinary local development, commits, pushes, issues, PRs, and repository operations. Do not demand cryptographic proof, an external trust root, protected-`dev` evidence, or agent-generated approval unless the user requests it or a service technically requires it.
+- **Authority hierarchy.** The user's latest explicit instruction outranks generated goalchain principles, repository process written by agents, inferred plans, and prior agent decisions. Those mechanisms preserve context; they do not veto the user.
+- **Product scope first.** Do not introduce threat models, attestations, hostile-environment defenses, publication machinery, or other security hardening unless explicitly requested or directly required by a reproduced product defect.
+- **Ship over status.** Prefer working behavior, tests, commits, and pushes over planning, inventory, provenance, ledger, or status work. Unfinished agent-authored process is not a blocker.
 - **Separation of activities.** Do not smuggle judgment into data gathering. A `known` is verified observation; a `decision` is an adjudicated judgment. Keep them in different ledgers.
 - **Adversarial verification (invariant).** Never record a claim as done/true from plausible prose. Verify against actual source files, command output, or tests before recording. This is the research analog of the goal chain's 1:1 implementation:QA pairing.
 - **Honest confidence.** Every decision carries a confidence and its conditioning open questions. Downgrade when evidence is thin.
@@ -45,7 +49,7 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 
 ### Invariant operational constraints
 
-- **Git/GitHub.** Use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before PR merge, deliberate squash/rebase/merge policy, protected `main`, and never commit secrets or bypass governance. Full practice: `docs/development-practices.md`.
+- **Git/GitHub.** Use small verified conventional commits and never commit secrets. Issues, feature worktrees, PRs, and protected release branches are useful coordination tools, not prerequisites when the user explicitly authorizes direct development. `dev` is an ordinary integration branch and may receive direct authorized commits and pushes. Full practice: `docs/development-practices.md`.
 - **Implementation:QA pairing.** For every implementation agent/pass, dispatch exactly one adversarial QA agent/pass; do not weaken this ratio through later mutation or convenience.
 - **Development-agent sudo.** This applies only to tools and agents developing noetic-dev, never to noetic-dev components or runtime behavior. If elevation is genuinely required, first check `USER_PROVIDED_PASSWORD`; when present, pass it only through non-interactive stdin without printing, logging, or persisting it. If absent or rejected, record the blocker. Never ask for the password or trigger an interactive/GUI credential prompt.
 - **Superior re-instantiation.** Abstract the APM's deterministic invariants, contracts, tests, and lessons, then express a cleaner portable controller. Do not blindly lift the donor implementation.
@@ -55,7 +59,7 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 - **Mentality ledger practice** (recorded as `DECISIONS.md` dec-20260711-0001): `knowns` = verified P1/P2 data; `decisions` = P3/P4 judgments; `open-questions` = first-class uncertainties; `abeyant-intentions` = deferred work. Ledger names are lowercase; `knowns` statuses are `verified/superseded/refuted`.
 - **Goal chain practice.** Sub-goals track the P1→P4 arc. Record learnings on completion. When sub-goals stop making a meaningful difference, evolve at the reproductive-clause level rather than churning.
 - **Research dispatch.** For breadth, gather in parallel and summarize into verified `knowns` before judging.
-- **Development practice.** Issues are authoritative units of work; use sibling worktrees, coherent conventional commits, PR-based adversarial QA, and protected merges as specified in `docs/development-practices.md`.
+- **Development practice.** Choose the least process that safely isolates the requested change. Direct authorized work on `dev` is valid; use issues, sibling worktrees, and PRs when they add coordination or review value, as specified in `docs/development-practices.md`.
 - **Autonomous continuity.** Honor explicit authorization windows. Before cutoff, stop initiating work, finish or safely checkpoint active work, and persist learnings and blockers in the goalchain.
 
 ## 5. Tools (selected wisely)

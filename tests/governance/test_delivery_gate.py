@@ -14,7 +14,7 @@ GOV_SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts" / "governance"
 if GOV_SCRIPTS not in sys.path:
     sys.path.insert(0, GOV_SCRIPTS)
 
-from check_delivery_gate import check_bootstrap_blocked, check_delivery, check_pinning
+from check_delivery_gate import check_delivery, check_development_authorized, check_pinning
 from hash_tree import canonical_json_sha256, manifest_digest_excluding_own
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -72,8 +72,8 @@ class TestDeliveryGatePositive(unittest.TestCase):
         self.assertNotIn("stale base", joined)
         self.assertNotIn("candidate_tree_oid mismatch", joined)
 
-    def test_bootstrap_blocked_check_passes_while_dependencies_unresolved(self):
-        passed, errors = check_bootstrap_blocked()
+    def test_development_authority_is_not_blocked_by_optional_assurance(self):
+        passed, errors = check_development_authorized()
         self.assertTrue(passed, errors)
 
 
@@ -88,7 +88,6 @@ class TestDeliveryGateNegativeFixtures(unittest.TestCase):
         "negative_draft_pr_manifest.json": "PR is a draft",
         "negative_stacked_pr_manifest.json": "stacked PR",
         "negative_blocked_issue_manifest.json": "prevents closure",
-        "negative_mutable_action_manifest.json": "workflow.pinning",
         "negative_branch_publication_manifest.json": "branch-name publication forbidden",
         "negative_unsupported_model_manifest.json": "unsupported model profile",
         "negative_two_qas_one_pass_manifest.json": "multiple QA",
@@ -540,15 +539,15 @@ class TestDeliveryGateCLI(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("existing-work freeze", result.stderr)
 
-    def test_cli_bootstrap_blocked_check_passes(self):
+    def test_cli_development_authority_check_passes(self):
         result = subprocess.run(
-            [sys.executable, "scripts/governance/check_delivery_gate.py", "--check-bootstrap-blocked"],
+            [sys.executable, "scripts/governance/check_delivery_gate.py", "--check-development-authorized"],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("BLOCKED", result.stderr)
+        self.assertIn("NON-GATING", result.stderr)
 
 
 class TestDeliveryGatePinning(unittest.TestCase):

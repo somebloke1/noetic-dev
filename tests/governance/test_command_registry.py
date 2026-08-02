@@ -48,8 +48,15 @@ class TestCommandRegistry(unittest.TestCase):
 
     def test_required_pre_merge_lists_are_canonical(self):
         rules = self.registry["rules"]
-        self.assertEqual(rules["required_pre_merge_validations"], ["repo.validate", "workflow.pinning"])
+        self.assertEqual(rules["required_pre_merge_validations"], ["repo.validate"])
         self.assertEqual(rules["required_pre_merge_tests"], ["tests.all"])
+
+    def test_optional_assurance_does_not_gate_development(self):
+        pinning = self.registry["commands"]["workflow.pinning"]
+        assurance = self.registry["commands"]["governance.delivery_gate"]
+        self.assertFalse(pinning["required_for_merge"])
+        self.assertFalse(assurance["required_for_merge"])
+        self.assertIn("does not gate ordinary development", assurance["description"])
 
     def test_required_post_merge_lists_are_canonical(self):
         rules = self.registry["rules"]

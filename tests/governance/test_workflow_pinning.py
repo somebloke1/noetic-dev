@@ -15,6 +15,48 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 
 
+def workflow_job_blocks(content: str) -> dict[str, str]:
+    """Extract top-level job bodies from the repository's workflow subset."""
+    lines = content.splitlines(keepends=True)
+    jobs_start = lines.index("jobs:\n")
+    blocks: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in lines[jobs_start + 1 :]:
+        if line.startswith("  ") and not line.startswith("    ") and line.rstrip().endswith(":"):
+            current = line.strip()[:-1]
+            blocks[current] = [line]
+        elif current is not None:
+            blocks[current].append(line)
+    return {name: "".join(body) for name, body in blocks.items()}
+
+
+def ci_workflow_errors(content: str) -> list[str]:
+    jobs = workflow_job_blocks(content)
+    errors: list[str] = []
+    expected = {"validate", "tests", "post-merge-validation"}
+    if set(jobs) != expected:
+        errors.append("CI job set must be exactly validate, tests, and post-merge-validation")
+        return errors
+    if "run: python3 scripts/validate_repo.py" not in jobs["validate"]:
+        errors.append("validate job must run repository validation")
+    if "python3 -m unittest" in jobs["validate"]:
+        errors.append("validate job must not run the test suite")
+    if "needs: [validate]" not in jobs["tests"]:
+        errors.append("tests job must depend on validate")
+    if "run: python3 -m unittest discover -s tests -v" not in jobs["tests"]:
+        errors.append("tests job must run the genuine test suite")
+    if "scripts/validate_repo.py" in jobs["tests"]:
+        errors.append("tests job must not substitute repository validation")
+    post_merge = jobs["post-merge-validation"]
+    validation = post_merge.find("run: python3 scripts/validate_repo.py")
+    tests = post_merge.find("run: python3 -m unittest discover -s tests -v")
+    if validation < 0 or tests < 0 or validation >= tests:
+        errors.append("branch validation must run repository validation before tests")
+    if "--check-pinning-only" in content or "test_workflow_pinning" in content:
+        errors.append("workflow pinning must not be restored as a CI gate")
+    return errors
+
+
 class TestWorkflowPinning(unittest.TestCase):
     """Test that GitHub Actions workflows use pinned SHA refs."""
 
@@ -51,11 +93,34 @@ class TestWorkflowPinning(unittest.TestCase):
             if re.match(r"^v?\d+(\.\d+)*$", ref):
                 self.fail(f"Mutable tag found: {action}@{ref}")
 
-    def test_candidate_workflow_does_not_call_base_policy_gate(self):
+    def test_ci_workflow_does_not_gate_on_bootstrap_or_trust_root(self):
         content = (WORKFLOWS_DIR / "governance.yml").read_text()
         self.assertNotIn("policy/scripts/governance", content)
-        self.assertIn("--check-bootstrap-blocked", content)
-        self.assertIn("advisory", content.lower())
+        self.assertNotIn("--check-bootstrap-blocked", content)
+        self.assertNotIn("--check-pinning-only", content)
+        self.assertNotIn("external integration", content.lower())
+        self.assertNotIn("  workflow-pinning:", content)
+        self.assertNotIn("test_workflow_pinning", content)
+
+    def test_ci_requires_validation_before_genuine_tests(self):
+        content = (WORKFLOWS_DIR / "governance.yml").read_text()
+        self.assertEqual([], ci_workflow_errors(content))
+
+    def test_ci_graph_regressions_are_rejected(self):
+        content = (WORKFLOWS_DIR / "governance.yml").read_text()
+        validation = "run: python3 scripts/validate_repo.py"
+        tests = "run: python3 -m unittest discover -s tests -v"
+        variants = {
+            "missing_dependency": content.replace("    needs: [validate]\n", ""),
+            "swapped_commands": content.replace(validation, "COMMAND_A").replace(tests, validation).replace("COMMAND_A", tests),
+            "renamed_pinning_gate": content.replace(
+                "  post-merge-validation:\n",
+                "  assurance-check:\n    runs-on: ubuntu-latest\n    steps:\n      - run: python3 -m unittest tests.governance.test_workflow_pinning\n\n  post-merge-validation:\n",
+            ),
+        }
+        for name, candidate in variants.items():
+            with self.subTest(name=name):
+                self.assertTrue(ci_workflow_errors(candidate))
 
     def test_validator_checkout_does_not_persist_credentials(self):
         content = (WORKFLOWS_DIR / "governance.yml").read_text()
@@ -64,12 +129,12 @@ class TestWorkflowPinning(unittest.TestCase):
         self.assertIn("persist-credentials: false", content[checkout:validator])
         self.assertNotIn("Validate worktree administration", content)
 
-    def test_protected_dev_triggers_governance_and_agent_review(self):
+    def test_dev_runs_normal_ci_without_protection_claims(self):
         governance = (WORKFLOWS_DIR / "governance.yml").read_text()
-        agent_review = (WORKFLOWS_DIR / "agent-review.yml").read_text()
         self.assertIn("branches: [main, dev]", governance)
         self.assertIn("github.ref == 'refs/heads/dev'", governance)
-        self.assertIn("branches: [main, dev]", agent_review)
+        self.assertNotIn("protected branch", governance.lower())
+        self.assertNotIn("bootstrap honesty", governance.lower())
 
 
 class TestPinningChecker(unittest.TestCase):

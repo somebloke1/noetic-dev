@@ -1,65 +1,34 @@
 ## Purpose
 
-Closes #
-
-Relevant knowns/decisions:
+Issue, if applicable:
 
 ## Scope
 
 - In scope:
 - Out of scope:
 
-## P1 — Evidence attended to
+## Evidence and design
 
-## P2 — Design/insight
+- P1 — observations:
+- P2 — selected approach:
+- P3/P4 — judgment and responsibility:
 
-## Validation (not tests)
+## Validation
 
-- [ ] `python3 scripts/validate_repo.py` — repository invariant validation only
-- [ ] `python3 scripts/governance/check_delivery_gate.py --check-pinning-only .github/workflows` — all-workflow action/container/service digest pinning validation only
-- [ ] `python3 scripts/governance/check_evidence_manifest.py <manifest>` — manifest validation only
+- [ ] `python3 scripts/validate_repo.py`
+- [ ] Affected tests pass
+- [ ] Intended diff inspected; no unrelated work or secrets included
 
-## Genuine tests
+## Independent QA
 
-- [ ] `python3 -m unittest discover -s tests -v` — positive and adversarial behavior tests pass
-- [ ] Negative fixtures reject the intended defect, not an incidental missing prerequisite
+- [ ] One adversarial QA pass tested this bounded implementation claim
+- [ ] Findings are resolved or explicitly retained as non-blocking product limits
+- [ ] QA did not introduce unrequested security or publication scope
 
-## Implementation/QA pairing
+## Delivery
 
-- [ ] Candidate SHA pinned: <!-- full 40-char SHA -->
-- [ ] Candidate tree OID pinned: <!-- full 40-char tree OID -->
-- [ ] Each implementation/remediation pass has exactly one distinct QA record
-- [ ] QA ran against the immutable candidate SHA/base/tree
-- [ ] QA protected READY probe record hash: <!-- sha256 -->
-- [ ] QA protected execution record hash: <!-- sha256 -->
-- [ ] QA used read-only source mount, isolated scratch/home, no host credentials, and no tools until a credential broker exists
+- [ ] Commit is coherent and conventional
+- [ ] Requested branch or publication target is stated
+- [ ] Rollback is an ordinary revert unless a product-specific procedure is required
 
-## Independent Agent Review
-
-- [ ] Independent Fable or Sol reviewer used an authorized profile at high reasoning
-- [ ] Reviewer approved after candidate SHA pinning and against exactly the final candidate SHA
-- [ ] Approver is not PR author, implementer, remediator, QA, publisher, or orchestrator identity
-
-## Merge readiness
-
-- [ ] Required validations passed separately from tests
-- [ ] Required tests passed separately from validations
-- [ ] Protected policy checkout was separate from candidate checkout
-- [ ] Trusted runner provenance verified from external protected evidence through GitHub API or artifact attestation
-- [ ] Delivery gate passed from separately protected policy code/integration (candidate workflow and caller-supplied JSON are advisory only during bootstrap)
-
-## Publication (post-merge only)
-
-- [ ] Merge result SHA recorded (full 40-char main SHA)
-- [ ] Post-merge validation and tests passed against main SHA
-- [ ] Publication SHA recorded (full 40-char SHA; branch names forbidden)
-- [ ] Existing-work freeze/audit is complete in the protected freeze artifact, or publication remains blocked
-- [ ] Independent high-reasoning agent approval and trusted-runner provenance remain valid
-
-## P4 — Responsible enactment
-
-- [ ] No PR/publish/merge claim is made from advisory local evidence alone
-- [ ] No secrets or local state included
-- [ ] Rollback path stated
-
-## Risks and rollback
+Optional release-assurance, workflow-pinning, provenance, attestation, and external trust-root tooling is not required unless the repository owner explicitly requests it.

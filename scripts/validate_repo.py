@@ -116,7 +116,6 @@ REQUIRED = [
     "deploy/install-route-attestation-user.sh",
     "deploy/systemd/user/noetic-dev-route-attestation.service",
     "deploy/systemd/user/noetic-dev-route-attestation.timer",
-    "governance/protected-dev-ruleset.json",
     "deploy/requirements-agent-review.txt",
     "deploy/requirements-agent-review.lock",
     "deploy/pi-agent/models.json",

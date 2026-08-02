@@ -1,18 +1,19 @@
 # noetic-dev development practices
 
-**Immutable summary:** use issue-linked feature worktrees/branches, small verified conventional commits, green CI plus adversarial review before PR merge, deliberate squash/rebase/merge policy, protected `main`, and never commit secrets or bypass governance.
+**Working summary:** explicit user authority is sufficient for ordinary development. Prefer small verified conventional commits, use isolation and review in proportion to the change, never commit secrets, and do not let agent-created process block authorized product work.
 
 ## 1. Sources of truth
 
-- GitHub issues define accepted units of work and acceptance criteria.
-- Pull requests are the review, QA, and merge record.
+- The user's latest explicit instruction defines authority and may define the unit of work directly.
+- GitHub issues and pull requests provide useful coordination and review records when the work benefits from them; they are not mandatory authorization layers.
 - GitHub Project tracks coordination fields; it does not replace issues or PRs.
 - `KNOWNS.md` records verified evidence; `DECISIONS.md` records judgment; `OPEN_QUESTIONS.md` records uncertainty.
-- Goalchain state carries active purpose and learnings across sessions.
+- Goalchain state carries active purpose and learnings across sessions but cannot override direct user authority.
 
 ## 2. Branches and worktrees
 
-- `main` is protected and kept releasable. Do not develop directly on it after bootstrap.
+- `dev` is the ordinary integration branch. Direct commits and pushes to `dev` are valid when explicitly authorized by the user.
+- Keep `main` releasable. Use a PR or direct promotion according to the user's instruction and the actual repository configuration; do not invent additional protection requirements.
 - Branch names: `issue-<number>-<short-slug>`; administrative branches may use `chore/<slug>`.
 - Create feature worktrees as siblings, never nested in this repository:
 
@@ -21,11 +22,11 @@
   git worktree add ../synthesis-worktrees/issue-42-event-schema -b issue-42-event-schema main
   ```
 
-- One issue and one coherent concern per worktree. Do not reuse a dirty worktree for another issue.
+- Keep one coherent concern per worktree. An issue number is recommended for shared coordination, not required for authority.
 - Before work, run `python3 scripts/governance/check_worktree.py --repo .`; stop on unsafe inherited Git controls, shared config contamination, a non-reciprocal backlink, or duplicate administration pointers.
 - The default duplicate-pointer check examines only the selected root and its direct sibling directories, with a hard 4,096-entry budget; use explicit repeated `--scan-root` values for other controlled locations.
 - Never copy a `.git` file or attach an archive export to live worktree administration. Use a neutral standalone repository or a registered worktree.
-- Worktrees are transient delivery resources, not storage. After adversarial QA accepts an immutable generation, commit and push it, complete the PR and protected review, merge it, and remove the worktree immediately.
+- Worktrees are transient delivery resources, not storage. After verification, commit and push promptly; complete any requested PR review, then remove worktrees that are no longer needed.
 - Keep unfinished intent and blockers in the issue rather than retaining a completed worktree indefinitely.
 - Before deleting a worktree, verify its branch is merged or intentionally retained, then run `git worktree remove` and `git worktree prune`.
 - Do not share generated state, virtual environments, or mutable databases across concurrent worktrees unless the interface explicitly guarantees isolation.
@@ -41,7 +42,7 @@
 
 ## 4. Issues
 
-Every implementation issue should state:
+When an implementation issue is useful, it should state:
 
 - why the work serves noetic-dev's primary goal;
 - scope and non-goals;
@@ -50,14 +51,14 @@ Every implementation issue should state:
 - component and cognitional phase (`P1`–`P4`);
 - implementation risk and rollback path.
 
-Use child issues or task lists for independently verifiable units. Blocked issues state the concrete blocker and required successor condition.
+Use child issues only for genuinely independent units. A blocker must name a concrete uncontrollable dependency; unfinished agent-authored governance, missing attestations, and unrequested security machinery are not blockers.
 
 ## 5. Pull requests and QA
 
-- Every PR links its issue (`Closes #…`) and relevant decision/known IDs.
+- A PR should link its issue when one exists.
 - Keep PRs small enough for adversarial review; split by interface boundary or independent acceptance gate.
 - For every implementation agent/pass, pair exactly one adversarial QA agent/pass. QA tests claims against code, commands, tests, and acceptance criteria rather than prose plausibility.
-- Required gates: repository validation, affected tests, secret hygiene, current branch, no unresolved review findings.
+- Required local checks: repository validation, affected tests, secret hygiene, and inspection of the intended diff. Additional release or security gates apply only when requested.
 - Authors do not self-approve. Review approval becomes stale after material changes and must be refreshed.
 
 ## 6. Merge policy
@@ -65,14 +66,14 @@ Use child issues or task lists for independently verifiable units. Blocked issue
 - **Squash merge (default):** one issue, coherent change, noisy or iterative branch history. Squash title is a conventional commit and preserves issue closure.
 - **Rebase merge:** only when each commit is independently coherent, verified, and useful in permanent history.
 - **Merge commit:** reserved for coordinated campaigns or integration branches where preserving topology and component boundaries is itself evidence.
-- Never merge red CI, unresolved blocking review, or an outdated branch. Do not bypass protected `main`.
+- Do not knowingly merge failing relevant tests or unresolved requested review findings. Follow actual branch rules rather than assuming protections that do not exist.
 - Delete merged feature branches unless they are retained as documented release/support lines.
 
 ## 7. GitHub Actions
 
-- CI must be deterministic, least-privilege, and dependency-light.
-- Pin third-party actions to immutable commit SHAs before public release; during private bootstrap, official actions may temporarily use reviewed major tags with Dependabot enabled.
-- Workflows use minimal `permissions`, do not expose secrets to forks, and never run untrusted PR code with write tokens.
+- CI should be deterministic and dependency-light.
+- Pin third-party actions before public release when release hardening is in scope; pinning is not a prerequisite for ordinary authorized development.
+- Do not expose secrets through workflows.
 - Checks should validate repository invariants first, then component-specific builds/tests as components arrive.
 
 ## 8. GitHub Project discipline

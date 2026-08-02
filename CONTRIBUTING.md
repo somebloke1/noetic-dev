@@ -2,17 +2,18 @@
 
 Read [`AGENTS.md`](AGENTS.md) and [`docs/development-practices.md`](docs/development-practices.md) before changing the repository.
 
-## Required flow
+## Default flow
 
-1. Start from an accepted GitHub issue with scope and acceptance criteria.
-2. Create an issue-linked feature branch in a sibling git worktree.
-3. Keep changes coherent and commits small, verified, and conventional.
-4. Run `python3 scripts/validate_repo.py` plus all affected tests.
-5. Open a PR that links the issue and relevant decision/known records.
-6. Pair implementation with one adversarial QA pass; resolve findings before merge.
-7. Merge only with green required checks and current review approval.
+1. Follow the repository owner's explicit instruction; no additional proof of authority is required.
+2. Keep changes coherent and commits small, verified, and conventional.
+3. Use a sibling worktree, issue, or PR when it improves isolation, coordination, or review.
+4. Run `python3 scripts/validate_repo.py` plus affected tests.
+5. Pair an implementation pass with one adversarial QA pass when an implementation agent is used.
+6. Commit and push promptly after the requested checks pass.
 
-Do not commit directly to `main`, commit secrets, bypass checks, or mix unrelated work in one PR.
+Direct authorized commits to `dev` are valid. Do not commit secrets, discard unrelated work, or mix unrelated changes in one commit.
+
+Do not add security hardening, attestations, trust-root requirements, hostile-environment defenses, or publication gates unless the repository owner requests them or a reproduced product defect requires them.
 
 ## Commit format
 

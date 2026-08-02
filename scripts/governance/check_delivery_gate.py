@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Fail-closed delivery gate for noetic-dev governance.
+"""Optional release-assurance checks for noetic-dev governance.
 
-The gate distinguishes repository validation from genuine tests and refuses to
-promote advisory/local evidence to merge or publication readiness. It requires
-captured GitHub API/artifact-attestation payloads supplied as external protected
-evidence; it never treats a manifest-controlled boolean as authoritative
-provenance.
+These checks preserve historical evidence-manifest validation for releases that
+explicitly request it. They do not gate ordinary development, commits, or pushes
+to ``dev``.
 """
 
 from __future__ import annotations
@@ -1056,43 +1054,52 @@ def check_delivery(
     return True, [], "publication"
 
 
-def check_bootstrap_blocked() -> Tuple[bool, List[str]]:
-    """Return success only while bootstrap advisory mode remains honestly blocked."""
+def _development_authority_errors(bootstrap: Dict[str, Any]) -> List[str]:
+    """Validate the exact non-gating development-authority state."""
     errors: List[str] = []
-    freeze = _protected_freeze()
-    if freeze.get("status") != "active" or freeze.get("blocks_publication") is not True:
-        errors.append("bootstrap publication freeze is not active")
+    gate = bootstrap.get("authoritative_delivery_gate", {})
+    publication = bootstrap.get("publication", {})
+    if gate.get("status") != "not_required_for_development":
+        errors.append("optional assurance is not marked non-gating for development")
+    if gate.get("required_dependency") != "":
+        errors.append("development must not require an external assurance dependency")
+    for field in BOOTSTRAP_AUTHORITY_FIELDS:
+        if gate.get(field) is not False:
+            errors.append(f"optional assurance field must remain false for ordinary development: {field}")
+    if publication.get("status") != "not_gated_by_bootstrap":
+        errors.append("publication must be explicitly marked not gated by bootstrap")
+    if not isinstance(publication.get("reason"), str) or not publication["reason"].strip():
+        errors.append("publication non-gating reason must be a nonblank string")
+    return errors
+
+
+def check_development_authorized() -> Tuple[bool, List[str]]:
+    """Confirm optional assurance machinery does not block development."""
     bootstrap_path = REPO_ROOT / "governance" / "bootstrap-status.json"
     if not bootstrap_path.exists():
-        errors.append("governance/bootstrap-status.json missing")
-    else:
-        bootstrap = load_json_strict(bootstrap_path)
-        gate = bootstrap.get("authoritative_delivery_gate", {})
-        if gate.get("status") != "external_dependency_missing":
-            errors.append("authoritative delivery gate dependency is not marked unresolved")
-        for field in BOOTSTRAP_AUTHORITY_FIELDS:
-            if gate.get(field) is not False:
-                errors.append(f"bootstrap dependency must remain false until verified: {field}")
+        return False, ["governance/bootstrap-status.json missing"]
+    bootstrap = load_json_strict(bootstrap_path)
+    errors = _development_authority_errors(bootstrap)
     return not errors, errors
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Noetic-dev delivery gate")
+    parser = argparse.ArgumentParser(description="Noetic-dev optional release assurance")
     parser.add_argument("path", nargs="?", help="Path to manifest.json, workflow.yml, or workflow directory")
     parser.add_argument("--check-pinning-only", action="store_true", help="Only check workflow action pinning")
-    parser.add_argument("--check-bootstrap-blocked", action="store_true", help="Assert bootstrap advisory mode remains honestly blocked")
+    parser.add_argument("--check-development-authorized", action="store_true", help="Confirm optional assurance does not block development")
     parser.add_argument("--external-evidence", help="Protected external GitHub/approval/freeze evidence JSON")
     parser.add_argument("--phase", choices=["pre-merge", "publication"], default="pre-merge")
     args = parser.parse_args()
 
-    if args.check_bootstrap_blocked:
-        passed, errors = check_bootstrap_blocked()
+    if args.check_development_authorized:
+        passed, errors = check_development_authorized()
         if not passed:
-            print("Bootstrap blocked check FAILED:", file=sys.stderr)
+            print("Development authority check FAILED:", file=sys.stderr)
             for error in errors:
                 print(f"  - {error}", file=sys.stderr)
             return 1
-        print("Bootstrap advisory mode confirmed: merge/publication authority remains BLOCKED", file=sys.stderr)
+        print("Development authority confirmed: optional assurance is NON-GATING", file=sys.stderr)
         return 0
 
     if args.check_pinning_only:

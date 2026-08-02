@@ -13,7 +13,6 @@ UNITS = ROOT / "deploy" / "systemd"
 class TestAgentReviewSystemd(unittest.TestCase):
     def test_production_socket_is_canonical(self):
         paths = [
-            ROOT / ".github" / "workflows" / "agent-review.yml",
             ROOT / "scripts" / "governance" / "agent_review_broker.py",
             ROOT / "scripts" / "governance" / "request_agent_review.py",
         ]
