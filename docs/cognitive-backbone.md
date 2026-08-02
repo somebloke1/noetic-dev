@@ -59,16 +59,16 @@ They are the same structure. The synthesis needs **one** primary notation that e
 
 ---
 
-## 4. How each layer of the framework instantiates the backbone
+## 4. How to use the backbone as a conformance inquiry
 
-The form recurs at every scale (this is the embodiment principle from the reproductive clause):
+The form is the evaluation grammar at every scale, not a label assignment. These are conformance questions and research hypotheses, not claims that a software sequence, artifact, role, or component performs a P-level:
 
-- **A single agent turn:** attend to context (P1) → form an approach (P2) → check it against evidence (P3) → act/commit (P4).
-- **The development pipeline:** `design_intentions` (P1–P2) → `design` (P2) → `implementation_procedure` (P2–P3) → `implementation` with QA↔remediation (P3), all under the goal's purpose (P4).
-- **The disciplines:** phronesis / EP-audit / differentiated-cognition are P1–P4 loops applied reflectively to the work itself.
-- **Evaluation gates:** keep *structural* checks (deterministic) distinct from *semantic* judgment (P3, requires model/agent judgment) — never evaluate meaning with regex.
-- **The governance ledgers:** `knowns` = P1/P2 (verified data/insight); `decisions` = P3/P4 (judgment/commitment); `open-questions` = live P3 questions for reflection not yet answered.
-- **Model training (saeproj):** make the operational geometry of P1–P4 explicit in representation space (GEH).
+- **Agent activity:** ask whether the evidence shows differentiated attention, inquiry and insight, critical reflection, and action under humanly authorized purpose. A turn sequence or P-level label is not evidence that those operations occurred.
+- **Development programs:** use design intentions, designs, procedures, implementations, QA findings, and remediation as attributed evidence products. Artifact names do not make the artifacts P-levels, and structural progression does not establish cognition.
+- **Cognitive disciplines:** treat a claimed P1–P4 cycle as a semantic claim requiring evidence for each differentiated operation. Packet completeness establishes inspectability, not authenticity.
+- **Evaluation gates:** keep deterministic structural checks distinct from attributed semantic assessment. Agents and models may propose judgments; their output is not thereby P3 truth or P4 responsibility, and meaning must not be evaluated with regex.
+- **Governance ledgers:** use `knowns`, `decisions`, and `open-questions` to preserve activity and authority distinctions. Ledger placement supports disciplined inquiry but does not prove that an authentic operation occurred.
+- **Model training (saeproj):** GEH investigates whether operational geometry can be identified and made explicit in representation space. It remains a falsifiable research hypothesis, not evidence that a model performs the operations or possesses responsibility.
 
 ---
 

@@ -30,11 +30,12 @@ DISCIPLINE (mirrors the user's P1-P4 cognitional model + AGENTS.md separation of
 ## dec-20260711-0002: Synthesis backbone: telos spine + SMC cognitive form + harvested noetic-pi organs
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-02
 - Tags: backbone,synthesis,recommendation,telos,smc
+- Superseded by: dec-20260802-0001
 - Confidence: 0.85
 
 ADJUDICATED RECOMMENDATION (confidence 0.85; refined by k-20260711-0004 spine-capacity probe; still conditioned on client-scope oq-20260711-0001).
@@ -60,11 +61,12 @@ MIGRATION (scheme of recurrence): keep the stable base (telos + SMC + local infe
 ## dec-20260711-0003: Canonical notation recommendation: P1-P4 + imperative gloss + optional ECN modal markers
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-02
 - Tags: notation,canonical,form,p1-p4,ecn,recommendation,awaiting-ratification
+- Superseded by: dec-20260802-0001
 - Confidence: 0.8
 
 Recommendation (confidence 0.8; awaits user P4 ratification). Drafted as docs/cognitive-backbone.md.
@@ -202,11 +204,12 @@ WHY THIN not a swallowing monorepo: preserves portability of each component (tel
 ## dec-20260711-0008: Elevate the deterministic orchestration controller (harvested APM) to a first-class executive plane between telos and agents
 
 - Ledger: decisions
-- Status: accepted
+- Status: superseded
 - Repository: /home/dgk/workspace/synthesis
 - Created: 2026-07-11
-- Updated: 2026-07-11
+- Updated: 2026-08-02
 - Tags: orchestration,apm,executive-plane,deterministic,telos,layering,harvest,correction
+- Superseded by: dec-20260802-0001
 - Confidence: 0.8
 
 Prompted by user correction (2026-07-11): 'the APM was not just an optional sidekick to the cog discipline and pipeline tools, it was approximating a deterministic state machine for pipelines'; and user question on 'the means of ordering multi-agent orchestration'. Grounded in k-20260711-0007. Confidence 0.8.\n\nCORRECTION TO EARLIER FRAMING: dec-0002 listed noetic-pi's mechanisms as 'organs' harvested by telos, which under-weighted the APM orchestration state machine. Refined model: the framework has TWO different kinds of governance, both necessary and distinct:\n1. TELEOLOGICAL governance = telos (P4): WHY - purpose, goalchains, evolution, reproductive clause. Steers.\n2. EXECUTIVE / ORCHESTRATION governance = the harvested APM state machine: HOW/WHEN - deterministic sequencing of multi-agent work. Controls.\n\nARCHITECTURE LAYERING (ordering lives in the executive plane):\n  telos (teleology, P4)\n  -> delegation dispatcher (the new seam; turns a delegated sub-goal into dispatched work)\n  -> DETERMINISTIC ORCHESTRATION CONTROLLER (harvested APM): decomposes into WUs/waves, enforces typed dependency-role ordering legality, sequences waves, runs QA-gate + remediation cycles, spawns/retires agents by ordinal, commits per wave, selects models via genus-router\n  -> AGENTS doing non-deterministic P1-P4 cognitive work per WU\n  -> observability plane observes the whole via the cognitional-event stream\n\nKEY POINTS:\n- The 'disciplines' organ and the 'design_intentions->design->implementation_procedure->implementation pipeline' are NOT separate from this - they RUN ON the orchestration controller. Pipeline = a specific WU/wave program; disciplines = P1-P4 loops dispatched by the same controller. So the earlier 'two organs' (disciplines, pipeline) are better seen as PROGRAMS running on ONE executive organ.\n- The orchestration controller MUST stay deterministic (structural/harness mechanics); semantic judgment stays with agents. Never collapse the two (matches cognitive-disciplines' governing principle and noetic-pi's hard-won separation).\n- Ordering means: sequenced waves + typed dependency-role legality (launch_required vs governing vs future-produced), QA-gate cycling, commit boundaries. Harvest this whole state machine; do not reinvent it (it carries ~1,100 APM tests and multiple compliance campaigns of hardening).\n\nIMPLICATION for target project (dec-0007): the orchestration controller is a major harvested COMPONENT (from noetic-pi packages/apm), referenced by the composition root, and is where the pipeline + disciplines execute. It is arguably the single most valuable harvest.\n\nOPEN QUESTION raised to user: should the orchestration controller be harvested as-is (deterministic APM state machine as a standalone MCP service) or partially re-expressed? Recommendation: harvest as-is behind an MCP facade first (it is proven); refine later.
@@ -274,6 +277,8 @@ P1-P4 names recurrent authentic operations, not deterministic states, agent role
 Human responsibility is irreducible at the framework governance boundary. Agents may produce attributed evidence, insights, judgments, and recommendations; they must not be personified as the responsible subject. Telos durably mediates humanly authorized purpose and continuation, but Telos is not P4 and does not replace human responsibility. The deterministic controller governs legal execution mechanics without becoming cognition or semantic authority.
 
 This decision ratifies only the constitutional form and authority boundary. It does not claim that current M0/M1 fixtures, protected delivery governance, Telos continuation, or any runtime/component implements authentic P1-P4 cognition. Runtime, model, persistence, component, and trajectory claims require separate bounded decisions and evidence.
+
+This decision supersedes `dec-20260711-0002`, `dec-20260711-0003`, and `dec-20260711-0008` as governing decisions. Their source observations and donor lessons remain historical evidence, but their direct equations of Telos, agents, roles, artifacts, or software layers with P-levels are not authoritative. Controller, program, and component topology will be re-adjudicated separately from this constitutional act.
 
 Current foundational source locations were verified under `saeproj/docs/foundational/`; this observation does not rewrite the frozen historical wording or paths in `initial-user-msg.md`.
 <!-- governance-crud:end id=dec-20260802-0001 -->
