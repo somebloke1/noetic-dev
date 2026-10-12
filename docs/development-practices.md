@@ -8,7 +8,8 @@
 - GitHub issues and pull requests provide useful coordination and review records when the work benefits from them; they are not mandatory authorization layers.
 - GitHub Project tracks coordination fields; it does not replace issues or PRs.
 - `KNOWNS.md` records verified evidence; `DECISIONS.md` records judgment; `OPEN_QUESTIONS.md` records uncertainty.
-- Goalchain state carries active purpose and learnings across sessions but cannot override direct user authority.
+- Goalchain carries purpose and learnings only for an explicitly requested, authorized chain; routine work runs standalone. It cannot override direct user authority.
+- [Recovery governance, 2026-10-11](governance/recovery-governance-2026-10-11.md) records the bounded supersession of historical integration prerequisites.
 
 ## 2. Branches and worktrees
 
@@ -57,8 +58,8 @@ Use child issues only for genuinely independent units. A blocker must name a con
 
 - A PR should link its issue when one exists.
 - Keep PRs small enough for adversarial review; split by interface boundary or independent acceptance gate.
-- For every implementation agent/pass, pair exactly one adversarial QA agent/pass. QA tests claims against code, commands, tests, and acceptance criteria rather than prose plausibility.
-- Required local checks: repository validation, affected tests, secret hygiene, and inspection of the intended diff. Additional release or security gates apply only when requested.
+- For every implementation or remediation agent/pass, the coordinator pairs exactly one independent adversarial QA pass against explicit acceptance criteria for its bounded material unit. QA remains reasoned, critical, constructive, and non-perfectionistic; test concrete material defects and proportionate risks. Permit at most one causally changed retry, preserve useful residual artifacts, and deliver when criteria pass. No QA-of-QA loops, open-ended scope creep, or unrequested security audits.
+- Required checks match the changed boundary: repository validation and affected behavior tests for implementation; guidance, links, and diff consistency for documentation-only changes. Inspect the intended diff and secret hygiene. Additional release or security gates apply only when requested or technically required.
 - Authors do not self-approve. Review approval becomes stale after material changes and must be refreshed.
 
 ## 6. Merge policy
