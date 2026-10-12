@@ -163,14 +163,45 @@
       button.dataset.sessionId = item.id; return button;
     }));
   }
-  let historyView = "", historyRows = new Map();
+  let historyView = "", historyRows = new Map(), historyWindow = null, historyControls = null;
   function renderHistory() {
     $("developer-history-panel").hidden = !applicationHistory && !(selected && !exact(selected));
     text("developer-history-heading", applicationHistory ? "Application history · all efforts" : `Position ${selected?.ordinal || ""} · responsibility and history`);
     const view = JSON.stringify([selectionVersion, applicationHistory, selected, effort]);
-    if (historyView !== view) { historyView = view; historyRows.clear(); }
+    const list = $("developer-history-list");
+    if (!historyControls) {
+      const controls = node("div",undefined,"history-controls"), searchLabel = node("label","Find event or source"), search = node("input"), kindLabel = node("label","Event kind"), kind = node("select");
+      search.id = "developer-history-query"; search.type = "search"; searchLabel.htmlFor = search.id;
+      kind.id = "developer-history-kind"; kindLabel.htmlFor = kind.id;
+      const coverage = node("p",undefined,"source"), more = node("button","Load earlier events"), clear = node("button","Clear filters");
+      coverage.id = "developer-history-coverage"; coverage.setAttribute("role","status"); more.id = "developer-history-more"; clear.id = "developer-history-clear"; more.type = clear.type = "button";
+      more.className = clear.className = "secondary-button";
+      controls.append(searchLabel,search,kindLabel,kind,clear,coverage,more); list.before(controls);
+      historyControls = {search,kind,coverage,more};
+      const filter = () => { historyWindow.count = 12; historyWindow.all = false; historyWindow.start = null; renderHistory(); };
+      search.addEventListener("input",filter); kind.addEventListener("change",filter);
+      clear.addEventListener("click",()=>{search.value = ""; kind.value = ""; filter(); search.focus();});
+      more.addEventListener("click",()=>{historyWindow.count = Math.max(historyWindow.count,historyWindow.filtered.length-historyWindow.start)+12; historyWindow.all = historyWindow.count >= historyWindow.filtered.length; renderHistory();});
+    }
+    if (historyView !== view) { historyView = view; historyRows.clear(); historyWindow = {count:12,all:false,start:null}; historyControls.search.value = ""; historyControls.kind.value = ""; }
+    const kinds = [...new Set(historyRecords.map(record=>record.kind).filter(Boolean))].sort(), kindSignature = JSON.stringify(kinds);
+    if (historyControls.kind.dataset.signature !== kindSignature) {
+      const selectedKind = historyControls.kind.value;
+      historyControls.kind.replaceChildren(...[["","All event kinds"],...kinds.map(value=>[value,value])].map(([value,label])=>{const option = node("option",label); option.value = value; return option;}));
+      historyControls.kind.value = kinds.includes(selectedKind) ? selectedKind : ""; historyControls.kind.dataset.signature = kindSignature;
+    }
+    const query = historyControls.search.value.toLowerCase(), kind = historyControls.kind.value;
+    const filtered = historyRecords.filter(record=>(!kind || record.kind === kind) && (!query || JSON.stringify(record).toLowerCase().includes(query)));
+    historyWindow.filtered = filtered;
+    if (historyWindow.all) historyWindow.count = Math.max(historyWindow.count,filtered.length);
+    const start = Math.max(0,filtered.length-historyWindow.count), inspecting = list.contains(document.activeElement) || list.querySelector("details[open]");
+    historyWindow.start = historyWindow.start !== null && inspecting ? Math.min(historyWindow.start,start) : start;
+    const visible = filtered.slice(historyWindow.start);
+    historyControls.coverage.textContent = `Showing latest ${visible.length} of ${filtered.length} matching events · ${historyRecords.length} total events. Complete earlier history remains available.`;
+    historyControls.more.disabled = historyWindow.start === 0;
+    historyControls.more.textContent = historyWindow.start ? `Load earlier ${Math.min(12,historyWindow.start)} events` : "All matching events shown";
     const retained = new Map();
-    const rows = historyRecords.map(record => {
+    const rows = visible.map(record => {
       const identity = JSON.stringify([record.sequence, record.ordinal, record.effort]);
       const previous = historyRows.get(identity), signature = JSON.stringify(record);
       if (previous?.signature === signature) { retained.set(identity, previous); return previous.row; }
@@ -185,13 +216,23 @@
       if (!evidence.parentNode) row.append(evidence); retained.set(identity, {row, evidence, signature}); return row;
     });
     historyRows = retained;
-    const list = $("developer-history-list");
     for (const child of [...list.children]) if (!rows.includes(child)) child.remove();
     rows.forEach((row, index) => { if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null); });
-    if (!historyRecords.length) list.append(node("p", positions.length ? "No retained events in this view." : "No registered application namespace yet. Open / Create project to declare an effort; original histories remain unadopted."));
+    if (!filtered.length) list.append(node("p", historyRecords.length ? "No events match these filters." : positions.length ? "No retained events in this view." : "No registered application namespace yet. Open / Create project to declare an effort; original histories remain unadopted."));
   }
 
   let transcriptView = -1, transcriptRows = new Map();
+  const transcriptContainer = $("developer-transcript"), transcriptBox = {width:transcriptContainer.clientWidth,height:transcriptContainer.clientHeight};
+  let transcriptFollowing = true;
+  const transcriptReflowing = () => transcriptBox.width !== transcriptContainer.clientWidth || transcriptBox.height !== transcriptContainer.clientHeight;
+  const transcriptAtBottom = () => transcriptContainer.scrollHeight-transcriptContainer.scrollTop-transcriptContainer.clientHeight < 100;
+  transcriptContainer.addEventListener("scroll",()=>{
+    if (transcriptContainer.clientHeight && !transcriptReflowing()) transcriptFollowing = transcriptAtBottom();
+  });
+  new ResizeObserver(()=>{
+    if (transcriptContainer.clientHeight && transcriptFollowing) transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+    transcriptBox.width = transcriptContainer.clientWidth; transcriptBox.height = transcriptContainer.clientHeight;
+  }).observe(transcriptContainer);
   function conversation() {
     const transcriptSignature = JSON.stringify([selected,events,detail.session.status,detail.session.workspace,detail.session.title,detail.session.identity_origin,detail.session.original_ordinal,detail.session.effort_root,detail.session.target]);
     if ($("developer-transcript").dataset.signature === transcriptSignature) return;
@@ -241,7 +282,8 @@
       if (record.type === "extension_ui_response") dialogs.delete(record.id);
       if (record.type === "agent_settled") dialogs.clear();
     }
-    const container = $("developer-transcript"), atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const container = transcriptContainer, atBottom = transcriptReflowing() ? transcriptFollowing : transcriptAtBottom();
+    transcriptFollowing = atBottom;
     if (transcriptView !== selectionVersion) { transcriptView = selectionVersion; transcriptRows.clear(); }
     const retained = new Map(), rows = entries.map(({message,tool}) => {
       const identity = tool?.key || `message:${message.key}`, signature = JSON.stringify([tool || message,sourceQualifier(detail.session),detail.session.ordinal,detail.session.original_ordinal]);
@@ -357,7 +399,7 @@
     applicationHistory = Boolean(options.history); newConversation = Boolean(options.newConversation);
     $("developer-prompt").value = options.draft ?? drafts[key(target)] ?? "";
     error("developer-error", ""); observationError = false;
-    detail = null; events = []; historyRecords = []; cursor = 0; ++selectionVersion;
+    detail = null; events = []; historyRecords = []; cursor = 0; transcriptFollowing = true; ++selectionVersion;
     $("developer-file-view").hidden = true; $("developer-result").hidden = true;
     $("developer-transcript").dataset.signature = "";
     $("developer-transcript").replaceChildren(); $("developer-dialogs").replaceChildren();

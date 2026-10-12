@@ -1,0 +1,43 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+ const root=path.resolve(__dirname,'../..'),env={...process.env};delete env.USER_PROVIDED_PASSWORD;
+ const browser=await chromium.launch({headless:true,env,executablePath:process.env.NOETIC_TEST_CHROMIUM||undefined});
+ try{
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.setContent(fs.readFileSync(path.join(root,'scripts/web/index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''));
+  await page.addStyleTag({path:path.join(root,'scripts/web/style.css')});
+  await page.addScriptTag({content:`const $=id=>document.getElementById(id);let allRuns=[];const fetchJSON=async()=>({});window.opened=[];window.positions=Array.from({length:200},(_,i)=>({ordinal:'0.'+i,effort:'0.'+i,intent:'Effort intention '+i,status:'active',environment:{cwd:i%2?'/fixture/project-B':'/fixture/project-A'}}));window.snapshotFixture={positions,sessions:[],effort:null};window.NoeticSessions={state:()=>snapshotFixture,open:target=>{opened.push(target);snapshotFixture={...snapshotFixture,effort:target.effort_root};document.dispatchEvent(new CustomEvent('noetic:sessions',{detail:snapshotFixture}));return Promise.resolve();},refresh:()=>Promise.resolve()};$('private-workspace').hidden=false;`});
+  await page.addScriptTag({path:path.join(root,'scripts/web/shell.js')});
+  assert.equal(await page.locator('#shell-efforts [data-effort]').count(),12,'sidebar initial200 catalogue bounded to12');
+  assert.equal(await page.locator('.portfolio-effort-card').count(),12,'portfolio initial200 catalogue bounded to12');
+  assert.match(await page.locator('#portfolio-coverage').innerText(),/12.*200/s);
+  await page.locator('#portfolio-more').click();assert.equal(await page.locator('#shell-efforts [data-effort]').count(),24);assert.equal(await page.locator('.portfolio-effort-card').count(),24);
+  await page.getByRole('searchbox',{name:'Find effort'}).fill('0.199');
+  assert.equal(await page.locator('#shell-efforts [data-effort]').count(),1,'offpage exact full ordinal searchable');
+  assert.equal(await page.locator('.portfolio-effort-card').count(),1);
+  await page.evaluate(()=>document.dispatchEvent(new CustomEvent('noetic:sessions',{detail:{...snapshotFixture,sessions:[{id:'owned',status:'closed',effort_root:'0.198'}]}})));
+  assert.equal(await page.evaluate(()=>document.activeElement.id),'portfolio-query','poll retains search focus');
+  assert.equal(await page.getByRole('searchbox',{name:'Find effort'}).inputValue(),'0.199');
+  await page.locator('#shell-efforts [data-effort="0.199"]').click();assert.deepEqual(await page.evaluate(()=>opened.at(-1)),{ordinal:'0.199',effort_root:'0.199'},'exact selection route');
+  await page.getByRole('searchbox',{name:'Find effort'}).fill('absent-query');
+  assert.equal(await page.locator('#shell-efforts [data-effort]').count(),1,'selected context pinned despitezero matches');
+  assert.match(await page.locator('#portfolio-coverage').innerText(),/0.*matches/);
+  assert.match(await page.locator('#shell-efforts').innerText(),/Selected effort.*shown matches/s);
+  await page.locator('#portfolio-clear').click();
+  assert.equal(await page.locator('#shell-efforts [data-effort]').count(),13,'12matching rows plus explicit offpage selected pin');
+  assert.match(await page.locator('#portfolio-coverage').innerText(),/12.*200/s);
+  await page.getByRole('button',{name:/project-A/}).click();
+  assert.equal(await page.locator('#shell-efforts [data-effort]').count(),13,'selected out-of-project pin remains addressable');assert.match(await page.locator('#portfolio-coverage').innerText(),/100.*matches/);
+  await page.getByRole('searchbox',{name:'Find effort'}).fill('intention 198');assert.equal(await page.locator('#shell-efforts [data-effort]').count(),2,'one matching row plus selected pin');
+  await page.locator('#portfolio-clear').click();await page.locator('#shell-filter').getByRole('button',{name:'Clear',exact:true}).click();
+  while(await page.locator('#portfolio-more').isEnabled())await page.locator('#portfolio-more').click();
+  assert.equal(await page.locator('#shell-efforts [data-effort]').count(),200,'all rows remain reachable throughdisclosure');
+  assert.equal(await page.locator('#shell-efforts [data-effort]').evaluateAll(rows=>new Set(rows.map(r=>r.dataset.effort)).size),200,'pin never duplicates revealed selected row');
+  await page.evaluate(()=>{snapshotFixture={...snapshotFixture,effort:null};document.dispatchEvent(new CustomEvent('noetic:sessions',{detail:snapshotFixture}));NoeticUI.navigate('workspaces');});
+  assert.equal(await page.locator('.portfolio-effort-card').count(),200,'complete portfolio reachable after explicit disclosure');
+  await page.getByRole('searchbox',{name:'Find effort'}).fill('/fixture/project-B');assert.equal(await page.locator('.portfolio-effort-card').count(),12);assert.match(await page.locator('#portfolio-coverage').innerText(),/100.*matches/);
+  assert.equal(await page.evaluate(()=>positions.length),200,'complete underlying catalogue preserved');assert.deepEqual(errors,[]);
+  console.log('PASS portfolio: initial12, incremental/full reachability, ordinal/intention/path search, selected explicit pin and truthful counts, projectfilter, poll focus/value, exact route');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
