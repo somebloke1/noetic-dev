@@ -22,6 +22,8 @@ Build **noetic-dev** as a portable development and cognitive framework. This rep
 
 The adjudicated architecture lives in `SYNTHESIS.md`; its evidence and judgments live in the mentality ledgers (`KNOWNS.md`, `DECISIONS.md`, `OPEN_QUESTIONS.md`). Primary sources of truth are `initial-user-msg.md`, the verified projects under `~/workspace/`, and the user's foundational cognitive docs under `saeproj/docs/foundational/`.
 
+The composition brings together noetic-pi execution and review lessons, Telos purpose continuity, Opermem's fourteen typed operations and durable residue under its independent semantic authority, and provisional genus-router qualification. P1–P4 remains the cognitive form alongside SAEProj research; it is not an enumeration of Opermem operations. Synthesis execution receipts do not promote Opermem semantic standing. Useful work across sessions and human judgment of its value condition success; a bounded integration does not establish complete-framework delivery. Current recovery governance: [2026-10-11 supersession note](docs/governance/recovery-governance-2026-10-11.md).
+
 ## 2. The cognitive backbone this work embodies
 
 The four invariant operations (Lonergan / the user's SMC), which the founding charge names as four separated activities:
@@ -29,7 +31,7 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 | Op | Operation | Charge activity | Ledger |
 |----|-----------|-----------------|--------|
 | P1 | Attentiveness (attend to data) | data gathering / research | `knowns` |
-| P2 | Intelligence (inquiry → insight) | fecund idea formation | goalchain learnings |
+| P2 | Intelligence (inquiry → insight) | fecund idea formation | artifacts; learnings in an explicitly requested goalchain |
 | P3 | Reasonableness (critical reflection → judgment) | selective critical reflection | `decisions` |
 | P4 | Responsibility (deliberation → decision) | deliberation & practical responsibility | `decisions` + artifacts |
 
@@ -45,29 +47,31 @@ The four invariant operations (Lonergan / the user's SMC), which the founding ch
 - **Adversarial verification (invariant).** Never record a claim as done/true from plausible prose. Verify against actual source files, command output, or tests before recording. This is the research analog of the goal chain's 1:1 implementation:QA pairing.
 - **Honest confidence.** Every decision carries a confidence and its conditioning open questions. Downgrade when evidence is thin.
 - **Ground in reality.** Prefer inspecting the actual `~/workspace/` projects over trusting descriptions (descriptions drift; the initial message's doc paths had already moved).
-- **Least disturbance.** Do not modify donor project repos as a side effect of research. Harvest through explicit, issue-scoped component work with independent verification.
+- **Least disturbance.** Do not modify donor project repos as a side effect of research. Harvest through explicitly authorized, bounded component work with independent verification.
 
 ### Invariant operational constraints
 
 - **Git/GitHub.** Use small verified conventional commits and never commit secrets. Issues, feature worktrees, PRs, and protected release branches are useful coordination tools, not prerequisites when the user explicitly authorizes direct development. `dev` is an ordinary integration branch and may receive direct authorized commits and pushes. Full practice: `docs/development-practices.md`.
-- **Implementation:QA pairing.** For every implementation agent/pass, dispatch exactly one adversarial QA agent/pass; do not weaken this ratio through later mutation or convenience.
+- **Implementation:QA pairing.** For every implementation or remediation agent/pass, dispatch exactly one independent adversarial QA pass against explicit acceptance criteria for its bounded material unit; the coordinator owns this pairing. Do not weaken this ratio through later mutation or convenience. QA remains reasoned, critical, constructive, and non-perfectionistic, with empirical checks limited to concrete material defects and proportionate risks. Permit at most one causally changed retry; preserve useful residual artifacts and deliver when acceptance criteria pass. No QA-of-QA loops, speculative completeness, open-ended scope creep, or unrequested security audits.
 - **Development-agent sudo.** This applies only to tools and agents developing noetic-dev, never to noetic-dev components or runtime behavior. If elevation is genuinely required, first check `USER_PROVIDED_PASSWORD`; when present, pass it only through non-interactive stdin without printing, logging, or persisting it. If absent or rejected, record the blocker. Never ask for the password or trigger an interactive/GUI credential prompt.
 - **Superior re-instantiation.** Abstract the APM's deterministic invariants, contracts, tests, and lessons, then express a cleaner portable controller. Do not blindly lift the donor implementation.
 
 ## 4. Practices
 
 - **Mentality ledger practice** (recorded as `DECISIONS.md` dec-20260711-0001): `knowns` = verified P1/P2 data; `decisions` = P3/P4 judgments; `open-questions` = first-class uncertainties; `abeyant-intentions` = deferred work. Ledger names are lowercase; `knowns` statuses are `verified/superseded/refuted`.
-- **Goal chain practice.** Sub-goals track the P1→P4 arc. Record learnings on completion. When sub-goals stop making a meaningful difference, evolve at the reproductive-clause level rather than churning.
+- **Goal chain practice.** Create a goalchain only on explicit user request; routine work runs standalone. Maintain an already active, authorized chain using its runtime-supplied session ID. Within that chain, sub-goals track the P1→P4 arc; record learnings on completion and evolve the reproductive clause when sub-goals cease to advance purpose. Native goals and goalchains are separate state machines.
 - **Research dispatch.** For breadth, gather in parallel and summarize into verified `knowns` before judging.
 - **Development practice.** Choose the least process that safely isolates the requested change. Direct authorized work on `dev` is valid; use issues, sibling worktrees, and PRs when they add coordination or review value, as specified in `docs/development-practices.md`.
-- **Autonomous continuity.** Honor explicit authorization windows. Before cutoff, stop initiating work, finish or safely checkpoint active work, and persist learnings and blockers in the goalchain.
+- **Autonomous continuity.** Honor explicit authorization windows. Before cutoff, stop initiating work, finish or safely checkpoint active work, and record material learnings and blockers in existing project records; use goalchain only when an authorized chain is active.
 
 ## 5. Tools (selected wisely)
 
-- `mcp__toolshim__bash`, `read`, `serena_*` — inspect projects/source (P1).
-- Goal chain tools (`get_goal_chain`, `add_sub_goals`, `update_sub_goal_status`, `mutate_reproductive_clause`, …) — carry purpose and learnings across sessions (P4 durability).
-- `mentality-governance-*` — durable ledgers (P1–P4 memory).
-- `websearch_*`, `context7_*` — external evidence when current external behavior matters.
+Use capability labels to discover current exposed tools and their schemas; historical service spellings are not callable-name guarantees. Distinguish configured, exposed, connected, and functionally validated integrations. A configuration entry or cached tool list does not prove backend viability; resolve uncertainty with a bounded status call or operation and use a working fallback after diagnosing a failure.
+
+- Local shell/file tools and `serena` — inspect projects/source (P1); confirm the active project before using project-specific results.
+- `goalchain` — maintain explicitly requested, authorized chains with the runtime-supplied session ID.
+- `mentality` — maintain existing compatible governance ledgers after inspecting schema and location; it is not a reasoning engine.
+- Web search and `context7` — external evidence and version-specific documentation when needed; corroborate consequential claims against primary sources or installed code.
 - Do **not** use ContextForge as an integration backbone; it is demoted to optional transport.
 
 ## 6. Criteria & gates for the recommendation
@@ -85,4 +89,4 @@ A synthesis recommendation is acceptable only if it:
 
 ## 8. Habit formation (Aristotle)
 
-The character of this work is inscribed by repeated acts: attend before judging, verify before recording, separate the moments, state confidence honestly, and keep purpose durable across sessions. These are the habits to reinforce every turn; the goal chain and ledgers are their durable memory.
+The character of this work is inscribed by repeated acts: attend before judging, verify before recording, separate the moments, state confidence honestly, and keep purpose durable across sessions. These are the habits to reinforce every turn; existing artifacts and ledgers, and an explicitly requested goalchain when active, preserve their durable memory.

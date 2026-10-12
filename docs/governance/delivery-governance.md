@@ -11,7 +11,7 @@ No external trust root, signed attestation, protected policy checkout, credentia
 Ordinary product work has three required outcomes:
 
 1. The intended diff is coherent and contains no unrelated user work or secrets.
-2. Repository validation and affected behavior tests pass.
+2. Checks appropriate to the changed boundary pass: repository validation and affected behavior tests for implementation; guidance, links, and diff consistency for documentation-only changes.
 3. An implementation agent receives the repository's required independent adversarial QA pass.
 
 After those outcomes, commit and push promptly. An issue, feature branch, worktree, or pull request is used when it improves isolation, coordination, or review; it is not an additional source of authority.
@@ -40,9 +40,9 @@ Validation is not a substitute for tests, and model prose is not command evidenc
 
 ## Implementation and QA
 
-For each implementation-agent pass, use exactly one independent adversarial QA pass. QA tests the bounded product claim and affected failure paths. It must not invent new product scope, add unrequested security requirements, or turn a missing transcript into an endless successor chain.
+For each implementation or remediation agent/pass, the coordinator dispatches exactly one independent adversarial QA pass for its bounded material unit. QA remains reasoned, critical, constructive, and non-perfectionistic; empirically test the bounded product claim and affected failure paths against explicit acceptance criteria. Permit at most one causally changed retry, preserve useful residual artifacts, and deliver when criteria pass. No QA-of-QA loops, speculative completeness, open-ended scope creep, or unrequested security audits.
 
-A failed or unavailable QA pass stops that candidate. Reuse its code only as donor material for a genuinely different, user-valued implementation unit.
+A failed or unavailable QA pass stops dependent continuation on that candidate. A causally changed remediation generation receives its own paired QA pass within the retry limit; independent work may continue.
 
 ## Branches and publication
 
@@ -54,7 +54,7 @@ The former `Protected dev governance` ruleset and automatic Agent Review workflo
 
 ## Historical governance material
 
-The repository retains schemas, scripts, tests, and records from earlier governance experiments where they remain useful donor evidence. Their presence does not make them active requirements. Historical decisions about external trust roots and route attestations are superseded for ordinary development by the authority and scope rules in this document and `AGENTS.md`.
+The repository retains schemas, scripts, tests, and records from earlier governance experiments where they remain useful donor evidence. Their presence does not make them active requirements. The [2026-10-11 recovery supersession note](recovery-governance-2026-10-11.md) records which August first-slice prerequisites no longer gate bounded integration and which semantic boundaries remain authoritative. Historical decisions about external trust roots and route attestations are superseded for ordinary development by the authority and scope rules in this document and `AGENTS.md`.
 
 ## Rollback
 
