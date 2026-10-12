@@ -89,9 +89,19 @@ def _common_dir(git_dir: Path, errors: list[str], required: bool = False) -> Pat
         return git_dir
 
 
-def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
-    if not config.is_file() or config.is_symlink():
-        errors.append(f"common Git config is missing, non-regular, or a symlink: {config}")
+def _local_config(
+    config: Path, errors: list[str], scope: str = "common", optional: bool = False
+) -> dict[str, list[str]]:
+    try:
+        mode = config.lstat().st_mode
+    except FileNotFoundError:
+        if optional:
+            return {}
+        mode = 0
+    except OSError:
+        mode = 0
+    if not stat.S_ISREG(mode):
+        errors.append(f"{scope} Git config is missing, non-regular, or a symlink: {config}")
         return {}
     git_binary = shutil.which("git")
     if git_binary is None:
@@ -108,7 +118,7 @@ def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
         errors.append(f"Git config parser could not start: {error}")
         return {}
     if result.returncode != 0:
-        errors.append("common Git config cannot be parsed")
+        errors.append(f"{scope} Git config cannot be parsed")
         return {}
     values: dict[str, list[str]] = {}
     for record in result.stdout.decode("utf-8", errors="replace").split("\0"):
@@ -118,6 +128,21 @@ def _local_config(config: Path, errors: list[str]) -> dict[str, list[str]]:
         if not separator:
             key, separator, value = record.partition("=")
         values.setdefault(key.lower(), []).append(value if separator else "")
+    extension = values.get("extensions.worktreeconfig", [])
+    if scope == "common" and len(extension) == 1:
+        try:
+            boolean = subprocess.run(
+                [git_binary, "config", "--file", str(config), "--no-includes",
+                 "--type=bool", "--get-all", "extensions.worktreeconfig"],
+                capture_output=True, check=False, env=isolated_git_environment(),
+            )
+        except OSError as error:
+            errors.append(f"Git config parser could not start: {error}")
+        else:
+            if boolean.returncode != 0:
+                errors.append("extensions.worktreeConfig must have a valid Git boolean value")
+            else:
+                values["extensions.worktreeconfig"] = [boolean.stdout.decode("ascii").strip()]
     return values
 
 
@@ -151,6 +176,10 @@ def _safe_config_entry(key: str, values: list[str]) -> bool:
         return values == ["0"]
     if key == "core.bare":
         return len(values) == 1 and _git_bool(values[0]) is not None
+    if key == "extensions.worktreeconfig":
+        return len(values) == 1 and values[0] in {"true", "false"}
+    if key == "codex.localenvironmentconfigpath":
+        return len(values) == 1 and 0 < len(values[0]) <= 4096 and values[0].isprintable()
     if key in BOOLEAN_CONFIG:
         return len(values) == 1 and (
             _git_bool(values[0]) is not None
@@ -180,6 +209,13 @@ def _safe_config_entry(key: str, values: list[str]) -> bool:
             and all("0" <= character <= "9" for character in number)
             for value in values
         )
+    if key.startswith("branch.") and key.endswith(".vscode-merge-base"):
+        branch = key[len("branch."):-len(".vscode-merge-base")]
+        return bool(values) and all(
+            0 < len(value) <= 4096 and value.isprintable()
+            and not any(character.isspace() for character in value)
+            for value in [branch, *values]
+        )
     if key.startswith("branch.") and key.endswith((".remote", ".merge")):
         return True
     if key.startswith("remote.") and key.endswith(".fetch"):
@@ -199,22 +235,27 @@ def _git_bool(value: str) -> bool | None:
 
 
 def _check_config(
-    values: dict[str, list[str]], errors: list[str], primary: bool
+    values: dict[str, list[str]], errors: list[str], primary: bool,
+    scope: str = "common", require_format: bool = True,
 ) -> None:
     if values.get("core.worktree"):
-        errors.append("common core.worktree must be absent in a normal worktree repository")
+        errors.append(f"{scope} core.worktree must be absent in a normal worktree repository")
     if any(value.casefold() == "test user" for value in values.get("user.name", [])):
-        errors.append("fixture Git user.name leaked into common config")
+        errors.append(f"fixture Git user.name leaked into {scope} config")
     if any(value.casefold().endswith(".invalid") for value in values.get("user.email", [])):
-        errors.append("fixture Git user.email leaked into common config")
-    if values.get("core.repositoryformatversion") != ["0"]:
+        errors.append(f"fixture Git user.email leaked into {scope} config")
+    if (
+        require_format or "core.repositoryformatversion" in values
+    ) and values.get("core.repositoryformatversion") != ["0"]:
         errors.append("core.repositoryformatversion must be exactly 0")
     bare_values = values.get("core.bare", [])
     bare = _git_bool(bare_values[0]) if len(bare_values) == 1 else None
     if primary and bare is not False:
         errors.append("primary worktree core.bare must be false")
     for key, configured_values in values.items():
-        if not _safe_config_entry(key, configured_values):
+        if (
+            key == "extensions.worktreeconfig" and scope != "common"
+        ) or not _safe_config_entry(key, configured_values):
             errors.append(f"repository-local Git config key is not allowed: {key}")
 
 
@@ -368,7 +409,23 @@ def inspect_worktree(
             )
 
     if common.is_dir():
-        _check_config(_local_config(common / "config", errors), errors, primary)
+        common_values = _local_config(common / "config", errors)
+        worktree_config = common_values.get("extensions.worktreeconfig") == ["true"]
+        _check_config(common_values, errors, primary and not worktree_config)
+        if worktree_config:
+            if any(_git_bool(value) is True for value in common_values.get("core.bare", [])):
+                errors.append("common core.bare must not be true when worktreeConfig is enabled")
+            worktree_values = _local_config(
+                git_dir / "config.worktree", errors, scope="worktree", optional=True
+            )
+            _check_config(
+                worktree_values, errors, False, scope="worktree", require_format=False
+            )
+            effective = {**common_values, **worktree_values}
+            bare_values = effective.get("core.bare", [])
+            bare = _git_bool(bare_values[0]) if len(bare_values) == 1 else None
+            if bare is True or (primary and bare is not False):
+                errors.append("effective worktree core.bare must be false")
     roots = [repo.parent, *scan_roots]
     if valid_scan_limit:
         _scan_duplicates(roots, errors, scan_entry_limit)

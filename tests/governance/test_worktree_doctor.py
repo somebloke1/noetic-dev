@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest import mock
 
@@ -27,7 +28,230 @@ def write_config(path: Path, extra: str = "") -> None:
     )
 
 
+@contextmanager
+def real_worktrees():
+    with tempfile.TemporaryDirectory() as tmp:
+        primary = Path(tmp) / "primary"
+        linked = Path(tmp) / "linked"
+        primary.mkdir()
+        env = isolated_git_environment()
+        env.pop("USER_PROVIDED_PASSWORD", None)
+        for args in (
+            ["init", "--quiet"],
+            ["-c", "user.name=Ada Lovelace", "-c", "user.email=ada@example.org",
+             "commit", "--quiet", "--allow-empty", "-m", "fixture"],
+            ["worktree", "add", "--quiet", "--detach", str(linked)],
+        ):
+            subprocess.run(["git", *args], cwd=primary, env=env,
+                           check=True, capture_output=True)
+        admin = Path((linked / ".git").read_text().strip().split(": ", 1)[1])
+        yield primary, linked, admin
+
+
 class TestWorktreeDoctor(unittest.TestCase):
+    def test_accepts_vscode_branch_base_metadata_and_repeated_values(self):
+        with real_worktrees() as (primary, linked, admin):
+            common_config = primary / ".git" / "config"
+            baseline = common_config.read_text(encoding="utf-8")
+            for scope in ("common", "worktree"):
+                for values in (
+                    ["origin/dev"], ["origin/dev", "origin/dev"],
+                    ["origin/main", "origin/dev"], ["main"],
+                    ["upstream/feature/café"], ["x" * 4096],
+                ):
+                    with self.subTest(scope=scope, values=values):
+                        common_config.write_text(baseline + (
+                            "[extensions]\n\tworktreeConfig = true\n"
+                            if scope == "worktree" else ""
+                        ), encoding="utf-8")
+                        config = common_config if scope == "common" else admin / "config.worktree"
+                        with config.open("a" if scope == "common" else "w", encoding="utf-8") as target:
+                            target.write('[branch "feature/cognitional-event-journal"]\n')
+                            for value in values:
+                                target.write(f"\tvscode-merge-base = {value}\n")
+                        result = inspect_worktree(linked)
+                        self.assertEqual(result["status"], "pass", result["errors"])
+
+    def test_rejects_malformed_vscode_metadata_and_unrelated_editor_keys(self):
+        with real_worktrees() as (primary, linked, admin):
+            config = primary / ".git" / "config"
+            baseline = config.read_text(encoding="utf-8")
+            for setting in (
+                '[branch "feature"]\n\tvscode-merge-base =\n',
+                '[branch "feature"]\n\tvscode-merge-base\n',
+                '[branch "feature"]\n\tvscode-merge-base = "origin/with space"\n',
+                '[branch "feature"]\n\tvscode-merge-base = "origin/with\\nnewline"\n',
+                '[branch "feature"]\n\tvscode-merge-base = "origin/with\\ttab"\n',
+                '[branch "feature"]\n\tvscode-merge-base = ' + "x" * 4097 + '\n',
+                '[branch "feature"]\n\tvscode-merge-base = origin/dev\n\tvscode-merge-base =\n',
+                '[branch ""]\n\tvscode-merge-base = origin/dev\n',
+                '[branch "with space"]\n\tvscode-merge-base = origin/dev\n',
+                '[branch "feature"]\n\tvscode-other = origin/dev\n',
+                '[branch "feature"]\n\tvscode-merge-base-extra = origin/dev\n',
+                '[vscode]\n\tmerge-base = origin/dev\n',
+                '[remote "feature"]\n\tvscode-merge-base = origin/dev\n',
+            ):
+                with self.subTest(setting=setting[:100]):
+                    config.write_text(baseline + setting, encoding="utf-8")
+                    self.assertEqual(inspect_worktree(linked)["status"], "fail")
+
+    def test_vscode_metadata_preserves_critical_config_refusals(self):
+        with real_worktrees() as (primary, linked, admin):
+            config = primary / ".git" / "config"
+            baseline = config.read_text(encoding="utf-8") + (
+                '[branch "feature"]\n\tvscode-merge-base = origin/dev\n'
+                '\tvscode-merge-base = origin/dev\n'
+            )
+            for setting in (
+                '[branch "feature"]\n\tmergeOptions = --unsafe\n',
+                '[core]\n\thooksPath = /tmp/hooks\n',
+                '[core]\n\tworktree = /tmp/foreign\n',
+                '[core]\n\trepositoryFormatVersion = 0\n',
+                '[extensions]\n\tworktreeConfig = true\n\tworktreeConfig = true\n',
+                '[include]\n\tpath = /tmp/hidden-config\n',
+                '[remote "hostile"]\n\turl = ext::/tmp/hostile.sh\n',
+            ):
+                with self.subTest(setting=setting):
+                    config.write_text(baseline + setting, encoding="utf-8")
+                    self.assertEqual(inspect_worktree(linked)["status"], "fail")
+
+    def test_accepts_native_worktree_config_and_inert_codex_metadata(self):
+        with real_worktrees() as (primary, linked, admin):
+            with (primary / ".git" / "config").open("a") as config:
+                config.write("[extensions]\n\tworktreeConfig = true\n")
+            (admin / "config.worktree").write_text(
+                "[codex]\n\tlocalEnvironmentConfigPath = __none__\n"
+                "[core]\n\tfileMode = false\n\trepositoryFormatVersion = 0\n",
+                encoding="utf-8",
+            )
+            for repo in (primary, linked):
+                with self.subTest(repo=repo):
+                    result = inspect_worktree(repo)
+                    self.assertEqual(result["status"], "pass", result["errors"])
+            self.assertEqual(subprocess.run(
+                ["git", "config", "--get", "core.filemode"], cwd=linked,
+                env=isolated_git_environment(), capture_output=True, text=True,
+                check=True,
+            ).stdout.strip(), "false")
+
+    def test_worktree_config_boolean_controls_optional_selected_scope(self):
+        for declaration, active in (
+            ("true", True), ("YES", True), ("on", True), ("1", True),
+            ("2", True), ("-1", True), ("1k", True), ("0x1", True),
+            (None, True), ("false", False), ("no", False), ("off", False),
+            ("0", False), ('""', False),
+        ):
+            with self.subTest(declaration=declaration), real_worktrees() as (primary, linked, admin):
+                with (primary / ".git" / "config").open("a") as config:
+                    config.write("[extensions]\n\tworktreeConfig" +
+                                 ("" if declaration is None else f" = {declaration}") + "\n")
+                self.assertEqual(inspect_worktree(linked)["status"], "pass")
+                (admin / "config.worktree").write_text(
+                    "[core]\n\thooksPath = /tmp/hooks\n", encoding="utf-8"
+                )
+                result = inspect_worktree(linked)
+                self.assertEqual(result["status"], "fail" if active else "pass", result["errors"])
+
+    def test_rejects_malformed_or_duplicate_worktree_config_declarations(self):
+        for extra in (
+            "[extensions]\n\tworktreeConfig = maybe\n",
+            "[extensions]\n\tworktreeConfig = 2147483648\n",
+            "[extensions]\n\tworktreeConfig = true\n\tworktreeConfig = false\n",
+            "[extensions]\n\tworktreeConfig = true\n\tworktreeConfig = true\n",
+        ):
+            with self.subTest(extra=extra), real_worktrees() as (primary, linked, admin):
+                with (primary / ".git" / "config").open("a") as config:
+                    config.write(extra)
+                self.assertEqual(inspect_worktree(linked)["status"], "fail")
+
+    def test_selected_worktree_config_preserves_safe_config_refusals(self):
+        attacks = (
+            "[include]\n\tpath = /tmp/hidden-config\n",
+            '[includeIf "gitdir:/tmp/"]\n\tpath = /tmp/hidden-config\n',
+            "[core]\n\thooksPath = /tmp/hooks\n",
+            "[core]\n\tworktree = /tmp/foreign\n",
+            "[core]\n\tbare = true\n",
+            "[core]\n\tbare = maybe\n",
+            "[core]\n\tbare = false\n\tbare = false\n",
+            "[core]\n\trepositoryFormatVersion = 1\n",
+            "[core]\n\trepositoryFormatVersion = 0\n\trepositoryFormatVersion = 0\n",
+            "[user]\n\tname = Test User\n",
+            "[user]\n\temail = test@example.invalid\n",
+            "[codex]\n\totherSetting = __none__\n",
+            "[codex]\n\tlocalEnvironmentConfigPath = __none__\n\tlocalEnvironmentConfigPath = __none__\n",
+            "[codex]\n\tlocalEnvironmentConfigPath =\n",
+            "[extensions]\n\tworktreeConfig = false\n",
+        )
+        with real_worktrees() as (primary, linked, admin):
+            with (primary / ".git" / "config").open("a") as config:
+                config.write("[extensions]\n\tworktreeConfig = true\n")
+            for attack in attacks:
+                with self.subTest(attack=attack):
+                    (admin / "config.worktree").write_text(attack, encoding="utf-8")
+                    self.assertEqual(inspect_worktree(linked)["status"], "fail")
+
+    def test_worktree_config_checks_only_selected_checkout(self):
+        with real_worktrees() as (primary, linked, admin):
+            with (primary / ".git" / "config").open("a") as config:
+                config.write("[extensions]\n\tworktreeConfig = true\n")
+            for selected, other, config in (
+                (primary, linked, primary / ".git" / "config.worktree"),
+                (linked, primary, admin / "config.worktree"),
+            ):
+                with self.subTest(selected=selected):
+                    config.write_text("[core]\n\tbare = true\n", encoding="utf-8")
+                    self.assertEqual(inspect_worktree(selected)["status"], "fail")
+                    self.assertEqual(inspect_worktree(other)["status"], "pass")
+                    config.unlink()
+
+    def test_active_worktree_config_rejects_non_regular_scope_and_parse_failure(self):
+        with real_worktrees() as (primary, linked, admin):
+            with (primary / ".git" / "config").open("a") as config:
+                config.write("[extensions]\n\tworktreeConfig = true\n")
+            config = admin / "config.worktree"
+            target = primary / "safe-config"
+            target.write_text("[core]\n\tbare = false\n", encoding="utf-8")
+            for kind in ("symlink", "dangling-symlink", "directory", "fifo", "malformed"):
+                with self.subTest(kind=kind):
+                    if kind == "symlink":
+                        config.symlink_to(target)
+                    elif kind == "dangling-symlink":
+                        config.symlink_to(admin / "missing")
+                    elif kind == "directory":
+                        config.mkdir()
+                    elif kind == "fifo":
+                        os.mkfifo(config)
+                    else:
+                        config.write_text("[broken\n", encoding="utf-8")
+                    self.assertEqual(inspect_worktree(linked)["status"], "fail")
+                    config.rmdir() if kind == "directory" else config.unlink()
+
+    def test_active_worktree_config_rejects_common_bare_drift(self):
+        with real_worktrees() as (primary, linked, admin):
+            (primary / ".git" / "config").write_text(
+                "[core]\n\trepositoryFormatVersion = 0\n\tbare = true\n"
+                "[extensions]\n\tworktreeConfig = true\n", encoding="utf-8"
+            )
+            (admin / "config.worktree").write_text(
+                "[core]\n\tbare = false\n", encoding="utf-8"
+            )
+            self.assertEqual(inspect_worktree(linked)["status"], "fail")
+
+    def test_primary_uses_effective_bare_after_common_to_worktree_migration(self):
+        with real_worktrees() as (primary, linked, admin):
+            (primary / ".git" / "config").write_text(
+                "[core]\n\trepositoryFormatVersion = 0\n"
+                "[extensions]\n\tworktreeConfig = true\n", encoding="utf-8"
+            )
+            (primary / ".git" / "config.worktree").write_text(
+                "[core]\n\tbare = false\n", encoding="utf-8"
+            )
+            for repo in (primary, linked):
+                result = inspect_worktree(repo)
+                self.assertEqual(result["status"], "pass", result["errors"])
+            (primary / ".git" / "config.worktree").unlink()
+            self.assertEqual(inspect_worktree(primary)["status"], "fail")
+
     def test_accepts_normal_main_and_standalone_repository(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
