@@ -1,0 +1,48 @@
+{
+  "name": "development",
+  "version": 1,
+  "kind": "verified_sequence",
+  "phases": [
+    {
+      "id": "design_intent",
+      "role": "intent_designer",
+      "output_type": "development.design_intent",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources"},
+      "content_fields": {"objective": "string", "scope": "array", "acceptance_criteria": "array"},
+      "criteria": ["The objective, scope, and observable acceptance criteria express the supplied purpose."]
+    },
+    {
+      "id": "abstract_design",
+      "role": "abstract_designer",
+      "output_type": "development.abstract_design",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources", "accepted.design_intent": "development.design_intent"},
+      "content_fields": {"components": "array", "interfaces": "array", "decision": "string"},
+      "criteria": ["Components, interfaces, and the design decision satisfy the accepted intent without unnecessary scope."]
+    },
+    {
+      "id": "implementation_procedure_design",
+      "role": "procedure_designer",
+      "output_type": "development.implementation_procedure_design",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources", "accepted.design_intent": "development.design_intent", "accepted.abstract_design": "development.abstract_design"},
+      "content_fields": {"steps": "array"},
+      "criteria": ["The ordered implementation and verification steps realize the accepted design and intent."]
+    },
+    {
+      "id": "implementation",
+      "role": "implementer",
+      "output_type": "development.implementation",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources", "accepted.design_intent": "development.design_intent", "accepted.abstract_design": "development.abstract_design", "accepted.implementation_procedure_design": "development.implementation_procedure_design"},
+      "content_fields": {"report": "string", "changes": "array", "verification": "array"},
+      "criteria": ["Observed changes implement the accepted procedure and design.", "Actual check evidence addresses the accepted acceptance criteria; report material defects rather than speculative hardening."]
+    }
+  ],
+  "transitions": [
+    {"from": "pending", "on": "activate", "guard": "always", "action": "allocate_producer", "to": "producing"},
+    {"from": "producing", "on": "produced", "guard": "always", "action": "allocate_qa", "to": "qa_review"},
+    {"from": "remediating", "on": "produced", "guard": "always", "action": "allocate_qa", "to": "qa_review"},
+    {"from": "qa_review", "on": "pass", "guard": "has_next", "action": "accept_next", "to": "pending"},
+    {"from": "qa_review", "on": "pass", "guard": "is_last", "action": "accept_complete", "to": "completed"},
+    {"from": "qa_review", "on": "fail", "guard": "can_remediate", "action": "remediate", "to": "remediating"},
+    {"from": "qa_review", "on": "fail", "guard": "remediations_exhausted", "action": "block_remediation", "to": "blocked"}
+  ]
+}

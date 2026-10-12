@@ -1,0 +1,88 @@
+{
+  "schema_version": "noetic.cognitional-event-journal-contract/v1",
+  "journal_version": "noetic.cognitional-event-journal/v1",
+  "read_model_version": "noetic.cognitional-event-journal-read-model/v1",
+  "consumer": {
+    "consumer_id": "development.verified-change/m0-direct-pass",
+    "program_id": "development.verified-change",
+    "execution_profile": "m0-direct-pass",
+    "source_trace_version": "noetic.m0.telos-adjudication-trace/v0"
+  },
+  "record_contract": {
+    "record_version": "noetic.m0.trace-record/v0",
+    "schema": "../../m0/v0/telos-adjudication-trace.schema.json",
+    "envelope_fields": [
+      "schema_version",
+      "event_id",
+      "event_type",
+      "occurred_at",
+      "actor",
+      "binding",
+      "caused_by",
+      "payload"
+    ],
+    "storage_admission": "Every stored line has exactly the envelope fields, the fixed record version, string occurred_at, a role/actor_id object, a binding object, and a payload object. Event-specific and cross-record validity remain terminal M0 reducer responsibilities."
+  },
+  "storage": {
+    "format": "canonical-json-lines",
+    "encoding": "ASCII",
+    "key_order": "lexicographic",
+    "separators": [",", ":"],
+    "line_termination": "LF",
+    "one_record_per_line": true,
+    "logical_records_append_only": true,
+    "single_writer": true,
+    "max_records": 8,
+    "max_record_bytes_including_lf": 65536,
+    "max_journal_bytes": 524288,
+    "append_success_rule": "The candidate is replay-validated before write; success is returned only after the appended bytes are flushed and the journal file is fsynced."
+  },
+  "event_sequence": [
+    "telos.delegation.authorized",
+    "controller.run.created",
+    "controller.run.started",
+    "controller.implementation_generation.accepted",
+    "qa.verification.adjudicated",
+    "controller.run.succeeded",
+    "controller.result.reported",
+    "telos.sub_goal.adjudicated"
+  ],
+  "read_model": {
+    "common_fields": [
+      "schema_version",
+      "journal_version",
+      "consumer_id",
+      "record_version",
+      "record_count",
+      "state",
+      "complete"
+    ],
+    "incomplete_field": "next_event_type",
+    "terminal_field": "terminal_status",
+    "derivation": "Replay all complete records through the existing M0ReplayController; never infer state from file length alone."
+  },
+  "recovery": {
+    "automatic": false,
+    "recoverable_unit": "one nonempty final byte sequence not terminated by LF",
+    "precondition": "Every preceding LF-terminated record is canonical and accepted by the consumer replay.",
+    "operation": "Explicit recovery truncates only the unterminated final bytes and fsyncs the journal file.",
+    "complete_record_policy": "Malformed, rejected, or surplus LF-terminated records are fatal and are never skipped or truncated."
+  },
+  "boundaries": {
+    "persistence": "The journal stores fixture-attributed M0 records and reconstructs their deterministic consumer state.",
+    "incomplete_prefix": "An accepted prefix is not a successful verified change and carries no terminal status.",
+    "terminal": "Only the existing complete development.verified-change explanation is exposed as terminal status.",
+    "semantic": "Actor roles, QA PASS, controller success, Telos completion, and P1-P4 meanings remain source attributions; persistence and replay do not authenticate or prove them.",
+    "excluded": [
+      "M1 remediation replay",
+      "generic event dispatch",
+      "multi-writer coordination",
+      "locking",
+      "network or model calls",
+      "signatures or authentication",
+      "semantic inference",
+      "scheduling",
+      "publication"
+    ]
+  }
+}

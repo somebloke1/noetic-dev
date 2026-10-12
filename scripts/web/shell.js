@@ -1,0 +1,180 @@
+"use strict";
+(() => {
+// Derived from the captured published C icon component.
+const REFERENCE_ICONS = {
+  "activity": "<path d=\"M4 12h3l2.2-6 4.1 12 2.2-6H20\"></path>",
+  "archive": "<path d=\"M4 7h16v13H4zM3 4h18v3H3z\"></path><path d=\"M9 11h6\"></path>",
+  "branch": "<circle cx=\"6\" cy=\"5\" r=\"2\"></circle><circle cx=\"18\" cy=\"7\" r=\"2\"></circle><circle cx=\"18\" cy=\"18\" r=\"2\"></circle><path d=\"M6 7v7a4 4 0 0 0 4 4h6M8 5h5a5 5 0 0 1 5 5v6\"></path>",
+  "chevron": "<path d=\"m9 18 6-6-6-6\"></path>",
+  "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"></circle><path d=\"M12 7v5l3 2\"></path>",
+  "command": "<path d=\"M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z\"></path>",
+  "cube": "<path d=\"m12 3 8 4.5v9L12 21l-8-4.5v-9z\"></path><path d=\"m4 7.5 8 4.5 8-4.5M12 12v9\"></path>",
+  "database": "<ellipse cx=\"12\" cy=\"5\" rx=\"8\" ry=\"3\"></ellipse><path d=\"M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7\"></path>",
+  "file": "<path d=\"M6 3h8l4 4v14H6z\"></path><path d=\"M14 3v5h4M9 13h6M9 17h5\"></path>",
+  "grid": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"></rect><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"></rect><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"></rect><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"></rect>",
+  "layers": "<path d=\"m12 3 9 5-9 5-9-5z\"></path><path d=\"m3 12 9 5 9-5M3 16l9 5 9-5\"></path>",
+  "more": "<circle cx=\"5\" cy=\"12\" r=\"1\" fill=\"currentColor\"></circle><circle cx=\"12\" cy=\"12\" r=\"1\" fill=\"currentColor\"></circle><circle cx=\"19\" cy=\"12\" r=\"1\" fill=\"currentColor\"></circle>",
+  "pause": "<path d=\"M8 6v12M16 6v12\"></path>",
+  "play": "<path d=\"m8 5 11 7-11 7z\"></path>",
+  "plus": "<path d=\"M12 5v14M5 12h14\"></path>",
+  "search": "<circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path>",
+  "settings": "<circle cx=\"12\" cy=\"12\" r=\"3\"></circle><path d=\"M19.4 15a1.8 1.8 0 0 0 .4 2l.1.1-2.8 2.8-.1-.1a1.8 1.8 0 0 0-2-.4 1.8 1.8 0 0 0-1.1 1.7V21h-4v-.1A1.8 1.8 0 0 0 8.8 19a1.8 1.8 0 0 0-2 .4l-.1.1-2.8-2.8.1-.1a1.8 1.8 0 0 0 .4-2A1.8 1.8 0 0 0 2.7 13H2V9h.7a1.8 1.8 0 0 0 1.7-1.1 1.8 1.8 0 0 0-.4-2l-.1-.1L6.7 3l.1.1a1.8 1.8 0 0 0 2 .4A1.8 1.8 0 0 0 10 1.8V1h4v.8a1.8 1.8 0 0 0 1.1 1.7 1.8 1.8 0 0 0 2-.4l.1-.1L20 5.8l-.1.1a1.8 1.8 0 0 0-.4 2A1.8 1.8 0 0 0 21.2 9h.8v4h-.8a1.8 1.8 0 0 0-1.8 2Z\"></path>",
+  "spark": "<path d=\"m12 2 1.4 5.1L18 9l-4.6 1.9L12 16l-1.4-5.1L6 9l4.6-1.9zM5 16l.7 2.3L8 19l-2.3.7L5 22l-.7-2.3L2 19l2.3-.7z\"></path>",
+  "terminal": "<rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"></rect><path d=\"m7 9 3 3-3 3M13 16h4\"></path>",
+  "users": "<circle cx=\"9\" cy=\"8\" r=\"3\"></circle><circle cx=\"17\" cy=\"9\" r=\"2.5\"></circle><path d=\"M3 20c.4-4 2.3-6 6-6s5.6 2 6 6M15 15c3.6-.5 5.6 1.2 6 4\"></path>",
+  "warning": "<path d=\"M12 3 2.8 20h18.4z\"></path><path d=\"M12 9v5M12 17.5v.1\"></path>"
+};
+function referenceIcon(name, size = 18) {
+  return `<svg aria-hidden="true" class="icon" fill="none" height="${size}" viewBox="0 0 24 24" width="${size}">${REFERENCE_ICONS[name] || ""}</svg>`;
+}
+
+const routes = new Map(), mounted = new Set();
+const el = (tag, className = '', value) => {const e=document.createElement(tag);e.className=className;if(value!==undefined)e.textContent=value;return e;};
+const button = (value, action, className='') => {const b=el('button',className,value);b.type='button';if(action)b.addEventListener('click',action);return b;};
+const icon = (name, size=18) => {const holder=document.createElement('template');holder.innerHTML=referenceIcon(name,size);return holder.content.firstElementChild;};
+const badge = (value, tone='neutral') => el('span',`status-badge ${tone}`,value);
+let view = {route:'workspaces',subview:''}, snapshotData = {}, projectFilter = null, suppressPage = false, generation=0;
+try {view={...view,...JSON.parse(sessionStorage.getItem('noetic-shell-view')||'{}')};}catch(_){}
+const nav = [
+ ['workspaces','Workspaces','grid'],['agentics','Agentics','branch'],null,
+ ['runtime','Native agent runtime','terminal'],['models','Model registry','cube'],null,
+ ['disciplines','Disciplines','layers'],['prompts','Prompt templates','file'],['roles','Roles','users'],null,
+ ['memory','Typed memory','database'],['usage','Usage metrics','activity'],['artifacts','Artifacts','archive']
+];
+const sidebarRoutes=new Set(['workspaces','agentics','history','attention','closed','new-effort','executions','new-work','purposes']);
+const labels=Object.fromEntries(nav.filter(Boolean).map(x=>[x[0],x[1]]));Object.assign(labels,{configuration:'Configuration',executions:'Executions','new-work':'Entrust work',purposes:'Purpose & limits','new-effort':'New effort',history:'Recent activity',attention:'Attention',closed:'Closed conversations'});
+const snapshot=()=>({...snapshotData,projectFilter});
+const roots=()=> (snapshotData.positions||[]).filter(p=>p.effort===p.ordinal).sort((a,b)=>a.ordinal.localeCompare(b.ordinal,'en',{numeric:true}));
+const currentEffort=()=>roots().find(p=>p.ordinal===snapshotData.effort);
+const scopedSessions=()=> (snapshotData.sessions||[]).filter(s=>!snapshotData.effort||s.effort_root===snapshotData.effort);
+const shortPath=p=>String(p||'').replace(/\/$/,'').split('/').pop();
+const warningSession=s=>['failed','needs_input','interrupted','blocked'].includes(s.status)||Boolean(s.error);
+const sessionTarget=s=>s.target?{...s.target,effort_root:s.effort_root}:{id:s.id};
+function mount(id, host){const e=$(id);if(!e)return null;mounted.add(e);host.append(e);e.hidden=false;return e;}
+function park(){for(const e of mounted){$('legacy-storage').append(e);e.hidden=true;}mounted.clear();}
+function heading({eyebrow='',title='',description='',actions=[]}){
+ $('shell-eyebrow').textContent=eyebrow;$('shell-page-title').textContent=title;$('shell-description').textContent=description;
+ $('shell-actions').replaceChildren(...(Array.isArray(actions)?actions:[actions]).filter(Boolean));
+}
+function notice(value){$('shell-global-error').textContent=value||'';$('shell-global-error').hidden=!value;}
+function renderObservationStatus(){
+ const unavailable=Boolean(snapshotData.observationError),message=unavailable?'Session observations unavailable. Previously fetched conversations may be stale.':'';
+ $('shell-observation-error').textContent=message;$('shell-observation-error').hidden=!message;
+ $('shell-health').textContent=unavailable||!$('fetch-error').hidden?'Observation unavailable · retained data':'Observations available';
+}
+function render(){
+ if($('private-workspace').hidden)return;
+ renderObservationStatus();
+ const handler=routes.get(view.route);if(!handler)return;
+ const host=$('shell-content');host.dataset.route=view.route;
+ Promise.resolve(handler({host,snapshot:snapshot(),route:view.route,subview:view.subview})).catch(e=>{if(host.dataset.route===view.route)notice(e.message);});
+}
+function navigate(route,options={}){
+ if(!labels[route])route='workspaces';
+ const changed=route!==view.route;
+ view={route,subview:options.subview??(changed?'':view.subview)};generation++;
+ if(changed){park();$('shell-content').replaceChildren();$('shell-content').className='';for(const key of Object.keys($('shell-content').dataset))delete $('shell-content').dataset[key];$('run-detail').scrollTop=0;}
+ $('shell-content').dataset.route=route;$('noetic-shell').classList.toggle('without-portfolio-sidebar',!sidebarRoutes.has(route));$('shell-sidebar').hidden=!sidebarRoutes.has(route);
+ for(const b of $('shell-navigation').querySelectorAll('[data-route]')){b.classList.toggle('active',b.dataset.route===route||route==='executions'&&b.dataset.route==='workspaces');b.setAttribute('aria-current',String(b.classList.contains('active')));}
+ $('shell-settings').classList.toggle('active',route==='configuration');
+ $('shell-breadcrumb-root').textContent=sidebarRoutes.has(route)?'Development portfolio':['runtime'].includes(route)?'Runtime control':['models','configuration'].includes(route)?'Installation':['disciplines','prompts','roles'].includes(route)?'Reusable libraries':'Application records';
+ $('shell-breadcrumb-choice').textContent=route==='workspaces'&&currentEffort()?currentEffort().intent:labels[route];
+ $('shell-tabs').hidden=route!=='workspaces'&&route!=='executions';$('shell-project-scope').replaceChildren();notice('');
+ try{sessionStorage.setItem('noetic-shell-view',JSON.stringify(view));}catch(_){}
+ document.title=`noetic-dev / ${labels[route]}`;renderSidebar();render();
+}
+window.NoeticUI={register:(route,handler)=>{routes.set(route,handler);if(view.route===route)render();},navigate,heading,mount,element:el,button,icon,badge,snapshot,refresh:render,notice,route:()=>view.route};
+for(const item of nav){if(!item){$('shell-navigation').append(el('div','rail-divider'));continue;}const [route,label,iconName]=item;const b=button('',()=>navigate(route),'rail-button');b.dataset.route=route;b.title=label;b.setAttribute('aria-label',label);b.append(icon(iconName));$('shell-navigation').append(b);}
+$('shell-settings').append(icon('settings'));$('shell-settings').addEventListener('click',()=>navigate('configuration'));
+$('shell-account').addEventListener('click',()=>{const d=$('shell-command-dialog');$('shell-command-query').value='';renderCommand('access');d.showModal();});
+$('portfolio-options').append(icon('more'));$('portfolio-options').addEventListener('click',()=>openCommand());
+$('shell-new-effort').prepend(icon('plus'));$('shell-new-effort').addEventListener('click',()=>navigate('new-effort'));
+$('shell-installation').prepend(icon('cube'));$('shell-installation').addEventListener('click',()=>navigate('configuration'));
+$('shell-search').append(icon('search'));
+for(const b of document.querySelectorAll('[data-shell-view]')){b.className='view-item';b.prepend(icon(b.dataset.shellView==='attention'?'activity':b.dataset.shellView==='history'?'clock':'archive'));b.addEventListener('click',()=>navigate(b.dataset.shellView));}
+function resize(id,property,min,max,start){const handle=$(id);handle.classList.add('shell-resizer');handle.setAttribute('aria-valuemin',min);handle.setAttribute('aria-valuemax',max);let width=start;const apply=value=>{width=Math.max(min,Math.min(max,value));$('noetic-shell').style.setProperty(property,width+'px');handle.setAttribute('aria-valuenow',width);};handle.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();apply(width+(e.key==='ArrowRight'?12:-12));}});handle.addEventListener('pointerdown',e=>{e.preventDefault();const x=e.clientX,initial=width;document.body.classList.add('resizing-panes');const move=v=>apply(initial+v.clientX-x),stop=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',stop);document.body.classList.remove('resizing-panes');};document.addEventListener('pointermove',move);document.addEventListener('pointerup',stop,{once:true});});}
+resize('rail-resizer','--rail-width',56,104,64);resize('sidebar-resizer','--sidebar-width',200,360,248);
+async function chooseEffort(effort){let loading;suppressPage=true;try{loading=window.NoeticSessions.open({ordinal:effort.ordinal,effort_root:effort.ordinal});}finally{suppressPage=false;}navigate('workspaces');await loading;}
+function renderSidebar(){
+ const all=roots(),signature=JSON.stringify([all,snapshotData.sessions?.map(s=>[s.id,s.status,s.error]),snapshotData.effort,projectFilter]);if($('shell-sidebar').dataset.signature===signature)return;$('shell-sidebar').dataset.signature=signature;
+ const projects=[...new Set(all.map(p=>p.environment?.cwd).filter(Boolean))];
+ if(projectFilter&&!projects.includes(projectFilter))projectFilter=null;
+ const filter=$('shell-filter');filter.replaceChildren();const head=el('div','scope-control-heading');head.append(el('span','','VIEW FILTER'),button('Clear',()=>{projectFilter=null;renderSidebar();render();}));filter.append(head);
+ function filterRow(name,meta,path,count){const b=button('',()=>{projectFilter=path;renderSidebar();render();},`${path?'project-scope-row':'portfolio-scope-row'} ${projectFilter===path?'selected':''}`);const copy=el('span');copy.append(el('strong','',name),el('small','',meta));b.append(el('span','scope-radio'),copy);if(count!==undefined)b.append(el('span','scope-effort-count',count));return b;}
+ filter.append(filterRow('Development portfolio',`${projects.length} projects · ${all.length} efforts`,null));const branch=el('div','scope-tree-branch');for(const path of projects)branch.append(filterRow(shortPath(path),path,path,all.filter(p=>p.environment?.cwd===path).length));filter.append(branch);const note=el('div','scope-filter-note');note.append(icon('search',12),el('span','','Filters this view only. Ownership and effort scope do not change.'));filter.append(note);
+ const visible=all.filter(p=>!projectFilter||p.environment?.cwd===projectFilter);$('shell-effort-count').textContent=visible.length;
+ $('shell-efforts').replaceChildren(...visible.map(p=>{const sessions=(snapshotData.sessions||[]).filter(s=>s.effort_root===p.ordinal),attention=sessions.filter(warningSession).length;const b=button('',()=>chooseEffort(p),`effort-item ${snapshotData.effort===p.ordinal?'selected':''}`);b.dataset.effort=p.ordinal;const copy=el('span','effort-copy');copy.append(el('span','effort-name',p.intent),el('span','effort-meta',`${p.ordinal} · ${attention?attention+' needs attention':sessions.filter(s=>s.broker_owned).length?sessions.filter(s=>s.broker_owned).length+' active':sessions.length+' retained sessions'}`));b.append(el('span',`status-dot ${attention?'amber':'violet'}`),copy);return b;}));
+ if(!visible.length)$('shell-efforts').append(el('p','empty-note','No efforts in this view.'));
+ const count=(snapshotData.sessions||[]).filter(warningSession).length;$('shell-attention-count').textContent=count||'';$('shell-attention-count').className=count?'count-badge':'';$('shell-attention-count').title=`${count} application session requests or failures`;
+}
+function card(kicker,title,action){const p=el('section','panel'),h=el('header','panel-heading'),titles=el('div');titles.append(el('span','panel-kicker',kicker),el('h2','',title));h.append(titles);if(action)h.append(action);p.append(h);return p;}
+function action(value,fn){return button(value,fn,'text-action');}
+const runObservation=()=>window.NoeticRuns?.state()||{selection:window.NoeticEffort?.selection?.()||{scope:'application'},status:'unobserved',warnings:[],runs:[]};
+function executionBlockers(limit=null,effort=null){
+ const observation=runObservation(),scope=observation.selection.effort_root?`Effort ${observation.selection.effort_root}`:'Application · all efforts and original histories';
+ const p=card('RECORDED STATES','Recorded execution blockers',limit===null?null:action('Open Attention',()=>navigate('attention')));
+ p.append(el('p','source',`Execution coverage: ${scope}${effort?` · displayed blockers: Effort ${effort}`:''}`));
+ const status=observation.status==='observed'?`Observed ${observation.observedAt||'on the latest successful read'}`:observation.status==='loading'?`Loading run register.${observation.observedAt?' Showing the previous successful observation.':' No observation yet.'}`:observation.status==='unavailable'?`Run register unavailable: ${observation.error}. ${observation.observedAt?'Previously fetched observations are stale.':'No successful observation yet.'}`:'Run register not yet observed.';
+ p.append(el('p','field-note',status));
+ if(observation.warnings.length)p.append(el('p','inline-attention',`Incomplete coverage: ${observation.warnings.join(' ')}`));
+ const blockers=observation.runs.filter(r=>['blocked','failed'].includes(r.state)&&(!effort||r.correspondence?.effort_root===effort));
+ for(const r of limit===null?blockers:blockers.slice(0,limit)){const row=button('',()=>{navigate('executions');selectRun(r.run_id);},'record-row');row.dataset.runId=r.run_id;row.append(badge(r.state,'warning'),el('strong','',r.goal||r.run_id),el('small','mono',`${r.run_id} · ${r.correspondence?.effort_root?`Effort ${r.correspondence.effort_root}`:'Original namespace · unassigned'}`));p.append(row);}
+ if(!blockers.length&&observation.status==='observed')p.append(el('p','empty-note',effort?`No blocked or failed executions observed for Effort ${effort} in this coverage.`:'No blocked or failed executions observed in this coverage.'));
+ if(limit!==null&&blockers.length>limit)p.append(action(`Inspect all ${blockers.length} recorded blockers`,()=>navigate('attention')));
+ p.append(el('p','field-note','Recorded blocked or failed states invite inspection; they do not establish an outstanding human obligation. Historical review findings remain in exact execution evidence.'));
+ return p;
+}
+function effortTabs(){const tabs=$('shell-tabs');tabs.replaceChildren();for(const [label,route]of[['Overview','workspaces'],['Agentics','agentics'],['Executions','executions'],['Artifacts','artifacts'],['Memory','memory'],['Tokens','usage']]){const b=button(label,()=>navigate(route),view.route===route?'active':'');tabs.append(b);}tabs.hidden=false;}
+function openSession(s){window.NoeticSessions.open(sessionTarget(s));navigate('agentics');}
+function overview({host}){
+ const effort=currentEffort(),sessions=scopedSessions(),positions=(snapshotData.positions||[]).filter(p=>p.effort===effort?.ordinal);
+ heading({eyebrow:effort?`Effort ${effort.status} / Ordinal ${effort.ordinal}`:'APPLICATION WORKSPACE',title:effort?.intent||'Development portfolio',description:effort?.mandate?.mandate?.objective||effort?.intent||'Pursue distinct efforts, entrust work, and continue through accountable returns.',actions:[button('New effort',()=>navigate('new-effort'),'secondary-button'),...(effort?[button('Entrust work',()=>navigate('new-work'),'primary-button')]:[])]});
+ if(effort){effortTabs();$('shell-project-scope').replaceChildren(el('span','scope-label','PROJECT SCOPE'),badge(shortPath(effort.environment?.cwd)));}else $('shell-tabs').hidden=true;
+ const signature=JSON.stringify([effort,sessions,positions,allRuns,runObservation(),projectFilter,snapshotData.observationError]);if(host.dataset.signature===signature)return;host.dataset.signature=signature;host.className='overview-content';host.replaceChildren();
+ if(!effort){const p=card('YOUR WORK','Choose an effort',button('New effort',()=>navigate('new-effort'),'primary-button'));const list=el('div','portfolio-cards');for(const r of roots().filter(p=>!projectFilter||p.environment?.cwd===projectFilter)){const b=button('',()=>chooseEffort(r),'portfolio-effort-card');b.append(el('span','mono',r.ordinal),el('strong','',r.intent),el('small','',r.environment?.cwd||'Environment unavailable'));list.append(b);}if(!list.children.length)list.append(el('p','empty-note','Create an effort to establish its intent and environment. You can begin a conversation when ready.'));p.append(list);host.append(p);return;}
+ const left=el('div','overview-main'),right=el('div','overview-aside');host.append(left,right);
+ const metrics=el('section','summary-strip');for(const [label,value,note]of[['Responsibility',effort.intent,`Persistent position ${effort.ordinal}`],['Environment',shortPath(effort.environment?.cwd),`Revision ${effort.environment_version||1} · declared environment`],['Effort activity',`${sessions.length} retained sessions`,`${sessions.filter(s=>s.broker_owned).length} owned processes observed`]]){const c=el('div');c.append(el('span','',label),el('strong','',value),el('small','mono',note));metrics.append(c);}left.append(metrics);
+ const work=card('CURRENT WORK','Execution activity',action('Inspect executions',()=>navigate('executions')));const list=el('div','execution-list');
+ const ordered=[...sessions].sort((a,b)=>Number(warningSession(b))-Number(warningSession(a))||String(b.updated_at).localeCompare(String(a.updated_at)));
+ for(const s of ordered.slice(0,3)){const row=el('article','work-entry');const header=el('div','work-entry-heading'),copy=el('div');copy.append(button(s.title||'Session',()=>openSession(s),'work-title'),el('small','mono',s.target?`Position ${s.ordinal} · inst-${s.target.instantiation} · session ${s.target.session}`:'Original namespace · unassigned'));header.append(el('span','ordinal-tile',s.ordinal),copy,badge(s.status,warningSession(s)?'warning':s.broker_owned?'success':'neutral'));row.append(header);const mandate=positions.find(p=>p.ordinal===s.ordinal);if(mandate?.mandate?.mandate){const m=el('div','mandate-block');m.append(el('span','mandate-label','MANDATE'),el('p','',mandate.mandate.mandate.objective||mandate.mandate.mandate.responsibility||s.title));row.append(m);}if(s.error)row.append(el('div','inline-attention',s.error));else row.append(el('div','work-observation',s.broker_owned?'Native process owned · inspect current output':'Retained conversation · open to inspect or continue explicitly'));list.append(row);}
+ if(!sessions.length){list.append(el('p','empty-note','No conversations have been started for this effort.'),button('Start conversation',()=>{window.NoeticSessions.open({ordinal:effort.ordinal,effort_root:effort.ordinal},{newConversation:true});navigate('agentics');},'secondary-button'));}work.append(list);left.append(work);
+ const lineage=card('ACCOUNTABILITY','Agentics lineage',action('Open full tree',()=>navigate('agentics')));const lines=el('div','lineage-list');for(const p of positions){const b=button('',()=>{window.NoeticSessions.open({ordinal:p.ordinal,effort_root:effort.ordinal});navigate('agentics');},'lineage-row');b.append(el('span','mono',p.ordinal),el('strong','',p.intent||p.mandate?.mandate?.objective||sessions.find(s=>s.ordinal===p.ordinal)?.title||(p.origin==='human'?'Assigned responsibility':'Delegated responsibility')),el('small','',p.current_instantiation?`Current instantiation ${p.current_instantiation}`:'Dormant position'));lines.append(b);}lineage.append(lines);left.append(lineage);
+ const attention=card('EXACT CONTEXTS','Session requests & failures',action('Open Attention',()=>navigate('attention')));const needs=sessions.filter(warningSession);for(const s of needs.slice(0,3)){const row=el('div','attention-entry');row.append(el('span','attention-type',s.status.replaceAll('_',' ')),el('h3','',s.title),el('p','',s.error||'Inspect the retained observation before continuing.'),action('Inspect exact session',()=>openSession(s)));attention.append(row);}if(!needs.length)attention.append(el('p','empty-note',snapshotData.observationError?'Session observations are unavailable. Retained observations may be stale.':'No session requests or failures observed.'));right.append(attention,executionBlockers(3,effort.ordinal));
+ const results=card('LATEST','Evidence & results',action('View artifacts',()=>navigate('artifacts')));const runs=allRuns.filter(r=>r.correspondence?.effort_root===effort.ordinal);for(const r of runs.slice(0,3)){const row=button('',()=>{selectRun(r.run_id);navigate('executions');},'result-row');row.append(icon('file'),el('strong','',r.goal||r.run_id),badge(r.state));results.append(row);}if(!runs.length)results.append(el('p','empty-note','No structured results recorded in this effort. Conversation returns remain with their exact sessions.'));right.append(results);
+ const purpose=card('CONTINUATION','Purpose & limits',action('Inspect purposes',()=>navigate('purposes')));purpose.append(el('p','empty-note','Inspect owned purposes or create an explicit Telos link for continuing work.'));right.append(purpose);
+}
+routes.set('workspaces',overview);
+function newEffort({host}){
+ heading({eyebrow:'NEW RESPONSIBILITY',title:'New effort',description:'Declare the intention and project environment. Its ordinal persists across conversations.',actions:[]});if(host.dataset.ready==='effort')return;host.dataset.ready='effort';host.className='new-effort-content';
+ const p=card('EFFORT SCOPE','What are you working toward?'),form=el('form','effort-create-form');
+ for(const [id,label,placeholder,tag]of[['effort-intent','Effort intention','Build a shared reading list','textarea'],['effort-directory','Project folder','/path/to/project','input']]){const l=el('label','',label);l.htmlFor=id;const input=el(tag);input.id=id;input.required=true;input.placeholder=placeholder;if(tag==='textarea')input.rows=3;form.append(l,input);}
+ form.append(el('p','field-note','Register an existing folder without starting a model. Several efforts may share a folder and retain separate intentions.'));
+ const submit=button('Create effort',null,'primary-button');submit.type='submit';const status=el('p','form-status');status.setAttribute('role','status');form.append(submit,status);
+ form.addEventListener('submit',async e=>{e.preventDefault();submit.disabled=true;const intent=$('effort-intent').value.trim(),cwd=$('effort-directory').value.trim();try{const response=await fetchJSON('/api/efforts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent,environment:{cwd},human_ref:{origin:'local-operator'},source_ref:{kind:'desktop-effort-form'}})});await window.NoeticSessions.refresh();await chooseEffort(response.effort);}catch(f){status.textContent=f.message;submit.disabled=false;}});p.append(form);host.replaceChildren(p);
+ const create=card('NEW PROJECT','Create a folder and start work');create.append(el('p','empty-note','Use the project conversation flow to create a new project and begin with a first instruction.'),button('Create project and conversation',()=>{window.NoeticSessions.open(null);$('developer-project-mode').value='create';navigate('agentics');},'secondary-button'));host.append(create);
+}
+routes.set('new-effort',newEffort);
+function recordsView({host,route}){
+ heading({eyebrow:'APPLICATION RECORDS',title:labels[route],description:route==='history'?'Correlated activity across enduring positions and exact contexts.':route==='closed'?'Retained efforts and conversations remain inspectable.':'Inspect exact session requests and separately scoped recorded execution blockers.',actions:[button('Refresh',()=>{window.NoeticSessions.refresh();if(route==='attention')window.NoeticRuns?.refresh();},'secondary-button')]});
+ const list=route==='attention'?(snapshotData.sessions||[]).filter(warningSession):route==='closed'?(snapshotData.sessions||[]).filter(s=>s.status==='closed'):[...(snapshotData.sessions||[])].sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)));
+ const signature=JSON.stringify([list,route,route==='attention'?runObservation():null,snapshotData.observationError]);if(host.dataset.signature===signature)return;const active=host.contains(document.activeElement)?document.activeElement:null,focusedRun=active?.dataset.runId,focusedScope=active?.getAttribute('aria-label')==='Execution observation scope';host.dataset.signature=signature;host.className='records-content';const p=card('EXACT CONTEXTS',route==='closed'?'Closed conversations':route==='attention'?'Session requests & failures':'Latest session observations');if(route==='attention')p.append(el('p','source','Session coverage: Application · all retained native contexts'),el('p','field-note',snapshotData.observationError?'Session observations unavailable. Previously fetched conversations may be stale.':'Latest session observation; the sidebar badge counts these session requests and failures.'));for(const s of list){const row=button('',()=>openSession(s),'record-row');row.append(el('span','ordinal-tile',s.ordinal||s.original_ordinal),el('strong','',s.title),el('small','mono',s.target?`inst-${s.target.instantiation} · session ${s.target.session}`:'Original namespace · unadopted'),badge(s.status,warningSession(s)?'warning':'neutral'));p.append(row);}if(!list.length)p.append(el('p','empty-note',route==='attention'?(snapshotData.observationError?'No retained session requests to display.':'No session requests or failures observed.'):'No matching observations.'));host.replaceChildren(p);
+ if(route==='attention'){const controls=el('label','scope-control','Execution observation scope '),select=el('select');select.setAttribute('aria-label','Execution observation scope');for(const [value,label]of[['application','Application · all efforts and original histories'],...snapshotData.effort?[['effort',`Effort ${snapshotData.effort}`]]:[]]){const option=el('option','',label);option.value=value;select.append(option);}select.value=runObservation().selection.effort_root?'effort':'application';select.addEventListener('change',()=>window.NoeticRuns?.scope(select.value));controls.append(select);host.append(controls,executionBlockers());if(focusedScope)select.focus({preventScroll:true});else if(focusedRun)[...host.querySelectorAll('[data-run-id]')].find(row=>row.dataset.runId===focusedRun)?.focus({preventScroll:true});}
+ if(route==='history'){const b=button('Open global ordinal history',()=>{window.NoeticSessions.open(null,{history:true});navigate('agentics');},'secondary-button');host.append(b);}if(route==='closed')p.append(el('p','field-note','Effort lifecycle closure is not exposed by the current application. Closing a session does not close its effort.'));
+}
+for(const route of ['history','attention','closed'])routes.set(route,recordsView);
+function renderCommand(mode=''){
+ const query=$('shell-command-query').value.toLowerCase(),holder=$('shell-command-results');holder.replaceChildren();
+ const items=mode==='access'?[['Lock workspace',()=> $('access-lock').click()],['Log out',()=> $('access-logout').click()]]:[...Object.entries(labels).map(([r,label])=>[label,()=>navigate(r)]),...roots().map(p=>[`${p.ordinal} · ${p.intent}`,()=>chooseEffort(p)]),...(snapshotData.positions||[]).filter(p=>p.effort!==p.ordinal).map(p=>[`${p.ordinal} · ${p.intent||'Position'}`,()=>{window.NoeticSessions.open({ordinal:p.ordinal,...p.effort?{effort_root:p.effort}:{}});navigate('agentics');}])];
+ for(const [label,fn]of items.filter(([label])=>label.toLowerCase().includes(query)))holder.append(button(label,()=>{$('shell-command-dialog').close();fn();},'command-result'));if(!holder.children.length)holder.append(el('p','empty-note','No matches.'));
+}
+function openCommand(){renderCommand();$('shell-command-dialog').showModal();$('shell-command-query').focus();}
+$('shell-search').addEventListener('click',openCommand);$('shell-command').addEventListener('click',openCommand);$('shell-breadcrumb-choice').addEventListener('click',openCommand);$('shell-command-query').addEventListener('input',()=>renderCommand());
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if($('shell-command-dialog').open)$('shell-command-dialog').close();else openCommand();}});
+document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};renderSidebar();render();});
+new MutationObserver(renderObservationStatus).observe($('fetch-error'),{attributes:true,attributeFilter:['hidden'],childList:true,subtree:true,characterData:true});
+document.addEventListener('noetic:runs',()=>{if(['workspaces','history','attention'].includes(view.route))render();});
+document.addEventListener('noetic:page',e=>{if(suppressPage)return;const map={developer:'agentics',workspace:'executions',new:'new-work',history:'history',memory:'memory',purposes:'purposes',diagnostics:'configuration'};const next=map[e.detail.page];if(next&&next!==view.route)navigate(next);});
+let paired=false;
+new MutationObserver(()=>{const visible=!$('private-workspace').hidden;if(visible&&!paired){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};navigate(view.route);fetchJSON('/api/preview-info').then(data=>{if(data.fixture_mode||data.fixture||data.demo||data.preview||data.mode){$('shell-preview-label').hidden=false;$('shell-preview-label').textContent='Demonstration records · isolated preview';$('shell-notice').hidden=false;$('shell-notice').textContent='Demonstration records · isolated local preview';}}).catch(()=>{});}}).observe($('private-workspace'),{attributes:true,attributeFilter:['hidden']});
+if(!$('private-workspace').hidden){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};navigate(view.route);}
+})();

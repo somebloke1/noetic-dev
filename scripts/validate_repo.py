@@ -26,6 +26,74 @@ REQUIRED = [
     "SECURITY.md",
     "docs/cognitive-backbone.md",
     "docs/development-practices.md",
+    "docs/live-runs.md",
+    "scripts/noetic_run.py",
+    "config/workflows/check-repository.json",
+    "tests/programs/test_noetic_run.py",
+    "scripts/noetic_develop.py",
+    "scripts/noetic_changes.py",
+    "tests/programs/test_noetic_changes.py",
+    "tests/programs/test_noetic_develop.py",
+    "docs/agent-workflows.md",
+    "scripts/noetic_telos.py",
+    "scripts/telos_bridge.mjs",
+    "tests/programs/test_noetic_telos.py",
+    "docs/telos-runs.md",
+    "scripts/noetic.py",
+    "scripts/noetic_batch.py",
+    "tests/programs/test_noetic_batch.py",
+    "docs/batch-workflows.md",
+    "docs/batch-example.md",
+    "scripts/noetic_memory.py",
+    "scripts/noetic_web.py",
+    "scripts/noetic_application.py",
+    "scripts/noetic_access.py",
+    "scripts/noetic_storage.py",
+    "scripts/noetic_processes.py",
+    "scripts/noetic_release.py",
+    "scripts/noetic_archive.py",
+    "tests/programs/test_process_boundary.py",
+    "tests/programs/test_release_archive.py",
+    "docs/process-ownership.md",
+    "docs/release-and-archives.md",
+    "tests/programs/test_operator_access.py",
+    "tests/programs/test_noetic_open.py",
+    "tests/programs/test_private_storage.py",
+    "docs/operator-access.md",
+    "docs/private-storage.md",
+    "docs/commercial-readiness.md",
+    "docs/THIRD_PARTY_NOTICES.txt",
+    "docs/release-requirements.md",
+    "scripts/noetic_local.py",
+    "scripts/noetic_semantic.py",
+    "tests/programs/test_application_gui.py",
+    "tests/programs/test_controller_view.py",
+    "tests/programs/test_local_support.py",
+    "docs/local-capabilities.md",
+    "scripts/web/index.html",
+    "scripts/web/app.js",
+    "scripts/web/style.css",
+    "tests/programs/test_noetic_cli.py",
+    "tests/programs/test_noetic_memory.py",
+    "tests/programs/test_noetic_web.py",
+    "docs/getting-started.md",
+    "docs/session-memory.md",
+    "docs/operator-view.md",
+    "pyproject.toml",
+    "scripts/noetic_controller.py",
+    "scripts/patterns/development.json",
+    "scripts/patterns/cognition.json",
+    "scripts/noetic_harness.py",
+    "tests/programs/test_noetic_controller.py",
+    "tests/programs/test_noetic_harness.py",
+    "tests/programs/test_harness_integration.py",
+    "docs/executive-controller.md",
+    "docs/harness-runtime.md",
+    "config/pi-astra-models.json",
+    "tests/programs/test_pi_astra_profile.py",
+    "docs/pi-astra.md",
+    "config/local-models.json",
+    "docs/local-models.md",
     # Provider-free M0 Telos-to-adjudication reference trace (issue #33)
     "docs/m0-telos-adjudication-trace.md",
     "spec/m0/v0/telos-adjudication-trace.schema.json",
@@ -57,6 +125,11 @@ REQUIRED = [
     "tests/programs/test_development_verified_change.py",
     "tests/programs/test_development_verified_change_explain.py",
     "tests/programs/test_development_verified_change_replay.py",
+    # Provider-free append-only attributed event journal
+    "docs/cognitional-event-journal-v1.md",
+    "spec/events/v1/cognitional-event-journal-contract.json",
+    "scripts/cognitional_event_journal.py",
+    "tests/programs/test_cognitional_event_journal.py",
     # Provider-free terminal observability read model (issue #39)
     "docs/development-verified-change-terminal-observability-v1.md",
     "spec/programs/development.verified-change/v1/terminal-observability-contract.json",
@@ -132,8 +205,8 @@ REQUIRED = [
     "tests/governance/test_route_attestation.py",
 ]
 TEXT_SUFFIXES = {".md", ".py", ".yml", ".yaml", ".json", ".txt"}
-FROZEN_PROVENANCE = {Path("initial-user-msg.md")}
-LINK_RE = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#)([^)]+)\)")
+FROZEN_PROVENANCE = {Path("initial-user-msg.md"), Path("scripts/web/THIRD_PARTY_NOTICES.txt")}
+LINK_RE = re.compile(r"\[[^\]]+\]\((?!https?://|mailto:|#|/)([^)]+)\)")
 ANCHOR_RE = re.compile(r"governance-crud:(?:start|end) id=([a-z]+-[0-9-]+)")
 
 
@@ -154,7 +227,7 @@ def main() -> int:
 
     anchor_counts: dict[str, int] = {}
     for path in sorted(ROOT.rglob("*")):
-        if not path.is_file() or ".git" in path.parts or path.suffix not in TEXT_SUFFIXES:
+        if not path.is_file() or ".git" in path.parts or ".runtime" in path.parts or path.suffix not in TEXT_SUFFIXES:
             continue
         relative = path.relative_to(ROOT)
         try:

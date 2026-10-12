@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noetic-dev"
+version = "0.3.0"
+description = "Purpose-governed development and cognitive patterns with a persisted actor controller"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+genus = ["mcp>=1.0"]
+
+[project.scripts]
+noetic = "scripts.noetic:main"
+
+[tool.setuptools]
+packages = ["scripts"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+scripts = ["telos_bridge.mjs", "noetic_session_extension.mjs", "patterns/*.json", "web/*.html", "web/*.css", "web/*.js", "web/*.txt", "web/fonts/*.woff2"]

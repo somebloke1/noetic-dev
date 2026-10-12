@@ -1,0 +1,50 @@
+{
+  "name": "cognition",
+  "version": 1,
+  "kind": "recurrent_operations",
+  "phases": [
+    {
+      "id": "P1",
+      "role": "attentiveness",
+      "output_type": "cognition.P1",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources"},
+      "content_fields": {"observations": "array", "questions": "array", "evidence_refs": "array"},
+      "return_targets": [],
+      "criteria": ["Attend to supplied and observed data; distinguish observations, questions, and evidence references from judgments."]
+    },
+    {
+      "id": "P2",
+      "role": "intelligence",
+      "output_type": "cognition.P2",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources", "effective.P1": "cognition.P1"},
+      "content_fields": {"hypotheses": "array"},
+      "return_targets": ["P1"],
+      "criteria": ["Form hypotheses grounded in the current observations, or return with a specific unresolved question."]
+    },
+    {
+      "id": "P3",
+      "role": "reasonableness",
+      "output_type": "cognition.P3",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources", "effective.P1": "cognition.P1", "effective.P2": "cognition.P2"},
+      "content_fields": {"judgment": "string", "grounds": "array", "conditions": "array"},
+      "return_targets": ["P1", "P2"],
+      "criteria": ["Judge hypotheses against evidence and state grounds and conditioning uncertainties; return rather than invent a completed judgment."]
+    },
+    {
+      "id": "P4",
+      "role": "responsibility",
+      "output_type": "cognition.P4",
+      "required_inputs": {"external.purpose": "external.purpose", "external.sources": "external.sources", "effective.P1": "cognition.P1", "effective.P2": "cognition.P2", "effective.P3": "cognition.P3"},
+      "content_fields": {"decision": "string", "rationale": "string", "next_actions": "array"},
+      "return_targets": ["P1", "P2", "P3"],
+      "criteria": ["Decide responsibly in light of the current judgment and purpose, or reopen an earlier operation with a reason and question."]
+    }
+  ],
+  "transitions": [
+    {"from": "pending", "on": "activate", "guard": "always", "action": "allocate_operator", "to": "operating"},
+    {"from": "operating", "on": "advance", "guard": "has_next", "action": "advance", "to": "pending"},
+    {"from": "operating", "on": "complete", "guard": "is_last", "action": "complete", "to": "completed"},
+    {"from": "operating", "on": "return", "guard": "can_return", "action": "return", "to": "pending"},
+    {"from": "operating", "on": "return", "guard": "returns_exhausted", "action": "block_return", "to": "blocked"}
+  ]
+}
