@@ -3,6 +3,7 @@
 (() => {
   let layout, canvas, inspector, viewport, map, tabs, filter, zoomLabel, inspectorHeading, provenance, occupant;
   let headerDelegate;
+  let treeDisclosure, treeCoverage, treeMore, treeLimit=40, treeScope="";
   let snapshot = {}, view = "tree", zoom = 85, paneWidth = 500, filterEffort = "", find = "", drawingSignature = "";
   const ui = () => window.NoeticUI;
   const el = (tag, cls, value) => ui().element(tag, cls, value);
@@ -78,7 +79,9 @@
     filter.addEventListener("change",() => {filterEffort=filter.value; drawingSignature="";draw();});
     const search = el("input","agentics-find"); search.type="search"; search.placeholder="Find position…"; search.setAttribute("aria-label","Find position");
     search.addEventListener("input",() => {find=search.value;drawingSignature="";draw();}); filterBar.append(filter,search);
-    viewport = el("div","agentics-viewport"); map=el("div","node-map agentics-node-map"); viewport.append(map); canvas.append(toolbar,filterBar,viewport);
+    treeDisclosure=el("div","agentics-tree-disclosure");treeCoverage=el("span");treeCoverage.id="agentics-tree-coverage";treeCoverage.setAttribute("role","status");
+    treeMore=btn("Show more positions",()=>{treeLimit+=40;drawingSignature="";draw();});treeMore.id="agentics-tree-more";treeDisclosure.append(treeCoverage,treeMore);
+    viewport = el("div","agentics-viewport"); map=el("div","node-map agentics-node-map"); viewport.append(map); canvas.append(toolbar,filterBar,treeDisclosure,viewport);
     const resizer=el("div","pane-resizer inner-resizer"); resizer.tabIndex=0; resizer.setAttribute("role","separator"); resizer.setAttribute("aria-label","Resize agentics tree and conversation"); resizer.setAttribute("aria-orientation","vertical"); resizer.setAttribute("aria-valuemin","260"); resizer.setAttribute("aria-valuemax","760"); resizer.setAttribute("aria-valuenow",String(paneWidth));
     resizer.addEventListener("keydown",event => {if (["ArrowLeft","ArrowRight"].includes(event.key)) {event.preventDefault();setWidth(paneWidth+(event.key === "ArrowRight" ? 20 : -20));}});
     resizer.addEventListener("pointerdown",event => {
@@ -117,7 +120,17 @@
     const top=el("span","node-topline"), badges=el("span","node-badges");badges.append(el("span",`node-state ${stateOf(current)}`));top.append(el("code","",row.ordinal),badges);
     card.append(top,el("strong","",root ? "Application governance" : positionTitle(row)),el("small","",root ? "Logical root · no native occupant" : row.effort === row.ordinal ? "Effort root" : lineage(row)));return card;
   }
-  function drawTree(rows) {
+  function treeProjection(rows,limit,selectedOrdinal) {
+    const byOrdinal=new Map(rows.map(row=>[row.ordinal,row])),included=new Set();
+    function includePath(ordinal){while(byOrdinal.has(ordinal)&&!included.has(ordinal)){included.add(ordinal);ordinal=byOrdinal.get(ordinal).parent;}}
+    for(const row of rows.slice(0,limit))includePath(row.ordinal);
+    if(selectedOrdinal)includePath(selectedOrdinal);
+    return rows.filter(row=>included.has(row.ordinal));
+  }
+  function drawTree(matching) {
+    const rows=treeProjection(matching,treeLimit,snapshot.selected?.ordinal),extras=rows.length-Math.min(treeLimit,matching.length);
+    treeCoverage.textContent=`Showing ${rows.length} of ${matching.length} matching positions${extras?` · ${extras} ancestor/selected-path positions retained beyond disclosure`:''}. Find position searches the complete matching topology.`;
+    treeMore.disabled=rows.length===matching.length;treeMore.textContent=treeMore.disabled?"All matching positions shown":`Show ${Math.min(40,matching.length-treeLimit)} more positions`;
     const children=new Map(), byOrdinal=new Map(rows.map(row=>[row.ordinal,row]));
     for (const row of rows) { const parent=byOrdinal.has(row.parent) ? row.parent : null; if (!children.has(parent)) children.set(parent,[]);children.get(parent).push(row); }
     const locations=new Map(), visiting=new Set();let leaf=0,maxDepth=0;
@@ -140,7 +153,9 @@
       if(row.origin === "human")path.classList.add("human-assignment");
       path.setAttribute("d",`M ${parent.x+95} ${parent.y+86} V ${middle} H ${child.x+95} V ${child.y}`);svg.append(path);
     }
+    const focused=map.contains(document.activeElement)?document.activeElement.dataset.ordinal:null;
     map.replaceChildren(svg,...rows.map(row=>{const p=locations.get(row.ordinal);return nodeCard(row,p.x,p.y);})); setZoom(zoom);
+    if(focused)[...map.querySelectorAll('.responsibility-node')].find(node=>node.dataset.ordinal===focused)?.focus({preventScroll:true});
   }
   function drawSessions(rows) {
     map.style.cssText=""; map.dataset.width="700";
@@ -187,15 +202,18 @@
 
   function drawInspector() {
     const selected=snapshot.selected, session=snapshot.detail?.session;
+    const projectDraft=!selected&&!snapshot.applicationHistory;
     const original=Boolean(session ? session.identity_origin === "legacy-unadopted" || !session.target && !session.effort_root : selected?.id && !selected.ordinal && !selected.effort_root);
     const ordinal=original ? session?.original_ordinal||session?.ordinal||"Native" : selected?.ordinal||session?.ordinal||"0";
-    const row=original ? null : (snapshot.positions||[]).find(item=>item.ordinal===ordinal), current=original ? null : occupantContext(ordinal);
+    const row=original||projectDraft ? null : (snapshot.positions||[]).find(item=>item.ordinal===ordinal), current=original||projectDraft ? null : occupantContext(ordinal);
     const parent=original && session?.parent_id ? (snapshot.sessions||[]).find(item=>item.id===session.parent_id) : null;
-    const root=!original && ordinal==="0", exact=Boolean(selected?.instantiation||selected?.id);
-    const badge=el("div","agent-avatar violet",ordinal), identity=el("div");
-    identity.append(el("span","panel-kicker",original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
+    const root=!original&&!projectDraft && ordinal==="0", exact=Boolean(selected?.instantiation||selected?.id);
+    const badge=el("div","agent-avatar violet",projectDraft?"+":ordinal), identity=el("div");
+    identity.append(el("span","panel-kicker",projectDraft ? "Project conversation" : original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",projectDraft ? "Open or create a project" : exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
     const context=btn("Context",()=>{const evidence=document.getElementById("developer-evidence");evidence.open=!evidence.open;},"session-context-button"); context.disabled=!session&&!row;
     inspectorHeading.replaceChildren(badge,identity,context);
+    document.getElementById("agentics-position-status").hidden=provenance.hidden=occupant.hidden=projectDraft;
+    document.getElementById("developer-prompt").placeholder=projectDraft?"Describe the app or work you want done…":"Direct this exact session…";
     document.getElementById("agentics-position-status").replaceChildren(el("span",`state-pill ${stateOf(session||current)}`,root ? "Dormant" : session?.status||current?.status||(row?.current_instantiation ? "Native context unobserved" : "Uninstantiated")),el("code","",original ? `Original position ${ordinal} · unadopted` : `Position ${ordinal}`));
     const provenanceHeading=el("div","topology-provenance"), composition=el("div");
     composition.append(el("strong","",original ? session?.parent_id ? "Native parent session" : "Original root session" : root ? "Enduring governance position" : row?.origin === "human" ? "Human assignment" : row?.origin === "agent" ? "Agent delegation" : "Registered responsibility"),el("small","",original ? session?.parent_id ? `${parent?.original_ordinal || parent?.ordinal || "Ordinal unobserved"} · original namespace · ${session.parent_id}` : "Original namespace · unadopted" : row?.parent ? lineage(row) : "Application namespace")); provenanceHeading.append(el("span","panel-kicker",original ? "Original session lineage" : "Agent composition"),composition);
@@ -213,11 +231,13 @@
     provenance.replaceChildren(provenanceHeading);
     const who=el("div");who.append(el("span","",original ? "Application correspondence" : "Current occupant"),el("strong","",original ? "Unadopted native source" : root ? "No native actor" : row?.current_instantiation ? `Instantiation ${row.current_instantiation} · ${current?.model || "native model unobserved"}` : current?.target ? `Instantiation ${current.target.instantiation} · ${current.model || "native model unobserved"}` : "No instantiation observed"));
     const selectedContext=el("div");selectedContext.append(el("span","","Selected context"),el("strong","",exact ? selected.instantiation ? `Instantiation ${selected.instantiation} · session ${selected.session}${session?.is_current ? " · current" : " · retained"}` : `Native session ${selected.id}${original ? " · original namespace · unadopted" : ""}` : "Position history"));occupant.replaceChildren(who,selectedContext);
-    inspector.dataset.positionOnly=String(!selected || root);
+    inspector.dataset.positionOnly=String(snapshot.applicationHistory||root);
     inspector.dataset.exact=String(exact);
   }
   function draw() {
     if(!layout?.isConnected)return;
+    const scope=JSON.stringify([filterEffort,snapshot.projectFilter,find]);if(treeScope!==scope){treeScope=scope;treeLimit=40;}
+    treeDisclosure.hidden=view!=="tree";
     const roots=(snapshot.positions||[]).filter(row=>row.effort===row.ordinal);
     const optionsSignature=JSON.stringify(roots.map(row=>[row.ordinal,row.intent]));
     if(filter.dataset.signature!==optionsSignature) {
@@ -225,7 +245,7 @@
       filter.replaceChildren(option,...roots.map(row=>{const item=el("option","",`${row.ordinal} · ${row.intent || "Effort"}`);item.value=row.ordinal;return item;}));filter.value=filterEffort;
     }
     if(headerDelegate)headerDelegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;
-    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session]);
+    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session]);
     if(drawingSignature!==signature) {drawingSignature=signature; if(view==="tree")drawTree(rows);else if(view==="sessions")drawSessions(rows);else drawReturns(rows);drawInspector();}
   }
   function render({host,snapshot:next}) {
@@ -233,7 +253,7 @@
     const actions=[btn("Find position",()=>layout.querySelector(".agentics-find").focus())];
     const delegate=btn("+ Delegate agent responsibility",()=>document.getElementById("developer-delegate").click(),"primary-button");
     headerDelegate=delegate; delegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;actions.push(delegate);
-    ui().heading({eyebrow:`Application namespace · ${positions().length} visible positions`,title:"Agentics",description:"Inspect enduring ordinal positions, genuine delegation lineage, occupants, and exact sessions across efforts.",actions});
+    ui().heading({eyebrow:`Application namespace · ${positions().length} matching positions`,title:"Agentics",description:"Inspect enduring ordinal positions, genuine delegation lineage, occupants, and exact sessions across efforts.",actions});
     if(!layout?.isConnected||layout.parentNode!==host) {build(host);drawingSignature="";}
     draw();
   }
