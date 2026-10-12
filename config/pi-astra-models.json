@@ -1,0 +1,26 @@
+{
+  "providers": {
+    "litellm": {
+      "models": [
+        {
+          "id": "codex/gpt-6-astra",
+          "name": "GPT-6 Astra (LiteLLM subscription)",
+          "api": "openai-responses",
+          "contextWindow": 272000,
+          "maxTokens": 128000,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          }
+        }
+      ]
+    }
+  }
+}

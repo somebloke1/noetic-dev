@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="light" name="color-scheme"/>
+<title>noetic-dev</title>
+<link href="/style.css" rel="stylesheet"/>
+<script defer="" src="/app.js"></script>
+<script defer="" src="/sessions.js"></script>
+<script defer="" src="/shell.js"></script><script defer="" src="/shell-agentics.js"></script><script defer="" src="/shell-library.js"></script><link href="/shell-agentics.css" rel="stylesheet"/><link href="/shell-library.css" rel="stylesheet"/></head>
+<body>
+<section aria-labelledby="access-heading" id="operator-access">
+<h1 id="access-heading">noetic-dev</h1>
+<p id="access-status" role="status">Locked. Open the pairing URL from the server owner's terminal or enter its local token.</p>
+<form id="access-form">
+<label for="access-token">local operator token, not provider credential</label>
+<input autocomplete="off" id="access-token" required="" spellcheck="false" type="password"/>
+<button type="submit">Unlock</button>
+</form>
+<button hidden="" id="access-lock" type="button">Lock</button>
+<button id="access-logout" type="button">Log out</button>
+</section>
+<div hidden="" id="private-workspace"><div hidden="" id="legacy-storage">
+
+<a class="skip-link" href="#run-detail">Skip to selected run</a>
+<header class="masthead">
+<div class="wordmark">noetic<span>-dev</span><small>AGENT WORKSPACE</small></div>
+<div class="observation">
+<span class="eyebrow"></span>
+<span id="poll-status" role="status">Reading local journals...</span>
+</div>
+<button id="refresh" type="button">Refresh</button>
+</header>
+<button aria-controls="operator-rail" aria-expanded="false" class="mobile-navigation" id="toggle-navigation" type="button">Sessions</button>
+
+<div class="instrument">
+<aside aria-labelledby="runs-heading" class="run-rail" id="operator-rail">
+<nav aria-label="Application workspace" class="workspace-navigation">
+<button class="primary-action" data-page="developer" id="developer-new" type="button">＋ New conversation</button>
+<button data-page="developer" id="developer-project-open" type="button">Open / Create project</button><button aria-pressed="true" data-page="developer" type="button">Developer sessions</button><button data-page="developer" id="developer-global-root" type="button">0 · Application root</button><button data-page="developer" id="developer-global-history" type="button">Application history</button>
+<details class="tools-menu"><summary>Application tools &amp; structured workflows</summary><button data-page="new" type="button">New structured workflow</button><button data-page="workspace" type="button">Recorded workflows</button><button data-page="history" type="button">History</button><button data-page="memory" type="button">Memory</button><button data-page="purposes" type="button">Purposes</button><button data-page="diagnostics" type="button">Models and services</button></details>
+</nav>
+<section class="developer-rail"><h1>Projects / efforts</h1><nav aria-label="Developer projects" id="developer-session-list"></nav><h2>Ordinal positions &amp; contexts</h2><nav aria-label="Rooted developer agents" id="developer-agent-list"></nav><details><summary>Original namespaces · unadopted</summary><nav id="developer-legacy-list"></nav></details></section>
+<details class="structured-register" id="structured-register"><summary>Structured workflows</summary>
+<div class="rail-heading"><h1 id="runs-heading">Recorded workflows</h1><span class="counter" id="run-count">0</span></div>
+<details class="rail-details"><summary>Storage details</summary><p class="source" id="runs-root"></p><p class="warning" hidden="" id="run-warning" role="status"></p></details>
+<details class="filter-panel"><summary>Filter sessions</summary><div class="rail-filters">
+<label for="run-filter">Filter runs, workspace or actor</label><input id="run-filter" placeholder="Text, ID or role" type="search"/>
+<label for="status-filter">Kernel status</label><select id="status-filter"><option value="">All statuses</option><option>active</option><option>completed</option><option>blocked</option><option>failed</option><option>cancelled</option><option>accepted</option><option>unfinished</option></select>
+<label for="pattern-filter">Pattern</label><select id="pattern-filter"><option value="">All patterns</option><option value="development">Development</option><option value="cognition">Cognition</option><option value="legacy">Legacy</option></select>
+<label for="role-filter">Actor role</label><select id="role-filter"><option value="">All roles</option></select>
+</div></details>
+<nav aria-label="Recorded runs" id="run-list"></nav>
+<section class="session-agents"><h2>Session agents</h2><nav aria-label="Selected session agents" id="session-agent-list"></nav></section>
+<details class="population-panel"><summary>Actor population <span id="population-count"></span></summary><div id="population-list"></div></details>
+<details class="attention-panel"><summary id="attention-heading">Attention history</summary><div id="attention-feed"></div></details>
+</details>
+</aside>
+<main id="legacy-detail" tabindex="-1"><section hidden="" id="effort-operation-controls"><label for="operation-scope">Operation scope</label><select id="operation-scope"><option value="application">Application · all efforts and original histories</option></select><p class="evidence-note" id="legacy-scope-banner"></p></section>
+<section aria-labelledby="developer-heading" class="application-page developer-workspace" id="developer-page">
+<div id="developer-empty"><h2>What do you want to build?</h2><p>Start a project session. Your root agent can build, investigate and delegate while you steer.</p></div>
+<section hidden="" id="developer-history-panel"><h2 id="developer-history-heading"></h2><p>Persistent responsibility and correlated history. Root 0 has no running model.</p><div id="developer-history-list"></div></section><header hidden="" id="developer-header"><div class="section-heading"><h2 id="developer-heading"></h2><span id="developer-status" role="status"></span></div><p class="source" id="developer-location"></p><div class="session-signals"><span id="developer-ordinal"></span><span id="developer-context"></span><span id="developer-model-status"></span><span id="developer-progress" role="status"></span></div><div class="developer-actions"><button id="developer-stop" type="button">Stop work</button><button id="developer-delegate" type="button">Delegate task</button><button id="developer-close" type="button">Close agent</button><button id="developer-reopen" type="button">Reopen agent</button><button id="developer-root" type="button">Effort root</button><details><summary>Responsibility handoff</summary><button id="developer-succeed" type="button">Start successor with handoff</button></details></div></header>
+<p class="error" hidden="" id="developer-error" role="alert"></p>
+<p class="warning" hidden="" id="developer-attention" role="status"></p>
+<div aria-label="Agent requests" id="developer-dialogs"></div>
+<section class="developer-result" hidden="" id="developer-result"></section><section hidden="" id="developer-file-view"><div class="section-heading"><h3 id="developer-file-path"></h3><button id="developer-file-close" type="button">Close source view</button></div><pre class="source-preview" id="developer-file-text" tabindex="0"></pre></section>
+<div aria-label="Developer conversation" class="transcript developer-transcript" id="developer-transcript" tabindex="0"></div>
+<form class="developer-composer" id="developer-form">
+<fieldset id="developer-project-fields"><legend>Project</legend><div class="form-grid"><div><label for="developer-project-mode">Project choice</label><select id="developer-project-mode"><option value="existing">Open existing project</option><option value="create">Create a new project</option></select></div><div><label for="developer-project-name">Project / task name</label><input id="developer-project-name" placeholder="My app"/></div></div><label for="developer-workspace">Project folder or name</label><input autocomplete="off" id="developer-workspace" placeholder="my-app or /path/to/my-app" required=""/><details class="developer-model-settings"><summary>Model &amp; project location</summary><label for="developer-projects-root">Projects location · used for bare names</label><input id="developer-projects-root" placeholder="Your workspace folder"/><div class="form-grid"><div><label for="developer-model">Model</label><input id="developer-model" required="" value="openai-codex/gpt-6.1-sol"/></div><div><label for="developer-thinking">Thinking</label><select id="developer-thinking"><option>low</option><option>medium</option><option selected="">high</option><option>xhigh</option><option>minimal</option><option>off</option></select></div></div></details></fieldset>
+<label for="developer-prompt" id="developer-prompt-label">Describe the app or work you want done</label><textarea id="developer-prompt" placeholder="Build an app that…" required="" rows="4"></textarea>
+<div class="developer-send"><label for="developer-mode" hidden="" id="developer-mode-label">Send as</label><select hidden="" id="developer-mode"><option value="prompt">Prompt in this context</option><option value="steer">Steer active work</option><option value="follow_up">Queue follow-up</option></select><button class="primary-action" id="developer-submit" type="submit">Start project session</button></div>
+<p id="developer-ack" role="status"></p>
+</form>
+<form hidden="" id="developer-succession-form"><h3>Succession at the selected position</h3><label for="developer-succession-responsibility">Responsibility entrusted to successor</label><textarea id="developer-succession-responsibility" required=""></textarea><label for="developer-succession-context">Context handoff / first instruction</label><textarea id="developer-succession-context" required=""></textarea><button type="submit">Entrust and start successor</button><button id="developer-succession-cancel" type="button">Cancel</button></form><form class="developer-delegate-form" hidden="" id="developer-delegate-form"><h3>Delegate from selected agent</h3><label for="developer-delegate-task">Bounded task</label><textarea id="developer-delegate-task" required="" rows="3"></textarea><label for="developer-delegate-thinking">Thinking</label><select id="developer-delegate-thinking"><option value="low">Low · mechanical / exploratory</option><option value="high">High · substantial work</option></select><button id="developer-delegate-submit" type="submit">Start delegate</button><button id="developer-delegate-cancel" type="button">Cancel draft</button></form>
+<details class="evidence-drawer" id="developer-evidence"><summary>Session details &amp; evidence</summary><pre class="evidence" id="developer-details" tabindex="0"></pre><pre class="evidence" id="developer-events" tabindex="0"></pre></details>
+</section>
+<div id="workspace-page">
+<div class="empty-state" id="empty-state"><span class="eyebrow">WORKSPACE / NO SELECTION</span><h2>What are we working on?</h2><p>Start a task in your project, or select a session to follow its agents.</p><button id="empty-new" type="button">New task</button></div>
+<p class="error" hidden="" id="detail-error" role="alert"></p>
+<article hidden="" id="selected-run">
+<section aria-labelledby="run-goal" class="run-heading">
+<div class="run-caption"><span class="eyebrow">SESSION</span><span class="state" id="run-state"></span></div>
+<p class="run-id" id="run-id"></p>
+<h2 id="run-goal"></h2>
+<button id="reuse-setup" type="button">Reuse setup</button>
+<p class="error" hidden="" id="reuse-error" role="alert"></p>
+</section>
+<section aria-labelledby="controller-heading" class="controller-summary" hidden="" id="controller-summary">
+<div class="section-heading"><h3 id="controller-heading">Progress</h3><span class="eyebrow" id="controller-version"></span></div>
+<div class="session-signals"><span id="primary-progress"></span><span id="primary-agent"></span><span id="primary-model"></span></div><p class="warning" hidden="" id="primary-attention" role="status"></p>
+<div class="cancel-control">
+<button id="advance-one" type="button">Next step</button>
+<button id="advance-all" type="button">Continue</button>
+<button id="pause-pattern" type="button">Pause after step</button>
+<button hidden="" id="cancel-pattern" type="button">Stop task</button>
+</div>
+<p class="error" hidden="" id="cancel-error" role="alert"></p>
+<p class="evidence-note" id="action-result" role="status"></p>
+<p class="error" hidden="" id="action-error" role="alert"></p>
+</section>
+<section id="reviewed-result" class="developer-result" hidden=""><h3>Inquiry result</h3><div id="reviewed-dispositions" class="lib-chips"></div><p id="reviewed-progress" class="evidence-note"></p><div id="reviewed-report"></div><details id="reviewed-review"><summary>External independent review</summary><pre id="reviewed-review-text"></pre></details><div class="reviewed-row"><button id="reviewed-recover-contribution" type="button" hidden="">Recover retained contribution</button><button id="reviewed-recover-correlation" type="button" hidden="">Recover original correlation</button></div><p id="reviewed-recovery-status" role="status"></p></section>
+<section class="developer-result" hidden="" id="workspace-result"><h3>Result &amp; project changes</h3><p id="workspace-result-location"></p><p id="workspace-result-status"></p><div id="workspace-result-summary"></div><details hidden="" id="workspace-result-review"><summary>Independent review</summary><p id="workspace-review-report"></p><button id="workspace-review-open" type="button">Inspect reviewer conversation</button></details><pre id="workspace-result-checks"></pre><button hidden="" id="workspace-apply" type="button">Apply reviewed changes to project</button><p id="workspace-apply-result" role="status"></p><details><summary>Changed files</summary><pre id="workspace-result-files"></pre></details></section><section hidden="" id="workspace-file-view"><div class="section-heading"><h3 id="workspace-file-path"></h3><button id="workspace-file-close" type="button">Close source view</button></div><pre class="source-preview" id="workspace-file-text" tabindex="0"></pre></section>
+<section aria-labelledby="session-heading" hidden="" id="session-view">
+<div class="section-heading"><h3 id="session-heading">Agent output</h3><label class="follow-label"><input checked="" id="follow-current" type="checkbox"/> Follow current agent</label></div>
+<label for="session-select">Agent</label><select id="session-select"></select>
+<p class="evidence-note" id="session-note" role="status"></p>
+<div aria-label="Structured session transcript" class="transcript" id="session-transcript" tabindex="0"></div>
+</section>
+<div class="session-next"><span id="steering-note">Task instructions are fixed for this session.</span><button data-page="new" type="button">New task</button></div>
+<details class="evidence-drawer" id="evidence-drawer"><summary>Details &amp; evidence</summary>
+<details id="reviewed-evidence" hidden=""><summary>Original reviewed preparation &amp; native evidence</summary><p class="evidence-note">Retained packets at their original cut. Current native eligibility is unobserved; inspection and recall do not promote standing.</p><div id="reviewed-evidence-content"></div></details><details id="transcript-details"><summary>Transcript records</summary><p class="source" id="session-model"></p><h4>Normalized activity</h4><pre class="evidence" id="session-normalized" tabindex="0"></pre><h4>Raw transcript</h4><pre class="evidence" id="session-raw" tabindex="0"></pre></details>
+<div aria-label="Evidence view" class="view-controls" role="group">
+<button aria-controls="phases-view" aria-pressed="false" data-view="phases" hidden="" id="phases-tab" type="button">Phases and recurrence</button>
+<button aria-controls="session-view" aria-pressed="false" data-view="session" id="session-tab" type="button">Agent output</button>
+<button aria-controls="compare-view" aria-pressed="false" data-view="compare" hidden="" id="compare-tab" type="button">Compare artifacts</button>
+<button aria-controls="controller-view" aria-pressed="false" data-view="controller" hidden="" id="controller-tab" type="button">Controller evidence</button>
+<button aria-controls="timeline-view" aria-pressed="true" data-view="timeline" type="button">Event timeline</button>
+<button aria-controls="reports-view" aria-pressed="false" data-view="reports" type="button">Reports</button>
+<button aria-controls="logs-view" aria-pressed="false" data-view="logs" type="button">Command logs</button>
+</div>
+<details class="task-details"><summary>Task and acceptance criteria</summary><pre id="task-body"></pre></details>
+<p class="state-note" id="state-note"></p>
+<details class="run-metadata"><summary>Workspace, purpose reference and evidence timestamps</summary><dl class="metadata">
+<div><dt>Last journal event</dt><dd id="last-event"></dd></div>
+<div><dt>Evidence fetched</dt><dd id="detail-observed"></dd></div>
+<div><dt>Workspace</dt><dd id="workspace"></dd></div>
+<div><dt>Goal reference</dt><dd id="goal-ref"></dd></div>
+</dl></details>
+<dl class="metadata">
+<div><dt>Pattern / kind</dt><dd id="controller-pattern"></dd></div>
+<div><dt>Machine state</dt><dd id="controller-machine"></dd></div>
+<div><dt>Current / terminal phase</dt><dd id="controller-phase"></dd></div>
+<div><dt>Generation / visit</dt><dd id="controller-generation"></dd></div>
+<div><dt>Budgets</dt><dd id="controller-budgets"></dd></div>
+<div><dt>Current actor / ordinal</dt><dd id="controller-actor"></dd></div>
+</dl>
+<ol aria-label="Pattern phases and current bindings" class="phase-track" id="controller-phases"></ol>
+<details><summary>Driver, configured models and execution limits</summary><pre id="driver-data"></pre></details>
+<details><summary>Kernel evidence source</summary><p class="source" id="controller-source"></p></details>
+<p class="activity" id="driver-activity"></p><p class="evidence-note" id="cancel-note" role="status"></p>
+<details class="telos-strip">
+<summary id="telos-heading">Telos / governing purpose link</summary>
+<dl><div><dt>Chain</dt><dd id="telos-chain"></dd></div><div><dt>Subgoal</dt><dd id="telos-subgoal"></dd></div></dl>
+<p id="telos-result"></p>
+</details>
+<section aria-labelledby="execution-heading" class="execution" id="legacy-execution">
+<h3 class="eyebrow" id="execution-heading">RECORDED OUTCOMES</h3>
+<div class="outcomes" id="outcomes"></div>
+</section>
+<button id="session-logs" type="button">Inspect agent files</button>
+<section aria-labelledby="phases-heading" hidden="" id="phases-view">
+<div class="section-heading"><h3 id="phases-heading">Phase workspace</h3><span class="eyebrow" id="phase-kind"></span></div>
+<label for="phase-select">Phase or cognitive operation</label><select id="phase-select"></select>
+<p class="activity" id="phase-actionability"></p>
+<div class="phase-columns"><section><h4>Current inputs and criteria</h4><div id="phase-inputs"></div></section><section><h4>Outputs and acceptance</h4><div id="phase-outputs"></div></section></div>
+<h4>Attempts, findings and returns</h4><div id="phase-history"></div>
+</section>
+<section aria-labelledby="compare-heading" hidden="" id="compare-view">
+<div class="section-heading"><h3 id="compare-heading">Compare retained versions</h3><span class="eyebrow">IMMUTABLE CONTENT / CURRENT STANDING</span></div>
+<div class="comparison"><section><label for="compare-left">Left artifact</label><select id="compare-left"></select><p class="source" id="compare-left-standing"></p><pre aria-label="Left artifact content" class="evidence" id="compare-left-text" tabindex="0"></pre></section><section><label for="compare-right">Right artifact</label><select id="compare-right"></select><p class="source" id="compare-right-standing"></p><pre aria-label="Right artifact content" class="evidence" id="compare-right-text" tabindex="0"></pre></section></div>
+</section>
+<section aria-labelledby="actors-heading" hidden="" id="controller-view">
+<div class="section-heading"><h3 id="actors-heading">Actors / activation lifecycle</h3><span class="eyebrow" id="actor-count"></span></div>
+<p class="evidence-note">Kernel-assigned actors, in ordinal order. A missing session reference means none is committed in the kernel, not proof that no runtime started.</p>
+<ol class="actor-list" id="actor-list"></ol>
+<label for="actor-select">Inspect activation</label>
+<select id="actor-select"></select>
+<p class="evidence-note" id="actor-summary"></p>
+<details><summary>Activation, bindings, criteria and lifecycle events</summary><pre id="actor-data"></pre></details>
+<label for="actor-log-select">Selected activation / retained file</label>
+<select id="actor-log-select">
+<option value="actor.stdout.log">Actor / stdout</option><option value="actor.stderr.log">Actor / stderr</option>
+<option value="verify.stdout.log">Verify / stdout</option><option value="verify.stderr.log">Verify / stderr</option>
+<option value="prompt.txt">Prompt / prompt.txt</option><option value="model-result.json">Model result / model-result.json</option>
+<option value="submission.json">Kernel submission / submission.json</option><option value="changes.json">Changes / changes.json</option><option value="changes.diff">Changes / changes.diff</option>
+</select>
+<p class="source" id="actor-log-source"></p><p class="evidence-note" id="actor-log-note" role="status"></p>
+<pre aria-label="Activation file text" class="evidence" id="actor-log-text" tabindex="0"></pre>
+<div class="section-heading"><h3>Typed artifacts</h3><span class="eyebrow" id="artifact-count"></span></div>
+<p class="evidence-note">Current accepted/effective means bound in the kernel now. Historical and partial work remains visible but is not a current phase result. Content is retained evidence, not independently validated here.</p>
+<label for="artifact-select">Kernel artifact / current standing</label>
+<select id="artifact-select"></select>
+<p class="state-note" id="artifact-standing"></p>
+<p class="source" id="artifact-provenance"></p>
+<pre aria-label="Typed artifact content" class="evidence" id="artifact-content" tabindex="0"></pre>
+<details><summary>Artifact provenance, digest and input bindings</summary><pre id="artifact-data"></pre></details>
+<div class="section-heading"><h3>Actual kernel transitions and events</h3><span class="eyebrow" id="transition-count"></span></div>
+<p class="evidence-note">Committed sequence, including returns, remediation and slot invalidation. These are observed events, not the possible transitions in the pattern table. Versions are kernel versions; the kernel does not record event timestamps.</p>
+<ol class="timeline" id="controller-events"></ol>
+</section>
+<section aria-labelledby="timeline-heading" id="timeline-view">
+<div class="section-heading"><h3 id="timeline-heading">Journal sequence</h3><span class="eyebrow" id="event-count"></span></div>
+<p class="source" id="journal-source"></p>
+<ol class="timeline" id="timeline"></ol>
+</section>
+<section aria-labelledby="reports-heading" hidden="" id="reports-view">
+<div class="section-heading"><h3 id="reports-heading">Retained reports</h3><span class="eyebrow">PLAIN TEXT / NOT RENDERED HTML</span></div>
+<label for="report-select">Report source</label>
+<select id="report-select">
+<option value="work.md">Worker report / work.md</option>
+<option value="changes.diff">Observed changes / changes.diff</option>
+<option value="changes.json">Change manifest / changes.json</option>
+<option value="review.recorded">Recorded review / journal evidence</option>
+<option value="review.md">Reviewer report / review.md</option>
+<option value="task.md">Task / task.md</option>
+</select>
+<p class="source" id="report-source"></p><p class="evidence-note" id="report-note"></p>
+<pre aria-label="Report text" class="evidence" id="report-text" tabindex="0"></pre>
+</section>
+<section aria-labelledby="logs-heading" hidden="" id="logs-view">
+<div class="section-heading"><h3 id="logs-heading">Command output</h3><span class="eyebrow">RETAINED STDOUT / STDERR</span></div>
+<label for="log-select">Log source</label>
+<select id="log-select">
+<option value="work.stdout.log">Work / stdout</option><option value="work.stderr.log">Work / stderr</option>
+<option value="verify.stdout.log">Verify / stdout</option><option value="verify.stderr.log">Verify / stderr</option>
+<option value="review.stdout.log">Review / stdout</option><option value="review.stderr.log">Review / stderr</option>
+</select>
+<p class="source" id="log-source"></p><p class="evidence-note" id="log-note"></p>
+<pre aria-label="Log text" class="evidence" id="log-text" tabindex="0"></pre>
+</section>
+</details>
+</article>
+</div>
+<section aria-labelledby="new-heading" class="application-page task-composer" hidden="" id="new-page">
+<span class="eyebrow">STRUCTURED WORKFLOW</span><h2 id="new-heading">Start a structured task</h2>
+<form id="start-form">
+<details hidden="" id="reuse-details"><summary>Reused setup details</summary><p class="warning" hidden="" id="reuse-notice" role="status"></p></details>
+<label for="start-task">What should the agents do?</label><textarea id="start-task" placeholder="Describe the task and what a successful result looks like…" required="" rows="5"></textarea>
+<p class="evidence-note" id="start-execution-note">Start creates a discipline instance in the selected effort. The controller prepares its project context.</p><label for="start-workspace">Declared effort project</label><input autocomplete="off" id="start-workspace" placeholder="/home/me/workspace/project" readonly="" required=""/>
+<label for="start-pattern">Workflow</label><select id="start-pattern"><option value="development">Development + review</option><option value="cognition">Cognitive inquiry</option><option value="opermem-reviewed">Reviewed Opermem inquiry</option></select>
+<section id="reviewed-setup" class="reviewed-setup" hidden="">
+<p class="evidence-note">Read-only inquiry with an independent worker and reviewer. Native contribution and receipt remain separate from external review.</p>
+<label for="reviewed-store">Backing registered to this effort</label><div class="reviewed-row"><select id="reviewed-store"><option value="">Select backing explicitly</option></select><button id="reviewed-refresh" type="button">Refresh backings &amp; launches</button></div>
+<p id="reviewed-store-status" class="evidence-note" role="status"></p><details><summary>Register a backing</summary><label for="reviewed-directory">Absolute backing directory</label><input id="reviewed-directory" placeholder="/absolute/path/to/backing" autocomplete="off"/><button id="reviewed-register" type="button">Register for selected effort</button><p class="evidence-note">Registration records the association; it does not start native memory.</p></details>
+<label for="reviewed-operation">Native operation</label><select id="reviewed-operation"><option value="question">Question</option></select><p id="reviewed-operation-note" class="evidence-note"></p>
+<label for="reviewed-sources">Selected source files · one absolute path per line</label><textarea id="reviewed-sources" rows="3" placeholder="/absolute/project/source.md"></textarea><div id="reviewed-selected-sources"></div><p class="evidence-note">At most 64 sources and 1 MiB total. Recall selections retain source identity and digest; launch revalidates them.</p>
+<details id="reviewed-launches"><summary>Retained launch commands</summary><div id="reviewed-launch-list"></div></details>
+</section><p class="evidence-note" id="start-effective-model"></p><button id="start-change-model" type="button">Change model/settings</button>
+<section class="focused-settings" hidden="" id="advanced-settings">
+<nav aria-label="Task settings"><button data-settings="model" type="button">Model</button><button data-settings="review" id="review-settings-tab" type="button">Review &amp; checks</button><button data-settings="limits" type="button">Execution limits</button><button data-settings="purpose" type="button">Purpose &amp; sources</button><button id="start-close-settings" type="button">Done</button></nav>
+<div data-settings-panel="model"><label for="start-profile">Model profile</label><select id="start-profile"><option value="">Custom client/model</option></select><div class="form-grid model-fields" id="custom-model-fields"><div><label for="start-client">Client</label><select id="start-client"><option value="pi">Pi</option><option value="opencode">OpenCode</option></select></div><div><label for="start-model">Model</label><input id="start-model" required="" value="openai-codex/gpt-6.1-sol"/></div></div><div id="pi-thinking-field"><label for="start-thinking">Thinking level</label><input id="start-thinking" required="" value="high"/></div><p class="evidence-note">Exact selected route; availability depends on client configuration.</p></div>
+<div data-settings-panel="review" hidden=""><label for="start-qa-model">Review model · blank inherits main model</label><input id="start-qa-model"/><div id="verify-field"><label for="start-verify">Check command override · optional JSON argument array</label><textarea id="start-verify" placeholder='["python3", "-m", "unittest", "discover"]' rows="2"></textarea><p class="evidence-note">Leave blank for the implementation agent to select a real host check. An explicit argv is retained and run unchanged.</p></div></div>
+<div data-settings-panel="limits" hidden=""><label for="start-timeout">Actor timeout · seconds</label><input id="start-timeout" max="7200" min="1" required="" type="number" value="900"/><div id="development-limits"><label for="start-remediations">Remediations per phase</label><input id="start-remediations" max="20" min="0" required="" type="number" value="1"/></div><div id="cognition-limits"><label for="start-returns">Cognitive returns</label><input id="start-returns" max="20" min="0" required="" type="number" value="1"/></div></div>
+<div data-settings-panel="purpose" hidden=""><label for="start-purpose">Telos purpose · optional</label><select id="start-purpose"><option value="">No Telos link</option></select><button id="start-load-purposes" type="button">Load purposes</button><button id="start-create-purpose" type="button">Create purpose</button><label for="start-sources">Source references · one per line</label><textarea id="start-sources" placeholder="docs/requirements.md" rows="3"></textarea></div>
+</section>
+<p class="error" hidden="" id="start-error" role="alert"></p><p class="evidence-note" id="start-result" role="status"></p>
+<button class="primary-action" id="start-submit" type="submit">Start task →</button>
+</form>
+</section>
+<section aria-labelledby="history-heading" class="application-page" hidden="" id="history-page"><h2 id="history-heading">Run and session history</h2><p class="evidence-note">Uses the register filters. Historical sessions stay readable; opening evidence never resumes a runtime.</p><div id="history-list"></div></section>
+<section aria-labelledby="retrieval-heading" class="application-page" hidden="" id="memory-page">
+<h2 id="retrieval-heading">Memory and supporting summaries</h2><p class="evidence-note">Explicit retrieval only. Semantic search uses a persistent derived cache and the configured local embedding model. No background inference, no silent lexical fallback.</p>
+<form id="memory-form"><label for="memory-target">Recall subject</label><select id="memory-target"><option value="effort">Selected effort / application</option><option value="ordinal">Selected position and descendants</option><option value="session">Exact selected native context</option></select><label for="memory-mode">Retrieval</label><select id="memory-mode"><option value="lexical">Lexical / retained sources</option><option value="semantic">Semantic / retained sources and native context</option></select><label for="memory-query">Query</label><input id="memory-query" required="" type="search"/><label class="checkbox-label"><input id="memory-reindex" type="checkbox"/> Explicitly rebuild semantic vectors for the current model/source identity</label><button id="memory-submit" type="submit">Search memory</button></form>
+<p class="evidence-note" id="memory-status" role="status"></p><p class="error" hidden="" id="memory-error" role="alert"></p><div id="memory-results"></div><details><summary>Recall source coverage and scope</summary><pre class="evidence" id="memory-coverage"></pre></details>
+<section class="supporting-summary"><h3>Local supporting summary</h3><p class="source" id="summary-selection"></p><p class="evidence-note">Non-authoritative model-generated support, not judgment, QA or advancement. Coverage excludes historical artifacts. Uses only the selected run.</p><label class="checkbox-label"><input id="summary-save" type="checkbox"/> Save summary.json and its observation receipt</label><button id="summary-generate" type="button">Summarize selected run</button><p class="error" hidden="" id="summary-error" role="alert"></p><p class="evidence-note" id="summary-coverage" role="status"></p><pre class="evidence" id="summary-content" tabindex="0"></pre></section>
+</section>
+<section aria-labelledby="purposes-heading" class="application-page" hidden="" id="purposes-page"><h2 id="purposes-heading">Telos purposes</h2><p class="source" id="purpose-database"></p><p class="evidence-note">Native Telos chains retain their explicit owning effort/application and source store. Reading an absent database does not create it. Creating a purpose is intentional; the GUI never forces chain completion.</p><button id="purposes-refresh" type="button">Refresh purposes</button><form id="purpose-form"><label for="purpose-goal">New governing purpose</label><textarea id="purpose-goal" required="" rows="3"></textarea><button id="purpose-create" type="submit">Create Telos purpose</button></form><p class="error" hidden="" id="purpose-error" role="alert"></p><p class="evidence-note" id="purpose-status" role="status"></p><div id="purpose-list"></div></section>
+<section aria-labelledby="diagnostics-heading" class="application-page" hidden="" id="diagnostics-page"><h2 id="diagnostics-heading">Models and services</h2><p class="evidence-note" id="configuration-notice"></p><div id="configured-profiles"></div><details><summary>Technical configuration · role defaults and limits</summary><pre id="configuration-details"></pre></details><h3>Observed local service health</h3><button id="diagnostics-refresh" type="button">Refresh known health endpoints</button><p class="evidence-note" id="diagnostics-status" role="status"></p><p class="error" hidden="" id="diagnostics-error" role="alert"></p><div id="diagnostics-results"></div><p class="evidence-note">Only Qwen :8742/health, Ollama :11434/api/ps and LiteLLM :3333/health/liveliness are queried. Health is not authentication or inference proof. No credentials are displayed.</p></section>
+</main>
+</div>
+</div><div class="app-shell" id="noetic-shell">
+<aside class="global-rail"><div class="brand-mark" title="noetic-dev">N</div><nav aria-label="Primary navigation" class="rail-nav" id="shell-navigation"></nav><div class="rail-footer"><button aria-label="Configuration" class="rail-button" id="shell-settings" title="Configuration"></button><button aria-label="Operator access" class="avatar" id="shell-account" title="Operator access">N</button></div><div aria-label="Resize global navigation" aria-orientation="vertical" aria-valuenow="64" class="pane-resizer" id="rail-resizer" role="separator" tabindex="0"></div></aside>
+<aside class="effort-sidebar" id="shell-sidebar"><div class="sidebar-top"><div><span class="eyebrow">PORTFOLIO</span><div class="workspace-name">Development portfolio</div></div><button aria-label="Workspace options" class="icon-button" id="portfolio-options"></button></div><button class="new-effort" id="shell-new-effort">New effort</button><div class="project-scope-control" id="shell-filter"></div><div class="section-label"><span>ACTIVE EFFORTS</span><span id="shell-effort-count">0</span></div><nav aria-label="Active efforts" class="effort-list" id="shell-efforts"></nav><div class="sidebar-views"><div class="section-label">VIEWS</div><button data-shell-view="attention">Attention <span id="shell-attention-count"></span></button><button data-shell-view="history">Recent activity</button><button data-shell-view="closed">Closed conversations</button></div><button class="installation-status" id="shell-installation"><strong>Installation</strong><span id="shell-health">Observations available</span><span hidden="" id="shell-preview-label"></span></button><div aria-label="Resize effort sidebar" aria-orientation="vertical" aria-valuenow="248" class="pane-resizer" id="sidebar-resizer" role="separator" tabindex="0"></div></aside>
+<main class="main-workspace" id="run-detail" tabindex="-1"><header class="topbar"><div class="breadcrumbs"><span id="shell-breadcrumb-root">Development portfolio</span><span class="breadcrumb-chevron">›</span><button id="shell-breadcrumb-choice">Overview</button></div><div class="topbar-actions"><button aria-label="Search" class="icon-button" id="shell-search"></button><button class="command-button" id="shell-command">⌘ <span>Command</span> <kbd>K</kbd></button></div></header><div hidden="" id="shell-notice" role="status"></div><section aria-label="Previous version drafts" class="evidence-block" hidden="" id="previous-drafts">
+<p id="previous-drafts-status" role="status">Previous-version drafts are stored in this browser. Import replaces this tab's saved forms and view selections. Nothing is imported or deleted without your choice.</p>
+<button id="import-previous-drafts" type="button">Import previous drafts</button>
+<button id="forget-previous-drafts" type="button">Forget previous drafts</button>
+</section><div class="error global-error" hidden="" id="fetch-error" role="alert"></div><div class="error" hidden="" id="shell-observation-error" role="alert"></div><div class="error" hidden="" id="shell-global-error" role="alert"></div><header class="page-header" id="shell-heading"><div><div class="page-eyebrow" id="shell-eyebrow"></div><h1 id="shell-page-title">Workspaces</h1><p id="shell-description"></p><div id="shell-project-scope"></div></div><div class="page-actions" id="shell-actions"></div></header><nav aria-label="Effort sections" class="workspace-tabs" hidden="" id="shell-tabs"></nav><div id="shell-content"></div></main>
+</div><dialog class="command-dialog" id="shell-command-dialog"><form method="dialog"><header><strong>Go to…</strong><button aria-label="Close search">×</button></header></form><input aria-label="Find a view, effort, or ordinal" id="shell-command-query" placeholder="Find a view, effort, or ordinal…" type="search"/><div id="shell-command-results"></div></dialog></div>
+<noscript>This operator requires JavaScript for pairing. All JSON API requests require a local operator bearer token.</noscript>
+</body>
+</html>

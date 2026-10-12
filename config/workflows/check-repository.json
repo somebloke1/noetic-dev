@@ -1,0 +1,6 @@
+{
+  "goal": "Check that this noetic-dev checkout satisfies its repository contracts and regression tests, then obtain independent review.",
+  "work": ["python3", "scripts/validate_repo.py"],
+  "verify": ["python3", "-m", "unittest", "discover", "-s", "tests", "-v"],
+  "timeout_seconds": 300
+}

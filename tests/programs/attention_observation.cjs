@@ -1,0 +1,48 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+ const root=path.resolve(__dirname,'../..'),source=fs.readFileSync(path.join(root,'scripts/web/app.js'),'utf8');
+ const section=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
+ const env={...process.env};delete env.USER_PROVIDED_PASSWORD;
+ const browser=await chromium.launch({headless:true,env,executablePath:process.env.NOETIC_TEST_CHROMIUM||undefined});
+ try{
+  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('http://fixture/**',route=>route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(root,'scripts/web/index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,'')}));await page.goto('http://fixture/');
+  await page.addScriptTag({content:section('"use strict";','function actorIdentity(')+section('function renderRuns(','function switchView(')+section('async function refresh()','$("refresh").addEventListener')});
+  await page.addScriptTag({content:`operatorToken='fixture';const node=(tag,value,cls)=>{const e=document.createElement(tag);if(value!==undefined)e.textContent=value;if(cls)e.className=cls;return e;};const text=(id,value)=>$(id).textContent=value;const error=(id,value)=>{text(id,value);$(id).hidden=!value;};const title=value=>value;const tone=value=>value;function setOptions(id,rows){$(id).replaceChildren(...rows.map(([value,label])=>{const e=node('option',label);e.value=value;return e;}));}function persistUI(){}function loadReviewedSetup(){}function renderPopulation(){}async function loadDetail(){}async function loadReviewedLaunches(){}let pending=[];function fetchJSON(url){if(url==='/api/preview-info')return Promise.resolve({});return new Promise((resolve,reject)=>pending.push({url,resolve,reject}));}function selectRun(id){window.inspected=id;return new Promise(resolve=>window.finishInspection=resolve);}window.sessionRefreshes=0;window.NoeticSessions={state:()=>({sessions:[],positions:[],effort:null}),refresh:()=>{sessionRefreshes++;},open:value=>window.sessionInspected=value};`});
+  await page.evaluate(()=>{$('private-workspace').hidden=false;});await page.addScriptTag({path:path.join(root,'scripts/web/shell.js')});
+  await page.evaluate(()=>NoeticUI.navigate('attention'));
+  assert.match(await page.locator('#shell-content').innerText(),/Recorded execution blockers/,'structured blockers have a distinct subject');
+  assert.match(await page.locator('#shell-content').innerText(),/not yet observed/i,'unobserved is not zero');
+  await page.evaluate(()=>{refresh();});
+  assert.match(await page.locator('#shell-content').innerText(),/Loading/);
+  await page.evaluate(()=>pending.shift().resolve({runs_dir:'/fixture',observed_at:'2026-10-12T00:00:00Z',warnings:[],runs:[{run_id:'blocked-exact',goal:'Blocked fixture',state:'blocked',correspondence:{effort_root:'0.1'},population:[]},{run_id:'failed-exact',goal:'Failed fixture',state:'failed',population:[]},{run_id:'completed-history',goal:'Completed fixture',state:'completed',attention:[{kind:'Return'}],population:[]},{run_id:'cancelled',goal:'Cancelled fixture',state:'cancelled',population:[]}]}));
+  await page.waitForFunction(()=>!refreshPending);
+  assert.equal(await page.locator('#shell-content [data-run-id]').count(),2);
+  assert.match(await page.locator('#shell-content').innerText(),/Application.*all efforts/s);
+  assert.match(await page.locator('#shell-content').innerText(),/No session requests or failures observed/);
+  await page.locator('#shell-content [data-run-id="blocked-exact"]').focus();await page.evaluate(()=>{refresh();});assert.equal(await page.evaluate(()=>document.activeElement.dataset.runId),'blocked-exact','focused blocker survives refreshing state');await page.evaluate(()=>pending.shift().reject(new Error('owned unavailable')));await page.waitForFunction(()=>!refreshPending);
+  assert.match(await page.locator('#shell-content').innerText(),/stale/i);
+  assert.equal(await page.locator('#shell-content [data-run-id]').count(),2,'retained blockers survive failed refresh');
+  await page.evaluate(()=>{refresh();});await page.evaluate(()=>pending.shift().resolve({runs_dir:'/fixture',observed_at:'2026-10-12T00:01:00Z',warnings:['Unreadable fixture run'],runs:[]}));await page.waitForFunction(()=>!refreshPending);
+  assert.match(await page.locator('#shell-content').innerText(),/Unreadable fixture run/);
+  assert.match(await page.locator('#shell-content').innerText(),/No blocked or failed executions observed/);
+  await page.evaluate(()=>{refresh();});await page.evaluate(()=>pending.shift().reject(new Error('owned empty stale')));await page.waitForFunction(()=>!refreshPending);
+  assert.match(await page.locator('#shell-content').innerText(),/stale/i,'empty successful observation also becomes stale');
+  await page.evaluate(()=>{selectedEffort='0.1';changeOperationScope('effort');});
+  assert.match(await page.locator('#shell-content').innerText(),/Effort 0.1/);assert.match(await page.locator('#shell-content').innerText(),/Loading/);
+  await page.evaluate(()=>pending.shift().resolve({runs_dir:'/fixture',observed_at:'2026-10-12T00:02:00Z',warnings:[],runs:[{run_id:'effort-exact',goal:'Effort blocker',state:'blocked',correspondence:{effort_root:'0.1'},population:[]}]}));await page.waitForFunction(()=>!refreshPending);
+  await page.locator('#shell-content [data-run-id="effort-exact"]').click();
+  assert.equal(await page.evaluate(()=>inspected),'effort-exact');assert.equal(await page.evaluate(()=>NoeticUI.route()),'executions');
+  await page.evaluate(()=>{NoeticUI.navigate('prompts');finishInspection();});assert.equal(await page.evaluate(()=>NoeticUI.route()),'prompts','late inspect completion preserves later navigation');
+  await page.evaluate(()=>NoeticUI.navigate('attention'));await page.locator('#shell-actions').getByRole('button',{name:'Refresh',exact:true}).click();
+  assert.equal(await page.evaluate(()=>sessionRefreshes),1,'Attention refresh reads native sessions too');
+  await page.evaluate(()=>pending.shift().resolve({runs_dir:'/fixture',warnings:[],runs:[]}));await page.waitForFunction(()=>!refreshPending);
+  await page.evaluate(()=>{refresh();});await page.evaluate(()=>changeOperationScope('application'));
+  assert.match(await page.locator('#shell-content').innerText(),/not yet observed/i);
+  await page.evaluate(()=>pending.shift().resolve({runs_dir:'/fixture',warnings:[],runs:[{run_id:'old-effort',state:'blocked',population:[]}]}));
+  await page.waitForFunction(()=>pending.length===1);assert.equal(await page.locator('#shell-content [data-run-id]').count(),0,'late old-scope result rejected');
+  await page.evaluate(()=>pending.shift().resolve({runs_dir:'/fixture',warnings:[],runs:[]}));await page.waitForFunction(()=>!refreshPending);
+  assert.deepEqual(errors,[]);console.log('PASS Attention: separate subjects, scoped loading/observed/stale/warnings, exact blockers, history excluded, two-source refresh, late scope and inspection continuity');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

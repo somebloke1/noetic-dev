@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "kind": "development-local-support",
+  "scope": "Explicit DEVELOPMENT embedding profile for this host; select through NOETIC_LOCAL_CONFIG or --config",
+  "access": {
+    "base_url": "http://127.0.0.1:3333/v1",
+    "api_key_env": "LITELLM_API_KEY"
+  },
+  "inference": {
+    "model": "qwen3.6-a3b"
+  },
+  "embedding": {
+    "base_url": "http://127.0.0.1:11435/v1",
+    "api_key_env": "",
+    "model": "noetic-snowflake-embed:latest",
+    "source_model": "snowflake-arctic-embed2:latest",
+    "source_model_layer_sha256": "8c625c9569c3c799f5f9595b5a141f91d224233055608189d66746347c14e613",
+    "dimensions": 1024,
+    "tokenizer": "Snowflake/snowflake-arctic-embed-l-v2.0 (backend-owned)",
+    "pooling": "CLS (backend-owned)",
+    "preprocessing_version": "utf8-contiguous-v1",
+    "max_input_tokens": 8192,
+    "chunk_bytes": 1024,
+    "initial_recommended_batch_size": 2
+  },
+  "client": {
+    "timeout": 60,
+    "max_tokens": 512
+  }
+}

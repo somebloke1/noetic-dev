@@ -1,0 +1,24 @@
+Opermem native component — private owner delivery
+
+Typed semantic authority and the operation-host/child implementation remain in the
+independent Opermem repository. That private repository declares no redistribution
+license in its workspace/package metadata or root files. No MIT license is assigned
+to Opermem by this composition. This file does not authorize public redistribution.
+
+The selected unchanged Linux x86_64 GNU pair uses bundled SQLite and dynamically
+requires system glibc, libgcc_s, libm and the ELF loader. These system libraries are
+not bundled. The accepted host requires glibc >=2.39; child requires >=2.34.
+The package uses the host's stricter floor. SQLite is bundled by libsqlite3-sys;
+SQLite upstream distributes its source in the public domain.
+
+The inspected donor lockfile includes rusqlite 0.40.1, libsqlite3-sys 0.38.1 and
+generic-array 0.14.7 under MIT; other cached registry dependencies offer MIT/Apache
+choices, with rustix/linux-raw-sys also offering LLVM-exception choices. This is an
+inventory of inspected package metadata, not proof that every build/platform
+package is linked into the selected historical pair. Rust compiler/runtime and
+selected dependency license material belongs to the actual build provenance.
+
+The component manifest pins the exact host/child hashes and evidence references.
+Historical binary acceptance is not a complete reproducible build provenance claim.
+No native source, bootstrap store, credentials or user database is shipped here.
+The existing Noetic and Telos notices remain separate and unchanged.
