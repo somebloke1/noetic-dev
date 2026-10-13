@@ -185,6 +185,54 @@ is historical external evidence; the driver retrieves and validates the actual
 native context again before the maintained checking capture executes. It is not a
 caller override of native authority.
 
+### Checking preparation example
+
+A fresh closed specification and retained whole native context can be prepared from
+an explicit editable recipe; no spec JSON is hand-edited and no old artifact
+references are reused. Global flags precede the subcommand, `--command` takes the
+exact argv last, and preparation never executes the command, captures evidence,
+submits, admits or judges. Select an existing unchecked native condition whose
+bounded claim is that an unexecuted required test cannot fulfill Checking.
+`CONDITION` and `WARRANT` are its exact IDs in `STORE`. From a source checkout,
+replace `noetic` with `python3 -m scripts.noetic` from the repository root.
+`RUNS` may be absent (the command creates it privately) or an existing directory
+owned by you with mode `0700`. `FRESH_DIR` must not exist; its parent must already
+exist. Create neither the output directory nor a public run-history directory:
+
+```sh
+noetic opermem --host HOST --store STORE --runs-dir RUNS \
+  prepare-checking \
+  --parent-id CONDITION --warrant-id WARRANT \
+  --output FRESH_DIR --cwd PROJECT \
+  --scope "Only the exact selected unittest identities." \
+  --timeout-seconds 10 \
+  --test tests.programs.test_noetic_opermem_checking.CheckingCaptureTests.test_missing_selected_test_cannot_fulfill \
+  --predicate exact "missing selected test yields indeterminate, never fulfilled" tests.programs.test_noetic_opermem_checking.CheckingCaptureTests.test_missing_selected_test_cannot_fulfill \
+  --source /absolute/python actual-python \
+  --source /absolute/scripts/noetic_checking_tests.py test-runner \
+  --source /absolute/scripts/noetic_opermem_checking.py checking-module \
+  --source /absolute/tests/programs/test_noetic_opermem_checking.py assertion-source \
+  --environment LANG C.UTF-8 --environment PYTHONDONTWRITEBYTECODE 1 \
+  --command /absolute/python /absolute/scripts/noetic_checking_tests.py --module-dir /absolute/project --module-dir /absolute/project/tests/programs tests.programs.test_noetic_opermem_checking.CheckingCaptureTests.test_missing_selected_test_cannot_fulfill
+```
+
+`FRESH_DIR` receives `spec.json` (closed `noetic-checking-spec/v1`), `context.json`
+(the inner whole native context, not a CLI wrapper) and a descriptive
+`preparation.json` receipt naming the actual retrieval transcript and selected
+host/store route. The route is descriptive provenance; matching numeric IDs or cut
+values in another store do not establish the same residue. These phases are
+distinct: **preparation** writes the closed recipe artifacts only; **executable
+capture evidence** happens later when the host runs the exact command and retains
+manifest, stdout, stderr and sources; **native evidence admission** submits that
+captured contribution through the existing checked condition; and any **Judgment**
+over the admitted result, together with human valuation of its worth, remains a
+separate later act. An unexecuted selected test never fulfills a condition; a
+source file that changes after preparation is rejected by the existing application
+preflight and capture before any effects. The output directory must be fresh;
+existing directories are rejected unchanged. This proves bounded artifact
+preparation only — not checking success, production readiness or whole-framework
+standing.
+
 Acting selects native plan/step IDs plus either an owned `observed_run_id` (optional
 `observed_step` work/verify/review), or `observation_evidence` with its original
 `observation_manifest_sha256`. The archive's original source run must retain owned

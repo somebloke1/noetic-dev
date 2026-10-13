@@ -1240,6 +1240,21 @@ def main(argv: list[str] | None = None) -> int:
     context_cmd.add_argument("--occasion-kind", choices=("experience", "outcome-as-experience"))
     resume = commands.add_parser("resume")
     resume.add_argument("run_dir", type=Path)
+    preparation = commands.add_parser("prepare-checking")
+    preparation.add_argument("--parent-id", type=int, required=True)
+    preparation.add_argument("--warrant-id", type=int, required=True)
+    preparation.add_argument("--output", type=Path, required=True)
+    preparation.add_argument("--cwd", type=Path, required=True)
+    preparation.add_argument("--scope", required=True)
+    preparation.add_argument("--timeout-seconds", type=float, default=10)
+    preparation.add_argument("--test", action="append", default=[], metavar="ID")
+    preparation.add_argument("--predicate", action="append", default=[], nargs="+",
+                             metavar="ARG")
+    preparation.add_argument("--source", action="append", default=[], nargs=2,
+                             metavar=("PATH", "ROLE"))
+    preparation.add_argument("--environment", action="append", default=[], nargs=2,
+                             metavar=("NAME", "VALUE"))
+    preparation.add_argument("--command", dest="command_argv", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
     os.environ.pop("USER_PROVIDED_PASSWORD", None)
     if args.command == "create-instance":
@@ -1264,6 +1279,35 @@ def main(argv: list[str] | None = None) -> int:
     if args.command not in ("run", "resume"):
         args.store = private_dir(args.store)
         args.runs_dir = private_dir(args.runs_dir)
+    if args.command == "prepare-checking":
+        if not args.command_argv:
+            parser.error("prepare-checking requires an exact command after --command")
+        if not args.test:
+            parser.error("prepare-checking requires at least one --test")
+        if not args.predicate:
+            parser.error("prepare-checking requires at least one --predicate")
+        if any(len(predicate) < 3 for predicate in args.predicate):
+            parser.error("--predicate requires ID, EXPECTED_OBSERVATION and at least one TEST_ID")
+        if not args.source:
+            parser.error("prepare-checking requires at least one --source")
+        if len({name for name, _ in args.environment}) != len(args.environment):
+            parser.error("duplicate --environment names are rejected")
+        recipe = {
+            "command": {"argv": list(args.command_argv), "cwd": str(args.cwd),
+                        "timeout_seconds": args.timeout_seconds,
+                        "environment": {name: value for name, value in args.environment}},
+            "selected_tests": list(args.test),
+            "predicates": [{"id": p[0], "expected_observation": p[1], "test_ids": list(p[2:])}
+                           for p in args.predicate],
+            "sources": [{"path": path, "role": role} for path, role in args.source],
+            "scope": args.scope}
+        result = noetic_opermem_checking.prepare(recipe, args.parent_id, args.warrant_id, args.output,
+            host=args.host, store=args.store, transcripts=args.runs_dir / ".opermem-transcripts")
+        print(json.dumps({"prepared": True, "output": result["output"],
+                          "condition": result["spec"]["condition"],
+                          "spec_sha256": noetic_opermem_checking.digest((Path(result["output"]) / "spec.json").read_bytes()),
+                          "context_sha256": noetic_opermem_checking.digest((Path(result["output"]) / "context.json").read_bytes())}, sort_keys=True))
+        return 0
     if args.command == "seed-question":
         response, transcript = submit(args.host, args.store, args.runs_dir / ".opermem-transcripts",
                                       "question", None,

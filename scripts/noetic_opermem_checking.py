@@ -136,6 +136,81 @@ def validate_spec(spec, context, condition_id, warrant_id):
         raise ValueError("duplicate source or missing executable fingerprint")
 
 
+PREPARATION_VERSION = "noetic-checking-preparation/v1"
+
+
+def prepare(recipe, condition_id, warrant_id, output, *, host, store, transcripts):
+    """Derive a fresh closed checking specification from an explicit recipe.
+
+    Reads the exact native context and hashes current source bytes; never
+    executes the command, captures evidence, submits or admits anything.
+    """
+    import shutil
+    from scripts import noetic_opermem as bridge
+    if (not isinstance(recipe, dict)
+            or set(recipe) != {"command", "selected_tests", "predicates", "sources", "scope"}):
+        raise ValueError("closed checking recipe requires exact command, tests, predicates, sources and scope")
+    if (not isinstance(recipe["selected_tests"], list)
+            or not isinstance(recipe["predicates"], list)
+            or any(not isinstance(predicate, dict)
+                   or set(predicate) != {"id", "test_ids", "expected_observation"}
+                   or not isinstance(predicate["test_ids"], list)
+                   for predicate in recipe["predicates"])
+            or not isinstance(recipe["sources"], list)
+            or any(not isinstance(source, dict) or set(source) != {"path", "role"}
+                   for source in recipe["sources"])):
+        raise ValueError("closed checking recipe requires exact test, predicate and source collections")
+    command = recipe["command"]
+    if not isinstance(command, dict) or set(command) != {"argv", "cwd", "timeout_seconds", "environment"}:
+        raise ValueError("closed checking recipe requires exact command fields")
+    argv = command["argv"]
+    if not isinstance(argv, list) or not argv or any(not isinstance(a, str) for a in argv):
+        raise ValueError("closed checking recipe requires exact string argv")
+    environment = command["environment"]
+    if not isinstance(environment, dict):
+        raise ValueError("closed checking recipe requires an explicit environment mapping")
+    timeout = command["timeout_seconds"]
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 900:
+        raise ValueError("closed checking recipe requires a bounded positive timeout")
+    purpose = bridge.purpose_for("checking", condition_id, warrant_id=warrant_id)
+    context, transcript = bridge.retrieve(host, store, transcripts, purpose)
+    bridge.validate_context(context, "checking", condition_id, warrant_id=warrant_id)
+    cwd = Path(command["cwd"]).resolve(strict=True)
+    executable = (Path(argv[0]) if Path(argv[0]).is_absolute()
+                  else Path(shutil.which(argv[0], path=environment.get("PATH")) or cwd / argv[0]))
+    executable = executable.resolve(strict=True)
+    spec = {"version": SPEC_VERSION, "condition": binding(context, condition_id, warrant_id),
+            "command": {"argv": [str(executable), *argv[1:]], "cwd": str(cwd),
+                        "timeout_seconds": timeout, "environment": dict(environment)},
+            "selected_tests": list(recipe["selected_tests"]),
+            "predicates": [{"id": p["id"], "test_ids": list(p["test_ids"]),
+                            "expected_observation": p["expected_observation"]} for p in recipe["predicates"]],
+            "sources": [{"path": str(Path(s["path"]).resolve(strict=True)),
+                         "sha256": digest(Path(s["path"]).read_bytes()), "role": s["role"]}
+                        for s in recipe["sources"]],
+            "scope": recipe["scope"]}
+    validate_spec(spec, context, condition_id, warrant_id)
+    output = Path(output)
+    output.mkdir(mode=0o700)
+    artifacts = {}
+    for name, data in (("spec.json", canonical(spec)), ("context.json", canonical(context))):
+        (output / name).write_bytes(data)
+        artifacts[name] = {"sha256": digest(data), "bytes": len(data)}
+    receipt = {"version": PREPARATION_VERSION, "condition": spec["condition"],
+               "spec_sha256": artifacts["spec.json"]["sha256"],
+               "context_sha256": artifacts["context.json"]["sha256"],
+               "context_transcript": str(transcript),
+               "selected_native_route": {"host": str(Path(host).resolve(strict=True)),
+                                         "store": str(Path(store).resolve(strict=True))},
+               "sources": [{"path": s["path"], "sha256": s["sha256"], "role": s["role"]}
+                           for s in spec["sources"]],
+               "explicit_limits": ["no checking command was executed during preparation",
+                                   "no evidence capture, native submission, checking result, admission or Judgment occurred",
+                                   "descriptive receipt only; not checking readiness truth"]}
+    (output / "preparation.json").write_bytes(canonical(receipt))
+    return {"output": str(output), "spec": spec, "context": context, "receipt": receipt}
+
+
 def outcome(spec, execution, stdout):
     unknown = {p["id"]: "indeterminate" for p in spec["predicates"]}
     tests = []
