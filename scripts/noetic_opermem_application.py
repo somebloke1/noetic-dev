@@ -55,7 +55,7 @@ def selector_u64(value, label):
 
 def selector_request(body):
     operation = body.get('operation')
-    if operation not in ('insight', 'formulation', 'reflection', 'judgment', 'conditional-structure', 'checking'):
+    if operation not in ('insight', 'formulation', 'reflection', 'judgment', 'conditional-structure', 'checking', 'practical-question'):
         return body
     selectors = body.get('selectors', {})
     if not isinstance(selectors, dict):
@@ -70,6 +70,14 @@ def selector_request(body):
         if any(a >= b for a, b in zip(conditions, conditions[1:])):
             raise ScopeError('Condition IDs must be in strictly sorted unique native ID order')
         normalized['selectors'].update(warrant_id=warrant, condition_ids=conditions)
+    elif operation == 'practical-question':
+        judgments = selectors.get('judgment_ids')
+        if not isinstance(judgments, list) or not judgments:
+            raise ScopeError('Judgment IDs require a nonempty explicitly selected ID list')
+        judgments = [selector_u64(value, 'Judgment ID') for value in judgments]
+        if any(a >= b for a, b in zip(judgments, judgments[1:])):
+            raise ScopeError('Judgment IDs must be in strictly sorted unique native ID order')
+        normalized['selectors'].update(judgment_ids=judgments)
     else:
         normalized['selectors']['parent_id'] = selector_u64(selectors.get('parent_id'), 'Parent ID')
         if operation == 'conditional-structure':
