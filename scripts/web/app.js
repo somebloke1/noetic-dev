@@ -1531,6 +1531,8 @@ function updateComposer() {
   scopeControls();
   const development = $("start-pattern").value === "development", reviewed = isReviewed();
   $("reviewed-setup").hidden = !reviewed;
+  $("start-sources").hidden = reviewed;
+  document.querySelector('label[for="start-sources"]').hidden = reviewed;
   text("start-execution-note", reviewed ? "Start instantiates the reviewed discipline in this effort. Its original preparation precedes native and actor effects." : "Start creates a discipline instance in the selected effort. The controller prepares its project context.");
   $("review-settings-tab").hidden = !(development || reviewed);
   $("cognition-limits").hidden = development || reviewed;
