@@ -236,6 +236,131 @@
     }));
     submissionsHost.hidden = !attempts.length;
   }
+  const MAX_FILES = 8, MAX_FILE_BYTES = 2097152, MAX_TOTAL_BYTES = 4194304, MAX_FRAME_BYTES = 6291456;
+  const IMAGE_MIME_EXTENSIONS = {"image/png":[".png"],"image/jpeg":[".jpg",".jpeg"],"image/gif":[".gif"],"image/webp":[".webp"],"image/bmp":[".bmp"]};
+  const TEXT_MIME_TYPES = new Set(["application/json","application/yaml","application/x-yaml","application/xml","application/javascript","application/x-sh","application/toml"]);
+  const TEXT_EXTENSIONS = new Set([".md",".markdown",".txt",".text",".json",".csv",".tsv",".yaml",".yml",".xml",".html",".htm",".css",".js",".mjs",".ts",".tsx",".jsx",".py",".sh",".toml",".ini",".cfg",".log",".sql",".rs",".go",".c",".h",".cpp",".hpp",".java",".rb",".php",".diff",".patch"]);
+  const attachmentDrafts = new Map();
+  let attachmentSequence = 0;
+  let attachmentStore = (() => { try { return JSON.parse(sessionStorage.getItem("noetic-attachments-v1") || "{}"); } catch (_) { return {}; } })();
+  const attachmentKey = () => JSON.stringify([accessVersion, selected, projectBrowsing ? "browse" : newConversation ? "new" : selected ? exact(selected) ? "live" : "position" : "project"]);
+  for (const [storedKey, record] of Object.entries(attachmentStore)) attachmentDrafts.set(storedKey, {files: (record.names || []).map(entry => ({id: `attachment-${++attachmentSequence}`, name: entry.name, size: entry.size, mime: entry.mime, status: "unavailable"})), notice: ""});
+  const attachmentDraft = key => { const draft = attachmentDrafts.get(key) || {files: [], notice: ""}; attachmentDrafts.set(key, draft); return draft; };
+  const saveAttachmentStore = key => {
+    const files = attachmentDrafts.get(key)?.files || [];
+    if (files.length) attachmentStore[key] = {names: files.map(entry => ({name: entry.name, size: entry.size, mime: entry.mime}))};
+    else delete attachmentStore[key];
+    try { sessionStorage.setItem("noetic-attachments-v1", JSON.stringify(attachmentStore)); } catch (_) {}
+  };
+  const extensionOf = name => (typeof name === "string" && /\.[A-Za-z0-9]{1,10}$/.test(name) ? /\.[A-Za-z0-9]{1,10}$/.exec(name)[0].toLowerCase() : "");
+  const forbiddenName = name => [...name].some(character => "/\\\"'<>".includes(character) || character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127);
+  const attachmentMimeType = file => {
+    const suffix = extensionOf(file.name);
+    if (file.type) {
+      if (!/^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}\/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}$/.test(file.type)) throw new Error(`Attachment ${file.name} needs a concrete mime_type such as image/png or text/plain.`);
+      const mime = file.type.toLowerCase();
+      if (mime.startsWith("image/")) {
+        const allowed = IMAGE_MIME_EXTENSIONS[mime];
+        if (!allowed) throw new Error(`Attachment ${file.name} uses unsupported image type ${mime}; supported native raster types are PNG, JPEG, GIF, WebP and BMP.`);
+        if (!allowed.includes(suffix)) throw new Error(`Attachment ${file.name} extension does not match its ${mime} type.`);
+      }
+      return mime;
+    }
+    for (const [mime, allowed] of Object.entries(IMAGE_MIME_EXTENSIONS)) if (allowed.includes(suffix)) return mime;
+    if (TEXT_EXTENSIONS.has(suffix)) return "text/plain";
+    return "application/octet-stream";
+  };
+  const base64FromBytes = bytes => { let binary = ""; for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000)); return btoa(binary); };
+  const attachmentsFor = key => (attachmentDrafts.get(key)?.files || []).filter(entry => entry.status === "ready" && entry.data).map(entry => ({name: entry.name, mime_type: entry.mime, data: entry.data}));
+  const attachmentSnapshot = key => (attachmentDrafts.get(key)?.files || []).map(entry => entry.id);
+  const attachmentsBlocked = key => {
+    const files = attachmentDrafts.get(key)?.files || [];
+    const reading = files.filter(entry => entry.status === "reading");
+    if (reading.length) return `Attachments are still reading: ${reading.map(entry => entry.name).join(", ")}. Submit again once reading completes; nothing was sent.`;
+    const unavailable = files.filter(entry => entry.status !== "ready" || !entry.data);
+    if (unavailable.length) return `Selected attachments are unavailable (reload) and will not be sent: ${unavailable.map(entry => entry.name).join(", ")}. Remove or reselect them, then submit; nothing was sent.`;
+    return null;
+  };
+  const clearAttachments = (key, ids, textKey) => {
+    const draft = attachmentDrafts.get(key);
+    if (!ids.length || !draft || draft.files.map(entry => entry.id).join("|") !== ids.join("|")) return;
+    if (textKey !== undefined && textKey !== `${promptRevision}|${$("developer-prompt").value}`) return;
+    draft.files = []; draft.notice = ""; saveAttachmentStore(key);
+    if (key === attachmentKey()) renderAttachments();
+  };
+  const attachmentRows = new Map();
+  function renderAttachments() {
+    const key = attachmentKey(), host = $("developer-attachments-list"), noticeHost = $("developer-attachments-notice");
+    if (!host) return;
+    const draft = attachmentDrafts.get(key), files = draft?.files || [];
+    noticeHost.textContent = draft?.notice || "";
+    const rows = files.map(entry => {
+      const summary = `${entry.size} B · ${entry.mime || "type unobserved"}${entry.status === "reading" ? " · reading" : entry.status === "unavailable" ? " · unavailable after reload — reselect" : ""}`;
+      let row = attachmentRows.get(entry.id);
+      if (row && row.isConnected) {
+        const strong = row.querySelector("strong"), small = row.querySelector("small");
+        if (strong.textContent !== entry.name) strong.textContent = entry.name;
+        if (small.textContent !== summary) small.textContent = summary;
+      } else {
+        row = node("li");
+        row.append(node("strong", entry.name), node("small", summary));
+        const remove = node("button", "Remove"); remove.type = "button"; remove.setAttribute("aria-label", `Remove ${entry.name}`);
+        remove.addEventListener("click", () => {
+          const current = attachmentDraft(attachmentKey());
+          current.files = current.files.filter(item => item.id !== entry.id);
+          if (entry.status === "reading") entry.cancelled = true;
+          current.notice = ""; saveAttachmentStore(attachmentKey()); renderAttachments();
+        });
+        row.append(remove);
+      }
+      attachmentRows.set(entry.id, row);
+      return row;
+    });
+    rows.forEach((row, index) => { if (host.children[index] !== row) host.insertBefore(row, host.children[index] || null); });
+    for (const child of [...host.children]) if (!rows.includes(child)) child.remove();
+    for (const id of [...attachmentRows.keys()]) if (!rows.some(row => attachmentRows.get(id) === row)) attachmentRows.delete(id);
+  }
+  function prepareAttachment(file, entry, originKey) {
+    (async () => {
+      try {
+        const mime = attachmentMimeType(file);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (entry.cancelled) return;
+        if (mime.startsWith("text/") || TEXT_MIME_TYPES.has(mime) || TEXT_EXTENSIONS.has(extensionOf(file.name))) new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+        entry.mime = mime; entry.data = base64FromBytes(bytes); entry.status = "ready";
+      } catch (failure) {
+        const draft = attachmentDrafts.get(originKey);
+        if (draft) draft.files = draft.files.filter(item => item.id !== entry.id);
+        entry.cancelled = true;
+        if (originKey === attachmentKey()) { const current = attachmentDraft(attachmentKey()); current.notice = `Attachment refused: ${failure.message}`; }
+        if (originKey === attachmentKey()) renderAttachments();
+        return;
+      }
+      saveAttachmentStore(originKey);
+      if (originKey === attachmentKey()) renderAttachments();
+    })();
+  }
+  function addAttachments(files) {
+    if (!files || !files.length) return;
+    const key = attachmentKey(), draft = attachmentDraft(key);
+    for (const file of files) {
+      try {
+        if (!file.name || file.name.length > 255 || file.name.startsWith(".") || forbiddenName(file.name)) throw new Error("attachment names must be one plain name without a leading dot, traversal, control or quote characters");
+        if (!extensionOf(file.name)) throw new Error(`Attachment ${file.name} needs a plain file extension of 1-10 alphanumerics.`);
+        if (!file.size) throw new Error("Attachment files must not be empty.");
+        if (draft.files.length >= MAX_FILES) throw new Error(`At most ${MAX_FILES} attachments per request; ${file.name} was not added.`);
+        if (file.size > MAX_FILE_BYTES) throw new Error(`Attachment ${file.name} exceeds the 2 MiB per-file limit.`);
+        if (draft.files.reduce((total, entry) => total + entry.size, 0) + file.size > MAX_TOTAL_BYTES) throw new Error(`Attachments exceed the 4 MiB total limit; ${file.name} was not added.`);
+      } catch (failure) { draft.notice = `Attachment refused: ${failure.message}`; continue; }
+      const unavailableIndex = draft.files.findIndex(entry => entry.status === "unavailable" && entry.name === file.name && entry.size === file.size && (!file.type || entry.mime === file.type));
+      if (unavailableIndex >= 0) draft.files.splice(unavailableIndex, 1);
+      const entry = {id: `attachment-${++attachmentSequence}`, name: file.name, size: file.size, mime: file.type || "", status: "reading", file};
+      draft.files.push(entry);
+      prepareAttachment(file, entry, key);
+    }
+    saveAttachmentStore(key);
+    renderAttachments();
+  }
   function composer() {
     const project = !selected && !effort && !projectBrowsing;
     const starting = newConversation || Boolean(selected && !exact(selected));
@@ -251,6 +376,7 @@
     text("developer-submit", project ? $("developer-project-mode").value === "create" ? "Create project and start" : "Open project and start" : starting ? "Start conversation" : "Send");
     $("developer-submit").disabled = actionPending || disabled || Boolean(!project && !starting && (!detail || !detail.session.broker_owned));
     $("developer-new").disabled = !effort || actionPending;
+    renderAttachments();
   }
 
   function railButton(label, subtitle, target, className) {
@@ -682,7 +808,12 @@
     event.preventDefault(); if (actionPending || projectBrowsing) return;
     const target = selected && {...selected}, version = selectionVersion, access = accessVersion, revision = promptRevision, prompt = $("developer-prompt").value;
     const starting = newConversation || Boolean(target && !exact(target));
+    const originKey = JSON.stringify([access, target]);
+    const attachmentOriginKey = attachmentKey();
     let preserveDraft = false;
+    const frameTooLarge = payload => { if (new TextEncoder().encode(JSON.stringify(payload)).length <= MAX_FRAME_BYTES) return false; error("developer-error", "The request exceeds the 6 MiB JSON frame limit. Remove attachments or shorten the message; nothing was sent."); preserveDraft = true; return true; };
+    const blockedAttachments = attachmentsBlocked(attachmentOriginKey);
+    if (blockedAttachments) { error("developer-error", blockedAttachments); return; }
     actionPending = true; composer(); error("developer-error", "");
     try {
       if (!target || starting) {
@@ -691,17 +822,22 @@
         if (template?.title) body.title = template.title;
         else if (!target && $("developer-project-name").value.trim()) body.title = $("developer-project-name").value;
         if ($("developer-projects-root").value.trim()) body.projects_root = $("developer-projects-root").value.trim();
+        const attachments = attachmentsFor(attachmentOriginKey);
+        if (attachments.length) body.attachments = attachments;
+        const submitted = attachmentSnapshot(attachmentOriginKey);
         let result;
-        if (target) result = await post("/api/developer-sessions", {...body,effort_root:target.effort_root,ordinal:target.ordinal});
-        else if ($("developer-project-mode").value === "create") result = await post("/api/developer-projects", {...body,directory:$("developer-workspace").value,intent:prompt});
+        if (target) { const payload = {...body,effort_root:target.effort_root,ordinal:target.ordinal}; if (frameTooLarge(payload)) return; result = await post("/api/developer-sessions", payload); }
+        else if ($("developer-project-mode").value === "create") { const payload = {...body,directory:$("developer-workspace").value,intent:prompt}; if (frameTooLarge(payload)) return; result = await post("/api/developer-projects", payload); }
         else {
           const folder = $("developer-workspace").value.trim(), root = body.projects_root;
           const cwd = folder.startsWith("/") ? folder : root ? `${root.replace(/\/$/, "")}/${folder}` : null;
           if (!cwd) throw new Error("Choose an absolute project folder or a Projects location for its name.");
+          if (frameTooLarge({...body,intent:prompt,environment:{cwd}})) return;
           const registered = await post("/api/efforts", {intent:prompt,environment:{cwd}});
-          result = await post("/api/developer-sessions", {...body,effort_root:registered.effort.ordinal});
+          const payload = {...body,effort_root:registered.effort.ordinal}; if (frameTooLarge(payload)) return; result = await post("/api/developer-sessions", payload);
         }
-        if (version === selectionVersion && access === accessVersion) {
+        if (result && version === selectionVersion && access === accessVersion) clearAttachments(attachmentOriginKey, submitted, `${revision}|${prompt}`);
+        if (result && version === selectionVersion && access === accessVersion) {
           const draft = revision === promptRevision && $("developer-prompt").value === prompt ? "" : $("developer-prompt").value;
           $("developer-prompt").value = draft;
           const landing = select(sessionTarget(result.session), {draft}), landingVersion = selectionVersion;
@@ -710,27 +846,31 @@
         }
       } else {
         const mode = $("developer-mode").value;
-        const originKey = JSON.stringify([access, target]);
         const originValid = () => access === accessVersion && version === selectionVersion && same(target, selected);
-        const ledger = submissionLedger.get(originKey) || {attempts: [], history: []};
-        submissionLedger.set(originKey, ledger);
-        const attempt = {id: `submission-${++submissionSequence}`, text: prompt, mode, state: "sending", binding: null, returnedTarget: null, error: ""};
-        ledger.attempts.push(attempt);
-        renderSubmissions();
-        let failure = null, result = null;
-        try { result = await post(endpoint("prompt",target), {...scope(target),message:prompt,mode}); }
-        catch (caught) { failure = caught; }
+        const attachments = attachmentsFor(attachmentOriginKey);
+        const submitted = attachmentSnapshot(attachmentOriginKey);
+        const payload = {...scope(target),message:prompt,mode,...(attachments.length ? {attachments} : {})};
+        let failure = null, result = null, attempt = null;
+        if (!frameTooLarge(payload)) {
+          const ledger = submissionLedger.get(originKey) || {attempts: [], history: []};
+          submissionLedger.set(originKey, ledger);
+          attempt = {id: `submission-${++submissionSequence}`, text: prompt, mode, state: "sending", binding: null, returnedTarget: null, error: ""};
+          ledger.attempts.push(attempt);
+          renderSubmissions();
+          try { result = await post(endpoint("prompt",target), payload); } catch (caught) { failure = caught; }
+        }
         if (!failure && result?.accepted === true) {
           attempt.state = "accepted"; attempt.binding = result.binding_id ?? null; attempt.returnedTarget = result.target ?? null;
-          ledger.history.push(prompt);
-          if (originValid()) recalled = null;
+          const ledgerEntry = submissionLedger.get(originKey);
+          if (ledgerEntry) ledgerEntry.history.push(prompt);
+          if (originValid()) { clearAttachments(attachmentOriginKey, submitted, `${revision}|${prompt}`); recalled = null; }
         } else if (failure && failure.status === 400) {
           attempt.state = "failed"; attempt.error = failure.message || "Prompt refused."; preserveDraft = true;
-        } else {
+        } else if (attempt) {
           attempt.state = "unknown"; attempt.error = failure?.message || ""; preserveDraft = true;
         }
         if (originKey === JSON.stringify([accessVersion, selected])) renderSubmissions();
-        if (attempt.state === "accepted") {
+        if (attempt && attempt.state === "accepted") {
           if (originValid()) text("developer-ack", mode === "steer" ? "Steering accepted; Pi applies it after the current tool turn." : mode === "follow_up" ? "Follow-up accepted or queued; delivery and completion appear in the conversation." : "Prompt accepted; completion is observed separately.");
         } else if (failure && originValid()) {
           error("developer-error", failure.message || "Prompt response unavailable.");
@@ -741,6 +881,9 @@
     finally { actionPending = false; composer(); await refresh(); }
   });
   $("developer-file-close").addEventListener("click", () => { $("developer-file-view").hidden = true; });
+  $("developer-attachment-input").addEventListener("change", event => { addAttachments([...event.target.files]); event.target.value = ""; });
+  $("developer-form").addEventListener("dragover", event => { event.preventDefault(); });
+  $("developer-form").addEventListener("drop", event => { event.preventDefault(); if (event.dataTransfer?.files?.length) addAttachments([...event.dataTransfer.files]); });
   $("developer-project-mode").addEventListener("change", composer);
   $("developer-project-open").addEventListener("click", () => select(null));
   $("developer-new").addEventListener("click", () => { if (effort) select({ordinal:selected?.ordinal || effort,effort_root:effort},{newConversation:true}); });
