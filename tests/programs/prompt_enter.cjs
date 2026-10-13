@@ -27,6 +27,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
           if(pathname==='/api/application/start')throw new Error('Fixture intercept: no actor launched');
           return {accepted:true};
         }
+        if(pathname==='/api/disciplines')return {namespace_registered:true,namespace_id:'fixture-enter-namespace',definitions:[]};
         if(pathname==='/api/ordinals/0/branch')return {records:fixture.positions,next_after:0};
         if(pathname.endsWith('/history'))return {records:[],next_after:0};
         if(pathname.startsWith('/api/ordinals/'))return {position:fixture.positions.find(p=>p.ordinal===pathname.split('/')[3])};
@@ -55,14 +56,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
     await page.evaluate(()=>NoeticSessions.open({ordinal:'0.1',effort_root:'0.1',instantiation:1,session:1}));await prompt.fill('Beta unsent');await page.evaluate(()=>{fixture.hold=false;fixture.release();});await settle();assert.equal(await prompt.inputValue(),'Beta unsent','selection change preserves new context draft');
     assert.equal((await posts())[1].body.effort_root,'0.0');
     await prompt.fill('Fixture Beta');await prompt.press('Enter');await page.waitForFunction(()=>fixture.posts.length===3);await settle();assert.equal(await prompt.inputValue(),'');
-    await page.evaluate(()=>{switchPage('new');NoeticEffort.catalogue(fixture.positions);NoeticEffort.select('0.0',{ordinal:'0.0'});document.getElementById('start-profile').value='';document.getElementById('start-model').value='fixture/model';document.getElementById('start-pattern').value='cognition';document.getElementById('start-task').focus();});
+    await page.evaluate(()=>{switchPage('new');NoeticEffort.catalogue(fixture.positions);NoeticEffort.select('0.0',{ordinal:'0.0'});});await page.waitForFunction(()=>NoeticDrafts.ready());await page.evaluate(()=>{document.getElementById('start-profile').value='';document.getElementById('start-model').value='fixture/model';document.getElementById('start-pattern').value='cognition';document.getElementById('start-task').focus();});
     const task=page.locator('#start-task');await task.fill('Structured fixture');await task.press('Shift+Enter');assert.equal(await task.inputValue(),'Structured fixture\n');
     await suppressed(task,{isComposing:true});await suppressed(task,{repeat:true});assert.equal((await posts()).length,3);
     await task.fill('');await task.press('Enter');assert.equal((await posts()).length,3);
     await task.fill('Structured fixture');await page.evaluate(()=>{document.getElementById('start-submit').disabled=true;});await task.press('Enter');assert.equal((await posts()).length,3);await page.evaluate(()=>{document.getElementById('start-submit').disabled=false;fixture.hold=true;});
     await task.press('Enter');await page.waitForFunction(()=>fixture.posts.length===4);await task.press('Enter');await suppressed(task,{repeat:true});assert.equal((await posts()).length,4);
     assert.equal((await posts())[3].body.effort_root,'0.0');
-    await page.evaluate(()=>{NoeticEffort.select('0.1',{ordinal:'0.1'});});await task.fill('New Beta structured draft');await page.evaluate(()=>{fixture.hold=false;fixture.release();});await page.waitForFunction(()=>!document.getElementById('start-submit').disabled);
+    await page.evaluate(()=>{NoeticEffort.select('0.1',{ordinal:'0.1'});});await page.waitForFunction(()=>NoeticDrafts.ready());await task.fill('New Beta structured draft');await page.evaluate(()=>{fixture.hold=false;fixture.release();});await page.waitForFunction(()=>!document.getElementById('start-submit').disabled);
     const start=(await posts()).find(p=>p.url==='/api/application/start');assert.equal(start.body.task,'Structured fixture');assert.equal(start.body.effort_root,'0.0');assert.equal(start.body.workspace,'/fixture/alpha');assert.equal(await task.inputValue(),'New Beta structured draft');assert.equal(await page.locator('#start-error').textContent(),'','old scope error does not leak');
     // Other textareas keep their existing newline behavior.
     await page.evaluate(()=>showSettings('purpose'));await page.locator('#start-sources').fill('Source fixture');await page.locator('#start-sources').press('Enter');assert.equal(await page.locator('#start-sources').inputValue(),'Source fixture\n');
