@@ -25,6 +25,7 @@ import uuid
 
 from scripts import noetic_processes as processes
 from scripts import noetic_projects as projects
+from scripts import noetic_attachments as attachments_module
 from scripts.noetic_efforts import Efforts, Scope, ScopeError, Target
 from scripts.noetic_storage import create_private_sqlite, ensure_private_directory, open_private
 
@@ -65,6 +66,36 @@ def session_id(value):
     except (ValueError, TypeError, AttributeError):
         raise SessionError(400, "Invalid session ID.") from None
     return value
+
+
+_ABSENT = object()
+
+
+def prepared_attachments(value):
+    """Validate a client attachment list; explicit null is distinct from absence."""
+    if value is None:
+        raise SessionError(400, "Attachments must be a list when present; omit the field to send none.")
+    try:
+        return attachments_module.prepare(value)
+    except attachments_module.AttachmentError as exc:
+        raise SessionError(400, str(exc)) from exc
+
+
+def planned_prompt_fields(message, prepared, directory):
+    """PURE final RPC fields over planned owned paths; no directory or file effects."""
+    manifests = attachments_module.plan(directory, prepared)
+    fields = {"message": attachments_module.build_message(message, prepared, manifests)}
+    images = [{"type": "image", "data": entry["data"], "mimeType": entry["mime_type"]}
+              for entry in prepared if entry["kind"] == "image"]
+    if images:
+        fields["images"] = images
+    return fields, manifests
+
+
+def prompt_frame_over_limit(fields):
+    """Actual ensure_ascii native frame bytes, including trailing newline, against MAX_RECORD."""
+    record = json.dumps({"id": "0" * 36, "type": "prompt", **fields}, ensure_ascii=True).encode() + b"\n"
+    return len(record) > MAX_RECORD
 
 
 def socket_path(root, sid):
@@ -303,11 +334,14 @@ class SessionService:
         return [self.inspect(row["id"]) for row in self.registry.list(root_id)]
 
     def create_project(self, body):
-        if not isinstance(body, dict) or set(body) - {"directory", "prompt", "title", "model", "thinking", "projects_root", "intent"}:
+        if not isinstance(body, dict) or set(body) - {"directory", "prompt", "title", "model", "thinking", "projects_root", "intent", "attachments"}:
             raise SessionError(400, "Unknown new-project option.")
+        prepared = prepared_attachments(body["attachments"]) if "attachments" in body else None
         directory = Path(text(body.get("directory"), "Project folder", maximum=4096)).expanduser()
         projects_root = project_location(body)
         prompt = text(body.get("prompt"), "Prompt")
+        if prepared and prompt_frame_over_limit(planned_prompt_fields(prompt, prepared, self.registry.root / str(uuid.uuid4()))[0]):
+            raise SessionError(400, "Attachment prompt exceeds the native JSONL record limit; no project folder or effort was created.")
         model = text(body.get("model", DEFAULT_MODEL), "Model", maximum=256)
         title = text(body.get("title", directory.name), "Project name", maximum=256)
         thinking = body.get("thinking", "high")
@@ -319,14 +353,18 @@ class SessionService:
             raise SessionError(exc.status, str(exc)) from exc
         try:
             effort = self.create_effort({"intent": body.get("intent", prompt), "environment": {"cwd": str(directory)}})
-            return self.create({"workspace": str(directory), "effort_root": effort["ordinal"], "prompt": prompt, "title": title,
-                                "model": model, "thinking": thinking})
+            options = {"workspace": str(directory), "effort_root": effort["ordinal"], "prompt": prompt, "title": title,
+                       "model": model, "thinking": thinking}
+            if "attachments" in body:
+                options["attachments"] = body["attachments"]
+            return self.create(options)
         except SessionError as exc:
             raise SessionError(exc.status, f"Project created at {directory}; session could not start: {exc}") from exc
 
     def create(self, body, *, parent_id=None):
-        if not isinstance(body, dict) or set(body) - {"workspace", "prompt", "title", "model", "thinking", "projects_root", "effort_root", "ordinal", "succession", "mandate"}:
+        if not isinstance(body, dict) or set(body) - {"workspace", "prompt", "title", "model", "thinking", "projects_root", "effort_root", "ordinal", "succession", "mandate", "attachments"}:
             raise SessionError(400, "Unknown developer-session option.")
+        prepared = prepared_attachments(body["attachments"]) if "attachments" in body else None
         succession = body.get("succession")
         if succession is not None and (not isinstance(succession, dict) or set(succession) != {"predecessor", "handoff"} or
                 type(succession["predecessor"]) is not int or succession["predecessor"] < 1 or
@@ -334,6 +372,8 @@ class SessionService:
             raise SessionError(400, "Succession requires an exact positive predecessor and nonempty handoff object.")
         projects_root = project_location(body)
         parent = self.select(parent_id, current=True) if parent_id else None
+        if parent and prepared:
+            raise SessionError(400, "Delegate sessions do not support attachments; prompt the prepared child explicitly instead of forwarding bytes it cannot carry.")
         effort = parent["effort_root"] if parent else text(body.get("effort_root"), "Effort root")
         try:
             position = self.registry.domain.store().position(body.get("ordinal", effort), scope=Scope.effort(effort))
@@ -350,6 +390,8 @@ class SessionService:
             raise SessionError(400, "Unknown thinking level.")
         prompt = text(body.get("prompt"), "Prompt")
         title = text(body.get("title", prompt[:80]), "Title", maximum=256)
+        if prepared and prompt_frame_over_limit(planned_prompt_fields(prompt, prepared, self.registry.root / str(uuid.uuid4()))[0]):
+            raise SessionError(400, "Attachment prompt exceeds the native JSONL record limit; no effort, folder or session was created.")
         try:
             workspace = projects.validate_workspace(workspace, projects_root=projects_root)
         except projects.ProjectError as exc:
@@ -368,6 +410,8 @@ class SessionService:
             self._launch(item["id"])
             if parent:
                 self.message(parent["target"], item["id"], prompt, "prompt", effort_root=effort)
+            elif prepared:
+                self.prompt(item["id"], prompt, attachments=attachments_module.canonical(prepared))
             else:
                 self.prompt(item["id"], prompt)
         except BaseException as exc:
@@ -531,9 +575,16 @@ class SessionService:
     def bind(self, address, kind, payload, *, effort_root=None):
         if kind == "agent_message":
             raise SessionError(400, "Agent messages must originate from an exact sending broker.")
+        prepared = None
+        if kind == "prompt" and isinstance(payload, dict) and "attachments" in payload:
+            prepared = prepared_attachments(payload["attachments"])
+            payload = {**payload, "attachments": attachments_module.canonical(prepared)}
         item = self.select(address, effort_root=effort_root)
         if not item["target"]:
             raise SessionError(409, "No observed native context for this reserved or unadopted session.")
+        if prepared:
+            self._require_attachment_capabilities(item, need_images=any(entry["kind"] == "image" for entry in prepared),
+                need_documents=any(entry["kind"] != "image" for entry in prepared))
         try:
             return self.registry.domain.store().bind_action(item["ordinal"], scope=self.registry.domain.scope(effort_root),
                 kind=kind, payload=payload or {"operation": kind}, source_ref={"adapter": "developer-sessions", "act": "bind-action"},
@@ -554,10 +605,33 @@ class SessionService:
         if binding["kind"] == "agent_message":
             provenance = binding["payload"]["provenance"]
             self.select(provenance["sender"], effort_root=item["effort_root"], current=True)
+        elif binding["kind"] == "prompt" and binding["payload"].get("attachments"):
+            self._require_attachment_capabilities(item, need_images=any(
+                entry.get("kind") == "image" for entry in binding["payload"]["attachments"]),
+                need_documents=any(entry.get("kind") != "image" for entry in binding["payload"]["attachments"]))
         request = {"action": binding["kind"], **binding["payload"], "binding_id": action_id}
         data = control(self.runs_root, item["id"], request)
         return {**data, "target": binding["target"], "native_ref": binding["native_ref"], "binding_id": action_id,
                 **({"provenance": binding["payload"]["provenance"]} if binding["kind"] == "agent_message" else {})}
+
+    def _require_attachment_capabilities(self, item, *, need_images, need_documents=False):
+        try:
+            caps = control(self.runs_root, item["id"], {"action": "attachment_capabilities"})
+        except SessionError as exc:
+            raise SessionError(409, f"Existing broker does not support attachments; no prompt sent ({exc}).") from exc
+        target = caps.get("target") if isinstance(caps, dict) else None
+        if (not isinstance(caps, dict) or set(caps) != {"protocol", "target", "native_session_id", "registry_id", "images", "documents"}
+                or caps.get("protocol") != attachments_module.PROTOCOL
+                or not isinstance(target, dict) or set(target) != {"ordinal", "instantiation", "session"}
+                or not isinstance(target["ordinal"], str) or type(target["instantiation"]) is not int or type(target["session"]) is not int
+                or target["instantiation"] < 1 or target["session"] < 1 or target != item["target"]
+                or caps.get("native_session_id") != item["native_session_id"] or caps.get("registry_id") != item["id"]
+                or type(caps.get("images")) is not bool or type(caps.get("documents")) is not bool):
+            raise SessionError(409, "Attachment capability response does not match the selected exact native context; no prompt sent.")
+        if need_images and not caps["images"]:
+            raise SessionError(409, "The observed runtime model does not accept image input; no image attachment was sent.")
+        if need_documents and not caps["documents"]:
+            raise SessionError(409, "The session broker does not accept document attachments; no prompt sent.")
 
     def reopen(self, address, *, effort_root=None):
         selected = self.select(address, effort_root=effort_root)
@@ -589,10 +663,13 @@ class SessionService:
             self.registry.event(item["id"], "host", {"type": "session_reopened", "binding_id": binding["id"]})
         return {**self.inspect(item["id"]), "binding_id": binding["id"], "native_ref": binding["native_ref"]}
 
-    def prompt(self, address, message, mode="prompt", *, effort_root=None):
+    def prompt(self, address, message, mode="prompt", *, effort_root=None, attachments=_ABSENT):
         if mode not in ("prompt", "steer", "follow_up"):
             raise SessionError(400, "Select prompt, steer, or follow_up.")
-        binding = self.bind(address, "prompt", {"message": text(message, "Message"), "mode": mode}, effort_root=effort_root)
+        payload = {"message": text(message, "Message"), "mode": mode}
+        if attachments is not _ABSENT:
+            payload["attachments"] = attachments_module.canonical(prepared_attachments(attachments))
+        binding = self.bind(address, "prompt", payload, effort_root=effort_root)
         return self.deliver(binding["id"], effort_root=effort_root)
 
     def message(self, sender, recipient, message, mode="follow_up", *, effort_root=None, in_reply_to=None, fanout=None):
@@ -804,6 +881,12 @@ class Broker:
             target = self.service.position(current["ordinal"])["parent"]
         return self.service.select(target, effort_root=current["effort_root"])
 
+    def _image_capability(self) -> bool:
+        runtime = self.registry.get(self.sid)["runtime"]
+        model = runtime.get("model") if isinstance(runtime, dict) else {}
+        model_input = model.get("input") if isinstance(model, dict) else None
+        return isinstance(model_input, list) and all(isinstance(entry, str) for entry in model_input) and "image" in model_input
+
     def handle(self, request):
         action = request.get("action")
         if request.get("effort_root") not in (None, self.registry.get(self.sid)["effort_root"]):
@@ -835,6 +918,8 @@ class Broker:
         if action in ("multicast", "broadcast"):
             return self.service.fanout(self.sid, request)
         if action == "delegate":
+            if request.get("attachments"):
+                raise SessionError(400, "Delegate actions do not support attachments; the generic bound prompt path cannot carry these bytes.")
             child = self.service.create({key: request[key] for key in ("prompt", "title", "model", "thinking", "mandate") if key in request}, parent_id=self.sid)
             self.registry.event(self.sid, "host", {"type": "agent_delegated", "child_id": child["id"], "ordinal": child["ordinal"], "parentTarget": self.registry.get(self.sid)["target"], "childTarget": child["target"]})
             return child
@@ -860,6 +945,15 @@ class Broker:
             return self.service.detail(target, request.get("after", 0))
         if action == "tree":
             return self.service.list(self.registry.get(self.sid)["effort_root"])
+        if action == "attachment_capabilities":
+            item = self.service.select(self.sid, current=True)
+            runtime = item["runtime"] if isinstance(item["runtime"], dict) else {}
+            model = runtime.get("model") if isinstance(runtime.get("model"), dict) else {}
+            model_input = model.get("input") if isinstance(model, dict) else None
+            images = isinstance(model_input, list) and all(isinstance(entry, str) for entry in model_input) and "image" in model_input
+            return {"protocol": attachments_module.PROTOCOL, "target": item["target"],
+                    "native_session_id": item["native_session_id"], "registry_id": self.sid,
+                    "images": images, "documents": True}
         with self.action_lock:
             if action in ("prompt", "agent_message"):
                 if action == "agent_message" and request.get("binding_id") is None:
@@ -872,7 +966,19 @@ class Broker:
                 mode = request.get("mode", "prompt")
                 if mode not in ("prompt", "steer", "follow_up"):
                     raise SessionError(400, "Unknown prompt mode.")
-                fields = {"message": f"/noetic-deliver {request['binding_id']}" if action == "agent_message" else text(request.get("message"), "Message")}
+                prepared = None
+                if action == "prompt" and "attachments" in request:
+                    prepared = prepared_attachments(request["attachments"])
+                    if prepared and any(entry["kind"] == "image" for entry in prepared) and not self._image_capability():
+                        raise SessionError(409, "The observed runtime model does not accept image input; no image attachment was sent.")
+                if action == "agent_message":
+                    fields = {"message": f"/noetic-deliver {request['binding_id']}"}
+                elif prepared:
+                    fields, manifests = planned_prompt_fields(text(request.get("message"), "Message"), prepared, self.directory)
+                    if prompt_frame_over_limit(fields):
+                        raise SessionError(400, "Attachment prompt exceeds the native JSONL record limit; no prompt sent and no files stored.")
+                else:
+                    fields = {"message": text(request.get("message"), "Message")}
                 if mode != "prompt":
                     fields["streamingBehavior"] = "steer" if mode == "steer" else "followUp"
                 prior = self.registry.get(self.sid)["status"]
@@ -881,6 +987,9 @@ class Broker:
                 if prior in ("idle", "failed"):
                     self.registry.update(self.sid, status="submitted")
                 try:
+                    if prepared:
+                        # Owned files are created only after every scope, model, frame and validity refusal.
+                        attachments_module.write(manifests, prepared)
                     data = self.rpc("prompt", **fields)
                     if action == "agent_message":
                         with closing(self.registry.connect(readonly=True)) as db:

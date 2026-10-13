@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 if __package__:
     from scripts import noetic_access as access
     from scripts import noetic_application as application
+    from scripts import noetic_attachments as attachments
     from scripts import noetic_usage as usage
     from scripts import noetic_costs as costs
     from scripts.noetic_scope import ScopeError
@@ -31,6 +32,7 @@ else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from scripts import noetic_access as access
     from scripts import noetic_application as application
+    from scripts import noetic_attachments as attachments
     from scripts import noetic_usage as usage
     from scripts import noetic_costs as costs
     from scripts.noetic_scope import ScopeError
@@ -605,7 +607,9 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                     length = int(self.headers.get("Content-Length", "0"))
                 except ValueError:
                     raise RequestError(400, "Invalid JSON request length.") from None
-                limit = 1024 if run_action and parts[4] == "cancel" else 65536
+                chat_frame = session_action and (path_name in ("/api/developer-sessions", "/api/developer-projects")
+                    or (len(parts) == 5 and parts[1:3] == ["api", "developer-sessions"] and parts[4] == "prompt"))
+                limit = attachments.MAX_FRAME_BYTES if chat_frame else (1024 if run_action and parts[4] == "cancel" else 65536)
                 if not 0 < length <= limit or self.headers.get("Transfer-Encoding"):
                     raise RequestError(400, f"Send a JSON object of at most {limit} bytes.")
                 try:
@@ -614,6 +618,10 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                     raise RequestError(400, "Invalid JSON request.") from None
                 if not isinstance(body, dict):
                     raise RequestError(400, "Request must be a JSON object.")
+                if chat_frame and length > 65536:
+                    files = body.get("attachments")
+                    if not isinstance(files, list) or not files:
+                        raise RequestError(400, f"Send a JSON object of at most 65536 bytes unless it carries nonempty attachments within {attachments.MAX_FRAME_BYTES} bytes.")
                 code = 200
                 if session_action:
                     if path_name == "/api/efforts":
@@ -646,9 +654,12 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                                 raise RequestError(400, "This session action accepts an empty object.")
                             result = getattr(sessions, action)(sid, effort_root=effort_root)
                         elif action == "prompt":
-                            if set(body) - {"message", "mode"}:
+                            if set(body) - {"message", "mode", "attachments"}:
                                 raise RequestError(400, "Unknown prompt option.")
-                            result = sessions.prompt(sid, body.get("message"), body.get("mode", "prompt"), effort_root=effort_root)
+                            if "attachments" in body and body["attachments"] is None:
+                                raise RequestError(400, "Attachments must be a list when present; omit the field to send none.")
+                            result = sessions.prompt(sid, body.get("message"), body.get("mode", "prompt"), effort_root=effort_root,
+                                **({"attachments": body["attachments"]} if "attachments" in body else {}))
                         else:
                             allowed = {"prompt", "title", "model", "thinking"} if action == "delegate" else {"id", "value", "confirmed", "cancelled"}
                             if set(body) - allowed:
