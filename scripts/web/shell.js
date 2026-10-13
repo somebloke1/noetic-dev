@@ -36,6 +36,7 @@ const badge = (value, tone='neutral') => el('span',`status-badge ${tone}`,value)
 let view = {route:'workspaces',subview:''}, snapshotData = {}, projectFilter = null, suppressPage = false, generation=0;
 let portfolioQuery='',portfolioLimit=12,commandMode='';
 let effortDraft=null,effortDraftNotice='',effortSync=null,effortInputs=null;
+let placeHistory=[],placeReady=false,restoring=false,frameOwner=null;
 try {view={...view,...JSON.parse(sessionStorage.getItem('noetic-shell-view')||'{}')};}catch(_){}
 const nav = [
  ['workspaces','Workspaces','grid'],['agentics','Agentics','branch'],null,
@@ -65,14 +66,74 @@ function backToEffortTarget(){
   if(!owner||owner!==snapshotData.effort)return '';
   return roots().some(row=>row.ordinal===owner)?owner:'';
 }
+const FRAME_ROUTES=['workspaces','agentics','executions','artifacts','memory','usage'];
+function frameEffort(){
+ if(!FRAME_ROUTES.includes(view.route))return null;
+ const effort=currentEffort();if(!effort)return null;
+ if(view.route==='workspaces'||view.route==='agentics')return effort;
+ const selection=window.NoeticEffort?.selection?.();
+ if(!selection||selection.scope==='application')return null;
+ if(selection.effort_root&&selection.effort_root!==effort.ordinal)return null;
+ return effort;
+}
+function renderFrame(){
+ const effort=frameEffort(),tabs=$('shell-tabs');
+ if(!effort){if(frameOwner){tabs.replaceChildren();frameOwner=null;}tabs.hidden=true;}
+ else{
+  if(frameOwner!==effort.ordinal){frameOwner=effort.ordinal;tabs.replaceChildren();
+   for(const [label,route] of [['Overview','workspaces'],['Agentics','agentics'],['Executions','executions'],['Artifacts','artifacts'],['Memory','memory'],['Tokens','usage']]){const b=button(label,()=>navigate(route));b.dataset.frameRoute=route;tabs.append(b);}}
+  tabs.hidden=false;
+  for(const b of tabs.children)b.classList.toggle('active',b.dataset.frameRoute===view.route);
+ }
+ $('shell-breadcrumb-root').textContent=effort?`Effort ${effort.ordinal}${effort.intent?` · ${effort.intent}`:''}`:['history','attention','closed'].includes(view.route)?'Application records':sidebarRoutes.has(view.route)?'Development portfolio':['runtime'].includes(view.route)?'Runtime control':['models','configuration'].includes(view.route)?'Installation':['disciplines','prompts','roles'].includes(view.route)?'Reusable libraries':'Application records';
+ $('shell-breadcrumb-choice').textContent=view.route==='workspaces'&&currentEffort()?currentEffort().intent:labels[view.route];
+ $('shell-sidebar').hidden=!sidebarRoutes.has(view.route)&&!effort;
+ $('noetic-shell').classList.toggle('without-portfolio-sidebar',!sidebarRoutes.has(view.route)&&!effort);
+}
+function capturePlace(){
+ if(restoring||!placeReady)return;
+ const place={route:view.route,subview:view.subview,target:snapshotData.selected?JSON.parse(JSON.stringify(snapshotData.selected)):null,history:Boolean(snapshotData.applicationHistory),newConversation:Boolean(snapshotData.newConversation),browse:Boolean(snapshotData.projectBrowsing),project:snapshotData.projectPath||null,projectFilter,query:portfolioQuery,limit:portfolioLimit,mainScroll:$('run-detail').scrollTop,sidebarScroll:$('shell-sidebar').scrollTop,operation:window.NoeticEffort?.selection?.()?JSON.parse(JSON.stringify(window.NoeticEffort.selection())):null};
+ place.signature=JSON.stringify([place.route,place.subview,place.target,place.history,place.newConversation,place.browse,place.project,place.projectFilter,place.query,place.limit,place.operation]);
+ if(placeHistory.length&&placeHistory[placeHistory.length-1].signature===place.signature)return;
+ placeHistory.push(place);if(placeHistory.length>8)placeHistory.shift();
+}
+function placeLabel(place){
+ const scope=place.browse?(place.project?`Project ${shortPath(place.project)}`:'Your Work'):place.target?`${place.target.id?`native ${place.target.id}`:`position ${place.target.ordinal}`}${place.history?' · history':''}`:'Your Work';
+ return `${labels[place.route]||place.route} · ${scope}`;
+}
+const placeScopeTuple=place=>JSON.stringify([place.target,place.history,place.newConversation,place.browse,place.project]);
+const currentScopeTuple=()=>JSON.stringify([snapshotData.selected?JSON.parse(JSON.stringify(snapshotData.selected)):null,Boolean(snapshotData.applicationHistory),Boolean(snapshotData.newConversation),Boolean(snapshotData.projectBrowsing),snapshotData.projectPath||null]);
+function returnToPrevious(){
+ const place=placeHistory.pop();if(!place)return;
+ const originGeneration=generation;
+ restoring=true;
+ try{
+  if(placeScopeTuple(place)!==currentScopeTuple()){
+   suppressPage=true;
+   try{const pending=window.NoeticSessions.open(place.target?{...place.target}:null,{history:place.history,newConversation:place.newConversation,browse:place.browse,project:place.project||undefined});
+    pending.catch(failure=>{if(generation===originGeneration&&view.route===place.route&&placeScopeTuple(place)===currentScopeTuple())notice(failure.message);});
+   }finally{suppressPage=false;}
+  }
+  projectFilter=place.projectFilter;portfolioQuery=place.query;$('portfolio-query').value=place.query;portfolioLimit=place.limit;
+  const operation=place.operation||{},mode=operation.scope==='application'||!operation.effort_root?'application':'effort';
+  const observed=window.NoeticRuns?.state?.().selection,observedMode=observed&&observed.scope!=='application'&&observed.effort_root?'effort':'application';
+  if(mode!==observedMode)window.NoeticRuns?.scope(mode);
+  navigate(place.route);
+  const scrollGeneration=generation;
+  requestAnimationFrame(()=>{if(generation===scrollGeneration&&view.route===place.route&&placeScopeTuple(place)===currentScopeTuple()){$('run-detail').scrollTop=place.mainScroll;$('shell-sidebar').scrollTop=place.sidebarScroll;}});
+ }finally{restoring=false;render();}
+}
 function heading({eyebrow='',title='',description='',actions=[]}){
  $('shell-eyebrow').textContent=eyebrow;$('shell-page-title').textContent=title;$('shell-description').textContent=description;
  const entries=(Array.isArray(actions)?actions:[actions]).filter(Boolean),prior=snapshotData.returnContext;if(prior && (snapshotData.projectBrowsing || JSON.stringify(snapshotData.selected)!==JSON.stringify(prior.target))){const resume=button(prior.label,()=>{window.NoeticSessions.returnToContext();navigate('agentics');},'secondary-button');resume.dataset.returnContext='true';entries.unshift(resume);}
  const effortOwner=backToEffortTarget();
  if(effortOwner){const target=effortOwner;const back=button(`Back to effort ${target}`,()=>{if(backToEffortTarget()===target&&(view.route==='purposes'||view.route==='new-work'))navigate('workspaces');},'secondary-button');back.dataset.backToEffort='true';entries.push(back);}
+ const place=placeHistory[placeHistory.length-1];
+ if(place&&!restoring){const previous=button(`Return to previous · ${placeLabel(place)}`,returnToPrevious,'secondary-button');previous.dataset.returnLocation='true';entries.unshift(previous);}
  const focusedReturn=document.activeElement?.dataset.returnContext==='true';
  const focusedBack=document.activeElement?.dataset.backToEffort==='true';
- $('shell-actions').replaceChildren(...entries);if(focusedReturn)$('shell-actions').querySelector('[data-return-context]')?.focus({preventScroll:true});else if(focusedBack)$('shell-actions').querySelector('[data-back-to-effort]')?.focus({preventScroll:true});
+ const focusedLocation=document.activeElement?.dataset.returnLocation==='true';
+ $('shell-actions').replaceChildren(...entries);if(focusedReturn)$('shell-actions').querySelector('[data-return-context]')?.focus({preventScroll:true});else if(focusedBack)$('shell-actions').querySelector('[data-back-to-effort]')?.focus({preventScroll:true});else if(focusedLocation)$('shell-actions').querySelector('[data-return-location]')?.focus({preventScroll:true});
 }
 function notice(value){$('shell-global-error').textContent=value||'';$('shell-global-error').hidden=!value;}
 function renderObservationStatus(){
@@ -90,16 +151,15 @@ function render(){
 function navigate(route,options={}){
  if(!labels[route])route='workspaces';
  const changed=route!==view.route;
+ if(changed&&!options.fromChoice&&!restoring&&placeReady)capturePlace();
  view={route,subview:options.subview??(changed?'':view.subview)};generation++;
  if(changed){park();$('shell-content').replaceChildren();$('shell-content').className='';for(const key of Object.keys($('shell-content').dataset))delete $('shell-content').dataset[key];$('run-detail').scrollTop=0;}
  $('shell-content').dataset.route=route;$('noetic-shell').classList.toggle('without-portfolio-sidebar',!sidebarRoutes.has(route));$('shell-sidebar').hidden=!sidebarRoutes.has(route);
  for(const b of $('shell-navigation').querySelectorAll('[data-route]')){b.classList.toggle('active',b.dataset.route===route||route==='executions'&&b.dataset.route==='workspaces');b.setAttribute('aria-current',String(b.classList.contains('active')));}
  $('shell-settings').classList.toggle('active',route==='configuration');
- $('shell-breadcrumb-root').textContent=sidebarRoutes.has(route)?'Development portfolio':['runtime'].includes(route)?'Runtime control':['models','configuration'].includes(route)?'Installation':['disciplines','prompts','roles'].includes(route)?'Reusable libraries':'Application records';
- $('shell-breadcrumb-choice').textContent=route==='workspaces'&&currentEffort()?currentEffort().intent:labels[route];
- $('shell-tabs').hidden=route!=='workspaces'&&route!=='executions';$('shell-project-scope').replaceChildren();notice('');
+ $('shell-project-scope').replaceChildren();notice('');
  try{sessionStorage.setItem('noetic-shell-view',JSON.stringify(view));}catch(_){}
- document.title=`noetic-dev / ${labels[route]}`;renderSidebar();render();
+ document.title=`noetic-dev / ${labels[route]}`;renderFrame();renderSidebar();render();
 }
 window.NoeticUI={register:(route,handler)=>{routes.set(route,handler);if(view.route===route)render();},navigate,heading,mount,element:el,button,icon,badge,snapshot,refresh:render,notice,route:()=>view.route};
 for(const item of nav){if(!item){$('shell-navigation').append(el('div','rail-divider'));continue;}const [route,label,iconName]=item;const b=button('',()=>navigate(route),'rail-button');b.dataset.route=route;b.title=label;b.setAttribute('aria-label',label);b.append(icon(iconName));$('shell-navigation').append(b);}
@@ -115,8 +175,8 @@ $('portfolio-more').addEventListener('click',discloseEfforts);
 for(const b of document.querySelectorAll('[data-shell-view]')){b.className='view-item';b.prepend(icon(b.dataset.shellView==='attention'?'activity':b.dataset.shellView==='history'?'clock':'archive'));b.addEventListener('click',()=>navigate(b.dataset.shellView));}
 function resize(id,property,min,max,start){const handle=$(id);handle.classList.add('shell-resizer');handle.setAttribute('aria-valuemin',min);handle.setAttribute('aria-valuemax',max);let width=start;const apply=value=>{width=Math.max(min,Math.min(max,value));$('noetic-shell').style.setProperty(property,width+'px');handle.setAttribute('aria-valuenow',width);};handle.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();apply(width+(e.key==='ArrowRight'?12:-12));}});handle.addEventListener('pointerdown',e=>{e.preventDefault();const x=e.clientX,initial=width;document.body.classList.add('resizing-panes');const move=v=>apply(initial+v.clientX-x),stop=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',stop);document.body.classList.remove('resizing-panes');};document.addEventListener('pointermove',move);document.addEventListener('pointerup',stop,{once:true});});}
 resize('rail-resizer','--rail-width',56,104,64);resize('sidebar-resizer','--sidebar-width',200,360,248);
-async function chooseProject(project){projectFilter=project;portfolioQuery='';$('portfolio-query').value='';portfolioLimit=12;let loading;suppressPage=true;try{loading=window.NoeticSessions.browseProject(project);}finally{suppressPage=false;}navigate('workspaces');await loading;}
-async function chooseEffort(effort){projectFilter=effort.environment?.cwd||null;let loading;suppressPage=true;try{loading=window.NoeticSessions.open({ordinal:effort.ordinal,effort_root:effort.ordinal});}finally{suppressPage=false;}navigate('workspaces');await loading;}
+async function chooseProject(project){capturePlace();projectFilter=project;portfolioQuery='';$('portfolio-query').value='';portfolioLimit=12;let loading;suppressPage=true;try{loading=window.NoeticSessions.browseProject(project);}finally{suppressPage=false;}navigate('workspaces',{fromChoice:true});await loading;}
+async function chooseEffort(effort){capturePlace();projectFilter=effort.environment?.cwd||null;let loading;suppressPage=true;try{loading=window.NoeticSessions.open({ordinal:effort.ordinal,effort_root:effort.ordinal});}finally{suppressPage=false;}navigate('workspaces',{fromChoice:true});await loading;}
 function renderSidebar(){
  const all=roots(),signature=JSON.stringify([all,snapshotData.sessions?.map(s=>[s.id,s.status,s.error]),snapshotData.effort,projectFilter,portfolioQuery,portfolioLimit]);if($('shell-sidebar').dataset.signature===signature)return;$('shell-sidebar').dataset.signature=signature;
  const projects=[...new Set(all.map(p=>p.environment?.cwd).filter(Boolean))];
@@ -150,13 +210,12 @@ function executionBlockers(limit=null,effort=null){
  p.append(el('p','field-note','Recorded blocked or failed states invite inspection; they do not establish an outstanding human obligation. Historical review findings remain in exact execution evidence.'));
  return p;
 }
-function effortTabs(){const tabs=$('shell-tabs');tabs.replaceChildren();for(const [label,route]of[['Overview','workspaces'],['Agentics','agentics'],['Executions','executions'],['Artifacts','artifacts'],['Memory','memory'],['Tokens','usage']]){const b=button(label,()=>navigate(route),view.route===route?'active':'');tabs.append(b);}tabs.hidden=false;}
 function openSession(s){window.NoeticSessions.open(sessionTarget(s));navigate('agentics');}
 function overview({host}){
  const effort=currentEffort(),sessions=scopedSessions(),positions=(snapshotData.positions||[]).filter(p=>p.effort===effort?.ordinal);
  heading({eyebrow:effort?`Effort ${effort.status} / Ordinal ${effort.ordinal}`:'APPLICATION WORKSPACE',title:effort?.intent||(projectFilter?`Project · ${shortPath(projectFilter)}`:'Development portfolio'),description:effort?.mandate?.mandate?.objective||effort?.intent||(projectFilter?`${projectFilter} · Choose an effort to establish its work context. Prior exact context remains available through Return.`:'Choose a project or an effort to begin. Original histories remain accessible in Application records.'),actions:[button('New effort',()=>navigate('new-effort'),'secondary-button'),...(effort?[button('Entrust work',()=>navigate('new-work'),'primary-button')]:[])]});
  $('shell-breadcrumb-choice').textContent=effort?.intent||(projectFilter?shortPath(projectFilter):'Workspaces');
- if(effort){effortTabs();$('shell-project-scope').replaceChildren(el('span','scope-label','PROJECT SCOPE'),badge(shortPath(effort.environment?.cwd)));}else $('shell-tabs').hidden=true;
+ renderFrame();if(effort)$('shell-project-scope').replaceChildren(el('span','scope-label','PROJECT SCOPE'),badge(shortPath(effort.environment?.cwd)));
  const signature=JSON.stringify([effort,sessions,positions,allRuns,runObservation(),projectFilter,portfolioQuery,portfolioLimit,snapshotData.observationError]);if(host.dataset.signature===signature)return;host.dataset.signature=signature;host.className='overview-content';host.replaceChildren();
  if(!effort){const catalogue=effortCatalogue(),p=card('YOUR WORK','Choose an effort',button('New effort',()=>navigate('new-effort'),'primary-button'));p.append(el('p','empty-note',`Showing ${catalogue.shown.length} of ${catalogue.matching.length} matching efforts · ${catalogue.all.length} total. Find effort in the sidebar searches full ordinals, intentions and project paths.`));const list=el('div','portfolio-cards');for(const r of catalogue.shown){const b=button('',()=>chooseEffort(r),'portfolio-effort-card');b.append(el('span','mono',r.ordinal),el('strong','',r.intent),el('small','',r.environment?.cwd||'Environment unavailable'));list.append(b);}if(!list.children.length)list.append(el('p','empty-note',catalogue.all.length?'No efforts match this view. Clear the search or project filter to browse the catalogue.':'Create an effort to establish its intent and environment. You can begin a conversation when ready.'));p.append(list);if(catalogue.shown.length<catalogue.matching.length)p.append(button('Show more efforts',discloseEfforts,'secondary-button'));host.append(p);return;}
  const left=el('div','overview-main'),right=el('div','overview-aside');host.append(left,right);
@@ -222,11 +281,11 @@ function renderCommand(mode=commandMode){
 function openCommand(){renderCommand('');$('shell-command-dialog').showModal();$('shell-command-query').focus();}
 $('shell-search').addEventListener('click',openCommand);$('shell-command').addEventListener('click',openCommand);$('shell-breadcrumb-choice').addEventListener('click',openCommand);$('shell-command-query').addEventListener('input',()=>renderCommand());
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if($('shell-command-dialog').open)$('shell-command-dialog').close();else openCommand();}});
-document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;else if(snapshotData.selected){const owner=roots().find(row=>row.ordinal===snapshotData.effort);projectFilter=owner?.environment?.cwd||null;}renderSidebar();render();});
+document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;else if(snapshotData.selected){const owner=roots().find(row=>row.ordinal===snapshotData.effort);projectFilter=owner?.environment?.cwd||null;}renderFrame();renderSidebar();render();});
 new MutationObserver(renderObservationStatus).observe($('fetch-error'),{attributes:true,attributeFilter:['hidden'],childList:true,subtree:true,characterData:true});
-document.addEventListener('noetic:runs',()=>{if(['workspaces','history','attention','purposes','new-work'].includes(view.route))render();});
+document.addEventListener('noetic:runs',()=>{renderFrame();if(['workspaces','history','attention','purposes','new-work'].includes(view.route))render();});
 document.addEventListener('noetic:page',e=>{if(suppressPage)return;const map={developer:'agentics',workspace:'executions',new:'new-work',history:'history',memory:'memory',purposes:'purposes',diagnostics:'configuration'};const next=map[e.detail.page];if(next&&next!==view.route)navigate(next);});
 let paired=false;
-new MutationObserver(()=>{const visible=!$('private-workspace').hidden;if(visible&&!paired){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);fetchJSON('/api/preview-info').then(data=>{if(data.fixture_mode||data.fixture||data.demo||data.preview||data.mode){$('shell-preview-label').hidden=false;$('shell-preview-label').textContent='Demonstration records · isolated preview';$('shell-notice').hidden=false;$('shell-notice').textContent='Demonstration records · isolated local preview';}}).catch(()=>{});}}).observe($('private-workspace'),{attributes:true,attributeFilter:['hidden']});
-if(!$('private-workspace').hidden){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);}
+new MutationObserver(()=>{const visible=!$('private-workspace').hidden;if(visible&&!paired){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);placeReady=true;fetchJSON('/api/preview-info').then(data=>{if(data.fixture_mode||data.fixture||data.demo||data.preview||data.mode){$('shell-preview-label').hidden=false;$('shell-preview-label').textContent='Demonstration records · isolated preview';$('shell-notice').hidden=false;$('shell-notice').textContent='Demonstration records · isolated local preview';}}).catch(()=>{});}}).observe($('private-workspace'),{attributes:true,attributeFilter:['hidden']});
+if(!$('private-workspace').hidden){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);placeReady=true;}
 })();
