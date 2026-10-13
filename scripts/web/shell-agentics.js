@@ -30,7 +30,7 @@
     const rows = [...(snapshot.positions || [])];
     if (!rows.some(row => row.ordinal === "0")) rows.unshift({ordinal:"0",parent:null,status:"dormant"});
     const projects = new Set(rows.filter(row => row.effort === row.ordinal && row.environment?.cwd === snapshot.projectFilter).map(row => row.ordinal));
-    let visible = rows.filter(row => row.ordinal === "0" || (!filterEffort || row.effort === filterEffort) && (!snapshot.projectFilter || projects.has(row.effort)));
+    let visible = rows.filter(row => row.ordinal === "0" || (filterEffort ? row.effort === filterEffort : (!snapshot.projectFilter || projects.has(row.effort))));
     if (find) {
       const included = new Set(["0"]);
       for (const row of visible) {
@@ -255,18 +255,20 @@
     inspector.dataset.positionOnly=String(snapshot.applicationHistory||root||reserved||browsing);
     inspector.dataset.exact=String(exact);
   }
+  const scopeLabel = () => filterEffort ? `Effort ${filterEffort}` : snapshot.projectFilter ? `Project ${snapshot.projectPath || snapshot.projectFilter}` : "Application namespace";
   function draw() {
     if(!layout?.isConnected)return;
     const scope=JSON.stringify([filterEffort,snapshot.projectFilter,find]);if(treeScope!==scope){treeScope=scope;treeLimit=40;}
     treeDisclosure.hidden=view!=="tree";
     const roots=(snapshot.positions||[]).filter(row=>row.effort===row.ordinal);
-    const optionsSignature=JSON.stringify(roots.map(row=>[row.ordinal,row.intent]));
+    const optionsSignature=JSON.stringify([snapshot.projectFilter,roots.map(row=>[row.ordinal,row.intent])]);
     if(filter.dataset.signature!==optionsSignature) {
-      filter.dataset.signature=optionsSignature; const option=el("option","","Portfolio topology");option.value="";
+      filter.dataset.signature=optionsSignature; const option=el("option","",snapshot.projectFilter?"Project topology · current project":"Portfolio topology");option.value="";
       filter.replaceChildren(option,...roots.map(row=>{const item=el("option","",`${row.ordinal} · ${row.intent || "Effort"}`);item.value=row.ordinal;return item;}));filter.value=filterEffort;
     }
     if(headerDelegate)headerDelegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;
     const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,[...expandedBranches],snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session,snapshot.projectBrowsing,snapshot.projectPath]);
+    const eyebrow=document.getElementById("shell-eyebrow");if(eyebrow)eyebrow.textContent=`${scopeLabel()} · ${rows.length} matching positions`;
     if(drawingSignature!==signature) {drawingSignature=signature; if(view==="tree")drawTree(rows);else if(view==="sessions")drawSessions(rows);else drawReturns(rows);drawInspector();}
   }
   function render({host,snapshot:next}) {
@@ -274,7 +276,7 @@
     const actions=[btn("Find position",()=>layout.querySelector(".agentics-find").focus())];
     const delegate=btn("+ Delegate agent responsibility",()=>document.getElementById("developer-delegate").click(),"primary-button");
     headerDelegate=delegate; delegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;actions.push(delegate);
-    ui().heading({eyebrow:`Application namespace · ${positions().length} matching positions`,title:"Agentics",description:"Inspect enduring ordinal positions, genuine delegation lineage, occupants, and exact sessions across efforts.",actions});
+    ui().heading({eyebrow:`${scopeLabel()} · ${positions().length} matching positions`,title:"Agentics",description:"Inspect enduring ordinal positions, genuine delegation lineage, occupants, and exact sessions across efforts.",actions});
     if(!layout?.isConnected||layout.parentNode!==host) {build(host);drawingSignature="";}
     draw();
   }
