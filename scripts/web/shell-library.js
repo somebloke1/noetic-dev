@@ -24,6 +24,7 @@
   const choices = {disciplines:null,roles:null,prompts:null,models:null};
   const views = {}, catalogues = new Map();
   let catalogueGeneration = 0;
+  const runCatalogues = new WeakMap();
   const scope = () => typeof operationSelection === "function" ? operationSelection() : {scope:"application"};
   const scopeKey = () => JSON.stringify(scope());
   const active = (host, route, key) => host.dataset.route === route && key === scopeKey();
@@ -245,14 +246,52 @@
     content.append(note("Explicit overrides → NOETIC_LOCAL_* environment → optional NOETIC_LOCAL_CONFIG → defaults.")); values(content,{namespace:config.namespace_path,telos:config.telos_database}); content.append(note("This interface inspects configuration. Set execution overrides in New work."),action("Configure next work",()=>openWork())); details(content,"Full observed settings",config);
   }
   function renderRunCatalogue(host, heading = "Retained executions") {
-    const card = panel(heading,"Selected observation scope"), content = body(card); host.append(card);
-    const runs = typeof allRuns !== "undefined" ? allRuns : [];
-    for (const run of runs) {
-      const button = action("", async () => { if (typeof selectRun === "function") await selectRun(run.run_id); UI.navigate("executions"); }); button.className = "lib-run-row";
-      const text = el("span"); text.append(el("strong","",run.goal || run.run_id),el("small","lib-mono",`${run.run_id} · ${run.correspondence?.effort_root ? `effort ${run.correspondence.effort_root}` : "original namespace"}`)); button.append(text,UI.badge(run.state || "Unknown",""),el("span","","›")); content.append(button);
+    let catalogue = runCatalogues.get(host);
+    if (!catalogue || !host.contains(catalogue.card)) {
+      const card = panel(heading,"Selected observation scope"), content = body(card), controls = el("div","lib-execution-controls"), label = el("label","","Find execution by ID, task or state"), search = el("input","lib-execution-query"), coverage = el("p","lib-note lib-execution-coverage"), pin = el("p","lib-note lib-execution-pin"), list = el("div","lib-execution-list");
+      search.type = "search"; label.append(search); coverage.setAttribute("role","status");
+      catalogue = {card,key:scopeKey(),limit:12,search,coverage,pin,list,rows:new Map()}; runCatalogues.set(host,catalogue);
+      const clear = action("Clear search",()=>{search.value="";catalogue.limit=12;renderRunCatalogue(host,heading);search.focus();},"secondary-button lib-execution-clear");
+      const more = action("Show more executions",()=>{catalogue.limit+=12;renderRunCatalogue(host,heading);},"secondary-button lib-execution-more"); catalogue.more = more;
+      const inspect = action("Inspect selected execution",()=>{const id=typeof selectedId !== "undefined" ? selectedId : null;UI.navigate("executions");requestAnimationFrame(()=>revealExecution(id));},"secondary-button"); catalogue.inspect = inspect;
+      search.addEventListener("input",()=>{catalogue.limit=12;renderRunCatalogue(host,heading);}); controls.append(label,clear,inspect); content.append(controls,coverage,pin,list,more); host.append(card);
     }
-    if (!runs.length) placeholder(content,"No recorded executions","Start structured work in a selected effort.");
-    return content;
+    if (catalogue.key !== scopeKey()) {catalogue.key=scopeKey();catalogue.limit=12;catalogue.search.value="";}
+    const runs = typeof allRuns !== "undefined" ? allRuns : [];
+    const id = typeof selectedId !== "undefined" ? selectedId : null, query = catalogue.search.value.trim().toLowerCase();
+    const matching = runs.filter(run=>!query || JSON.stringify([run.run_id,run.goal,run.state,run.correspondence?.effort_root || "original namespace"]).toLowerCase().includes(query));
+    const shown = matching.slice(0,catalogue.limit), selected = runs.find(run=>run.run_id===id), pin = selected && !shown.some(run=>run.run_id===id) ? selected : null;
+    catalogue.coverage.textContent = `Showing ${shown.length} of ${matching.length} matching executions · ${runs.length} total retained observations.${pin ? " One selected execution is shown separately." : ""}`;
+    catalogue.pin.hidden = !pin; catalogue.pin.textContent = pin ? `Selected execution pinned separately: ${pin.run_id}${matching.includes(pin) ? " · outside the current window" : " · does not match this query"}.` : "";
+    catalogue.more.disabled = shown.length >= matching.length; catalogue.more.textContent = catalogue.more.disabled ? "All matching executions shown" : "Show more executions";
+    catalogue.inspect.hidden = !id || !selectedDetail || selectedDetail.status?.run_id !== id;
+    const retained = new Map(), wanted = [...shown,...pin ? [pin] : []].map(run=>{
+      let row = catalogue.rows.get(run.run_id);
+      if (!row) {
+        const element = el("article","lib-execution-row"), button = action("",()=>{if(typeof selectRun === "function")selectRun(run.run_id);const state=views.executions;if(state)state.revealedRun=null;UI.navigate("executions");}); button.className = "lib-run-row"; button.dataset.runId = run.run_id;
+        const text = el("span"), task = el("strong","lib-run-preview"), owner = el("small","lib-mono"), status = UI.badge("Unknown",""), evidence = el("details","lib-source"), source = el("pre");
+        text.append(task,owner);button.append(text,status,el("span","","›"));evidence.append(el("summary","","Full task"),source);element.append(button,evidence);row={element,button,task,owner,status,source};
+      }
+      for(const [element,value] of [[row.task,run.goal || run.run_id],[row.owner,`${run.run_id} · ${run.correspondence?.effort_root ? `effort ${run.correspondence.effort_root}` : "original namespace"}`],[row.status,run.state || "Unknown"],[row.source,run.goal || "Task description unobserved."]])if(element.textContent!==value)element.textContent=value;
+      row.button.setAttribute("aria-current",String(run.run_id===id));retained.set(run.run_id,row);return row.element;
+    });
+    const focused = catalogue.list.contains(document.activeElement) ? document.activeElement : null;
+    for(const child of [...catalogue.list.children])if(!wanted.includes(child))child.remove();
+    wanted.forEach((row,index)=>{if(catalogue.list.children[index]!==row)catalogue.list.insertBefore(row,catalogue.list.children[index] || null);});
+    catalogue.rows = retained;if(focused?.isConnected && document.activeElement!==focused)focused.focus({preventScroll:true});
+    if (!wanted.length) placeholder(catalogue.list,runs.length ? "No executions match this query" : "No recorded executions",runs.length ? "Clear the search to browse retained observations." : "Start structured work in a selected effort.");
+    return catalogue.list;
+  }
+  function revealExecution(id) {
+    const target = get("selected-run");
+    if (!id || UI.route() !== "executions" || selectedId !== id || selectedDetail?.status?.run_id !== id || !target?.isConnected || target.hidden) return;
+    target.tabIndex = -1; target.scrollIntoView({block:"start"}); target.focus({preventScroll:true});
+  }
+  function revealNewExecution(state) {
+    const id = typeof selectedId !== "undefined" ? selectedId : null;
+    if (!id || !selectedDetail || selectedDetail.status?.run_id !== id || state.revealedRun === id) return;
+    state.revealedRun = id; const key = scopeKey();
+    requestAnimationFrame(()=>{if(key===scopeKey() && !get("shell-content")?.querySelector(".lib-execution-query:focus"))revealExecution(id);});
   }
   function executions(context) {
     const state = base(context);
@@ -263,8 +302,7 @@
     }
     get("workspace-page").hidden = false;
     get("effort-operation-controls").hidden = false;
-    const runs = typeof allRuns !== "undefined" ? allRuns : [], signature = JSON.stringify(runs.map(row=>[row.run_id,row.state,row.goal]));
-    if (state.signature !== signature) {state.signature = signature; state.register.replaceChildren(); renderRunCatalogue(state.register);}
+    renderRunCatalogue(state.register); revealNewExecution(state);
   }
   function artifacts(context) {
     const state = base(context);
