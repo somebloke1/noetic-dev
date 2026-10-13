@@ -5439,3 +5439,7 @@ h1 {
 #previous-drafts,#fetch-error,#shell-observation-error{margin:12px 34px}#previous-drafts{padding:12px 14px;border:1px solid var(--violet-200);border-radius:7px;background:var(--violet-50);font-size:11px;line-height:1.5}#previous-drafts button{margin:9px 8px 0 0;border:1px solid var(--ink-200);border-radius:6px;background:white;padding:7px 10px;font-size:11px}
 
 .portfolio-disclosure{display:grid;gap:7px;margin:0 7px 12px;min-width:0}.portfolio-disclosure label{font-size:10px;color:var(--ink-600)}.portfolio-disclosure input{min-width:0;width:100%;font-size:11px;padding:8px}.portfolio-disclosure button{justify-self:end}.portfolio-disclosure p{font-size:9px;line-height:1.5;color:var(--ink-500)}.effort-pin{border-top:1px solid var(--ink-200);margin-top:8px;padding-top:8px}.effort-pin>small{display:block;font-size:9px;line-height:1.5;padding:0 8px;color:var(--ink-500)}#portfolio-more{padding:10px 8px;text-align:left}
+
+.record-row.execution-blocker{grid-template-columns:auto minmax(0,1fr);align-items:start;gap:8px 12px}
+.record-row.execution-blocker>strong{min-width:0;overflow-wrap:anywhere}
+.record-row.execution-blocker>small{grid-column:1/-1;min-width:0;overflow-wrap:anywhere}
