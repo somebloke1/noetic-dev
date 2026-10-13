@@ -472,6 +472,7 @@
   }
 
   async function select(target, options = {}) {
+    saveDelegateDraft();
     drafts[key(selected)] = $("developer-prompt").value;
     selected = target; effort = target?.effort_root || null;
     projectBrowsing=Boolean(options.browse);projectPath=projectBrowsing ? options.project || null : null;
@@ -620,18 +621,46 @@
     const root = allSessions.find(row => row.ordinal === effort && row.is_current);
     select(root ? sessionTarget(root) : {ordinal:effort,effort_root:effort});
   });
-  $("developer-delegate").addEventListener("click", () => { $("developer-delegate-form").hidden = false; $("developer-delegate-task").focus(); });
-  $("developer-delegate-cancel").addEventListener("click", () => { $("developer-delegate-form").hidden = true; });
+  const delegateDrafts = new Map();
+  let delegateOwner = null;
+  const delegateKey = target => JSON.stringify([accessVersion,target]);
+  function saveDelegateDraft() {
+    if (delegateOwner !== delegateKey(selected)) return;
+    const prior = delegateDrafts.get(delegateOwner) || {};
+    delegateDrafts.set(delegateOwner,{...prior,task:$("developer-delegate-task").value,thinking:$("developer-delegate-thinking").value});
+  }
+  $("developer-delegate").addEventListener("click", () => {
+    delegateOwner = delegateKey(selected);
+    const draft = delegateDrafts.get(delegateOwner) || {};
+    $("developer-delegate-task").value = draft.task || "";
+    $("developer-delegate-thinking").value = draft.thinking || "low";
+    error("developer-error",draft.failure || "");
+    text("developer-ack",draft.result || "");
+    $("developer-delegate-form").hidden = false; $("developer-delegate-task").focus();
+  });
+  $("developer-delegate-task").addEventListener("input",saveDelegateDraft);
+  $("developer-delegate-thinking").addEventListener("change",saveDelegateDraft);
+  $("developer-delegate-cancel").addEventListener("click", () => { saveDelegateDraft(); $("developer-delegate-form").hidden = true; });
   $("developer-delegate-form").addEventListener("submit", async event => {
-    event.preventDefault(); if (actionPending) return;
-    const target = {...selected}, version = selectionVersion;
+    event.preventDefault(); if (actionPending || !selected || delegateOwner !== delegateKey(selected)) return;
+    saveDelegateDraft();
+    const target = {...selected}, version = selectionVersion, access = accessVersion, owner = delegateOwner;
+    const submitted = {...delegateDrafts.get(owner)};
+    const valid = () => version === selectionVersion && access === accessVersion;
     actionPending = true; $("developer-delegate-submit").disabled = true;
     try {
-      const child = await post(endpoint("delegate",target), {...scope(target),prompt: $("developer-delegate-task").value, thinking: $("developer-delegate-thinking").value});
-      $("developer-delegate-task").value = ""; $("developer-delegate-form").hidden = true;
-      if (version !== selectionVersion) return;
-      await select(sessionTarget(child)); text("developer-ack", `Delegate ${child.ordinal} accepted the task; inspect its actual outcome.`);
-    } catch (failure) { error("developer-error", failure.message); }
+      const child = await post(endpoint("delegate",target), {...scope(target),prompt:submitted.task,thinking:submitted.thinking});
+      const latest = delegateDrafts.get(owner) || submitted;
+      const result = `Delegate ${child.ordinal} accepted the task; inspect its actual outcome.`;
+      delegateDrafts.set(owner,{...latest,task:latest.task===submitted.task?"":latest.task,failure:"",result});
+      if (!valid()) return;
+      $("developer-delegate-task").value = delegateDrafts.get(owner).task;
+      $("developer-delegate-form").hidden = true;
+      await select(sessionTarget(child)); text("developer-ack",result);
+    } catch (failure) {
+      delegateDrafts.set(owner,{...(delegateDrafts.get(owner)||submitted),failure:failure.message,result:""});
+      if (valid()) error("developer-error",failure.message);
+    }
     finally { actionPending = false; $("developer-delegate-submit").disabled = false; await refresh(); renderDetail(); }
   });
   $("developer-evidence").addEventListener("toggle", () => { if ($("developer-evidence").open) text("developer-events", JSON.stringify(events, null, 2)); });
