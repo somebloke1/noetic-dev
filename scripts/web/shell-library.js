@@ -204,7 +204,7 @@
       text.append(el("span", "lib-mono", target.ordinal ? `${target.ordinal} · context ${target.instantiation}/${target.session}` : session.ordinal || session.id),el("strong", "", session.title || "Untitled session"),el("small", "", `${session.model || "Model unknown"} · ${session.status || "Status unknown"}`));
       row.append(text, action("Inspect / control", async () => { if (window.NoeticSessions) await window.NoeticSessions.open(session.target ? {...session.target,effort_root:session.effort_root} : {id:session.id}); UI.navigate("agentics"); })); content.append(row);
     }
-    if (!sessions.length) placeholder(content,"No retained sessions","Create an effort and open a conversation to begin native work.");
+    if (!sessions.length) placeholder(content,"No retained sessions",selection.effort_root ? "Open a conversation in this effort to begin native work." : "Choose an effort or create one, then open a conversation to begin native work.");
     const side = panel("Structured work", "Controller authority"), sideBody = body(side); layout.append(side);
     sideBody.append(note("Pause, advance, cancel, and Apply controls belong to the selected recorded execution."), action("Open executions", () => UI.navigate("executions")),action("Start structured work", () => openWork("development")));
     const health = el("div", "lib-runtime-health"); context.host.append(health); UI.mount("diagnostics-page", health);
