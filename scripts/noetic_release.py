@@ -18,6 +18,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import tempfile
 import zipfile
 
 from scripts.noetic_archive import (MAX_BYTES, MAX_FILES, read_regular, safe_name, private_directory,
@@ -538,9 +539,82 @@ def _launcher_text(home, binding, *, generation=3):
     return text
 
 
+@contextmanager
+def _live_code_maintenance(home, allow_held, *, code_only=False, adoption=None, coexist=None, coexist_state=None):
+    if not code_only or not coexist or adoption:
+        raise ValueError("Live actor preservation requires --code-only, explicit retained releases and an existing home")
+    home = Path(home).absolute()
+    if home == Path.home() or home == Path(home.anchor) or any((home / n).exists() for n in (".git", "pyproject.toml")):
+        raise ValueError("Select a dedicated private app home, not a home directory or checkout")
+    if not home.is_dir():
+        raise ValueError("Live actor preservation requires an existing installed home")
+    home = private_directory(home)
+    with open_private(home / ".maintenance.lock", "a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError("Another release operation is active") from exc
+        current = status(home)["current"]
+        if not current or current == "legacy":
+            raise ValueError("Live actor preservation requires a current immutable installed release")
+        temporary = home / ".current-next"
+        if temporary.exists() or temporary.is_symlink():
+            raise ValueError("Unfinished pointer operation; inspect .current-next")
+        evidence, brokers = _coexist_plan(Path(status(home)["state"]), home, coexist)
+        if current not in {item["release"] for item in evidence}:
+            raise ValueError("Declare the current immutable release among retained releases")
+        coexist_state.update(current=current, expected=brokers)
+        yield home
+
+
+def _check_live_code_state(state_root, home, coexist, expected):
+    from scripts import noetic_processes
+    for path in _code_state_paths(state_root):
+        if path.name == "broker-ownership.json" and _coexist_shape(path, state_root):
+            record = noetic_processes.inspect(path)
+            if record["state"] != "owned" and not record["cleanup_confirmed"]:
+                raise ValueError("Unverifiable retained broker ownership; refusing before switch")
+    _, brokers = _coexist_plan(state_root, home, coexist)
+    if status(home)["current"] != expected["current"]:
+        raise ValueError("Current release changed during maintenance; refusing before switch")
+    if brokers != expected["expected"]:
+        raise ValueError("Recognized broker set or identity changed during maintenance; refusing before switch")
+    return {"mode": "immutable-code-only", "history_assessment": "not_performed",
+            "data_compatibility": "unknown", "historical_cleanup_confirmed": False,
+            "process_inspection": "declared retained broker roots and exact live broker identities",
+            "recognized_brokers": list(brokers.values()),
+            "message": "code pointer updated; existing actors, releases and state retained without quiescence"}
+
+
+def _write_live_code_result(home, result):
+    fd, name = tempfile.mkstemp(prefix=".maintenance-result-", dir=home)
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(result, stream, sort_keys=True)
+        os.replace(name, home / "maintenance-result.json")
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def _live_code_switch(home, release, previous, result):
+    try:
+        _switch(home, release)
+        _write_live_code_result(home, result)
+    except BaseException:
+        temporary = home / ".current-next"
+        if temporary.is_symlink() and os.readlink(temporary) == "releases/" + release:
+            temporary.unlink()
+        if status(home)["current"] == release:
+            _switch(home, previous)
+        raise
+
+
 def install_release(archive, home, *, allow_held=False, python=sys.executable,
                     code_only=False, adopt_state=None, legacy_launcher=None, legacy_cwd=None,
-                    coexist=None):
+                    coexist=None, preserve_live_actors=False):
+    if preserve_live_actors and (not code_only or not coexist or any(
+            p is not None for p in (adopt_state, legacy_launcher, legacy_cwd))):
+        raise ValueError("Live actor preservation requires --code-only, explicit retained releases and no adoption")
     if coexist is not None and not code_only:
         raise ValueError("Broker coexistence requires --code-only")
     if sys.platform != "linux" or sys.version_info < (3, 10):
@@ -564,11 +638,14 @@ def install_release(archive, home, *, allow_held=False, python=sys.executable,
             raise ValueError("Code home and external state must be disjoint")
         adoption = {"state": str(state), "legacy_launcher": str(launcher), "legacy_cwd": str(cwd)}
     coexist_state = {}
-    with maintenance(home, allow_held, code_only=code_only, adoption=adoption, coexist=coexist,
+    maintain = _live_code_maintenance if preserve_live_actors else maintenance
+    with maintain(home, allow_held, code_only=code_only, adoption=adoption, coexist=coexist,
                      coexist_state=coexist_state) as home, ExitStack() as stack:
         binding = adoption or status(home)["adoption"]
         state_root = Path(binding.get("state", str(home / "state")))
-        if code_only:
+        if preserve_live_actors:
+            result = _check_live_code_state(state_root, home, coexist, coexist_state)
+        elif code_only:
             result = _check_code_state(state_root, allow_held, coexist=coexist, coexist_home=home,
                                        expected=coexist_state.get("expected"))
         else:
@@ -617,16 +694,21 @@ def install_release(archive, home, *, allow_held=False, python=sys.executable,
             subprocess.run([str(target / "venv/bin/python"), "-I", "-m", "scripts.noetic", "--help"],
                            check=True, env=env, cwd=home, stdout=subprocess.DEVNULL)
             check_installed_files(target, files[manifest["wheel"]])
-            if code_only:
+            if preserve_live_actors:
+                result = _check_live_code_state(state_root, home, coexist, coexist_state)
+            elif code_only:
                 result = _check_code_state(state_root, allow_held, coexist=coexist, coexist_home=home,
                                            expected=coexist_state.get("expected"))
             wrapper_started = True
             with open_private(wrapper, "w") as stream:
                 stream.write(wrapper_text)
             wrapper.chmod(0o700)
-            _switch(home, release)
-            with open_private(home / "maintenance-result.json", "w") as stream:
-                json.dump(result, stream, sort_keys=True)
+            if preserve_live_actors:
+                _live_code_switch(home, release, before["current"], result)
+            else:
+                _switch(home, release)
+                with open_private(home / "maintenance-result.json", "w") as stream:
+                    json.dump(result, stream, sort_keys=True)
         except BaseException:
             if status(home)["current"] != release:
                 if wrapper_started:
@@ -641,16 +723,21 @@ def install_release(archive, home, *, allow_held=False, python=sys.executable,
     return {**status(home), "previous": before["current"], "advanced": False}
 
 
-def rollback(home, release, *, allow_held=False, code_only=False, coexist=None):
+def rollback(home, release, *, allow_held=False, code_only=False, coexist=None, preserve_live_actors=False):
+    if preserve_live_actors and (not code_only or not coexist or release == "legacy"):
+        raise ValueError("Live actor preservation requires --code-only, explicit retained releases and an immutable target")
     if release != "legacy" and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{16}", release):
         raise ValueError("Select an installed release ID from status")
     if coexist is not None and not code_only:
         raise ValueError("Broker coexistence requires --code-only")
     check_node24()
     coexist_state = {}
-    with maintenance(home, allow_held, code_only=code_only, coexist=coexist,
+    maintain = _live_code_maintenance if preserve_live_actors else maintenance
+    with maintain(home, allow_held, code_only=code_only, coexist=coexist,
                      coexist_state=coexist_state) as home, ExitStack() as stack:
-        if code_only:
+        if preserve_live_actors:
+            result = _check_live_code_state(Path(status(home)["state"]), home, coexist, coexist_state)
+        elif code_only:
             result = _check_code_state(Path(status(home)["state"]), allow_held, coexist=coexist, coexist_home=home,
                                        expected=coexist_state.get("expected"))
         else:
@@ -677,12 +764,17 @@ def rollback(home, release, *, allow_held=False, code_only=False, coexist=None):
         if not (target / "venv/bin/python").is_file():
             raise ValueError("Installed interpreter missing")
         check_installed_files(target, files[manifest["wheel"]])
-        if code_only:
+        if preserve_live_actors:
+            result = _check_live_code_state(Path(status(home)["state"]), home, coexist, coexist_state)
+        elif code_only:
             result = _check_code_state(Path(status(home)["state"]), allow_held, coexist=coexist, coexist_home=home,
                                        expected=coexist_state.get("expected"))
-        _switch(home, release)
-        with open_private(home / "maintenance-result.json", "w") as stream:
-            json.dump(result, stream, sort_keys=True)
+        if preserve_live_actors:
+            _live_code_switch(home, release, previous, result)
+        else:
+            _switch(home, release)
+            with open_private(home / "maintenance-result.json", "w") as stream:
+                json.dump(result, stream, sort_keys=True)
     return {**status(home), "previous": previous, "advanced": False}
 
 
@@ -710,6 +802,7 @@ def main(argv=None):
     for command in (install, back):
         command.add_argument("--allow-held", action="store_true")
         command.add_argument("--code-only", action="store_true", help="Switch code without assessing retained history; require existing locks and recorded process safety")
+        command.add_argument("--preserve-live-actors", action="store_true", help="Explicit immutable code-only pointer update alongside live actors; requires declared retained releases including current; never locks or changes runtime state, stops actors or collects old releases")
         command.add_argument("--coexist-brokers-from", metavar="RELEASE_ID", default=None, action="append",
                              help="Explicit retained-broker coexistence: code-only only; recognize live developer-session brokers of these installed releases (repeatable); caller declares the compatible code pair")
     args = vars(parser.parse_args(argv))

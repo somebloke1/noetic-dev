@@ -1,6 +1,6 @@
 """Implementation tests using actual wheels, journals and local private installs; no models."""
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 import base64
 import csv
 from email.parser import BytesParser
@@ -18,6 +18,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from urllib.request import Request, urlopen
@@ -799,6 +800,235 @@ class ReleaseArchiveTests(unittest.TestCase):
         ownership.write_text('{"identity":"malformed process record"}')
         refused()
         self.assertFalse((home / "state").exists())
+
+    @contextmanager
+    def live_code_fixture(self):
+        from scripts import noetic_processes as processes
+        home = self.root / "live code app"
+        release.install_release(self.bundle, home)
+        first = release.status(home)["current"]
+        old = home / "releases" / first
+        site = next((old / "venv/lib").glob("python*/site-packages"))
+        run = runtime.create_run({"goal": "Disposable append-only live driver"}, self.root, home / "state/runs")
+        lock = run.parent / ".harness-slot-0.lock"
+        lock.touch(mode=0o600)
+        native = run / "native.jsonl"
+        native.write_bytes(b'{"fixture":"retained prefix"}\n')
+        stop = self.root / "fixture-driver-stop"
+        code = r'''
+import fcntl,json,os,sys,time
+from pathlib import Path
+from scripts import noetic_application as source
+lock=open(sys.argv[1],'rb');fcntl.flock(lock,fcntl.LOCK_EX)
+code=open(source.__file__,'rb')
+native=open(sys.argv[2],'ab',buffering=0)
+print(json.dumps({'lock_fd':lock.fileno(),'code_fd':code.fileno(),'source':source.__file__}),flush=True)
+i=0
+while not Path(sys.argv[3]).exists():
+ native.write((json.dumps({'sequence':i,'pid':os.getpid(),'source':source.__file__})+'\n').encode());i+=1;time.sleep(.01)
+'''
+        child = subprocess.Popen([str(old / "venv/bin/python"), "-u", "-c", code, str(lock), str(native), str(stop)],
+                                 cwd=site, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        try:
+            self.assertTrue(select.select([child.stdout], [], [], 10)[0], "Owned fixture did not hold its lock")
+            ready = json.loads(child.stdout.readline())
+            ownership = run / "actor-ownership.json"
+            processes.save(ownership, {"identity": processes.identity(child.pid)})
+            snapshot = {"identity": processes.identity(child.pid), "cwd": os.readlink(f"/proc/{child.pid}/cwd"),
+                        "exe": os.readlink(f"/proc/{child.pid}/exe"),
+                        "lock_inode": os.stat(f"/proc/{child.pid}/fd/{ready['lock_fd']}").st_ino,
+                        "code_inode": os.stat(f"/proc/{child.pid}/fd/{ready['code_fd']}").st_ino,
+                        "code_bytes": Path(ready["source"]).read_bytes(),
+                        "native_inode": native.stat().st_ino}
+            deadline = time.monotonic() + 5
+            while native.stat().st_size == len(b'{"fixture":"retained prefix"}\n') and time.monotonic() < deadline:
+                time.sleep(.01)
+            snapshot["prefix"] = native.read_bytes()
+            snapshot["state"] = {str(p.relative_to(home / "state")): p.read_bytes()
+                                 for p in (home / "state").rglob("*") if p.is_file() and p != native}
+            yield home, first, child, ready, native, lock, snapshot
+        finally:
+            stop.touch()
+            try:
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                child.terminate(); child.wait(timeout=5)
+            if child.stdout:
+                child.stdout.close()
+            if child.stderr:
+                child.stderr.close()
+
+    def assert_live_code_fixture(self, home, first, child, ready, native, lock, snapshot):
+        from scripts import noetic_processes as processes
+        self.assertIsNone(child.poll())
+        self.assertEqual(processes.identity(child.pid), snapshot["identity"])
+        self.assertEqual(os.readlink(f"/proc/{child.pid}/cwd"), snapshot["cwd"])
+        self.assertEqual(os.readlink(f"/proc/{child.pid}/exe"), snapshot["exe"])
+        self.assertEqual(os.stat(f"/proc/{child.pid}/fd/{ready['lock_fd']}").st_ino, snapshot["lock_inode"])
+        self.assertEqual(lock.stat().st_ino, snapshot["lock_inode"])
+        self.assertEqual(os.stat(f"/proc/{child.pid}/fd/{ready['code_fd']}").st_ino, snapshot["code_inode"])
+        self.assertEqual(Path(ready["source"]).read_bytes(), snapshot["code_bytes"])
+        self.assertEqual(native.stat().st_ino, snapshot["native_inode"])
+        after = native.read_bytes()
+        self.assertTrue(after.startswith(snapshot["prefix"]))
+        self.assertGreater(len(after), len(snapshot["prefix"]))
+        records = [json.loads(line) for line in after.splitlines()[1:]]
+        self.assertEqual([row["sequence"] for row in records], list(range(len(records))))
+        self.assertTrue(all(row["pid"] == child.pid and row["source"] == ready["source"] for row in records))
+        self.assertEqual({str(p.relative_to(home / "state")): p.read_bytes()
+                          for p in (home / "state").rglob("*") if p.is_file() and p != native}, snapshot["state"])
+        with lock.open("rb") as stream, self.assertRaises(BlockingIOError):
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.assertTrue((home / "releases" / first).is_dir())
+
+    def start_live_fixture_gui(self, home, selected):
+        root = home / "releases" / selected
+        site = next((root / "venv/lib").glob("python*/site-packages"))
+        code = ('from pathlib import Path;import sys;from scripts import noetic_web as w;'
+                's=w.create_server(Path(sys.argv[1])/"runs",port=0,namespace_path=Path(sys.argv[1])/"fixture-namespace.sqlite3");'
+                'print(s.server_port,flush=True);s.serve_forever()')
+        child = subprocess.Popen([str(root / "venv/bin/python"), "-u", "-c", code, str(home / "state")], cwd=site,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        self.addCleanup(self.stop_live_fixture_gui, child)
+        self.assertTrue(select.select([child.stdout], [], [], 10)[0])
+        port = int(child.stdout.readline())
+        with urlopen(f"http://127.0.0.1:{port}/", timeout=5) as response:
+            self.assertEqual(response.status, 200)
+        return child
+
+    @staticmethod
+    def stop_live_fixture_gui(child):
+        if child.poll() is None:
+            child.terminate(); child.wait(timeout=5)
+        if child.stdout:
+            child.stdout.close()
+        if child.stderr:
+            child.stderr.close()
+
+    def test_live_code_only_held_driver_append_gui_and_unit_rollback(self):
+        with self.live_code_fixture() as fixture:
+            home, first, child, ready, native, lock, snapshot = fixture
+            update = self.additional_bundle("live held driver update")
+            before_wrapper = (home / "bin/noetic").read_bytes()
+            with self.assertRaisesRegex(ValueError, "Owned state lock"):
+                release.install_release(update, home, code_only=True, coexist=[first])
+            gui = self.start_live_fixture_gui(home, first)
+            old_gui_pid = gui.pid
+            self.stop_live_fixture_gui(gui)
+            result = release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+            second = result["current"]
+            self.assertNotEqual(first, second)
+            self.assertEqual(result["last_maintenance"]["mode"], "immutable-code-only")
+            self.assertEqual(result["last_maintenance"]["history_assessment"], "not_performed")
+            gui = self.start_live_fixture_gui(home, second)
+            self.assertNotEqual(gui.pid, old_gui_pid)
+            self.assert_live_code_fixture(*fixture)
+            # A release-owned unit failure rolls back code and restarts only its GUI.
+            self.stop_live_fixture_gui(gui)
+            release.rollback(home, first, code_only=True, preserve_live_actors=True, coexist=[first, second])
+            gui = self.start_live_fixture_gui(home, first)
+            self.assertEqual(release.status(home)["current"], first)
+            self.assertEqual((home / "bin/noetic").read_bytes(), before_wrapper)
+            self.assertTrue((home / "releases" / second).is_dir())
+            self.assert_live_code_fixture(*fixture)
+
+    def test_live_code_only_pointer_and_report_failure_preserve_driver(self):
+        with self.live_code_fixture() as fixture:
+            home, first, child, ready, native, lock, snapshot = fixture
+            update = self.additional_bundle("live pointer failure")
+            wrapper = (home / "bin/noetic").read_bytes()
+            real_replace = os.replace
+            failed = False
+            def fail_pointer_once(source, destination):
+                nonlocal failed
+                if Path(destination) == home / "current" and not failed:
+                    failed = True
+                    raise OSError("injected atomic pointer refusal")
+                return real_replace(source, destination)
+            with patch.object(release.os, "replace", side_effect=fail_pointer_once), self.assertRaises(OSError):
+                release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+            self.assertEqual(release.status(home)["current"], first)
+            self.assertFalse((home / ".current-next").exists() or (home / ".current-next").is_symlink())
+            self.assertEqual((home / "bin/noetic").read_bytes(), wrapper)
+            self.assert_live_code_fixture(*fixture)
+            with patch.object(release, "_write_live_code_result", side_effect=OSError("injected report refusal")), self.assertRaises(OSError):
+                release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+            self.assertEqual(release.status(home)["current"], first)
+            self.assertEqual((home / "bin/noetic").read_bytes(), wrapper)
+            self.assert_live_code_fixture(*fixture)
+
+    def test_live_code_only_explicit_boundary_and_final_recheck(self):
+        home = self.root / "explicit live app"
+        for options in ({"preserve_live_actors": True},
+                        {"code_only": True, "preserve_live_actors": True},
+                        {"code_only": True, "preserve_live_actors": True, "coexist": ["unknown"],
+                         "adopt_state": self.root / "external"}):
+            with self.subTest(options=options), self.assertRaisesRegex(ValueError, "Live actor preservation"):
+                release.install_release(self.bundle, home, **options)
+        self.assertFalse(home.exists())
+        with self.assertRaisesRegex(ValueError, "immutable target"):
+            release.rollback(home, "legacy", code_only=True, preserve_live_actors=True, coexist=["unknown"])
+        release.install_release(self.bundle, home)
+        first = release.status(home)["current"]
+        update = self.additional_bundle("explicit live controls")
+        wrapper = (home / "bin/noetic").read_bytes()
+        with self.assertRaisesRegex(ValueError, "missing"):
+            release.install_release(update, home, code_only=True, preserve_live_actors=True,
+                                    coexist=["0.3.0-0000000000000000"])
+        with (home / ".maintenance.lock").open("rb") as stream:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with self.assertRaisesRegex(ValueError, "Another release operation"):
+                release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+        temporary = home / ".current-next"
+        temporary.symlink_to("releases/" + first)
+        with self.assertRaisesRegex(ValueError, "Unfinished pointer"):
+            release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+        self.assertEqual(os.readlink(temporary), "releases/" + first)
+        temporary.unlink()
+        real_plan = release._coexist_plan
+        calls = 0
+        def changed_plan(*args):
+            nonlocal calls
+            evidence, brokers = real_plan(*args)
+            calls += 1
+            if calls == 3:
+                brokers["changed"] = {"pid": 1, "start_ticks": "changed"}
+            return evidence, brokers
+        with patch.object(release, "_coexist_plan", side_effect=changed_plan), self.assertRaisesRegex(ValueError, "set or identity changed"):
+            release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+        self.assertEqual(calls, 3)
+        self.assertEqual(release.status(home)["current"], first)
+        self.assertEqual(release.status(home)["releases"], [first])
+        self.assertEqual((home / "bin/noetic").read_bytes(), wrapper)
+        expected = {"current": "other", "expected": {}}
+        with self.assertRaisesRegex(ValueError, "Current release changed"):
+            release._check_live_code_state(home / "state", home, [first], expected)
+        with patch.object(release, "_coexist_plan", return_value=([{"release": "other"}], {})):
+            with self.assertRaisesRegex(ValueError, "Declare the current"):
+                release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+        broker = home / "state/runs/developer-sessions/00000000-0000-0000-0000-000000000001/broker-ownership.json"
+        broker.parent.mkdir(parents=True)
+        broker.write_text('{"identity":"malformed"}')
+        with self.assertRaisesRegex(ValueError, "Unverifiable retained broker"):
+            release.install_release(update, home, code_only=True, preserve_live_actors=True, coexist=[first])
+        broker.unlink()
+        bad = self.root / "invalid-live.zip"
+        bad.write_bytes(b"not a release archive")
+        with self.assertRaises(zipfile.BadZipFile):
+            release.install_release(bad, home, code_only=True, preserve_live_actors=True, coexist=[first])
+        self.assertEqual(release.status(home)["current"], first)
+        for live in (False, True):
+            argv = ["install", str(update), "--home", str(home), "--code-only", "--coexist-brokers-from", first]
+            if live:
+                argv.append("--preserve-live-actors")
+            with patch.object(release, "install_release", return_value={}) as install, patch("builtins.print"):
+                self.assertEqual(release.main(argv), 0)
+                self.assertEqual(install.call_args.kwargs["preserve_live_actors"], live)
+                self.assertEqual(install.call_args.kwargs["coexist"], [first])
+        with patch.object(release, "rollback", return_value={}) as back, patch("builtins.print"):
+            self.assertEqual(release.main(["rollback", first, "--home", str(home), "--code-only",
+                                          "--preserve-live-actors", "--coexist-brokers-from", first]), 0)
+            self.assertTrue(back.call_args.kwargs["preserve_live_actors"])
 
     def test_release_rejects_mismatched_component_and_wheel_record(self):
         files, manifest = archive.read_bundle(self.bundle, "noetic-private-release")
