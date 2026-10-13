@@ -414,7 +414,10 @@ class SessionTests(unittest.TestCase):
             const {default: extension} = await import(process.argv[1]);
             const tools = new Map();
             extension({registerTool: tool => tools.set(tool.name, tool), registerCommand(){}, on(){}});
-            if (tools.size !== 4) throw new Error('expected four coordination tools');
+            const expected = ['agent_delegate', 'agent_send', 'agent_multicast_send', 'agent_broadcast_send', 'agent_read', 'agent_wait'];
+            if (JSON.stringify([...tools.keys()].sort()) !== JSON.stringify(expected.sort())) {
+                throw new Error('expected exactly six named coordination tools');
+            }
             const delegated = await tools.get('agent_delegate').execute('test', {prompt:'tool delegated task', thinking:'low'});
             const child = delegated.details;
             const completed = await tools.get('agent_wait').execute('test', {target:child.target, timeout:5});
