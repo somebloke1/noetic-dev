@@ -280,10 +280,18 @@ class SessionService:
     def current_context(self, sid):
         item, context = self._select(sid, current=True, include_effort=True)
         owner, position = context["owning_effort"], context["position"]
+        creation_parent = {"relation": "native-session-creation", "state": "not-recorded",
+                           "native_registry_id": item["parent_id"], "target": None}
+        if item["parent_id"]:
+            try:
+                parent = self.select(item["parent_id"], effort_root=item["effort_root"], current=False)
+                creation_parent.update(state="recorded" if parent["target"] else "native-only", target=parent["target"])
+            except SessionError as exc:
+                creation_parent.update(state="unresolved", error=str(exc))
         return {"source": "registered-current-native-context", "namespace": context["namespace"],
-                "target": item["target"], "effort_root": item["effort_root"],
+                "target": item["target"], "effort_root": item["effort_root"], "creation_parent": creation_parent,
                 "effort": {key: owner[key] for key in ("ordinal", "intent", "mandate", "environment", "environment_version")},
-                "position": {"ordinal": position["ordinal"], "mandate": position["mandate"],
+                "position": {"ordinal": position["ordinal"], "logical_parent": position["parent"], "mandate": position["mandate"],
                              "current_mandate_version": position["mandate_version"],
                              "instantiation_mandate_version": context["instantiation"]["mandate_version"]},
                 "working_directory": item["workspace"], "native_transcript": item["native_session_file"],
