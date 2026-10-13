@@ -101,9 +101,26 @@ class ConversationWorkspaceTests(unittest.TestCase):
         missing = self.home / "missing"
         file = self.home / "file"
         file.write_text("preserve")
-        for workspace in (missing, file, file / "child", Path("/")):
-            with self.subTest(workspace=workspace):
-                effort = self.effort(workspace)
+        invalid = (missing, file, file / "child", Path("/"))
+        for workspace in invalid:
+            with self.subTest(workspace=workspace, boundary="registration"):
+                before = self.snapshot(self.home)
+                with patch.object(self.service, "_launch") as launch, patch.object(self.service.registry, "create") as reserve, \
+                        patch.object(self.service.registry.domain, "create") as register:
+                    with self.assertRaises(sessions.SessionError) as failed:
+                        self.effort(workspace)
+                    self.assertEqual(failed.exception.status, 400)
+                    launch.assert_not_called()
+                    reserve.assert_not_called()
+                    register.assert_not_called()
+                self.assertEqual(self.snapshot(self.home), before)
+                self.assertFalse(self.service.registry.domain.path.exists())
+                self.assertFalse(self.service.registry.path.exists())
+        for workspace in invalid:
+            with self.subTest(workspace=workspace, boundary="conversation"):
+                # Lower-level declarations can retain a workspace that is no longer usable.
+                effort = self.service.registry.domain.create({"intent": "Legacy invalid workspace",
+                    "environment": {"cwd": str(workspace)}})["ordinal"]
                 before = self.snapshot(self.home)
                 with patch.object(self.service, "_launch") as launch, patch.object(self.service.registry, "create") as reserve:
                     with self.assertRaises(sessions.SessionError) as failed:
