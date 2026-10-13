@@ -1,0 +1,67 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+ const root=path.resolve(__dirname,'../..'),env={...process.env};delete env.USER_PROVIDED_PASSWORD;
+ const browser=await chromium.launch({headless:true,env,executablePath:process.env.NOETIC_TEST_CHROMIUM||undefined});
+ const positions=[{ordinal:'0',parent:null},{ordinal:'0.0',effort:'0.0',intent:'Alpha',environment:{cwd:'/fixture'}},{ordinal:'0.1',effort:'0.1',intent:'Beta',environment:{cwd:'/fixture'}}];
+ const makeRows=(ordinal,n,from=0)=>Array.from({length:n},(_,i)=>({sequence:from+i+1,ordinal,effort:ordinal==='0'?null:ordinal,kind:i%2?'fixture-odd':'fixture-even',data:{evidence:`retained-${ordinal}-${from+i+1}`},source_ref:{fixture:'no-provider'}}));
+ let namespace='fixture-namespace-A',records=makeRows('0',300),sessions=[],failureAfter=null,mixedAfter=null,marker=true;
+ const calls=[],held=[];let hold=false;
+ try{
+  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('http://fixture/**',async route=>{
+   const request=route.request(),url=new URL(request.url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(root,'scripts/web/index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,'')});
+   let result={};
+   if(url.pathname==='/api/ordinals/0/branch')result={records:positions,next_after:0};
+   else if(url.pathname==='/api/developer-sessions')result={sessions,projects_root:'/fixture'};
+   else if(url.pathname.endsWith('/history')){
+    const after=Number(url.searchParams.get('after')),limit=Number(url.searchParams.get('limit')),ordinal=url.pathname.split('/')[3];
+    const rows=records.filter(r=>r.sequence>after&&(ordinal==='0'||r.ordinal===ordinal)).slice(0,limit);
+    result={records:rows,next_after:rows.at(-1)?.sequence||after,...(marker?{namespace_id:mixedAfter===after?'fixture-namespace-MIXED':namespace}:{})};
+    calls.push({ordinal,after,count:rows.length,namespace:result.namespace_id});
+    if(hold)await new Promise(resolve=>held.push(resolve));
+    if(after===failureAfter)return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'owned failed append page'})});
+   }else if(url.pathname.startsWith('/api/ordinals/'))result={position:positions.find(r=>r.ordinal===url.pathname.split('/')[3])};
+   return route.fulfill({contentType:'application/json',body:JSON.stringify(result)});
+  });
+  await page.goto('http://fixture/');
+  await page.addScriptTag({content:`const $=id=>document.getElementById(id),node=(tag,value,cls)=>{const e=document.createElement(tag);if(value!==undefined)e.textContent=value;if(cls)e.className=cls;return e;},text=(id,value)=>$(id).textContent=value,error=(id,value)=>{text(id,value);$(id).hidden=!value;};let operatorToken='fixture',accessVersion=0;const switchPage=()=>{$('developer-page').hidden=false;};const fetchJSON=async(p,options)=>{const r=await fetch(p,options),v=await r.json();if(!r.ok)throw new Error(v.error||'fixture failure');return v;};$('private-workspace').hidden=false;document.body.append($('developer-page'));window.fixtureIntervals=[];window.setInterval=fn=>{fixtureIntervals.push(fn);return fixtureIntervals.length;};`});
+  await page.addScriptTag({path:path.join(root,'scripts/web/sessions.js')});
+  await page.waitForFunction(()=>NoeticSessions.state().positions.length===3);
+  await page.evaluate(()=>NoeticSessions.open(null,{history:true}));
+  assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),300,'complete initial read');
+  const initial=calls.length;await page.evaluate(()=>NoeticSessions.refresh());
+  assert.deepEqual(calls.slice(initial).map(c=>[c.after,c.count]),[[300,0]],'unchanged poll transfers no old rows');
+  await page.locator('.history-row summary').first().click();await page.locator('.history-row summary').first().focus();await page.evaluate(()=>window.inspected=document.activeElement);
+  records.push(...makeRows('0',20,300));await page.evaluate(()=>NoeticSessions.refresh());
+  assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),320);assert.equal(await page.evaluate(()=>document.activeElement===inspected&&inspected.parentElement.open),true,'append retains active inspection');
+  const cursorCalls=calls.length;records.push(...makeRows('0',120,320));failureAfter=420;
+  await page.evaluate(()=>NoeticSessions.refresh());assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),320,'failed terminal pagination does not publish partial rows');
+  assert.match(await page.locator('#developer-history-coverage').textContent(),/unavailable.*last observed/s);
+  failureAfter=null;await page.evaluate(()=>NoeticSessions.refresh());
+  assert.equal(calls[cursorCalls].after,320);assert.equal(calls[cursorCalls+2].after,320,'retry starts from committed cursor');assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),440);
+  namespace='fixture-namespace-B';records=makeRows('0',5);const changed=calls.length;await page.evaluate(()=>NoeticSessions.refresh());
+  assert.deepEqual(calls.slice(changed).map(c=>c.after),[440,0,5],'new namespace restarts from zero');assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),5);assert.equal(await page.evaluate(()=>inspected.isConnected),false,'namespace change discards old inspection identity');
+  records.push(...makeRows('0',120,5));mixedAfter=105;await page.evaluate(()=>NoeticSessions.refresh());
+  assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),0,'mixed namespace assembly publishes no rows');assert.equal(await page.evaluate(()=>NoeticSessions.state().historyObservation.observed),false);assert.match(await page.locator('#developer-history-coverage').textContent(),/unavailable.*No retained history/s);
+  mixedAfter=null;await page.evaluate(()=>NoeticSessions.refresh());assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),125);
+  await page.evaluate(()=>++accessVersion);const access=calls.length;await page.evaluate(()=>NoeticSessions.refresh());assert.equal(calls[access].after,0,'changed access generation requires complete read');
+  marker=false;const missing=calls.length;await page.evaluate(()=>NoeticSessions.refresh());assert.equal(calls[missing].after,125);assert.equal(calls[missing+1].after,0,'missing witness falls back to full read');const legacy=calls.length;await page.evaluate(()=>NoeticSessions.refresh());assert.equal(calls[legacy].after,0,'unwitnessed source never appends');
+  marker=true;namespace='fixture-namespace-C';records=makeRows('0.0',6);
+  await page.evaluate(()=>NoeticSessions.open({ordinal:'0.0',effort_root:'0.0'}));assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),6);
+  records[0].target={ordinal:'0.0',instantiation:1,session:1};
+  await page.evaluate(()=>NoeticSessions.open({ordinal:'0.0',effort_root:'0.0'}));
+  await page.locator('#developer-history-query').fill('retained-0.0-1');assert.equal(await page.getByRole('button',{name:'Open context 1/1',exact:false}).count(),0);
+  sessions=[{id:'owned-native',ordinal:'0.0',effort_root:'0.0',target:{ordinal:'0.0',instantiation:1,session:1},is_current:true,status:'idle',title:'Observed native backing'}];
+  const backing=calls.length;await page.evaluate(()=>NoeticSessions.refresh());assert.equal(calls[backing].after,6);assert.equal(await page.getByRole('button',{name:'Open context 1/1',exact:false}).count(),1,'context backing recomputed without new sequence');
+  hold=true;await page.evaluate(()=>{NoeticSessions.refresh();});for(let i=0;i<100&&!held.length;i++)await new Promise(r=>setTimeout(r,10));assert(held.length);
+  await page.evaluate(()=>{NoeticSessions.open({ordinal:'0.1',effort_root:'0.1'});});hold=false;for(const resolve of held.splice(0))resolve();
+  await page.waitForFunction(()=>NoeticSessions.state().historyObservation.status==='observed');assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),0,'late prior view never merges into different exact position');
+  await page.evaluate(()=>NoeticSessions.observeReturns());assert.equal(await page.evaluate(()=>NoeticSessions.state().applicationEvents.length),6,'Returns gets complete independent root coverage');
+  const returns=calls.length;await page.evaluate(()=>NoeticSessions.refresh());assert(calls.slice(returns).some(c=>c.ordinal==='0'&&c.after===6&&c.count===0),'Returns later poll uses its qualified cursor');
+  await page.evaluate(()=>NoeticSessions.open(null,{history:true}));assert.equal(await page.evaluate(()=>NoeticSessions.state().history.length),6,'application history remains complete after Returns');
+  namespace='fixture-namespace-D';records=makeRows('0.0',8);await page.evaluate(()=>NoeticSessions.open({ordinal:'0.1',effort_root:'0.1'}));assert.equal(await page.evaluate(()=>NoeticSessions.state().applicationEvents.length),8,'Returns cannot borrow stale application cursor across namespace');
+  assert.deepEqual(errors,[]);console.log('PASS history append: full initial, zero old-row transfer, append/failure cursor, UUID reset/mixed rejection, access/no-witness fallback, current backing and stale selection');
+ }finally{hold=false;for(const resolve of held)resolve();await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
