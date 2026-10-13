@@ -1916,6 +1916,47 @@ async function startReviewed({scopeVersion,scopeKey,draft,subject,selection,envi
   text("start-result",`${result.launch_id}: ${result.status}. ${result.run_id ? "Original run "+result.run_id : "No execution claim until original preparation is observed."}`);
   $("reviewed-launches").open=true; await loadReviewedLaunches(); await refresh();
 }
+function renderCapturedSources(host, artifact, runId) {
+  let panel=[...host.children].find(x=>x.dataset.key==="captured-source-preview");
+  if(!panel){panel=node("details");panel.dataset.key="captured-source-preview";host.append(panel);}
+  const signature=JSON.stringify([runId,artifact||null]);
+  if(panel.dataset.signature===signature)return;
+  panel.dataset.signature=signature;
+  const unavailable=message=>panel.replaceChildren(node("summary","Captured host source preview · unavailable"),node("p",message,"source"));
+  if(!artifact||artifact.error||typeof artifact.text!=="string"||artifact.truncated){
+    unavailable(!artifact?"No retained raw text for opermem-scope.json was observed for this run, so no captured host source preview is available."
+      :artifact.error?`Captured opermem-scope.json read error: ${artifact.error}; no captured host source preview is available.`
+      :artifact.truncated?"Captured opermem-scope.json is truncated; a captured host source preview is unavailable to avoid misleading partial captured text."
+      :"Captured opermem-scope.json carries no raw text; no captured host source preview is available.");return;
+  }
+  let rows;try{const parsed=JSON.parse(artifact.text);rows=parsed&&Array.isArray(parsed.host_sources)?parsed.host_sources:null;}catch{rows=null;}
+  if(!rows){unavailable("Captured opermem-scope.json is malformed (no readable host_sources array); no captured host source preview is available.");return;}
+  const records=rows.filter(r=>r&&typeof r.path==="string"&&typeof r.sha256==="string"&&typeof r.bytes_base64==="string");
+  if(!records.length){unavailable("Captured opermem-scope.json retains no host source records; no captured host source preview is available.");return;}
+  const decode=rec=>{
+    const where=`${rec.path} · recorded sha256 ${rec.sha256}`;
+    if(rec.kind!=="external-host-evidence"||rec.native_retained_experience!==false)return {error:`${where} · preview unavailable: unsupported captured record qualification; no captured text is shown.`};
+    if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(rec.bytes_base64))return {error:`${where} · preview unavailable: invalid base64 captured bytes; no captured text is shown.`};
+    let bytes;try{bytes=[...atob(rec.bytes_base64)].map(c=>c.charCodeAt(0));}catch{return {error:`${where} · preview unavailable: invalid base64 captured bytes; no captured text is shown.`};}
+    if(bytes.includes(0))return {error:`${where} · preview unavailable: captured bytes contain binary NUL and are not rendered as text.`};
+    try{return {text:new TextDecoder("utf-8",{fatal:true}).decode(new Uint8Array(bytes))};}
+    catch{return {error:`${where} · preview unavailable: captured bytes are not valid UTF-8 text; no decoded text is shown.`};}
+  };
+  panel.replaceChildren(node("summary","Captured host source preview · external host evidence · historical captured bytes · not native Experience; no current file fetch"));
+  const chosen=records.find(r=>r.path===panel.dataset.selected)||records[0];
+  panel.dataset.selected=chosen.path;
+  const select=node("select");select.className="source";select.setAttribute("aria-label","Captured host source record");
+  for(const r of records){const option=node("option",r.path);option.value=r.path;option.selected=r===chosen;select.append(option);}
+  const locator=node("p",undefined,"source"),pre=node("pre");
+  const show=()=>{
+    const rec=records.find(r=>r.path===select.value)||records[0];panel.dataset.selected=rec.path;
+    const decoded=decode(rec);
+    if(decoded.error){locator.textContent=decoded.error;pre.replaceChildren();}
+    else{locator.textContent=`${rec.path} · recorded sha256 ${rec.sha256} · external host evidence / historical captured bytes / not native Experience; no current file fetch.`;pre.textContent=decoded.text;}
+  };
+  select.addEventListener("change",show);
+  panel.append(select,locator,pre);show();
+}
 function renderRawArtifact(host, name, artifact) {
   if (!artifact || artifact.error || typeof artifact.text !== "string") {
     const message = !artifact ? `No retained raw text for ${name} observed. No rounded native projection is substituted.`
@@ -1960,6 +2001,7 @@ function renderReviewedDetail(detail) {
   $("reviewed-recover-correlation").hidden=!info.actions.recover_correlation;
   const host=$("reviewed-evidence-content");
   for(const name of ["opermem-link.json","opermem-scope.json","opermem-receipt.json","opermem-pending.json"]){let item=[...host.children].find(x=>x.dataset.key===name);if(!item){item=node("details");item.dataset.key=name;item.append(node("summary",`${name} · retained original raw text (historical bytes, not current Opermem standing)`),node("div",undefined,"raw-artifact"));host.append(item);}renderRawArtifact(item.lastChild,name,detail.artifacts[name]);}
+  renderCapturedSources(host, detail.artifacts["opermem-scope.json"], status.run_id);
   const link={...correspondence,native_link:"Inspect the whole opermem-link.json raw row for observed source and qualification; historical evidence only."};
   const rows=[["Preparation summary (browser projection)",preparation],["Actual participants and correspondence summary",link],["Launch and separate dispositions",driverSummary],["Ordered events (browser projection; original journal locally retained)",detail.events]];
   for(const [label,value] of rows){let item=[...host.children].find(x=>x.dataset.key===label);if(!item){item=node("details");item.dataset.key=label;item.append(node("summary",label),node("pre"));host.append(item);}const data=JSON.stringify(value,null,2);if(item.lastChild.textContent!==data)item.lastChild.textContent=data;}
