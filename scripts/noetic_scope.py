@@ -542,6 +542,15 @@ class ScopeStore:
         with self._read() as db:
             return self._resolve(db, ordinal, scope, instantiation, session)
 
+    def resolve_context(self, ordinal, *, scope, instantiation=None, session=None, current=False):
+        with self._read() as db:
+            target = self._resolve(db, ordinal, scope, instantiation, session)
+            if current and self._resolve(db, ordinal, scope, None, None) != target:
+                raise ScopeError("Exact target is superseded; select the intended current session explicitly.")
+            _, instance, retained = self._target(db, target)
+            return {"target": target.as_dict(), "position": self._describe(db, ordinal),
+                    "instantiation": instance, "session": retained}
+
     def bind_action(self, ordinal, *, scope, kind, payload, source_ref, instantiation=None, session=None):
         with self._write() as db:
             target = self._resolve(db, ordinal, scope, instantiation, session)

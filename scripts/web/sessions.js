@@ -121,6 +121,7 @@
     const project = !selected && !effort;
     const starting = newConversation || Boolean(selected && !exact(selected));
     const disabled = applicationHistory || selected?.ordinal === "0";
+    $("developer-form").hidden = disabled || Boolean(!project && !starting && !detail);
     $("developer-project-fields").hidden = !project;
     for (const id of ["developer-workspace", "developer-model"]) $(id).required = project;
     $("developer-mode").hidden = $("developer-mode-label").hidden = project || starting || disabled;
@@ -164,6 +165,15 @@
     }));
   }
   let historyView = "", historyRows = new Map(), historyWindow = null, historyControls = null;
+  function historyContext(record, target) {
+    if (!target || !record.effort) return null;
+    const native = allSessions.find(item => item.effort_root === record.effort && item.target?.ordinal === target.ordinal && item.target.instantiation === target.instantiation && item.target.session === target.session);
+    if (native) return {native:native.id};
+    const source = record.source_ref || {}, ref = record.data?.native_ref || {};
+    const run = ref.run_id || source.native_run?.split("/").filter(Boolean).at(-1) || /^run:([^:]+)/.exec(source.command_key || "")?.[1];
+    const activation = ref.activation_id || record.data?.activation?.id || /(?:^|:)(?:activation|close-session):([^:]+)/.exec(source.command_key || "")?.[1] || /^run:[^:]+:native:([^:]+):/.exec(source.command_key || "")?.[1];
+    return run ? {run,activation} : null;
+  }
   function renderHistory() {
     $("developer-history-panel").hidden = !applicationHistory && !(selected && !exact(selected));
     text("developer-history-heading", applicationHistory ? "Application history · all efforts" : `Position ${selected?.ordinal || ""} · responsibility and history`);
@@ -203,7 +213,9 @@
     const retained = new Map();
     const rows = visible.map(record => {
       const identity = JSON.stringify([record.sequence, record.ordinal, record.effort]);
-      const previous = historyRows.get(identity), signature = JSON.stringify(record);
+      const target = record.target || (record.instantiation && record.session ? {ordinal:record.ordinal,instantiation:record.instantiation,session:record.session} : null);
+      const context = historyContext(record,target);
+      const previous = historyRows.get(identity), signature = JSON.stringify([record,context]);
       if (previous?.signature === signature) { retained.set(identity, previous); return previous.row; }
       const row = previous?.row || node("article", undefined, "history-row");
       const evidence = previous?.evidence || node("details");
@@ -211,8 +223,13 @@
       evidence.querySelector("pre").textContent = JSON.stringify(record,null,2);
       for (const child of [...row.children]) if (child !== evidence) child.remove();
       const heading = node("strong", `${record.ordinal || record.target?.ordinal || "0"} · ${record.kind}`); row.insertBefore(heading,evidence.parentNode === row ? evidence : null);
-      const target = record.target || (record.instantiation && record.session ? {ordinal:record.ordinal,instantiation:record.instantiation,session:record.session} : null);
-      if (target && record.effort) { const button = railButton(`Open context ${target.instantiation}/${target.session}`, "Exact retained context", {...target,effort_root:record.effort}, ""); row.insertBefore(button,evidence.parentNode === row ? evidence : null); }
+      if (context?.native) {
+        const button = railButton(`Open context ${target.instantiation}/${target.session}`, "Exact retained native conversation", {...target,effort_root:record.effort}, ""); row.insertBefore(button,evidence.parentNode === row ? evidence : null);
+      } else if (context?.run) {
+        const button = node("button",`Inspect execution context ${target.instantiation}/${target.session}`); button.type = "button";
+        button.append(node("small",`${context.run}${context.activation ? ` · ${context.activation}` : " · retained execution source"}`));
+        button.addEventListener("click",()=>selectRun(context.run,context.activation ? {activation_id:context.activation} : null)); row.insertBefore(button,evidence.parentNode === row ? evidence : null);
+      } else if (target) row.insertBefore(node("p","Native conversation backing unavailable for this exact context. Inspect retained source references.","source"),evidence.parentNode === row ? evidence : null);
       if (!evidence.parentNode) row.append(evidence); retained.set(identity, {row, evidence, signature}); return row;
     });
     historyRows = retained;

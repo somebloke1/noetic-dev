@@ -255,7 +255,7 @@ class SessionService:
         self.pi_command = pi_command
 
     def inspect(self, sid):
-        item = self.registry.get(self.select(sid)["id"])
+        item, context = self._select(sid)
         ownership = self.registry.directory(sid) / "broker-ownership.json"
         observed = processes.inspect(ownership)
         alive = observed["state"] == "owned"
@@ -263,10 +263,7 @@ class SessionService:
             item = {**item, "status": "interrupted", "error": "Session process ended; explicit reopen required."}
         correspondence = {"is_current": False, "domain_status": None, "parentTarget": None}
         if item["target"]:
-            store = self.registry.domain.store()
-            position = store.position(item["ordinal"])
-            instance = store.instantiations(item["ordinal"])[item["target"]["instantiation"] - 1]
-            retained = store.sessions(item["ordinal"], item["target"]["instantiation"])[item["target"]["session"] - 1]
+            position, instance, retained = context["position"], context["instantiation"], context["session"]
             correspondence = {"domain_status": retained["status"], "parentTarget": position["mandate"]["delegator"],
                 "is_current": position["current_instantiation"] == item["target"]["instantiation"] and
                               instance["current_session"] == item["target"]["session"] and retained["status"] == "open"}
@@ -475,6 +472,9 @@ class SessionService:
             raise SessionError(400, str(exc)) from exc
 
     def select(self, address, *, effort_root=None, current=False):
+        return self._select(address, effort_root=effort_root, current=current)[0]
+
+    def _select(self, address, *, effort_root=None, current=False):
         try:
             if isinstance(address, str) and not re.fullmatch(r"0(?:\.[0-9]+)*", address):
                 item = self.registry.get(address)
@@ -483,20 +483,20 @@ class SessionService:
                         raise SessionError(400, "Requested effort does not own this reserved or unadopted native context.")
                     if current:
                         raise SessionError(409, "Legacy session requires explicit adoption before ordinal actions.")
-                    return item
+                    return item, None
                 address = item["target"]
             selectors = address if isinstance(address, dict) else {"ordinal": address}
             scope = self.registry.domain.scope(effort_root)
             store = self.registry.domain.store()
-            target = store.resolve(selectors["ordinal"], scope=scope,
-                                   instantiation=selectors.get("instantiation"), session=selectors.get("session"))
-            if current and store.resolve(target.ordinal, scope=scope) != target:
-                raise SessionError(409, "Exact target is superseded; select the intended current session explicitly.")
-            native = store.sessions(target.ordinal, target.instantiation, scope=scope)[target.session - 1]["native_ref"]
+            context = store.resolve_context(selectors["ordinal"], scope=scope,
+                instantiation=selectors.get("instantiation"), session=selectors.get("session"), current=current)
+            target, native = context["target"], context["session"]["native_ref"]
+            if not native.get("registry_id"):
+                raise SessionError(409, "Exact context has no native conversation registry backing; inspect its retained source.")
             item = self.registry.get(native["registry_id"])
-            if item["target"] != target.as_dict():
+            if item["target"] != target:
                 raise SessionError(409, "Native context has no matching exact ordinal target.")
-            return item
+            return item, context
         except (ScopeError, KeyError) as exc:
             raise SessionError(409 if current else 400, str(exc)) from exc
 
