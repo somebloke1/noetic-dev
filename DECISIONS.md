@@ -274,3 +274,25 @@ Preparation uses 14 registered role definitions, substantive external Flash work
 
 Sources: [goal](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/goal-refinement-review/goal.md), [Root final review](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/team14-strategy/root-final-goal-review.md), [current policy](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/team14-strategy/current-policy.md), [GLM accepted client policy](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/glm53-budget/independent-qa/report.md), [operating plan](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/team14-strategy/operating-plan.md).
 <!-- governance-crud:end id=dec-20261013-0001 -->
+
+<!-- governance-crud:start id=dec-20261013-0002 -->
+## dec-20261013-0002: Remove local operator pairing; defer real authentication
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/.codex/worktrees/accepted-source-delivery/feature-cognitional-event-journal
+- Created: 2026-10-13
+- Updated: 2026-10-13
+- Tags: product-scope,local-access,continuity,P4
+- Confidence: high (direct user authority; implementation and delivery require separate evidence)
+
+Direct human instruction:
+
+> This "token" system is stupid. We should eliminate it until we expand the scope of the project to include real authentication. No need for now
+
+Remove the current local application's operator-token requirement and pairing/unlock interface, including token-dependent `serve`/`open` behavior. Ordinary access and operations require no supplied token or replacement access ritual. Defer real authentication until the user explicitly expands product scope to include it. Provider credentials, attachment capability checks, native context validation and scoped draft/history preservation retain their separate purposes.
+
+This product direction supersedes earlier token-required acceptance criteria. Preserve historical authenticated/401 observations and the rejected ACTEST1 results as dated evidence; do not relabel them PASS. The decision authorizes implementation and does not itself establish accepted source, installation, ordinary use or human value.
+
+Source: [direct human directive](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/v2-20261013T155955Z/startup/token-removal-directive.json).
+<!-- governance-crud:end id=dec-20261013-0002 -->
