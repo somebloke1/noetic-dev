@@ -195,6 +195,7 @@ process.stdin.on('end', async () => {
       classList:{remove(){},toggle(){return true;}}, focus(){}, scrollIntoView(){}
     }; }
     for (const match of fixture.html.matchAll(/<([a-z0-9-]+)\b[^>]*\bid="([^"]+)"[^>]*>/g)) elements.set(match[2], element(match[1]));
+    const sourceLabel = /<label\b[^>]*\bfor="start-sources"[^>]*>/.test(fixture.html) ? element('label') : null;
     for (const match of fixture.html.matchAll(/<select\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
       const select=elements.get(match[1]);
       for(const option of match[2].matchAll(/<option\b[^>]*value="([^"]*)"[^>]*>/g)) { const child=element('option'); child.value=option[1]; select.append(child); }
@@ -211,7 +212,8 @@ process.stdin.on('end', async () => {
         setItem() { assert.fail('No localStorage writes'); }
       },
       sessionStorage: {getItem: k => stored.get(k), setItem: (k,v) => stored.set(k,v), removeItem: k => stored.delete(k)},
-      document: {getElementById: k => elements.get(k), createElement: element, dispatchEvent:()=>true, querySelectorAll: () => []},
+      document: {getElementById: k => elements.get(k), createElement: element, dispatchEvent:()=>true,
+        querySelector: selector => selector === 'label[for="start-sources"]' ? sourceLabel : null, querySelectorAll: () => []},
       fetch: (url, options) => { requests.push({url, options}); return new Promise(() => {}); }};
     vm.createContext(sandbox);
     vm.runInContext(fixture.script, sandbox);

@@ -409,7 +409,9 @@ process.stdin.on('end', async () => {
     sessionStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
     window: { confirm: () => false, addEventListener() {} },
     fetch: (url, options) => { requests.push({url, options}); return new Promise(() => {}); },
-    document: { dispatchEvent: () => true, getElementById: id=>elements.get(id) || null, createElement: tag => new Element(tag), querySelectorAll: selector => selector === '[data-page]' ? pages : views } };
+    document: { dispatchEvent: () => true, getElementById: id=>elements.get(id) || null, createElement: tag => new Element(tag),
+      querySelector: selector => selector === 'label[for="start-sources"]' ? documentRoot.children.find(child=>child.tagName==='LABEL' && child.getAttribute('for')==='start-sources') || null : null,
+      querySelectorAll: selector => selector === '[data-page]' ? pages : views } };
   vm.createContext(sandbox);
   vm.runInContext(fixture.script, sandbox);
   const run = code => vm.runInContext(code, sandbox);
