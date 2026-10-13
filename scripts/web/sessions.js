@@ -147,15 +147,24 @@
 
   let copySnapshot = null;
   const copyStatus = node("small"); copyStatus.id="developer-copy-status"; copyStatus.setAttribute("role","status");
+  function controlIcon(kind="copy") {
+    const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+    for(const [name,value] of Object.entries({viewBox:"0 0 24 24",width:"16",height:"16",fill:"none",stroke:"currentColor","stroke-width":"1.6","stroke-linecap":"round","stroke-linejoin":"round","aria-hidden":"true",focusable:"false"}))svg.setAttribute(name,value);
+    svg.innerHTML=({copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5V4H4v11h1"/>',check:'<path d="m5 12 4 4L19 6"/>',stop:'<rect x="6" y="6" width="12" height="12" rx="1"/>',delegate:'<circle cx="6" cy="5" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="18" cy="18" r="2"/><path d="M6 7v7a4 4 0 0 0 4 4h6M8 5h5a5 5 0 0 1 5 5"/>',close:'<path d="m6 6 12 12M18 6 6 18"/>',root:'<path d="M12 20V4m-6 6 6-6 6 6"/>'})[kind];return svg;
+  }
   function copyControl(label, value) {
-    const button=node("button",label,"secondary-button");button.type="button";
-    button.addEventListener("click",async()=>{const version=selectionVersion,payload=value();if(payload==null)return;try{await navigator.clipboard.writeText(payload);if(version===selectionVersion)copyStatus.textContent="Copied to clipboard.";}catch(failure){if(version===selectionVersion)copyStatus.textContent="Clipboard unavailable. Allow clipboard access and retry; selection and draft are preserved.";}});return button;
+    const button=node("button",undefined,"noetic-copy");button.type="button";button.title=label;button.setAttribute("aria-label",label);button.append(controlIcon());let request=0;
+    button.addEventListener("click",async()=>{const version=selectionVersion,attempt=++request,payload=value();if(payload==null)return;button.replaceChildren(controlIcon());delete button.dataset.copied;button.setAttribute("aria-busy","true");try{await navigator.clipboard.writeText(payload);if(version===selectionVersion && attempt===request){copyStatus.textContent=`${label.replace(/^Copy /,"Copied ")} to clipboard.`;if(button.isConnected){button.replaceChildren(controlIcon("check"));button.dataset.copied="true";}}}catch(failure){if(version===selectionVersion && attempt===request){copyStatus.textContent="Clipboard unavailable. Allow clipboard access and retry; selection and draft are preserved.";if(button.isConnected)button.title=copyStatus.textContent;}}finally{if(attempt===request)button.removeAttribute("aria-busy");}});return button;
   }
   const copySession=copyControl("Copy session",()=>copySnapshot),copyCoverage=node("small");
-  const copyActions=node("div",undefined,"developer-copy-actions");copyActions.append(copySession,copyCoverage,copyStatus);$("developer-transcript").before(copyActions);
+  const copyActions=node("div",undefined,"developer-copy-actions");copyActions.append(copyCoverage,copyStatus);$("developer-transcript").before(copyActions);$("developer-header").querySelector(".developer-actions").append(copySession);
+  for(const [id,kind] of [["developer-stop","stop"],["developer-delegate","delegate"],["developer-close","close"],["developer-root","root"]]){const button=$(id),label=button.textContent;button.title=label;button.setAttribute("aria-label",label);button.classList.add("noetic-icon-action");button.replaceChildren(controlIcon(kind));}
   function copyBlocks(article) {
     for(const block of article.querySelectorAll(".developer-markdown p,.developer-markdown pre,.developer-markdown li,.developer-markdown h3,.developer-markdown h4,.developer-markdown h5,.developer-markdown h6")) {
-      const value=block.textContent;block.append(copyControl("Copy block",()=>value));
+      const value=block.textContent;
+      if(block.tagName==="PRE"){const source=node("code",value,"noetic-code-source");block.replaceChildren(source);block.classList.add("noetic-code-block");}
+      else block.classList.add("noetic-copy-prose");
+      block.append(copyControl("Copy block",()=>value));
     }
   }
 
@@ -355,7 +364,7 @@
           article = node("article",undefined,"developer-message tool"); article.dataset.toolCallId = tool.id || "";
           const evidence = node("details"); evidence.append(node("summary","Arguments & output"),node("strong","Arguments"),node("pre",undefined,"tool-arguments"),node("strong","Output"),node("pre",undefined,"tool-output"));
           article.append(node("h3"),node("small",undefined,"tool-summary"),evidence);
-          evidence.append(copyControl("Copy arguments",()=>article.querySelector(".tool-arguments").textContent),copyControl("Copy output",()=>article.querySelector(".tool-output").textContent));
+          for(const [selector,label] of [[".tool-arguments","Copy arguments"],[".tool-output","Copy output"]]){const pre=article.querySelector(selector),heading=node("div",undefined,"noetic-tool-heading");pre.previousElementSibling.before(heading);heading.append(pre.previousElementSibling,copyControl(label,()=>article.querySelector(selector).textContent));}
         }
         const state = tool.state === "error" ? "Failed" : tool.state === "finished" ? "Completed" : tool.state === "requested" ? "Requested · execution unobserved" : ["running","starting"].includes(detail.session.status) ? "Running" : "Completion unobserved";
         const heading = `${tool.name} · ${state}${!tool.started && tool.state !== "requested" ? " · start unobserved" : ""}`;
@@ -440,7 +449,7 @@
     $("developer-transcript").hidden = !detail || newConversation || applicationHistory;
     $("developer-form").hidden = applicationHistory || selected?.ordinal === "0" || Boolean(detail?.session.effort_root && !detail.session.target);
     renderHistory();
-    copyActions.hidden=!detail||newConversation||applicationHistory||reservedSource(detail?.session);copySession.disabled=copyActions.hidden;
+    copyActions.hidden=!detail||newConversation||applicationHistory||reservedSource(detail?.session);copySession.disabled=copyActions.hidden;copySession.hidden=copyActions.hidden;
     if (!detail) { copySnapshot=null;copyStatus.textContent="";text("developer-attention", ""); $("developer-attention").hidden = true; composer(); notify(); return; }
     const item = detail.session;
     text("developer-heading", item.title); text("developer-location", item.workspace); text("developer-status", item.status);
