@@ -160,7 +160,7 @@
       const detail = panel(label(chosen.pattern), "Selected definition"); detail.classList.add("lib-detail"); layout.append(detail);
       const content = body(detail); content.append(UI.badge("Definition only", "purple"));
       const sequence = el("ol", "lib-phase-sequence"); for (const phase of chosen.definition.phases || []) sequence.append(el("li", "", `${phase.id} · ${label(phase.role)}`)); content.append(sequence);
-      if(chosen.backend === "opermem-reviewed"){content.append(note("Independent worker and reviewer. Initial GUI inquiry supports Question; other operations retain native capacity and need their scoped editors and prerequisites."));details(content,"Fourteen native operation prerequisites",chosen.operations);}
+      if(chosen.backend === "opermem-reviewed"){content.append(note("Independent worker and reviewer. Scoped GUI editors: Question, Insight, Formulation, Reflection and Judgment. Other operations retain native capacity, but their scoped editors are unavailable. An explicitly registered backing and native prerequisites remain required; editor availability does not establish admission."));details(content,"Fourteen native operation prerequisites",chosen.operations);}
       values(content, {kind:chosen.definition.kind,pattern_version:chosen.definition_ref.pattern_version,phases:(chosen.definition.phases || []).length,transitions:(chosen.definition.transitions || []).length});
       const start = action("Instantiate in effort", () => openWork(chosen.pattern), "primary-button"); start.disabled = !scope().effort_root; content.append(start);
       if (start.disabled) content.append(note("Select an effort to start work."));
