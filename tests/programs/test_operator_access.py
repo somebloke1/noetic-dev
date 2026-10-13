@@ -181,13 +181,14 @@ process.stdin.on('end', async () => {
   function launch(hash = '', stored = new Map(), legacy = new Map()) {
     const elements = new Map();
     function element(tagName = 'div') { return {
-      tagName, hidden:true, children:[], handlers:{}, dataset:{}, attributes:{}, style:{}, scrollTop:0,
+      tagName:tagName.toUpperCase(), defaultValue:'', hidden:true, children:[], handlers:{}, dataset:{}, attributes:{}, style:{}, scrollTop:0,
       get value() { return this._value ?? this.children[0]?.value ?? ''; }, set value(value) { this._value=value; },
       get firstChild() { return this.children[0] || null; },
+      get options() { return this.children; },
       get selectedOptions() { return this.children.filter(child => child.value === this.value); },
       append(...items) { this.children.push(...items); },
       addEventListener(k, fn) { this.handlers[k] = fn; },
-      replaceChildren(...items) { this.children=items; if(this.tagName==='select') delete this._value; },
+      replaceChildren(...items) { this.children=items; if(this.tagName==='SELECT') delete this._value; },
       querySelectorAll() { return []; },
       querySelector(selector) { const value=selector.match(/^\[value="([^"]+)"\]$/)?.[1]; return this.children.find(child=>child.value===value) || null; },
       setAttribute(k,v) { this.attributes[k]=String(v); }, getAttribute(k) { return this.attributes[k] ?? null; },
@@ -200,7 +201,7 @@ process.stdin.on('end', async () => {
     }
     let reloads = 0;
     const requests = [], replaced = [], handlers = {}, legacyAccess = [];
-    const sandbox = {URL, URLSearchParams, AbortController, console, CustomEvent: class { constructor(type,options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
+    const sandbox = {URL, URLSearchParams, AbortController, structuredClone, console, CustomEvent: class { constructor(type,options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
       window: {confirm: () => true, addEventListener(name, handler) { handlers[name] = handler; }},
       location: {hash, pathname: '/', search: '', origin:'http://127.0.0.1:8765', reload() { reloads++; }},
       history: {replaceState(...args) { replaced.push(args); sandbox.location.hash = ''; }},
@@ -251,7 +252,9 @@ process.stdin.on('end', async () => {
   await assert.rejects(oldRequest, /locked/);
   const reopened = launch('', locked.stored);
   assert.equal(reopened.requests[0].options.headers.Authorization, 'Bearer ' + replacement);
-  assert.equal(reopened.elements.get('start-task').value, 'Retained draft');
+  assert.equal(reopened.elements.get('start-task').value, '', 'Unassigned text is not adopted by token replacement');
+  assert.equal(reopened.run('savedUI.unassignedStructuredDraft.fields["start-task"]'), 'Retained draft');
+  assert.equal(reopened.elements.get('copy-unassigned-draft').disabled, true);
   assert.equal(reopened.elements.get('private-workspace').hidden, true);
   // Replacement while the old pairing itself is in flight must not unlock old DOM.
   const racing = launch();
@@ -282,7 +285,8 @@ process.stdin.on('end', async () => {
   assert.equal(JSON.parse(paired.stored.get('noetic-workspace-v1')).forms['start-task'], 'Private draft');
   const resumed = launch('', paired.stored);
   assert.equal(resumed.requests.length, 0);
-  assert.equal(resumed.elements.get('start-task').value, 'Private draft');
+  assert.equal(resumed.elements.get('start-task').value, '', 'Unassigned text is retained separately while locked');
+  assert.equal(resumed.run('savedUI.unassignedStructuredDraft.fields["start-task"]'), 'Private draft');
   resumed.elements.get('access-token').value = token;
   resumed.elements.get('access-form').handlers.submit({preventDefault() {}});
   assert.equal(resumed.elements.get('access-token').value, '');
@@ -365,11 +369,41 @@ process.stdin.on('end', async () => {
   assert.equal(upgrade.reloads(), 1);
   assert.equal(upgrade.elements.get('private-workspace').hidden, true);
   const imported = launch('', upgrade.stored, upgrade.legacy);
-  assert.equal(imported.elements.get('start-task').value, privateDraft);
+  assert.equal(imported.elements.get('start-task').value, '', 'Migration does not assign the prior draft to an effort');
+  assert.equal(imported.run('savedUI.unassignedStructuredDraft.fields["start-task"]'), privateDraft);
   assert.equal(imported.run('currentPage'), 'new');
   assert.equal(imported.run('selectedId'), 'previous-run');
   assert.equal(imported.requests[0].options.headers.Authorization, 'Bearer ' + token);
   assert.equal(imported.elements.get('private-workspace').hidden, true);
+
+  imported.elements.get('copy-unassigned-draft').handlers.click();
+  assert.equal(imported.elements.get('start-task').value, '', 'Copy requires a verified effort owner');
+  imported.sandbox.fetch = (url, options) => {
+    imported.requests.push({url, options});
+    if (url === '/api/disciplines?scope=application&limit=1') {
+      return Promise.resolve({status:200, ok:true, json:async () => ({namespace_registered:true, namespace_id:'fixture-namespace'})});
+    }
+    return new Promise(() => {});
+  };
+  imported.run('selectedEffort="0.0"; operationMode="effort"');
+  await imported.run('window.NoeticDrafts.enter()');
+  assert.equal(imported.elements.get('start-task').value, '', 'Owner verification alone does not adopt text');
+  assert.equal(imported.elements.get('copy-unassigned-draft').disabled, false);
+  imported.elements.get('copy-unassigned-draft').handlers.click();
+  assert.equal(imported.elements.get('start-task').value, privateDraft);
+  const owned = JSON.parse(imported.stored.get(draftKey));
+  assert.deepEqual(owned.structuredDraftOwner, {namespace:'fixture-namespace', effort:'0.0'});
+  assert.equal(owned.structuredDrafts[JSON.stringify(['fixture-namespace','0.0'])].fields['start-task'], privateDraft);
+  assert.equal(owned.unassignedStructuredDraft.fields['start-task'], privateDraft, 'Original remains available after copying');
+  for (const id of ['start-purpose','reviewed-store','reviewed-parent-id','reviewed-warrant-id','reviewed-condition-ids','reviewed-formulation-id']) {
+    assert.equal(imported.elements.get(id).value, '', 'Copy does not import qualified binding ' + id);
+  }
+  imported.elements.get('start-task').value = 'Edited effort draft';
+  imported.elements.get('copy-unassigned-draft').handlers.click();
+  assert.equal(imported.elements.get('start-task').value, 'Edited effort draft');
+  assert.match(imported.elements.get('structured-draft-status').textContent, /Draft conflict/);
+  assert.ok(imported.requests.every(r => r.options.headers.Authorization === 'Bearer ' + token));
+  assert.equal(imported.requests.filter(r => r.options?.method === 'POST').length, 0, 'Draft adoption never starts work');
 
   for (const bad of ['{broken:' + privateDraft, 'null', '[]', JSON.stringify({forms:{'start-task':42}})]) {
     const malformed = launch('', new Map(), new Map([[draftKey, bad]]));
