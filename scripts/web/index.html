@@ -101,7 +101,11 @@
 <p class="error" hidden="" id="action-error" role="alert"></p>
 </section>
 <section id="reviewed-result" class="developer-result" hidden=""><h3>Inquiry result</h3><div id="reviewed-dispositions" class="lib-chips"></div><p id="reviewed-progress" class="evidence-note"></p><div id="reviewed-report"></div><details id="reviewed-review"><summary>External independent review</summary><pre id="reviewed-review-text"></pre></details><div class="reviewed-row"><button id="reviewed-recover-contribution" type="button" hidden="">Recover retained contribution</button><button id="reviewed-recover-correlation" type="button" hidden="">Recover original correlation</button></div><p id="reviewed-recovery-status" role="status"></p></section>
-<section class="developer-result" hidden="" id="workspace-result"><h3>Result &amp; project changes</h3><p id="workspace-result-location"></p><p id="workspace-result-status"></p><div id="workspace-result-summary"></div><details hidden="" id="workspace-result-review"><summary>Independent review</summary><p id="workspace-review-report"></p><button id="workspace-review-open" type="button">Inspect reviewer conversation</button></details><pre id="workspace-result-checks"></pre><button hidden="" id="workspace-apply" type="button">Apply reviewed changes to project</button><p id="workspace-apply-result" role="status"></p><details><summary>Changed files</summary><pre id="workspace-result-files"></pre></details></section><section hidden="" id="workspace-file-view"><div class="section-heading"><h3 id="workspace-file-path"></h3><button id="workspace-file-close" type="button">Close source view</button></div><pre class="source-preview" id="workspace-file-text" tabindex="0"></pre></section>
+<section class="developer-result" hidden="" id="workspace-result"><h3>Result &amp; project changes</h3><p id="workspace-result-location"></p><p id="workspace-result-status"></p><div id="workspace-result-summary"></div><details hidden="" id="workspace-result-review"><summary>Independent review</summary><p id="workspace-review-report"></p><button id="workspace-review-open" type="button">Inspect reviewer conversation</button></details><pre id="workspace-result-checks"></pre><button hidden="" id="workspace-apply" type="button">Apply reviewed changes to project</button><p id="workspace-apply-result" role="status"></p><details><summary>Changed files</summary><pre id="workspace-result-files"></pre></details></section>
+<section aria-labelledby="continuation-heading" hidden="" id="cognitive-continuation">
+<h3 id="continuation-heading">Blocked task continuation</h3>
+<div id="cognitive-continuation-body"></div>
+</section><section hidden="" id="workspace-file-view"><div class="section-heading"><h3 id="workspace-file-path"></h3><button id="workspace-file-close" type="button">Close source view</button></div><pre class="source-preview" id="workspace-file-text" tabindex="0"></pre></section>
 <section aria-labelledby="session-heading" hidden="" id="session-view">
 <div class="section-heading"><h3 id="session-heading">Agent output</h3><label class="follow-label"><input checked="" id="follow-current" type="checkbox"/> Follow current agent</label></div>
 <label for="session-select">Agent</label><select id="session-select"></select>
@@ -165,8 +169,7 @@
 <div class="section-heading"><h3 id="actors-heading">Actors / activation lifecycle</h3><span class="eyebrow" id="actor-count"></span></div>
 <p class="evidence-note">Kernel-assigned actors, in ordinal order. A missing session reference means none is committed in the kernel, not proof that no runtime started.</p>
 <ol class="actor-list" id="actor-list"></ol>
-<label for="actor-select">Inspect activation</label>
-<select id="actor-select"></select>
+<select id="actor-select" hidden="" aria-label="Selected activation"></select>
 <p class="evidence-note" id="actor-summary"></p>
 <details><summary>Activation, bindings, criteria and lifecycle events</summary><pre id="actor-data"></pre></details>
 <label for="actor-log-select">Selected activation / retained file</label>

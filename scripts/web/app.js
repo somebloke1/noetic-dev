@@ -492,14 +492,18 @@ async function selectRun(id, evidence = null) {
     $("follow-current").checked = false;
     $("session-select").value = evidence.activation_id;
     $("actor-select").value = evidence.activation_id;
+    renderActor();
+    text("actor-log-text", "");
   }
   if (evidence?.artifact_id) {
     $("artifact-select").value = evidence.artifact_id;
     switchView("controller", true);
     renderArtifact();
+    loadActorLog();
   } else if (evidence?.activation_id) {
     switchView("session", true);
     loadSession(true);
+    loadActorLog();
   }
   persistUI();
 }
@@ -611,7 +615,11 @@ function renderActor() {
   text("actor-data", JSON.stringify({ actor, activation,
     lifecycle_events: state.events.filter((event) => event.data.activation_id === activation.id),
   }, null, 2));
-  for (const item of $("actor-list").children) item.setAttribute("aria-current", String(item.dataset.activation === activation.id));
+  for (const item of $("actor-list").children) {
+    const current = String(item.dataset.activation === activation.id);
+    item.setAttribute("aria-current", current);
+    item.querySelector("button")?.setAttribute("aria-current", current);
+  }
 }
 
 async function loadActorLog() {
@@ -694,7 +702,7 @@ function renderController(detail) {
         $("actor-select").value = a.id;
         renderActor();
         loadActorLog();
-        $("actor-select").focus();
+        button.focus();
       });
       const actor = state.actors[a.actor_id];
       const lifecycle = state.events.filter((e) => e.data.activation_id === a.id &&
@@ -995,7 +1003,43 @@ async function loadProjectHandoff() {
   }
 }
 
+function renderCognitiveContinuation(detail) {
+  const section = $("cognitive-continuation"), body = $("cognitive-continuation-body");
+  const state = detail?.controller;
+  const applicable = Boolean(state && state.pattern?.kind === "recurrent_operations" && state.status === "blocked");
+  section.hidden = !applicable;
+  if (!applicable) { body.replaceChildren(); return; }
+  const feedbacks = Object.values(state.artifacts || {}).filter((a) => a.type === "cognition.feedback");
+  const feedback = feedbacks.at(-1);
+  const content = feedback?.content && typeof feedback.content === "object" && !Array.isArray(feedback.content) ? feedback.content : null;
+  const rows = [node("p", `Kernel terminal state: blocked / ${state.reason || "reason not recorded"}.${state.reason === "return_budget_exhausted" ? " The return budget was exhausted; this interface does not restart the kernel." : ""}`)];
+  rows.push(node("p", content
+    ? `Newest return feedback (${feedback.id}) reason: ${typeof content.reason === "string" && content.reason ? content.reason : "not recorded"} Question: ${typeof content.question === "string" && content.question ? content.question : "not recorded"}`
+    : "No cognition.feedback artifact is retained for this blocked state; no reason or question is inferred here."));
+  const sourcesId = state.slots?.["external.sources"];
+  const sourcesArtifact = sourcesId ? state.artifacts?.[sourcesId] : null;
+  const count = Array.isArray(sourcesArtifact?.content) ? sourcesArtifact.content.length : null;
+  rows.push(node("p", sourcesId && count !== null
+    ? `Current external.sources binding ${sourcesId}: ${count} recorded source entries${count === 0 ? " (empty)." : "."} No sources are acquired by this view.`
+    : `Current external.sources binding is not readable (${sourcesId || "slot not bound"}); no source count is inferred.`));
+  const partialId = typeof content?.partial_artifact_id === "string" ? content.partial_artifact_id : null;
+  const partial = partialId ? state.artifacts?.[partialId] : null;
+  const hypotheses = Array.isArray(partial?.content?.hypotheses) ? partial.content.hypotheses : [];
+  rows.push(node("p", partialId
+    ? `Partial artifact ${partialId}: partial proposal, unverified, not accepted or effective in the kernel. ${hypotheses.length ? hypotheses.filter((h) => h && typeof h === "object").map((h) => `Proposal: ${typeof h.proposal === "string" ? h.proposal : ""} Basis: ${typeof h.basis === "string" ? h.basis : "not recorded"} Status: ${typeof h.status === "string" ? h.status : "not recorded"}`).join(" ") : "No readable proposal content is retained; no proposal is invented here."}`
+    : "No partial artifact is referenced by the newest feedback."));
+  const actions = node("div", undefined, "reviewed-row");
+  for (const target of [partialId, feedback?.id].filter(Boolean)) {
+    const button = node("button", `Inspect artifact ${target} provenance`);
+    button.type = "button";
+    button.addEventListener("click", () => { $("artifact-select").value = target; renderArtifact(); switchView("controller", true); });
+    actions.append(button);
+  }
+  body.replaceChildren(...rows, actions);
+}
+
 function renderWorkbench(detail) {
+  renderCognitiveContinuation(detail);
   if (detail.backend === "opermem-reviewed") { renderReviewedDetail(detail); return; }
   if (detail.backend !== "opermem-reviewed") loadProjectHandoff();
   const state = detail.controller;
@@ -1170,13 +1214,19 @@ function primaryTranscript(entries) {
   const articles = [];
   let response = null;
   for (const entry of entries) {
+    if (entry.kind === "assistant" && response?.preview) {
+      const index = articles.indexOf(response.article);
+      if (index >= 0) articles.splice(index, 1);
+      response = null;
+    }
     const duplicateFinal = entry.kind === "final" && response && finalText(entry) === response.text;
     const article = transcriptEntry(entry, Boolean(duplicateFinal));
     if (!article) continue;
     if (duplicateFinal) response.article.append(...article.childNodes);
     else articles.push(article);
     if (entry.kind === "assistant") response = { text: entry.content, article };
-    if (entry.kind === "final") response = null;
+    else if (entry.kind === "assistant_delta") response = { preview: true, article };
+    else if (entry.kind === "final") response = null;
   }
   if (["completed", "accepted"].includes(selectedDetail?.status.state)) {
     const tools = articles.filter(article => article.dataset.entryKind === "tool");
