@@ -143,6 +143,20 @@
   }
   window.NoeticRichText = markdown;
 
+  let copySnapshot = null;
+  const copyStatus = node("small"); copyStatus.id="developer-copy-status"; copyStatus.setAttribute("role","status");
+  function copyControl(label, value) {
+    const button=node("button",label,"secondary-button");button.type="button";
+    button.addEventListener("click",async()=>{const version=selectionVersion,payload=value();if(payload==null)return;try{await navigator.clipboard.writeText(payload);if(version===selectionVersion)copyStatus.textContent="Copied to clipboard.";}catch(failure){if(version===selectionVersion)copyStatus.textContent="Clipboard unavailable. Allow clipboard access and retry; selection and draft are preserved.";}});return button;
+  }
+  const copySession=copyControl("Copy session",()=>copySnapshot),copyCoverage=node("small");
+  const copyActions=node("div",undefined,"developer-copy-actions");copyActions.append(copySession,copyCoverage,copyStatus);$("developer-transcript").before(copyActions);
+  function copyBlocks(article) {
+    for(const block of article.querySelectorAll(".developer-markdown p,.developer-markdown pre,.developer-markdown li,.developer-markdown h3,.developer-markdown h4,.developer-markdown h5,.developer-markdown h6")) {
+      const value=block.textContent;block.append(copyControl("Copy block",()=>value));
+    }
+  }
+
   function composer() {
     const project = !selected && !effort;
     const starting = newConversation || Boolean(selected && !exact(selected));
@@ -305,9 +319,10 @@
       const agentEnvelope = record.message?.role === "custom" && record.message.customType === "noetic-agent-message" && record.message.details?.provenance?.origin === "agent" ? record.message.details : null;
       if (record.type === "message_end" && (["user", "assistant"].includes(record.message?.role) || agentEnvelope)) {
         const message = record.message, rendered = content(message);
-        if (rendered || message.errorMessage) {
+        const omitted=Array.isArray(message.content)?message.content.filter(block=>!["text","toolCall"].includes(block.type)).map(block=>`[non-text ${block.type || "content"} omitted]`):[];
+        if (rendered || message.errorMessage || omitted.length) {
           const item = {key:event.sequence, role:message.role, text:agentEnvelope?.message || rendered || message.errorMessage, outcome:message.stopReason,
-            sender:agentEnvelope?.provenance.sender, binding_id:agentEnvelope?.binding_id, recipient:agentEnvelope?.provenance.recipient};
+            copyText:[agentEnvelope?.message || rendered || message.errorMessage || "",...omitted].filter(Boolean).join("\n"), sender:agentEnvelope?.provenance.sender, binding_id:agentEnvelope?.binding_id, recipient:agentEnvelope?.provenance.recipient};
           messages.push(item); entries.push({message:item});
         }
         if (message.role === "assistant" && Array.isArray(message.content)) for (const block of message.content) {
@@ -339,6 +354,7 @@
           article = node("article",undefined,"developer-message tool"); article.dataset.toolCallId = tool.id || "";
           const evidence = node("details"); evidence.append(node("summary","Arguments & output"),node("strong","Arguments"),node("pre",undefined,"tool-arguments"),node("strong","Output"),node("pre",undefined,"tool-output"));
           article.append(node("h3"),node("small",undefined,"tool-summary"),evidence);
+          evidence.append(copyControl("Copy arguments",()=>article.querySelector(".tool-arguments").textContent),copyControl("Copy output",()=>article.querySelector(".tool-output").textContent));
         }
         const state = tool.state === "error" ? "Failed" : tool.state === "finished" ? "Completed" : tool.state === "requested" ? "Requested · execution unobserved" : ["running","starting"].includes(detail.session.status) ? "Running" : "Completion unobserved";
         const heading = `${tool.name} · ${state}${!tool.started && tool.state !== "requested" ? " · start unobserved" : ""}`;
@@ -354,7 +370,8 @@
         article = node("article", undefined, `developer-message ${message.role}`);
         article.dataset.messageSequence = message.key;
         const heading = message.sender ? `Agent ${message.sender.ordinal} · instantiation ${message.sender.instantiation} · session ${message.sender.session}` : message.role === "user" ? "You" : `Agent ${detail.session.original_ordinal && originalSource(detail.session) ? detail.session.original_ordinal : detail.session.ordinal}${sourceQualifier(detail.session)}`;
-        article.append(node("h3", heading), message.role === "assistant" ? markdown(message.text) : node("pre", message.text));
+        article.append(node("h3", heading), message.role === "assistant" ? markdown(message.text) : node("pre", message.text),copyControl("Copy message",()=>message.copyText));
+        copyBlocks(article);
         if (message.sender) article.append(node("small", `Message ${message.binding_id} · to ${message.recipient.ordinal} · instantiation ${message.recipient.instantiation} · session ${message.recipient.session}`));
         if (["error", "aborted"].includes(message.outcome)) article.append(node("small", message.outcome));
       }
@@ -365,6 +382,10 @@
       article.append(node("h3", `Agent ${originalSource(detail.session) ? detail.session.original_ordinal || detail.session.ordinal : detail.session.ordinal}${sourceQualifier(detail.session)} · streaming`), node("pre", [...partial.blocks.values()].join("\n")));
       rows.push(article);
     }
+    const session=detail.session,identity=session.target?`Application position ${session.ordinal} · instantiation ${session.target.instantiation} · session ${session.target.session}`:`Original namespace · unadopted · ordinal ${session.original_ordinal || session.ordinal}`;
+    const snapshotRows=entries.map(({message,tool})=>message?`[${message.sender?`Agent ${message.sender.ordinal} / ${message.sender.instantiation} / ${message.sender.session}`:message.role}]\n${message.copyText}`:`[Tool ${tool.name} · ${tool.state}]\nArguments:\n${tool.args===undefined?"Arguments unobserved":JSON.stringify(tool.args,null,2)}\nOutput:\n${["finished","error"].includes(tool.state)?(typeof tool.result==="string"?tool.result:Array.isArray(tool.result?.content)?tool.result.content.map(block=>block.type==="text"?block.text||"":`[non-text ${block.type||"output"} omitted]`).join("\n"):tool.result===undefined?"No output observed":JSON.stringify(tool.result,null,2)):"[Incomplete tool output excluded]"}`);
+    copySnapshot=[`${identity} · native ID ${session.id}\nCompleted retained conversation snapshot ${new Date().toISOString()}${observationError?" · last observed; refresh unavailable":""}`,`${messages.length} completed messages · ${tools.size} distinct tools`,...snapshotRows,...(partial?.blocks.size?["[Streaming assistant text excluded]"]:[])].join("\n\n");
+    copyCoverage.textContent=`${messages.length} completed messages · ${tools.size} distinct tools${partial?.blocks.size?" · streaming text excluded":""}`;copySession.disabled=false;
     transcriptRows = retained;
     for (const child of [...container.children]) if (!rows.includes(child)) child.remove();
     rows.forEach((row,index)=>{if(container.children[index] !== row) container.insertBefore(row,container.children[index] || null);});
@@ -416,7 +437,8 @@
     $("developer-transcript").hidden = !detail || newConversation || applicationHistory;
     $("developer-form").hidden = applicationHistory || selected?.ordinal === "0" || Boolean(detail?.session.effort_root && !detail.session.target);
     renderHistory();
-    if (!detail) { text("developer-attention", ""); $("developer-attention").hidden = true; composer(); notify(); return; }
+    copyActions.hidden=!detail||newConversation||applicationHistory;copySession.disabled=copyActions.hidden;
+    if (!detail) { copySnapshot=null;copyStatus.textContent="";text("developer-attention", ""); $("developer-attention").hidden = true; composer(); notify(); return; }
     const item = detail.session;
     text("developer-heading", item.title); text("developer-location", item.workspace); text("developer-status", item.status);
     const position = positions.find(row => row.ordinal === item.ordinal);
