@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import base64
-from contextlib import closing
+from contextlib import closing, contextmanager
 from copy import deepcopy
 import hashlib
 import json
@@ -14,8 +14,8 @@ import uuid
 from scripts import noetic_develop as clients, noetic_run as runtime
 from scripts import noetic_purpose_binding as purpose_binding
 from scripts.noetic_disciplines import Disciplines, _ReadOnlyScopeStore
-from scripts.noetic_scope import Scope, ScopeError, Target, _row
-from scripts.noetic_storage import open_private
+from scripts.noetic_scope import Scope, ScopeError, ScopeStore, Target, _row
+from scripts.noetic_storage import create_private_sqlite, open_private
 
 
 ADAPTER = "opermem-reviewed"
@@ -78,16 +78,46 @@ def _immutable(path, value):
             raise ScopeError("Immutable owned correspondence differs from its original preparation")
 
 
+@contextmanager
+def _sqlite_transition(key, phase, path):
+    try:
+        yield
+    except sqlite3.Error as exc:
+        raise ScopeError(f"SQLite {phase}; operation {key}; database {path}: {exc}") from exc
+
+
 class _Correlation(Disciplines):
+    def __init__(self, namespace_path, *, operation_key):
+        self.path = Path(namespace_path).expanduser().resolve(strict=True)
+        self.readonly = False
+        with _sqlite_transition(operation_key, "namespace initialization", self.path):
+            self.store = ScopeStore(self.path)
+        self.cache = self.path.with_name(self.path.name + ".correlation.sqlite3")
+        with _sqlite_transition(operation_key, "correlation-cache initialization", self.cache):
+            with closing(sqlite3.connect(create_private_sqlite(self.cache))) as db, db:
+                db.execute("CREATE TABLE IF NOT EXISTS commands (key TEXT PRIMARY KEY, request TEXT NOT NULL, response TEXT NOT NULL)")
+
     def _source(self, key, request):
         return {"adapter": ADAPTER, "namespace": self.store.namespace, "command_key": key,
                 "request_digest": _digest(request)}
 
     def _event_for(self, key):
-        for event in _history(self.store):
-            if event["source_ref"].get("adapter") == ADAPTER and event["source_ref"].get("command_key") == key:
-                return event
+        with _sqlite_transition(key, "namespace correlation lookup", self.path):
+            for event in _history(self.store):
+                if event["source_ref"].get("adapter") == ADAPTER and event["source_ref"].get("command_key") == key:
+                    return event
         return None
+
+    def _recover(self, event, operation):
+        with _sqlite_transition(event["source_ref"]["command_key"], "namespace correlation recovery", self.path):
+            return super()._recover(event, operation)
+
+    def once(self, key, request, operation, effect):
+        def observed_effect(source):
+            with _sqlite_transition(key, "namespace domain transition", self.path):
+                return effect(source)
+        with _sqlite_transition(key, "correlation-cache transaction", self.cache):
+            return super().once(key, request, operation, observed_effect)
 
 
 def _history(store):
@@ -107,7 +137,7 @@ class OpermemScope:
         self.store = _ReadOnlyScopeStore(self.path)
 
     def _once(self, key, request, operation, effect):
-        writer = _Correlation(self.path)
+        writer = _Correlation(self.path, operation_key="opermem:" + key)
         return writer.once("opermem:" + key, request, operation, lambda source: effect(writer.store, source))
 
     def _event(self, key):
