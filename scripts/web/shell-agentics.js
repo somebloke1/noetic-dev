@@ -10,6 +10,7 @@
   const el = (tag, cls, value) => ui().element(tag, cls, value);
   const btn = (value, action, cls = "secondary-button") => ui().button(value, action, cls);
   const targetOf = session => session.target ? {...session.target, effort_root:session.effort_root} : {id:session.id};
+  const projectedSession = item => item ? [item.id,item.ordinal,item.original_ordinal,item.effort_root,item.title,item.status,item.is_current,item.broker_owned,item.identity_origin,item.parent_id,item.model,item.target?.ordinal,item.target?.instantiation,item.target?.session] : null;
   const currentAt = ordinal => (snapshot.sessions || []).find(item => item.ordinal === ordinal && item.is_current);
   const occupantContext = ordinal => {
     const position=(snapshot.positions || []).find(item => item.ordinal === ordinal);
@@ -188,6 +189,8 @@
     if(!sessions.length)map.append(el("p","agentics-empty","No retained native sessions in this view."));
   }
   let returnView = "", returnRows = new Map();
+  const returnsEmpty = el("p","agentics-empty","No recorded controller returns in this view.");
+  const returnsLimit = el("p","agentics-limit","Return decisions are retained controller evidence. A manual return action is unavailable.");
   function drawReturns(rows) {
     map.style.cssText=""; map.dataset.width="700";
     const ordinals=new Set(rows.map(row=>row.ordinal));
@@ -208,10 +211,13 @@
       retained.set(identity,article);return article;
     });
     returnRows=retained;
-    for(const child of [...map.children])if(!articles.includes(child))child.remove();
+    const place=(parent,node,reference)=>{if(node.parentNode===parent&&node.nextElementSibling===reference)return;parent.insertBefore(node,reference);};
+    for(const child of [...map.children])if(!articles.includes(child)&&child!==returnsEmpty&&child!==returnsLimit)child.remove();
     articles.forEach((article,index)=>{if(map.children[index]!==article)map.insertBefore(article,map.children[index]||null);});
-    if(!returns.length)map.append(el("p","agentics-empty",snapshot.observationError ? "Return observation unavailable." : "No recorded controller returns in this view."));
-    map.append(el("p","agentics-limit","Return decisions are retained controller evidence. A manual return action is unavailable."));
+    returnsEmpty.textContent=snapshot.observationError ? "Return observation unavailable." : "No recorded controller returns in this view.";
+    if(returns.length){if(returnsEmpty.parentNode===map)returnsEmpty.remove();}
+    else place(map,returnsEmpty,map.children[articles.length]||null);
+    place(map,returnsLimit,null);
   }
 
   function drawInspector() {
@@ -267,7 +273,7 @@
       filter.replaceChildren(option,...roots.map(row=>{const item=el("option","",`${row.ordinal} · ${row.intent || "Effort"}`);item.value=row.ordinal;return item;}));filter.value=filterEffort;
     }
     if(headerDelegate)headerDelegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;
-    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,[...expandedBranches],snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session,snapshot.projectBrowsing,snapshot.projectPath]);
+    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions.map(projectedSession),snapshot.selected,view,filterEffort,find,treeLimit,[...expandedBranches],snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?projectedSession(snapshot.detail.session):null,snapshot.projectBrowsing,snapshot.projectPath]);
     const eyebrow=document.getElementById("shell-eyebrow");if(eyebrow)eyebrow.textContent=`${scopeLabel()} · ${rows.length} matching positions`;
     if(drawingSignature!==signature) {drawingSignature=signature; if(view==="tree")drawTree(rows);else if(view==="sessions")drawSessions(rows);else drawReturns(rows);drawInspector();}
   }
