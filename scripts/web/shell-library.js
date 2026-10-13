@@ -236,9 +236,10 @@
         const item = el("article", "lib-model-card"); item.append(UI.badge(model.kind,"purple"),el("small", "", model.name),el("h3", "lib-mono", model.model),note("Configured selection · availability unverified")); details(item,"Inspect specification",model.data); groups.append(item);
       }
       if (!models.length) placeholder(content,"No configured identities","The server returned no model selections.");
-      content.append(note("Provider configuration is maintained outside this interface. New work supports an explicit client/model override."),action("Configure next work",()=>openWork()));
+      content.append(note("Provider configuration is maintained outside this interface."));
       const availability = panel("Selection and qualification", "Dispatch resolution"), availabilityBody = body(availability); host.append(availability);
       availabilityBody.append(note(config.profile_notice || "Configured identity does not establish authentication or availability."));
+      availabilityBody.append(el("h3", "", "Structured work"),note("Model and thinking choices are set in structured work's Model settings. Opening the form does not change provider settings or running sessions. New work supports an explicit client/model override."),action("Open structured work",()=>openWork()));
       return;
     }
     const layout = el("div", "lib-catalogue-layout"), grid = el("div", "lib-card-grid"); host.append(layout); layout.append(grid);
@@ -250,7 +251,7 @@
       grid.append(card);
     }
     const detail = panel("Configuration source", "Effective inspection"), content = body(detail); layout.append(detail);
-    content.append(note("Explicit overrides → NOETIC_LOCAL_* environment → optional NOETIC_LOCAL_CONFIG → defaults.")); values(content,{namespace:config.namespace_path,telos:config.telos_database}); content.append(note("This interface inspects configuration. Set execution overrides in New work."),action("Configure next work",()=>openWork())); details(content,"Full observed settings",config);
+    content.append(note("Explicit overrides → NOETIC_LOCAL_* environment → optional NOETIC_LOCAL_CONFIG → defaults.")); values(content,{namespace:config.namespace_path,telos:config.telos_database}); content.append(note("This interface inspects configuration. Set execution overrides in New work."),action("Open structured work",()=>openWork())); details(content,"Full observed settings",config);
   }
   function renderRunCatalogue(host, heading = "Retained executions") {
     let catalogue = runCatalogues.get(host);
