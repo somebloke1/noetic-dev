@@ -24,6 +24,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.locator('#agentics-tree-more').click();assert.equal(await page.locator('.responsibility-node').count(),80);
   await page.locator('.responsibility-node[data-ordinal="0"]').focus();await page.evaluate(()=>{fixtureSessions[0].status='needs_input';document.dispatchEvent(new CustomEvent('noetic:sessions',{detail:fixtureSnapshot}));});assert.equal(await page.evaluate(()=>document.activeElement.dataset.ordinal),'0','focused tree node retained across changed observation');
   await page.evaluate(()=>document.dispatchEvent(new CustomEvent('noetic:sessions',{detail:fixtureSnapshot})));assert.equal(await page.locator('.responsibility-node').count(),80,'poll retains disclosure amount');
+  await page.getByRole('searchbox',{name:'Find position'}).fill('0.');
   while(await page.locator('#agentics-tree-more').isEnabled())await page.locator('#agentics-tree-more').click();assert.equal(await page.locator('.responsibility-node').count(),801,'full tree remains reachable');
   assert.equal(await page.locator('.responsibility-node').evaluateAll(rows=>new Set(rows.map(row=>row.dataset.ordinal)).size),801);
   const source=fs.readFileSync(path.join(root,'scripts/web/shell-agentics.js'),'utf8');await page.addScriptTag({content:source.slice(source.indexOf('  function treeProjection('),source.indexOf('  function drawTree('))});

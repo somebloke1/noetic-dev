@@ -87,3 +87,10 @@
 .history-controls #developer-history-coverage,.history-controls #developer-history-more { grid-column:1 / -1; }
 .agentics-tree-disclosure { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; border-bottom:1px solid var(--ink-200); font-size:10px; line-height:1.5; color:var(--ink-600); }
 .agentics-tree-disclosure button { flex-shrink:0; }
+
+.agentics-tree-disclosure {flex-wrap:wrap; gap:6px 10px;}
+.agentics-tree-disclosure>span {flex-basis:100%;}
+.agentics-tree-disclosure button {font-size:9px; padding:5px 7px;}
+.agentics-branch-toggle {position:absolute; z-index:2; width:24px; height:28px; padding:0; border:1px solid var(--ink-200); border-radius:5px; background:var(--paper); color:var(--violet-700); cursor:pointer;}
+.agentics-branch-toggle:disabled {cursor:default; opacity:.5;}
+.agentics-descendant-count {position:absolute; color:var(--ink-500); font-size:8px;}
