@@ -1,0 +1,23 @@
+name: Prepare Noetic test prerequisites
+description: Prepare build tools and the pinned public Telos fixture for isolated tests.
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      with:
+        node-version: "24"
+    - name: Install Python build tools
+      shell: bash
+      run: python3 -m pip install 'setuptools>=68' wheel
+    - name: Prepare the Telos fixture
+      shell: bash
+      env:
+        TELOS_TEST_REVISION: a8f6c253bb091562a9982b22217ebc4e78b1aa5b
+      run: |
+        telos_test_source="$RUNNER_TEMP/noetic-test-telos"
+        git clone --no-checkout https://github.com/somebloke1/telos.git "$telos_test_source"
+        git -C "$telos_test_source" checkout --detach "$TELOS_TEST_REVISION"
+        npm ci --prefix "$telos_test_source" --no-audit --no-fund
+        python3 -m scripts.noetic goal bundle --source "$telos_test_source" --output .runtime/components/telos-core.mjs
+        printf 'NOETIC_TELOS_SOURCE=%s\n' "$telos_test_source" >> "$GITHUB_ENV"

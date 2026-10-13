@@ -378,7 +378,7 @@ Python APIs:
 
 Implementation tests (use a Python with pip/setuptools and venv support):
 `/usr/bin/python3 -m unittest discover -s tests/programs -p test_release_archive.py`.
-Tests build the actual wheel in `/tmp/opencode`, use
+Tests build the actual wheel in an isolated temporary directory, use
 actual kernel journals and isolated private installations, and require Node 24
 with the actual bundled Telos core. Coverage includes held/completed harness
 options, zero-actor completed advance, missing required wheel assets with valid

@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class ReleaseArchiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="noetic-release-tests-", dir="/tmp/opencode")
+        cls.temporary = tempfile.TemporaryDirectory(prefix="noetic-release-tests-")
         cls.addClassCleanup(cls.temporary.cleanup)
         cls.build_root = Path(cls.temporary.name)
         source = cls.build_root / "source"
