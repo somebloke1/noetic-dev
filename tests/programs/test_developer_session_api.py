@@ -59,11 +59,13 @@ class DeveloperSessionApiTests(unittest.TestCase):
         self.service.pi_command = [sys.executable, str(missing_context)]
         effort = self.service.create_effort({"intent": "missing native reference", "environment": {"cwd": str(self.workspace)}})["ordinal"]
         status, failure = self.request("/api/developer-sessions", {"effort_root": effort, "prompt": "must never run"})
-        self.assertEqual(status, 503, failure)
+        self.assertEqual(status, 409, failure)
+        self.assertEqual(failure["error"], "Pi did not provide a valid planned native context reference; prompt was not sent.")
         reserved = self.service.list(effort)[0]
         route = f"/api/developer-sessions/{reserved['id']}?effort_root={effort}"
         status, detail = self.request(route)
         self.assertEqual(status, 200, detail)
+        self.assertEqual(detail["session"]["error"], failure["error"])
         self.assertIsNone(detail["session"]["target"])
         self.assertEqual(detail["session"]["identity_origin"], "ordinal-reserved")
         self.assertTrue(detail["events"])
