@@ -337,7 +337,7 @@
       const layout=el("div","lib-catalogue-layout"), native=panel("Retained native memory","Opermem authority"), content=body(native), source=el("div","lib-preserved lib-recall");
       context.host.append(layout);layout.append(source,native);UI.mount("memory-page",source);state.mounted=true;state.native=content;
       content.append(note("Whole retained native packets and receipts preserve their original cut, standing, voices and exclusions. Current admission and eligibility are unobserved. Source recall and external review confer no native promotion."));
-      const retained=el("div","lib-native-retained");content.append(retained);state.retained=retained;
+      const retained=el("div","lib-native-retained");content.append(retained);state.retained=retained;state.entry=el("div","lib-actions");content.append(state.entry);
       get("retrieval-heading").textContent="Source recall";
     }
     get("memory-page").hidden=false;get("effort-operation-controls").hidden=false;
@@ -362,7 +362,12 @@
       next=item.nextElementSibling;
     }
     for(const item of old.values())item.remove();
-    if(!runs.length){state.retained.replaceChildren();placeholder(state.retained,"No retained reviewed memory in this scope","Select an effort and launch a reviewed inquiry with an explicitly registered backing. Browsing does not start native memory.");}
+    if(!runs.length){state.retained.replaceChildren();placeholder(state.retained,"No retained reviewed memory in this scope",scope().effort_root?"Prepare a Question inquiry in this effort with an explicitly registered backing. Other native operations retain their stated editor limitations.":"Choose an effort to prepare a Question inquiry with an explicitly registered backing. Browsing does not start native memory.");}
+    state.entry.replaceChildren();
+    if(scope().effort_root){
+      const prepare=backing=>{if(key!==scopeKey())return;openWork("opermem-reviewed");const operation=get("reviewed-operation");operation.value="question";operation.dispatchEvent(new Event("change",{bubbles:true}));if(backing){const directory=get("reviewed-directory");directory.closest("details").open=true;directory.focus();}};
+      state.entry.append(action("Prepare Question inquiry",()=>prepare(false)),action("Manage backings",()=>prepare(true)));
+    }else state.entry.append(action("Choose effort",()=>UI.navigate("workspaces")));
   }
   async function inspectNativeRecord(item,run,key) {
     if(item.dataset.loading)return;item.dataset.loading="true";
