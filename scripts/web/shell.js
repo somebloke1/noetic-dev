@@ -128,7 +128,7 @@ function executionBlockers(limit=null,effort=null){
  p.append(el('p','field-note',status));
  if(observation.warnings.length)p.append(el('p','inline-attention',`Incomplete coverage: ${observation.warnings.join(' ')}`));
  const blockers=observation.runs.filter(r=>['blocked','failed'].includes(r.state)&&(!effort||r.correspondence?.effort_root===effort));
- for(const r of limit===null?blockers:blockers.slice(0,limit)){const row=button('',()=>{navigate('executions');selectRun(r.run_id);},'record-row');row.dataset.runId=r.run_id;row.append(badge(r.state,'warning'),el('strong','',r.goal||r.run_id),el('small','mono',`${r.run_id} · ${r.correspondence?.effort_root?`Effort ${r.correspondence.effort_root}`:'Original namespace · unassigned'}`));p.append(row);}
+ for(const r of limit===null?blockers:blockers.slice(0,limit)){const row=button('',()=>{navigate('executions');selectRun(r.run_id);},'record-row execution-blocker');row.dataset.runId=r.run_id;row.append(badge(r.state,'warning'),el('strong','',r.goal||r.run_id),el('small','mono',`${r.run_id} · ${r.correspondence?.effort_root?`Effort ${r.correspondence.effort_root}`:'Original namespace · unassigned'}`));p.append(row);}
  if(!blockers.length&&observation.status==='observed')p.append(el('p','empty-note',effort?`No blocked or failed executions observed for Effort ${effort} in this coverage.`:'No blocked or failed executions observed in this coverage.'));
  if(limit!==null&&blockers.length>limit)p.append(action(`Inspect all ${blockers.length} recorded blockers`,()=>navigate('attention')));
  p.append(el('p','field-note','Recorded blocked or failed states invite inspection; they do not establish an outstanding human obligation. Historical review findings remain in exact execution evidence.'));
