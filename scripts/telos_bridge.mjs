@@ -74,6 +74,27 @@ try {
         manager.updateGoalChain({ chainId: input.chainId, note: input.note });
       }
       result = { chain_id: input.chainId, subgoal_id: input.subGoalId };
+    } else if (input.operation === "block") {
+      if (aggregate.chain.status !== "active") {
+        throw new Error(`Master goal chain is ${aggregate.chain.status}; only an active chain can block an attempt`);
+      }
+      const subgoal = findRunSubgoal(aggregate.subGoals, input.objective);
+      if (!subgoal || subgoal.subGoalId !== input.subGoalId) {
+        throw new Error("Subgoal is not the exact attempt associated with this run");
+      }
+      if (subgoal.status === "blocked") {
+        const blocked = aggregate.records.some((record) =>
+          record.subGoalId === subgoal.subGoalId && record.recordType === "goal_blocked"
+          && record.details === `Sub-goal blocked with learnings: ${input.reason}`);
+        if (!blocked) throw new Error("Subgoal is already blocked with a different reason");
+      } else if (subgoal.status !== "active") {
+        throw new Error(`Subgoal status is ${subgoal.status}; only an active attempt may become blocked`);
+      } else {
+        manager.updateSubGoalStatus({
+          chainId: input.chainId, subGoalId: input.subGoalId, status: "blocked", learnings: [input.reason],
+        });
+      }
+      result = { chain_id: input.chainId, subgoal_id: input.subGoalId };
     } else {
       throw new Error(`Unknown bridge operation: ${input.operation}`);
     }

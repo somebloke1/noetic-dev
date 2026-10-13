@@ -619,3 +619,28 @@ coverage does not establish real model quality, human cognitive adequacy/value,
 independent verifier adequacy, exhaustive source registration, actual live
 fourteen-operation work, deployment or complete-framework delivery. Native
 shadow-only semantics and the external host's execution authority remain distinct.
+
+## Exhausted attempt purpose
+
+When a linked attempt exhausts its initial work and its one causal retry without
+native admission, the caller may record a responsible blocked disposition in the
+native Telos chain without authorizing another attempt or touching the run:
+
+```sh
+noetic goal block CHAIN_ID SUBGOAL_ID /path/to/run \
+  --db /absolute/path/telos.sqlite3 --source /absolute/telos-source \
+  --reason "Attempt exhausted without native admission; residual report retained"
+```
+
+Both `--db` and `--source` are required; there is no default fallback. The
+reason is caller-authored, explicit nonblank text; it is not an automatic
+exhaustion detection and implies no native Insight, Checking, Judgment, or
+authority. The run must already carry a persisted `telos.linked` association
+matching the exact chain, subgoal, database, and source; no attach or creation
+occurs. Only the active exact attempt may become blocked: completed or pending
+subgoals, wrong bindings, and blank reasons are refused before any native
+mutation, and no foreign database is created. The native master stays ACTIVE
+with the reproductive clause and other subgoals preserved, the target keeps
+`completedAt` NULL, and the only residue is one native `goal_blocked` record.
+A repeated block with the identical reason is idempotent; the run journal,
+events, reports, controller state, and Opermem receipts are never modified.

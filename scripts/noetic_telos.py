@@ -247,6 +247,27 @@ def record_result(chain_id: str, subgoal_id: str, run_dir: Path | str, db: Path 
     return result
 
 
+def block_attempt(chain_id: str, subgoal_id: str, run_dir: Path | str, *, reason: str,
+                  db: Path | str, source: Path | str) -> dict:
+    """Block one exhausted linked attempt through the native Telos API, leaving the run untouched."""
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("An explicit nonblank text reason is required to block an attempt")
+    if not db or not source:
+        raise ValueError("An explicit database and Telos component source are required to block an attempt")
+    run_dir, _, status, objective = _run(run_dir)
+    link = status.get("telos")
+    if not isinstance(link, dict):
+        raise ValueError(f"Run {run_dir} has no persisted telos.linked association to block")
+    binding = {"chain_id": chain_id, "subgoal_id": subgoal_id,
+               "db_path": str(Path(db).expanduser().resolve()), "source": str(source_path(source))}
+    mismatched = [key for key, value in binding.items() if link.get(key) != value]
+    if mismatched:
+        raise ValueError(f"Run association does not match the requested block binding: {', '.join(mismatched)}")
+    association = _bridge("block", db, source, chainId=chain_id, subGoalId=subgoal_id,
+                          objective=objective, reason=reason)
+    return {**association, "run_id": status["run_id"], "subgoal_status": "blocked", "reason": reason}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -264,6 +285,13 @@ def main(argv: list[str] | None = None) -> int:
     record.add_argument("chain_id")
     record.add_argument("subgoal_id")
     record.add_argument("run_dir", type=Path)
+    block = commands.add_parser("block", help="block one exhausted linked attempt in the native Telos chain")
+    block.add_argument("chain_id")
+    block.add_argument("subgoal_id")
+    block.add_argument("run_dir", type=Path)
+    block.add_argument("--db", type=Path, required=True, help="isolated database holding the persisted association")
+    block.add_argument("--source", type=Path, required=True, help="Telos source root or bundled .mjs")
+    block.add_argument("--reason", required=True, help="nonblank text reason for the blocked disposition")
     for command in (create, get, attach, record):
         command.add_argument("--db", type=Path, default=DEFAULT_DB, help=f"isolated database (default: {DEFAULT_DB})")
         command.add_argument("--source", type=Path, help="Telos source root or bundled .mjs; otherwise NOETIC_TELOS_SOURCE or ~/workspace/telos")
@@ -275,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
             result = create_goal(args.goal, args.db, args.source)
         elif args.command == "get":
             result = get_goal(args.chain_id, args.db, args.source)
+        elif args.command == "block":
+            result = block_attempt(args.chain_id, args.subgoal_id, args.run_dir,
+                                   reason=args.reason, db=args.db, source=args.source)
         else:
             subgoal_id = args.subgoal_id if args.command == "record" else begin_run(
                 args.chain_id, args.run_dir, args.db, args.source,

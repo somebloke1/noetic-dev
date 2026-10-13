@@ -403,6 +403,86 @@ process.exit(result.status ?? 1);
             telos.record_result(self.chain_id, link["subgoal_id"], second, self.db, self.source)
         self.assertEqual(telos.get_goal(self.chain_id, self.db, self.source), before)
 
+    def test_block_attempt_preserves_master_and_run(self):
+        run_dir = self.run_plan()
+        link = telos.begin_run(self.chain_id, run_dir, self.db, self.source)
+        other = telos.begin_run(self.chain_id, self.run_plan(), self.db, self.source)
+        before = telos.get_goal(self.chain_id, self.db, self.source)
+        events = runtime.read_events(run_dir)
+        reason = "Attempt exhausted without native admission; report residual retained"
+        invoked = self.cli("block", self.chain_id, link["subgoal_id"], run_dir, "--reason", reason)
+        self.assertEqual(invoked.returncode, 0, invoked.stderr)
+        result = json.loads(invoked.stdout)
+        self.assertEqual(result["subgoal_status"], "blocked")
+        self.assertEqual(result["reason"], reason)
+        after = telos.get_goal(self.chain_id, self.db, self.source)
+        target = next(g for g in after["subGoals"] if g["subGoalId"] == link["subgoal_id"])
+        self.assertEqual(target["status"], "blocked")
+        self.assertIsNone(target["completedAt"])
+        self.assertEqual(after["chain"]["status"], "active")
+        self.assertEqual(after["reproductiveClause"], before["reproductiveClause"])
+        self.assertEqual(next(g for g in after["subGoals"] if g["subGoalId"] == other["subgoal_id"]),
+                         next(g for g in before["subGoals"] if g["subGoalId"] == other["subgoal_id"]))
+        self.assertTrue(any(reason in r["details"] for r in after["records"]))
+        self.assertEqual(runtime.read_events(run_dir), events)
+        repeated = telos.block_attempt(self.chain_id, link["subgoal_id"], run_dir,
+                                       reason=reason, db=self.db, source=self.source)
+        self.assertEqual(repeated["subgoal_status"], "blocked")
+        self.assertEqual(telos.get_goal(self.chain_id, self.db, self.source), after)
+        self.assertEqual(runtime.read_events(run_dir), events)
+        with self.assertRaises(ValueError):
+            telos.block_attempt(self.chain_id, link["subgoal_id"], run_dir,
+                                reason="Attempt exhausted", db=self.db, source=self.source)
+        self.assertEqual(telos.get_goal(self.chain_id, self.db, self.source), after)
+
+    def test_block_attempt_rejects_wrong_binding_and_reason(self):
+        run_dir = self.run_plan()
+        link = telos.begin_run(self.chain_id, run_dir, self.db, self.source)
+        unlinked = self.run_plan()
+        before = telos.get_goal(self.chain_id, self.db, self.source)
+        events = runtime.read_events(run_dir)
+        foreign_db = self.root / "foreign.sqlite3"
+        cases = [
+            (self.chain_id, link["subgoal_id"], unlinked, "exhausted", self.db, self.source),
+            ("chain-foreign", link["subgoal_id"], run_dir, "exhausted", self.db, self.source),
+            (self.chain_id, "subgoal-foreign", run_dir, "exhausted", self.db, self.source),
+            (self.chain_id, link["subgoal_id"], run_dir, "exhausted", foreign_db, self.source),
+            (self.chain_id, link["subgoal_id"], run_dir, "exhausted", self.db, self.root / "foreign.mjs"),
+            (self.chain_id, link["subgoal_id"], run_dir, "  ", self.db, self.source),
+            (self.chain_id, link["subgoal_id"], run_dir, None, self.db, self.source),
+        ]
+        for chain, subgoal, attempt, reason, db, source in cases:
+            with self.subTest(chain=chain, subgoal=subgoal, reason=reason, db=db, source=source):
+                with self.assertRaises(ValueError):
+                    telos.block_attempt(chain, subgoal, attempt, reason=reason, db=db, source=source)
+                self.assertEqual(telos.get_goal(self.chain_id, self.db, self.source), before)
+        self.assertFalse(foreign_db.exists())
+        self.assertEqual(runtime.read_events(run_dir), events)
+
+    def test_block_attempt_rejects_completed_subgoal(self):
+        run_dir = self.run_plan()
+        self.review(run_dir)
+        link = telos.begin_run(self.chain_id, run_dir, self.db, self.source)
+        telos.record_result(self.chain_id, link["subgoal_id"], run_dir, self.db, self.source)
+        before = telos.get_goal(self.chain_id, self.db, self.source)
+        events = runtime.read_events(run_dir)
+        with self.assertRaises(ValueError):
+            telos.block_attempt(self.chain_id, link["subgoal_id"], run_dir,
+                                reason="not complete", db=self.db, source=self.source)
+        self.assertEqual(telos.get_goal(self.chain_id, self.db, self.source), before)
+        self.assertEqual(runtime.read_events(run_dir), events)
+
+    def test_block_cli_requires_explicit_source_and_database(self):
+        run_dir = self.run_plan()
+        link = telos.begin_run(self.chain_id, run_dir, self.db, self.source)
+        command = [sys.executable, str(Path(telos.__file__).resolve()), "block", self.chain_id,
+                   link["subgoal_id"], str(run_dir), "--reason", "exhausted"]
+        before = telos.get_goal(self.chain_id, self.db, self.source)
+        for flags in (["--db", str(self.db)], ["--source", str(self.source)]):
+            result = subprocess.run(command + flags, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(telos.get_goal(self.chain_id, self.db, self.source), before)
+
     def test_successful_metadata_retry_supersedes_error_without_rerunning_work(self):
         run_dir = self.run_plan()
         self.review(run_dir)
