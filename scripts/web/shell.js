@@ -58,11 +58,21 @@ const reservedSession=s=>Boolean(s && !s.target && (s.identity_origin==='ordinal
 const sessionIdentity=s=>s.target?`Position ${s.ordinal} · inst-${s.target.instantiation} · session ${s.target.session}`:reservedSession(s)?`Reserved position · native context unobserved${s.effort_root?` · Effort ${s.effort_root}`:''}`:'Original namespace · unadopted';
 function mount(id, host){const e=$(id);if(!e)return null;mounted.add(e);host.append(e);e.hidden=false;return e;}
 function park(){for(const e of mounted){$('legacy-storage').append(e);e.hidden=true;}mounted.clear();}
+function backToEffortTarget(){
+  // Effective preparation owner only: current operation selection, an actual effort root, matching the observed session effort.
+  if(view.route!=='purposes'&&view.route!=='new-work')return '';
+  const owner=window.NoeticEffort?.selection?.()?.effort_root;
+  if(!owner||owner!==snapshotData.effort)return '';
+  return roots().some(row=>row.ordinal===owner)?owner:'';
+}
 function heading({eyebrow='',title='',description='',actions=[]}){
  $('shell-eyebrow').textContent=eyebrow;$('shell-page-title').textContent=title;$('shell-description').textContent=description;
  const entries=(Array.isArray(actions)?actions:[actions]).filter(Boolean),prior=snapshotData.returnContext;if(prior && (snapshotData.projectBrowsing || JSON.stringify(snapshotData.selected)!==JSON.stringify(prior.target))){const resume=button(prior.label,()=>{window.NoeticSessions.returnToContext();navigate('agentics');},'secondary-button');resume.dataset.returnContext='true';entries.unshift(resume);}
+ const effortOwner=backToEffortTarget();
+ if(effortOwner){const target=effortOwner;const back=button(`Back to effort ${target}`,()=>{if(backToEffortTarget()===target&&(view.route==='purposes'||view.route==='new-work'))navigate('workspaces');},'secondary-button');back.dataset.backToEffort='true';entries.push(back);}
  const focusedReturn=document.activeElement?.dataset.returnContext==='true';
- $('shell-actions').replaceChildren(...entries);if(focusedReturn)$('shell-actions').querySelector('[data-return-context]')?.focus({preventScroll:true});
+ const focusedBack=document.activeElement?.dataset.backToEffort==='true';
+ $('shell-actions').replaceChildren(...entries);if(focusedReturn)$('shell-actions').querySelector('[data-return-context]')?.focus({preventScroll:true});else if(focusedBack)$('shell-actions').querySelector('[data-back-to-effort]')?.focus({preventScroll:true});
 }
 function notice(value){$('shell-global-error').textContent=value||'';$('shell-global-error').hidden=!value;}
 function renderObservationStatus(){
@@ -214,7 +224,7 @@ $('shell-search').addEventListener('click',openCommand);$('shell-command').addEv
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if($('shell-command-dialog').open)$('shell-command-dialog').close();else openCommand();}});
 document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;else if(snapshotData.selected){const owner=roots().find(row=>row.ordinal===snapshotData.effort);projectFilter=owner?.environment?.cwd||null;}renderSidebar();render();});
 new MutationObserver(renderObservationStatus).observe($('fetch-error'),{attributes:true,attributeFilter:['hidden'],childList:true,subtree:true,characterData:true});
-document.addEventListener('noetic:runs',()=>{if(['workspaces','history','attention'].includes(view.route))render();});
+document.addEventListener('noetic:runs',()=>{if(['workspaces','history','attention','purposes','new-work'].includes(view.route))render();});
 document.addEventListener('noetic:page',e=>{if(suppressPage)return;const map={developer:'agentics',workspace:'executions',new:'new-work',history:'history',memory:'memory',purposes:'purposes',diagnostics:'configuration'};const next=map[e.detail.page];if(next&&next!==view.route)navigate(next);});
 let paired=false;
 new MutationObserver(()=>{const visible=!$('private-workspace').hidden;if(visible&&!paired){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);fetchJSON('/api/preview-info').then(data=>{if(data.fixture_mode||data.fixture||data.demo||data.preview||data.mode){$('shell-preview-label').hidden=false;$('shell-preview-label').textContent='Demonstration records · isolated preview';$('shell-notice').hidden=false;$('shell-notice').textContent='Demonstration records · isolated local preview';}}).catch(()=>{});}}).observe($('private-workspace'),{attributes:true,attributeFilter:['hidden']});
