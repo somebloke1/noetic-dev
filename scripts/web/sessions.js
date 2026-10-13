@@ -11,6 +11,7 @@
   let observeReturns = false;
   let newConversation = Boolean(saved.newConversation);
   let applicationHistory = Boolean(saved.applicationHistory);
+  let projectBrowsing = Boolean(saved.projectBrowsing && !selected && !applicationHistory), projectPath = projectBrowsing ? saved.projectPath || null : null, returnContext = null;
   const drafts = saved.drafts && typeof saved.drafts === "object" ? saved.drafts : {};
   let selectionVersion = 0;
   let promptRevision = 0;
@@ -24,7 +25,7 @@
   const fields = ["developer-projects-root", "developer-workspace", "developer-project-name", "developer-project-mode", "developer-model", "developer-thinking", "developer-prompt", "developer-mode"];
   const persist = () => {
     drafts[key(selected)] = $("developer-prompt").value;
-    const value = {selected, effort, newConversation, applicationHistory, drafts, fields: Object.fromEntries(fields.map(id => [id, $(id).value]))};
+    const value = {selected, effort, newConversation, applicationHistory, projectBrowsing, projectPath, drafts, fields: Object.fromEntries(fields.map(id => [id, $(id).value]))};
     try { sessionStorage.setItem("noetic-developer-view", JSON.stringify(value)); } catch (_) {}
   };
   for (const id of fields) {
@@ -33,7 +34,7 @@
     $(id).addEventListener("change", persist);
   }
   const state = () => JSON.parse(JSON.stringify({positions, sessions:allSessions, selected, effort, detail,
-    history:historyRecords, historyObservation, events, newConversation, applicationHistory, applicationEvents, observationError}));
+    history:historyRecords, historyObservation, events, newConversation, applicationHistory, projectBrowsing, projectPath, returnContext, applicationEvents, observationError}));
   const notify = () => document.dispatchEvent(new CustomEvent("noetic:sessions", {detail:state()}));
   const active = () => operatorToken && !$('private-workspace').hidden;
   const post = (path, body = {}) => fetchJSON(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
@@ -159,9 +160,9 @@
   }
 
   function composer() {
-    const project = !selected && !effort;
+    const project = !selected && !effort && !projectBrowsing;
     const starting = newConversation || Boolean(selected && !exact(selected));
-    const disabled = applicationHistory || selected?.ordinal === "0" || reservedSource(detail?.session);
+    const disabled = projectBrowsing || applicationHistory || selected?.ordinal === "0" || reservedSource(detail?.session);
     $("developer-form").hidden = disabled || Boolean(!project && !starting && !detail);
     $("developer-project-fields").hidden = !project;
     for (const id of ["developer-workspace", "developer-model"]) $(id).required = project;
@@ -434,7 +435,7 @@
   }
 
   function renderDetail() {
-    $("developer-empty").hidden = Boolean(selected || applicationHistory);
+    $("developer-empty").hidden = Boolean(selected || applicationHistory || projectBrowsing);
     $("developer-header").hidden = !detail || newConversation || applicationHistory;
     $("developer-transcript").hidden = !detail || newConversation || applicationHistory;
     $("developer-form").hidden = applicationHistory || selected?.ordinal === "0" || Boolean(detail?.session.effort_root && !detail.session.target);
@@ -464,6 +465,7 @@
   async function select(target, options = {}) {
     drafts[key(selected)] = $("developer-prompt").value;
     selected = target; effort = target?.effort_root || null;
+    projectBrowsing=Boolean(options.browse);projectPath=projectBrowsing ? options.project || null : null;
     window.NoeticEffort?.select(effort,target);
     applicationHistory = Boolean(options.history); newConversation = Boolean(options.newConversation);
     $("developer-prompt").value = options.draft ?? drafts[key(target)] ?? "";
@@ -547,7 +549,7 @@
     event.currentTarget.form.requestSubmit(submit);
   });
   $("developer-form").addEventListener("submit", async event => {
-    event.preventDefault(); if (actionPending) return;
+    event.preventDefault(); if (actionPending || projectBrowsing) return;
     const target = selected && {...selected}, version = selectionVersion, revision = promptRevision, prompt = $("developer-prompt").value;
     const starting = newConversation || Boolean(target && !exact(target));
     actionPending = true; composer(); error("developer-error", "");
@@ -625,7 +627,16 @@
   });
   $("developer-evidence").addEventListener("toggle", () => { if ($("developer-evidence").open) text("developer-events", JSON.stringify(events, null, 2)); });
   $("refresh").addEventListener("click", refresh);
-  window.NoeticSessions = {refresh,open:select,state,
+  function browseProject(project) {
+    if (selected && !projectBrowsing) {
+      const item=detail?.session || allSessions.find(row=>selected.id ? row.id===selected.id : row.ordinal===selected.ordinal && (!selected.instantiation || row.target?.instantiation===selected.instantiation && row.target?.session===selected.session));
+      const label=exact(selected) && item && !reservedSource(item) && (item.target || originalSource(item)) ? item.target ? `Return to conversation · Effort ${item.effort_root} · ${item.ordinal} · ${item.target.instantiation}/${item.target.session}` : `Return to original native conversation · ${item.id} · original ${item.original_ordinal || item.ordinal}` : `Return to ${selected.ordinal || item?.ordinal ? "position " + (selected.ordinal || item.ordinal) : "retained record " + selected.id}`;
+      returnContext={target:{...selected},history:applicationHistory,label};
+    }
+    return select(null,{browse:true,project});
+  }
+  window.NoeticSessions = {refresh,open:select,state,browseProject,
+    returnToContext:()=>returnContext ? select({...returnContext.target},{history:returnContext.history}) : Promise.resolve(),
     observeReturns: () => { observeReturns = true; return refresh(); }};
   composer(); renderDetail();
   setInterval(refresh, 1200);
