@@ -76,6 +76,7 @@ Use child issues only for genuinely independent units. A blocker must name a con
 - Pin third-party actions before public release when release hardening is in scope; pinning is not a prerequisite for ordinary authorized development.
 - Do not expose secrets through workflows.
 - Checks should validate repository invariants first, then component-specific builds/tests as components arrive.
+- [Fresh-checkout testing](testing.md) prepares the pinned public Telos fixture and build tools in both test-bearing jobs; generated inputs are isolated from the installed application.
 
 ## 8. GitHub Project discipline
 
