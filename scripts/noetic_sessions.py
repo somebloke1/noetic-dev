@@ -186,9 +186,11 @@ class Registry:
         item = self.get(sid)
         if not item["target"]:
             return
-        with closing(self.connect()) as db, db:
-            db.execute("BEGIN IMMEDIATE")
-            for row in db.execute("SELECT * FROM events WHERE session_id=? AND correlated=0 ORDER BY sequence", (sid,)).fetchall():
+        with open_private(self.root / "correlation.lock", "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with closing(self.connect(readonly=True)) as db:
+                rows = db.execute("SELECT * FROM events WHERE session_id=? AND correlated=0 ORDER BY sequence", (sid,)).fetchall()
+            for row in rows:
                 record = json.loads(row["record"])
                 message = record.get("message")
                 details = message.get("details") if isinstance(message, dict) else None
@@ -199,7 +201,8 @@ class Registry:
                           **({"provenance": provenance, "binding_id": record.get("binding_id") or details.get("binding_id")} if isinstance(provenance, dict) else {})},
                     source_ref={"journal": str(self.path), "session_id": sid, "sequence": row["sequence"],
                                 "native_context": item["native_session_file"]}, target=Target(**item["target"]))
-                db.execute("UPDATE events SET correlated=1 WHERE sequence=?", (row["sequence"],))
+                with closing(self.connect()) as db, db:
+                    db.execute("UPDATE events SET correlated=1 WHERE sequence=?", (row["sequence"],))
 
     def update(self, sid, **values):
         allowed = {"status", "native_session_file", "native_session_id", "runtime", "error", "model", "thinking", "instantiation", "session_selector", "effort_root", "global_ordinal"}
@@ -868,6 +871,9 @@ class Broker:
                     if not isinstance(request, dict):
                         raise SessionError(400, "Broker request must be an object.")
                     result = {"success": True, "data": broker.handle(request)}
+                except sqlite3.Error as exc:
+                    result = {"success": False, "status": 503,
+                              "error": f"Session storage operation failed: {exc}. The outcome may be uncertain; inspect retained status before retrying."}
                 except (SessionError, OSError, ValueError, TypeError, KeyError) as exc:
                     result = {"success": False, "status": getattr(exc, "status", 400), "error": str(exc)}
                 try:
