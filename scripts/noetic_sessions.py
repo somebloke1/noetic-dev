@@ -463,6 +463,22 @@ class SessionService:
             lock.close()
 
     def create_effort(self, body):
+        # An existing-folder effort declares its cwd as a real directory: admit
+        # it only through the maintained projects folder authority before any
+        # domain registration or namespace effect. Missing or file-valued
+        # folders are refused 400 here instead of failing later at session
+        # creation; bare/relative names are not project-name semantics here.
+        if isinstance(body, dict):
+            environment = body.get("environment")
+            cwd = environment.get("cwd") if isinstance(environment, dict) else None
+            if cwd is not None:
+                declared = Path(str(cwd)).expanduser()
+                if not declared.is_absolute():
+                    raise SessionError(400, "An existing project folder must be an absolute or ~ home path; use explicit new-project creation for a bare name.")
+                try:
+                    projects.validate_workspace(declared)
+                except projects.ProjectError as exc:
+                    raise SessionError(exc.status, str(exc)) from exc
         try:
             return self.registry.domain.create(body)
         except ScopeError as exc:
