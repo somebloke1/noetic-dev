@@ -102,11 +102,11 @@
     ui().mount("developer-page",inspector);
     const evidence=document.getElementById("developer-evidence"), header=document.getElementById("developer-header");
     let retained=document.getElementById("agentics-retained-details");
-    if (!retained) {retained=el("div","agentics-retained-details");retained.id="agentics-retained-details";evidence.append(retained);}
+    if (!retained) {retained=el("div","agentics-retained-details");retained.id="agentics-retained-details";evidence.querySelector(":scope > summary").after(retained);}
     for (const selector of [".section-heading","#developer-location",".session-signals"]) {
       const existing=header.querySelector(selector);if(existing)retained.append(existing);
     }
-    const handoff=header.querySelector(".developer-actions details");if(handoff)retained.append(handoff);
+    const handoff=header.querySelector(".developer-actions details");if(handoff)retained.prepend(handoff);
     retained.append(document.getElementById("developer-result"));
     if (!document.getElementById("agentics-responsibility-details")) {
       const responsibility=el("div","agentics-responsibility-details");responsibility.id="agentics-responsibility-details";evidence.append(responsibility);
