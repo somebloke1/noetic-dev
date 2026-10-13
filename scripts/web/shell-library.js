@@ -14,7 +14,7 @@
     prompts:"Inspect maintained instruction contracts and their required inputs.",
     roles:"Inspect the obligations and output contracts of maintained discipline roles.",
     memory:"Inspect native semantic authority separately from supporting source recall.",
-    usage:"Inspect accounting coverage across exact sessions and executions.",
+    usage:"Inspect native conversation accounting coverage for the selected scope.",
     artifacts:"Inspect retained outputs, provenance, checks, independent review, and project changes.",
     configuration:"Inspect installation settings, role defaults, and execution limits.",
     executions:"Follow structured execution, inspect evidence, and control the selected workflow.",
@@ -348,6 +348,7 @@
     const signature = JSON.stringify([scopeKey(),sessions.map(row=>[row.id,row.model,row.target])]); if (signature === state.signature) return; state.signature=signature;clear(context.host);scopeToolbar(context.host);
     const card = panel("Token metrics","Native accounting coverage"), content=body(card);context.host.append(card);
     const metrics=el("div","lib-metrics");for(const name of ["Input tokens","Output tokens","Cache reads","Cost"]){const metric=el("div","lib-metric");metric.append(el("span","",name),el("strong","","Unknown"));metrics.append(metric);}content.append(metrics,note("The current observation API does not expose native token or cost accounting."));
+    content.append(note("Structured execution accounting is not displayed here."));
     const list=panel("Exact session coverage","Retained targets"), listBody=body(list);context.host.append(list);
     for(const session of sessions){const row=el("div","lib-runtime-row");row.append(el("span","lib-mono",session.target ? `${session.target.ordinal} · ${session.target.instantiation}/${session.target.session}` : session.id),el("span","",session.model || "Model unknown"),UI.badge("Accounting unknown",""));listBody.append(row);}
     if (!sessions.length) placeholder(listBody,"No retained session observations","Usage remains unknown until native accounting is exposed.");
