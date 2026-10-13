@@ -380,6 +380,49 @@
     }catch(failure){if(key===scopeKey() && item.isConnected){let error=contents.querySelector(".lib-note");if(!error){error=note("");contents.append(error);}error.textContent=`Retained evidence unavailable: ${failure.message}`;}}
     finally{delete item.dataset.loading;}
   }
+  function costSkill(content, selection, metric, valid) {
+    const section=el("section","lib-cost-skill");section.id="cost-estimation-skill";
+    const editor=el("details","lib-source lib-cost-editor");editor.append(el("summary","","Edit cost factors and run skill"));
+    const heading=el("div","lib-cost-heading"),link=el("a","","Cost estimation skill");link.href="#cost-estimation-skill";
+    link.addEventListener("click",event=>{event.preventDefault();editor.open=true;editor.scrollIntoView({block:"start"});});heading.append(link,el("span","lib-mono","noetic:cost-estimate"));
+    const edit=el("a","lib-cost-open","Edit cost factors");edit.href="#cost-estimation-skill";edit.addEventListener("click",event=>{event.preventDefault();editor.open=true;editor.scrollIntoView({block:"start"});});metric.value.parentNode.append(edit);
+    const summary=note("Not calculated. Choose a billing basis and supply its factors.");summary.id="cost-estimate-summary";
+    const sourceStatus=note("No retrieved rate source yet.");sourceStatus.id="cost-source-status";
+    const status=note("Inspecting the maintained application skill.");status.id="cost-skill-status";status.setAttribute("role","status");
+    const form=el("form","lib-cost-form"),fields=new Map(),dirty=new Set();let inspection=null,pending=false;
+    const identity=el("div","lib-cost-fields");
+    function field(parent,name,label,options){const wrapper=el("div","lib-cost-field"),caption=el("label","",label),input=el(options?"select":"input");input.id=`cost-${name.replaceAll(".","-").replaceAll("_","-")}`;caption.htmlFor=input.id;
+      if(options)for(const [value,text]of options){const option=el("option","",text);option.value=value;input.append(option);}else{input.type=name.includes(".")?"number":"text";if(input.type==="number"){input.min="0";input.step="any";}}
+      if(["provider","model","currency"].includes(name))input.required=true;
+      input.addEventListener("input",()=>{dirty.add(name);status.textContent="Unsaved cost factors. Run explicitly to save and recalculate.";});input.addEventListener("change",()=>{dirty.add(name);status.textContent="Unsaved cost factors. Run explicitly to save and recalculate.";});fields.set(name,input);wrapper.append(caption,input);parent.append(wrapper);return input;}
+    field(identity,"provider","Provider");field(identity,"model","Model");field(identity,"billing_basis","Billing basis",[["unknown","Unknown"],["api","API-equivalent reference"],["subscription","Subscription allocation"],["local","Local energy"]]);field(identity,"currency","Currency").value="USD";
+    const profiles=el("select"),profilesLabel=el("label","","Saved cost profile");profiles.id="cost-profile";profilesLabel.htmlFor=profiles.id;
+    const rates=el("fieldset");rates.append(el("legend","","User rate overrides · currency per 1M tokens"));const rateFields=el("div","lib-cost-fields");rates.append(rateFields);
+    for(const [name,label]of [["input","Input rate / million"],["output","Output rate / million"],["cache_read","Cache read rate / million"],["cache_write","Cache write rate / million"]])field(rateFields,`overrides.${name}`,label);
+    const factors=el("fieldset");factors.append(el("legend","","Explicit estimate factors"));const factorFields=el("div","lib-cost-fields");factors.append(factorFields);
+    for(const [name,label]of [["input_multiplier","Input multiplier"],["output_multiplier","Output multiplier"],["allocation_cost","Subscription allocation cost"],["runtime_seconds","Measured runtime seconds"],["power_watts","Power watts"],["electricity_per_kwh","Electricity per kWh"]])field(factorFields,`factors.${name}`,label);
+    function basisFields(){const basis=fields.get("billing_basis").value;rates.hidden=basis!=="api";factors.hidden=basis==="unknown";for(const [name,input]of fields){if(!name.startsWith("factors."))continue;const allowed=basis==="api"?["input_multiplier","output_multiplier"]:basis==="subscription"?["allocation_cost"]:basis==="local"?["runtime_seconds","power_watts","electricity_per_kwh"]:[];input.parentNode.hidden=!allowed.includes(name.split(".")[1]);}}
+    fields.get("billing_basis").addEventListener("change",basisFields);basisFields();
+    const refreshLabel=el("label","lib-cost-refresh"),refresh=el("input");refresh.type="checkbox";refreshLabel.append(refresh,document.createTextNode("Refresh official reference rates"));
+    const run=el("button","primary-button","Run cost estimation skill");run.type="submit";run.disabled=true;
+    const reload=action("Refresh saved estimates",()=>load());
+    const evidence=el("details","lib-source");evidence.append(el("summary","","Skill, assumptions, saved factors and receipt"),el("pre"));
+    form.append(profilesLabel,profiles,identity,note("Estimates do not establish actual billed cost. Untouched fields preserve saved values; clearing an edited field removes that named override."),rates,factors,refreshLabel,run);
+    editor.append(form,evidence);section.append(heading,summary,sourceStatus,status,reload,editor);content.append(section);
+    const usable=()=>section.isConnected&&valid();
+    function chosen(){return inspection?.profiles?.find(profile=>profile.id===profiles.value);}
+    function showEstimate(profile){const estimate=profile?.estimate;if(typeof estimate?.amount==="number"&&Number.isFinite(estimate.amount)){metric.value.textContent=`${estimate.currency} ${estimate.amount.toFixed(6)}${estimate.state==="partial"?" (partial)":""}`;summary.textContent=`${estimate.standing||"Estimated cost"} · ${estimate.currency} ${estimate.amount.toFixed(6)} · ${estimate.covered_records??"unreported"} covered records${estimate.matched_records!=null?` of ${estimate.matched_records} matching records`:""}. ${estimate.missing?.length?`Missing: ${estimate.missing.join(", ")}.`:""}`;}else{metric.value.textContent="Unknown";summary.textContent=`Unknown estimate. ${estimate?.missing?.length?`Missing: ${estimate.missing.join(", ")}.`:"Choose a provider/model, billing basis and its factors."}`;}metric.coverage.textContent=estimate?.billing_basis==="api"?"API-equivalent reference · not an invoice":estimate?.billing_basis==="local"?"User local electricity estimate":estimate?.billing_basis==="subscription"?"User subscription allocation":"Saved factors · not an invoice";
+      const fetched=profile?.fetched;sourceStatus.textContent=fetched?`Rate source ${fetched.url} · retrieved ${fetched.retrieved_at}. User overrides remain separate.`:"No retrieved rate source; manual overrides/factors may apply.";const text=JSON.stringify({skill:inspection?.skill,namespace:inspection?.namespace,selection:inspection?.selection,revision:inspection?.revision,profile,receipt:profile?.receipt||inspection?.receipt},null,2);if(evidence.lastChild.textContent!==text)evidence.lastChild.textContent=text;}
+    function populate(profile){if(!profile)return;for(const [name,input]of fields){const [group,key]=name.split(".");input.value=String(key?profile[group]?.[key]??"":profile[name]??"");}dirty.clear();basisFields();showEstimate(profile);}
+    profiles.addEventListener("change",()=>populate(chosen()));
+    function apply(result,save){inspection=result;const selected=save?result.receipt?.profile_id:profiles.value,signature=JSON.stringify((result.profiles||[]).map(p=>[p.id,p.provider,p.model,p.billing_basis,p.currency]));if(profiles.dataset.signature!==signature){profiles.dataset.signature=signature;const empty=el("option","","New cost profile");empty.value="";profiles.replaceChildren(empty,...(result.profiles||[]).map(profile=>{const option=el("option","",`${profile.provider} / ${profile.model} · ${profile.billing_basis} · ${profile.currency}`);option.value=profile.id;return option;}));}
+      profiles.value=selected&&result.profiles?.some(p=>p.id===selected)?selected:result.profiles?.length===1?result.profiles[0].id:"";if(!dirty.size)populate(chosen());else showEstimate(chosen());if(!chosen())showEstimate(null);run.disabled=!Number.isInteger(result.revision);}
+    async function load(){if(pending)return;pending=true;try{const result=await fetchJSON(scopedURL("/api/skills/cost-estimate",selection));if(!usable())return;apply(result,false);status.textContent="Skill inspected locally. Run explicitly to save factors, refresh selected rates and recalculate.";}catch(failure){if(usable())status.textContent=`Cost skill observation unavailable: ${failure.message}. Unsaved factors are preserved.`;}finally{pending=false;}}
+    form.addEventListener("submit",async event=>{event.preventDefault();if(pending||!Number.isInteger(inspection?.revision)||!usable())return;const profile=Object.fromEntries(["provider","model","billing_basis","currency"].map(name=>[name,fields.get(name).value]));profile.overrides={};profile.factors={};for(const name of dirty){const [group,key]=name.split(".");if(!key)continue;const value=fields.get(name).value;profile[group][key]=value===""?null:Number(value);}
+      pending=true;run.disabled=true;status.textContent="Running deterministic cost estimation skill…";
+      try{const result=await fetchJSON("/api/skills/cost-estimate/execute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...selection,expected_revision:inspection.revision,profile,refresh_prices:refresh.checked})});if(!usable())return;dirty.clear();apply(result,true);status.textContent=`Cost factors ${result.factor_save||"save outcome unreported"}; rate refresh ${result.refresh?.state||"unreported"}.${result.refresh?.error?` ${result.refresh.error}`:""} Estimate recalculated separately from observed usage.`;}catch(failure){if(usable())status.textContent=`Cost skill run unavailable: ${failure.message}. Unsaved factors are preserved; refresh saved estimates before retrying a revision conflict.`;}finally{pending=false;if(usable())run.disabled=!Number.isInteger(inspection?.revision);}});
+    load();return {observe(projection){const pairs=[...new Map((projection.rows||[]).filter(r=>r.provider&&r.model).map(r=>[`${r.provider}\0${r.model}`,r])).values()];if(pairs.length===1){if(!fields.get("provider").value&&!dirty.has("provider"))fields.get("provider").value=pairs[0].provider;if(!fields.get("model").value&&!dirty.has("model"))fields.get("model").value=pairs[0].model;}}};
+  }
   async function usage(context) {
     const state=base(context),selection=scope(),key=scopeKey(),host=context.host;
     if(state.key!==key||!state.metrics){
@@ -395,13 +438,14 @@
       const refresh=action("Refresh accounting",()=>{if(active(host,"usage",key))usage(context);});
       content.append(metrics,state.observation,refresh,state.coverage,state.cache,state.notice,note("Recorded adapter estimates are available in source details; currency and billing basis are not established here."),note("Structured execution accounting is not displayed here."));
       const source=el("details","lib-source");source.append(el("summary","","Accounting source and coverage"),el("pre"));content.append(source);state.source=source.lastChild;
+      state.costSkill=costSkill(content,selection,state.metrics.get("estimate"),()=>views.usage===state&&active(host,"usage",key));
       const list=panel("Exact session coverage","Retained native targets");state.list=body(list);host.append(list);
     }
     if(state.pending)return;state.pending=true;
     const generation=state.generation,valid=()=>views.usage===state&&state.generation===generation&&active(host,"usage",key);
     state.observation.textContent=state.data?"Refreshing accounting; showing last observed records.":"Loading accounting observations; no accounting observed yet.";
     try{
-      const projection=await fetchJSON(scopedURL("/api/usage",selection));if(!valid())return;state.data=projection;
+      const projection=await fetchJSON(scopedURL("/api/usage",selection));if(!valid())return;state.data=projection;state.costSkill.observe(projection);
       const coverage=projection.coverage||{},fields=coverage.fields||{},totals=projection.totals||{};
       for(const [field,metric] of state.metrics){if(field==="estimate")continue;const value=totals[field],known=fields[field]?.known||0,missing=fields[field]?.missing||0;metric.value.textContent=typeof value==="number"&&Number.isFinite(value)?value.toLocaleString("en-US"):"Unknown";metric.coverage.textContent=`${known} known · ${missing} missing records`;}
       state.observation.textContent=`Accounting observed ${projection.observed_at||"at an unreported time"}.`;

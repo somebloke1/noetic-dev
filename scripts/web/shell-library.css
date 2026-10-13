@@ -148,3 +148,18 @@
 .lib-usage-session{border-bottom:1px solid #efeff1;padding:14px 0;min-width:0;}
 .lib-usage-session>strong{display:block;line-height:1.6;}
 @media(max-width:1100px){.lib-usage-metrics{grid-template-columns:repeat(2,minmax(0,1fr));}}
+
+.lib-cost-skill{border-top:1px solid #efeff1;padding-top:16px;margin-top:16px;min-width:0;}
+.lib-cost-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;}
+.lib-cost-heading a{color:#7053b4;}
+.lib-cost-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.lib-cost-field{display:grid;gap:6px;min-width:0;font-size:10px;}
+.lib-cost-field input,.lib-cost-field select,.lib-cost-form>select{width:100%;min-width:0;box-sizing:border-box;padding:8px;border:1px solid #e0dde6;border-radius:5px;font:inherit;}
+.lib-cost-form fieldset{border:1px solid #efeff1;padding:12px;margin:14px 0;min-width:0;font-size:10px;}
+.lib-cost-form>label{display:block;margin:10px 0;font-size:11px;}
+.lib-cost-refresh{display:flex!important;align-items:center;gap:8px;}
+.lib-cost-form>.primary-button{margin:10px 0;}
+@media(max-width:700px){.lib-cost-fields{grid-template-columns:minmax(0,1fr);}}
+
+.lib-cost-open{font-size:10px;color:#7053b4;}
+.lib-cost-form [hidden]{display:none!important;}
