@@ -389,6 +389,9 @@ class SessionService:
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 if child.poll() is not None:
+                    retained_error = self.registry.get(sid).get("error")
+                    if retained_error:
+                        raise SessionError(409, retained_error)
                     raise SessionError(503, "Pi broker failed to start; inspect retained broker diagnostics.")
                 if socket_path(self.runs_root, sid).exists() and self.registry.get(sid)["status"] == "idle" and self.registry.get(sid)["target"]:
                     return
@@ -396,7 +399,7 @@ class SessionService:
             raise SessionError(503, "Pi broker startup timed out; session was not prompted.")
         except BaseException as exc:
             processes.reconcile(directory / "broker-ownership.json", terminate=True)
-            self.registry.update(sid, status="failed", error="Broker launch failed; inspect retained diagnostics.")
+            self.registry.update(sid, status="failed", error=str(exc)[:2000])
             sequence = self.registry.event(sid, "host", {"type": "native_start_failed", "error": str(exc), "target": self.registry.get(sid)["target"]})
             if not self.registry.get(sid)["target"]:
                 self.registry.domain.store().record_event(item["ordinal"], scope=Scope.effort(item["effort_root"]),
@@ -897,9 +900,13 @@ class Broker:
                     len(planned_context) > 4096 or not Path(planned_context).is_absolute()):
                 self.error = "Pi did not provide a valid planned native context reference; prompt was not sent."
                 raise SessionError(409, self.error)
-            if (item["model"] not in (observed_id, observed_route) or state.get("sessionId") != self.sid or
+            if item["model"] not in (observed_id, observed_route):
+                self.error = (f"Pi model mismatch: requested {item['model']!r}, observed {observed_route!r}. "
+                              "Choose an exact model ID or provider/model identity; prompt was not sent.")
+                raise SessionError(409, self.error)
+            if (state.get("sessionId") != self.sid or
                     item["native_session_file"] is not None and state.get("sessionFile") != item["native_session_file"]):
-                self.error = "Pi selected a different model or native context; prompt was not sent."
+                self.error = "Pi selected a different native context; prompt was not sent."
                 raise SessionError(409, self.error)
             self.registry.update(self.sid, runtime=state, native_session_file=state.get("sessionFile"), native_session_id=state.get("sessionId"))
             self.registry.attach(self.sid, state)
