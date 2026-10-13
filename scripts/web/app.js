@@ -68,6 +68,7 @@ function scopeControls() {
 }
 function changeOperationScope(mode, previous = operationKey()) {
   if (previous !== JSON.stringify(mode === "effort" && selectedEffort ? {effort_root:selectedEffort} : {scope:"application"})) window.NoeticDrafts?.leave();
+  if (previous !== JSON.stringify(mode === "effort" && selectedEffort ? {effort_root:selectedEffort} : {scope:"application"})) window.NoeticPurposeDrafts?.leave();
   operationMode = mode === "effort" && selectedEffort ? "effort" : "application";
   savedUI.operationMode = operationMode;
   if (operationKey() !== previous) {
@@ -86,7 +87,7 @@ function changeOperationScope(mode, previous = operationKey()) {
     text("start-result", ""); error("start-error", ""); text("summary-content", ""); text("summary-coverage", "");
     text("workspace-apply-result", ""); text("action-result", ""); text("cancel-note", ""); error("action-error", ""); error("cancel-error", "");
   }
-  if (operationKey() !== previous) window.NoeticDrafts?.enter();
+  if (operationKey() !== previous) {window.NoeticDrafts?.enter();window.NoeticPurposeDrafts?.enter();}
   scopeControls(); persistUI();
   if (isReviewed() && operatorToken) loadReviewedSetup();
   if (operatorToken && !$("private-workspace").hidden) refresh();
@@ -94,6 +95,7 @@ function changeOperationScope(mode, previous = operationKey()) {
 window.NoeticEffort = {
   select(root, target) {
     window.NoeticDrafts?.capture();
+  window.NoeticPurposeDrafts?.capture();
     ++developerSubjectVersion;
     const previous = operationKey(), previousTarget = JSON.stringify(selectedNative); selectedEffort = root; selectedNative = target;
     if (JSON.stringify(target) !== previousTarget) {
@@ -119,6 +121,7 @@ const selectionIds = ["actor-select", "artifact-select", "actor-log-select", "re
 
 function persistUI() {
   window.NoeticDrafts?.capture();
+  window.NoeticPurposeDrafts?.capture();
   savedUI.selectedId = selectedId;
   savedUI.page = currentPage;
   savedUI.forms = Object.fromEntries(formIds.map((id) => [id, $(id).value]));
@@ -1571,6 +1574,7 @@ function initWorkbench() {
   $("purpose-form").addEventListener("submit",async event=>{
     event.preventDefault();const scopeVersion = operationVersion,scopeKey = operationKey(),draft = draftVersion, goalDraft = purposeDraftVersion;
     const selection = operationSelection(),goal = $("purpose-goal").value;
+    if(purposeCreatePending||!window.NoeticPurposeDrafts?.ready()){error("purpose-error","Verify the current purpose draft owner before creating.");return;}purposeCreatePending=true;
     $("purpose-create").disabled = true;error("purpose-error","");
     try {
       const result = await fetchJSON("/api/goals",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({goal,...selection,origin_ref:{origin:"local-human-operator"},source_ref:{surface:"browser-purpose-form"}})});
@@ -1580,7 +1584,7 @@ function initWorkbench() {
       if (choose) { delete initialForms["start-purpose"]; ++draftVersion;$("start-purpose").value = JSON.stringify(result.purpose.reference); }
       text("purpose-status",`Created ${result.purpose.reference.chain_id} in ${result.purpose.reference.store_id}${choose ? " · selected for structured work" : " · choose explicitly"}.`);persistUI();
     } catch (failure) { if (operationValid(scopeVersion,scopeKey)) error("purpose-error",failure.message); }
-    finally { $("purpose-create").disabled = false; }
+    finally { purposeCreatePending=false;window.NoeticPurposeDrafts?.render(); }
   });
   $("memory-form").addEventListener("submit",async event=>{
     event.preventDefault();const scopeVersion = operationVersion,scopeKey = operationKey(),targetVersion = recallTargetVersion,request = ++memoryVersion;
@@ -1739,9 +1743,23 @@ const structuredDrafts = (() => {
   return {init,capture,leave,enter,ready:()=>Boolean(validOwner() && !pending && !invalid.size),restoreChoice};
 })();
 window.NoeticDrafts = structuredDrafts;
+let purposeCreatePending=false;
+const purposeDrafts=(()=>{
+  const drafts=savedUI.purposeDrafts && typeof savedUI.purposeDrafts==="object"?savedUI.purposeDrafts:{};
+  let owner=null,generation=0,pending=false,problem="";
+  const ready=()=>Boolean(owner && owner.scope===operationKey() && owner.access===accessVersion && !pending);
+  function render(){text("purpose-draft-owner",problem || (pending?"Checking purpose draft ownership…":owner?`Purpose draft · ${owner.selection.effort_root?"Effort "+owner.selection.effort_root:"Application"} · namespace ${owner.namespace}. Creating is an explicit action in this owner.`:"Purpose draft owner unobserved. Retry before creating."));$("purpose-goal").disabled=!ready();$("purpose-create").disabled=!ready()||purposeCreatePending;$("purpose-unassigned").hidden=!savedUI.unassignedPurposeDraft;text("purpose-unassigned-text",savedUI.unassignedPurposeDraft||"");text("purpose-copy-unassigned",owner?`Copy purpose text into ${owner.selection.effort_root?"Effort "+owner.selection.effort_root:"Application"}`:"Verify an owner before copying");$("purpose-copy-unassigned").disabled=!ready();}
+  function capture(){if(!ready())return;drafts[owner.key]={text:$("purpose-goal").value,namespace:owner.namespace,selection:owner.selection};savedUI.purposeDrafts=drafts;savedUI.purposeDraftOwner={namespace:owner.namespace,selection:owner.selection};}
+  function leave(){capture();++generation;owner=null;pending=true;problem="";$("purpose-goal").value="";render();}
+  async function enter(){capture();const request=++generation,access=accessVersion,scope=operationKey(),selection=operationSelection();pending=true;problem="";owner=null;$("purpose-goal").value="";render();if(!operatorToken){pending=false;render();return;}try{const witness=await fetchJSON(scopedURL("/api/disciplines",{scope:"application",limit:1}));if(request!==generation||access!==accessVersion||scope!==operationKey())return;if(!witness.namespace_registered||typeof witness.namespace_id!=="string"||!witness.namespace_id)throw new Error("Application namespace unregistered");const namespace=witness.namespace_id,key=JSON.stringify([namespace,selection]);owner={namespace,key,scope,selection,access};const draft=drafts[key];$("purpose-goal").value=draft?.namespace===namespace&&JSON.stringify(draft.selection)===JSON.stringify(selection)?draft.text||"":"";pending=false;render();persistUI();}catch(failure){if(request!==generation||access!==accessVersion||scope!==operationKey())return;pending=false;problem=`Purpose ownership unavailable: ${failure.message}. Retry before creating.`;render();}}
+  function init(){if(!savedUI.purposeDraftOwner&&savedUI.forms?.["purpose-goal"]&&!savedUI.unassignedPurposeDraft)savedUI.unassignedPurposeDraft=String(savedUI.forms["purpose-goal"]);delete initialForms["purpose-goal"];$("purpose-goal").value="";$("purpose-goal").addEventListener("input",()=>{capture();persistUI();});$("purpose-retry-owner").addEventListener("click",enter);$("purpose-copy-unassigned").addEventListener("click",()=>{if(!ready()||!savedUI.unassignedPurposeDraft)return;if($("purpose-goal").value.trim()){problem="Purpose draft conflict: edited text was preserved; unassigned original remains available.";render();return;}$("purpose-goal").value=savedUI.unassignedPurposeDraft;++purposeDraftVersion;problem="";capture();render();persistUI();});enter();}
+  return {init,capture,leave,enter,ready,render};
+})();
+window.NoeticPurposeDrafts=purposeDrafts;
+
 
 initWorkbench();
-structuredDrafts.init();
+structuredDrafts.init();purposeDrafts.init();
 $("import-previous-drafts").addEventListener("click", importPreviousDrafts);
 $("forget-previous-drafts").addEventListener("click", forgetPreviousDrafts);
 window.addEventListener("hashchange", () => {
