@@ -217,17 +217,23 @@
   function drawInspector() {
     const selected=snapshot.selected, session=snapshot.detail?.session || (selected?.id ? (snapshot.sessions||[]).find(item=>item.id===selected.id) : null);
     const reserved=Boolean(session && !session.target && (session.effort_root || session.identity_origin==="ordinal-reserved"));
-    const projectDraft=!selected&&!snapshot.applicationHistory;
+    const browsing=Boolean(snapshot.projectBrowsing), projectDraft=!selected&&!snapshot.applicationHistory&&!browsing;
     const original=Boolean(!reserved && (session ? session.identity_origin === "legacy-unadopted" || !session.target && !session.effort_root : selected?.id && !selected.ordinal && !selected.effort_root));
     const ordinal=original ? session?.original_ordinal||session?.ordinal||"Native" : selected?.ordinal||session?.ordinal||"0";
-    const row=original||projectDraft ? null : (snapshot.positions||[]).find(item=>item.ordinal===ordinal), current=original||projectDraft ? null : occupantContext(ordinal);
+    const row=original||projectDraft||browsing ? null : (snapshot.positions||[]).find(item=>item.ordinal===ordinal), current=original||projectDraft||browsing ? null : occupantContext(ordinal);
     const parent=original && session?.parent_id ? (snapshot.sessions||[]).find(item=>item.id===session.parent_id) : null;
-    const root=!original&&!projectDraft && ordinal==="0", exact=!reserved && Boolean(selected?.instantiation||selected?.id);
+    const root=!original&&!projectDraft&&!browsing && ordinal==="0", exact=!reserved && Boolean(selected?.instantiation||selected?.id);
     const badge=el("div","agent-avatar violet",projectDraft?"+":ordinal), identity=el("div");
-    identity.append(el("span","panel-kicker",projectDraft ? "Project conversation" : reserved ? "Reserved position · native context unobserved" : original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",projectDraft ? "Open or create a project" : reserved ? `Position ${ordinal}` : exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
+    identity.append(el("span","panel-kicker",browsing ? "Project overview · no conversation selected" : projectDraft ? "Project conversation" : reserved ? "Reserved position · native context unobserved" : original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",browsing ? snapshot.projectPath ? `Project ${snapshot.projectPath}` : "Development portfolio" : projectDraft ? "Open or create a project" : reserved ? `Position ${ordinal}` : exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
     const context=btn("Context",()=>{const evidence=document.getElementById("developer-evidence");evidence.open=!evidence.open;},"session-context-button"); context.disabled=!session&&!row;
     inspectorHeading.replaceChildren(badge,identity,context);
-    document.getElementById("agentics-position-status").hidden=provenance.hidden=occupant.hidden=projectDraft;
+    let viewOwner=inspector.querySelector('.agentics-view-owner');
+    if(!viewOwner){viewOwner=el('div','agentics-view-owner');inspectorHeading.after(viewOwner);}
+    const outside=Boolean(selected && (filterEffort||find) && (original || !positions().some(position=>position.ordinal===ordinal)));
+    viewOwner.hidden=!outside;
+    if(outside){const focused=viewOwner.contains(document.activeElement);const clear=btn('Clear topology filters',()=>{filterEffort='';filter.value='';find='';layout.querySelector('.agentics-find').value='';drawingSignature='';draw();});viewOwner.replaceChildren(el('p','agentics-limit',`${original ? 'Original native source '+session?.id : 'Selected position '+ordinal} remains the exact inspection target outside this topology projection.`),clear);if(focused)clear.focus({preventScroll:true});}
+
+    document.getElementById("agentics-position-status").hidden=provenance.hidden=occupant.hidden=projectDraft||browsing;
     document.getElementById("developer-prompt").placeholder=projectDraft?"Describe the app or work you want done…":"Direct this exact session…";
     document.getElementById("agentics-position-status").replaceChildren(el("span",`state-pill ${stateOf(session||current)}`,root ? "Dormant" : session?.status||current?.status||(row?.current_instantiation ? "Native context unobserved" : "Uninstantiated")),el("code","",original ? `Original position ${ordinal} · unadopted` : `Position ${ordinal}`));
     const provenanceHeading=el("div","topology-provenance"), composition=el("div");
@@ -246,7 +252,7 @@
     provenance.replaceChildren(provenanceHeading);
     const who=el("div");who.append(el("span","",original ? "Application correspondence" : "Current occupant"),el("strong","",original ? "Unadopted native source" : root ? "No native actor" : row?.current_instantiation ? `Instantiation ${row.current_instantiation} · ${current?.model || "native model unobserved"}` : current?.target ? `Instantiation ${current.target.instantiation} · ${current.model || "native model unobserved"}` : "No instantiation observed"));
     const selectedContext=el("div");selectedContext.append(el("span","","Selected context"),el("strong","",reserved ? `Reserved position ${ordinal} · native context unobserved · record ${session.id}` : exact ? selected.instantiation ? `Instantiation ${selected.instantiation} · session ${selected.session}${session?.is_current ? " · current" : " · retained"}` : `Native session ${selected.id}${original ? " · original namespace · unadopted" : ""}` : "Position history"));occupant.replaceChildren(who,selectedContext);
-    inspector.dataset.positionOnly=String(snapshot.applicationHistory||root||reserved);
+    inspector.dataset.positionOnly=String(snapshot.applicationHistory||root||reserved||browsing);
     inspector.dataset.exact=String(exact);
   }
   function draw() {
@@ -260,7 +266,7 @@
       filter.replaceChildren(option,...roots.map(row=>{const item=el("option","",`${row.ordinal} · ${row.intent || "Effort"}`);item.value=row.ordinal;return item;}));filter.value=filterEffort;
     }
     if(headerDelegate)headerDelegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;
-    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,[...expandedBranches],snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session]);
+    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,[...expandedBranches],snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session,snapshot.projectBrowsing,snapshot.projectPath]);
     if(drawingSignature!==signature) {drawingSignature=signature; if(view==="tree")drawTree(rows);else if(view==="sessions")drawSessions(rows);else drawReturns(rows);drawInspector();}
   }
   function render({host,snapshot:next}) {
@@ -272,6 +278,6 @@
     if(!layout?.isConnected||layout.parentNode!==host) {build(host);drawingSignature="";}
     draw();
   }
-  document.addEventListener("noetic:sessions",event=>{snapshot={...event.detail,projectFilter:snapshot.projectFilter};if(layout?.isConnected)draw();});
+  document.addEventListener("noetic:sessions",event=>{snapshot={...event.detail,projectFilter:ui().snapshot().projectFilter};if(layout?.isConnected)draw();});
   window.NoeticUI.register("agentics",render);
 })();
