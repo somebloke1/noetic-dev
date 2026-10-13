@@ -43,21 +43,35 @@ EVIDENCE_INPUTS = ('checking_spec', 'checking_context', 'observed_run_id', 'obse
                    'observation_evidence', 'observation_manifest_sha256')
 
 
-def parent_request(body):
-    if body.get('operation') not in ('insight', 'formulation', 'reflection'):
+def selector_u64(value, label):
+    if isinstance(value, str):
+        if not (1 <= len(value) <= 20 and value.isascii() and value.isdecimal() and value[0] != '0'):
+            raise ScopeError(f'{label} must be a canonical positive decimal u64')
+        value = int(value)
+    if type(value) is not int or not 0 < value < 2**64:
+        raise ScopeError(f'{label} must be a positive u64')
+    return value
+
+
+def selector_request(body):
+    operation = body.get('operation')
+    if operation not in ('insight', 'formulation', 'reflection', 'judgment'):
         return body
     selectors = body.get('selectors', {})
     if not isinstance(selectors, dict):
         return body
-    value = selectors.get('parent_id')
-    if isinstance(value, str):
-        if not (1 <= len(value) <= 20 and value.isascii() and value.isdecimal() and value[0] != '0'):
-            raise ScopeError('Parent ID must be a canonical positive decimal u64')
-        value = int(value)
-    if type(value) is not int or not 0 < value < 2**64:
-        raise ScopeError('Parent ID must be a positive u64')
     normalized = deepcopy(body)
-    normalized['selectors']['parent_id'] = value
+    if operation == 'judgment':
+        warrant = selector_u64(selectors.get('warrant_id'), 'Warrant ID')
+        conditions = selectors.get('condition_ids')
+        if not isinstance(conditions, list) or not conditions:
+            raise ScopeError('Condition IDs require a nonempty complete ID set')
+        conditions = [selector_u64(value, 'Condition ID') for value in conditions]
+        if any(a >= b for a, b in zip(conditions, conditions[1:])):
+            raise ScopeError('Condition IDs must be in strictly sorted unique native ID order')
+        normalized['selectors'].update(warrant_id=warrant, condition_ids=conditions)
+    else:
+        normalized['selectors']['parent_id'] = selector_u64(selectors.get('parent_id'), 'Parent ID')
     return normalized
 
 
@@ -186,7 +200,7 @@ class ReviewedApplication:
         return {'discipline': instance, 'backend': BACKEND}
 
     def preflight(self, body):
-        body = parent_request(body)
+        body = selector_request(body)
         allowed = {'backend', 'pattern', 'definition_ref', 'command_id', 'effort_root', 'discipline_id', 'environment',
                    'origin', 'human_ref', 'delegator', 'task', 'workspace', 'sources', 'store_id', 'purpose_ref',
                    'operation', 'mode', 'client', 'model', 'qa_model', 'thinking', 'timeout', 'selectors', 'qualification', *EVIDENCE_INPUTS}
@@ -377,7 +391,7 @@ class ReviewedApplication:
         return self.app.root / '.opermem-launches' / digest({'namespace_path': str(self.app.namespace_path), 'command_id': command_id})
 
     def start(self, body):
-        body = parent_request(body)
+        body = selector_request(body)
         command_id = body.get('command_id')
         if not isinstance(command_id, str) or not command_id.strip() or len(command_id) > 256 or '\0' in command_id:
             raise ScopeError('Reviewed launch requires a bounded explicit command_id')
