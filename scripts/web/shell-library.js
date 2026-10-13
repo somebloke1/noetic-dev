@@ -380,16 +380,46 @@
     }catch(failure){if(key===scopeKey() && item.isConnected){let error=contents.querySelector(".lib-note");if(!error){error=note("");contents.append(error);}error.textContent=`Retained evidence unavailable: ${failure.message}`;}}
     finally{delete item.dataset.loading;}
   }
-  function usage(context) {
-    const state = base(context), selection=scope();
-    const sessions=(context.snapshot?.sessions || UI.snapshot().sessions || []).filter(row=>!selection.effort_root || row.effort_root===selection.effort_root);
-    const signature = JSON.stringify([scopeKey(),sessions.map(row=>[row.id,row.model,row.target])]); if (signature === state.signature) return; state.signature=signature;clear(context.host);scopeToolbar(context.host);
-    const card = panel("Token metrics","Native accounting coverage"), content=body(card);context.host.append(card);
-    const metrics=el("div","lib-metrics");for(const name of ["Input tokens","Output tokens","Cache reads","Cost"]){const metric=el("div","lib-metric");metric.append(el("span","",name),el("strong","","Unknown"));metrics.append(metric);}content.append(metrics,note("The current observation API does not expose native token or cost accounting."));
-    content.append(note("Structured execution accounting is not displayed here."));
-    const list=panel("Exact session coverage","Retained targets"), listBody=body(list);context.host.append(list);
-    for(const session of sessions){const row=el("div","lib-runtime-row");row.append(el("span","lib-mono",session.target ? `${session.target.ordinal} · ${session.target.instantiation}/${session.target.session}` : session.id),el("span","",session.model || "Model unknown"),UI.badge("Accounting unknown",""));listBody.append(row);}
-    if (!sessions.length) placeholder(listBody,"No retained session observations","Usage remains unknown until native accounting is exposed.");
+  async function usage(context) {
+    const state=base(context),selection=scope(),key=scopeKey(),host=context.host;
+    if(state.key!==key||!state.metrics){
+      state.key=key;state.generation=(state.generation||0)+1;state.pending=false;state.data=null;state.rows=new Map();clear(host);scopeToolbar(host);
+      const card=panel("Token metrics","Native Pi adapter accounting"),content=body(card);host.append(card);
+      state.metrics=new Map();const metrics=el("div","lib-metrics lib-usage-metrics");
+      for(const [field,label] of [["totalInput","Input incl. cache"],["output","Output tokens"],["cacheRead","Cache reads"],["estimate","Estimated cost"]]){
+        const metric=el("div","lib-metric");metric.dataset.field=field;const value=el("strong","",field==="estimate"?"Not calculated":"Unknown"),coverage=el("small");metric.append(el("span","",label),value,coverage);metrics.append(metric);state.metrics.set(field,{value,coverage});
+      }
+      state.observation=note("Loading accounting observations.");state.observation.id="usage-observation";state.observation.setAttribute("role","status");
+      state.coverage=note("");state.coverage.id="usage-coverage";state.cache=note("");state.cache.id="usage-cache-share";
+      state.notice=note("Adapter-reported usage; raw provider cache-field presence is unknown. A normalized zero does not establish provider applicability or a zero bill.");state.notice.id="usage-notice";
+      const refresh=action("Refresh accounting",()=>{if(active(host,"usage",key))usage(context);});
+      content.append(metrics,state.observation,refresh,state.coverage,state.cache,state.notice,note("Recorded adapter estimates are available in source details; currency and billing basis are not established here."),note("Structured execution accounting is not displayed here."));
+      const source=el("details","lib-source");source.append(el("summary","","Accounting source and coverage"),el("pre"));content.append(source);state.source=source.lastChild;
+      const list=panel("Exact session coverage","Retained native targets");state.list=body(list);host.append(list);
+    }
+    if(state.pending)return;state.pending=true;
+    const generation=state.generation,valid=()=>views.usage===state&&state.generation===generation&&active(host,"usage",key);
+    state.observation.textContent=state.data?"Refreshing accounting; showing last observed records.":"Loading accounting observations; no accounting observed yet.";
+    try{
+      const projection=await fetchJSON(scopedURL("/api/usage",selection));if(!valid())return;state.data=projection;
+      const coverage=projection.coverage||{},fields=coverage.fields||{},totals=projection.totals||{};
+      for(const [field,metric] of state.metrics){if(field==="estimate")continue;const value=totals[field],known=fields[field]?.known||0,missing=fields[field]?.missing||0;metric.value.textContent=typeof value==="number"&&Number.isFinite(value)?value.toLocaleString("en-US"):"Unknown";metric.coverage.textContent=`${known} known · ${missing} missing records`;}
+      state.observation.textContent=`Accounting observed ${projection.observed_at||"at an unreported time"}.`;
+      state.coverage.textContent=`${coverage.usage_records||0} accounting observations of ${coverage.records||0} completed assistant records across ${coverage.sessions||0} retained sessions · ${coverage.duplicates||0} repeats excluded.`;
+      const share=projection.cache_read_share;state.cache.textContent=typeof share==="number"&&Number.isFinite(share)?`${(share*100).toFixed(1)}% cache reads of reported total input (input + read + write): ${projection.cache_share_input_tokens} tokens over ${projection.cache_share_records} compatible records.`:"Cache share unavailable: compatible input + read + write denominator is zero or unobserved.";
+      const sourceText=JSON.stringify(projection,null,2);if(state.source.textContent!==sourceText)state.source.textContent=sourceText;
+      const retained=new Map(),rows=(projection.sessions||[]).map(session=>{
+        const row=state.rows.get(session.id)||el("article","lib-usage-session");row.dataset.usageSession=session.id;
+        if(!row.children.length){row.append(el("strong","lib-mono"),el("p","lib-note"));const source=el("details","lib-source");source.append(el("summary","","Exact accounting records and binding"),el("pre"));row.append(source);}
+        const target=session.target,original=!target&&!session.effort_root;
+        row.firstChild.textContent=target?`${target.ordinal} · instantiation ${target.instantiation} / session ${target.session}`:original?`Original namespace · unadopted · ${session.original_ordinal||session.ordinal||"ordinal unobserved"} · ${session.id}`:`Position ${session.ordinal||"unobserved"} · ${session.id}`;
+        row.children[1].textContent=`${session.usage_records||0} accounting observations · ${session.record_count||0} completed assistant records${session.effort_root?` · effort ${session.effort_root}`:" · no declared effort"}`;
+        const sourceText=JSON.stringify({session,records:(projection.rows||[]).filter(record=>record.session_id===session.id)},null,2),pre=row.querySelector("pre");if(pre.textContent!==sourceText)pre.textContent=sourceText;retained.set(session.id,row);return row;
+      });state.rows=retained;
+      for(const child of [...state.list.children])if(!rows.includes(child))child.remove();rows.forEach((row,index)=>{if(state.list.children[index]!==row)state.list.insertBefore(row,state.list.children[index]||null);});
+      if(!rows.length)placeholder(state.list,"No retained native session observations","No accounting has been observed in this scope; absence is not zero usage or free service.");
+    }catch(failure){if(valid())state.observation.textContent=`Accounting observation unavailable: ${failure.message}.${state.data?" Showing last observed accounting.":" No accounting observed for this scope."}`;}
+    finally{if(valid())state.pending=false;}
   }
   for (const route of Object.keys(titles)) UI.register(route, context => {
     if (context.route === "runtime") return runtime(context);
