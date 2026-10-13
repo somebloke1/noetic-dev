@@ -14,7 +14,7 @@ import uuid
 from scripts import noetic_develop as clients, noetic_run as runtime
 from scripts import noetic_purpose_binding as purpose_binding
 from scripts.noetic_disciplines import Disciplines, _ReadOnlyScopeStore
-from scripts.noetic_scope import Scope, ScopeError, Target
+from scripts.noetic_scope import Scope, ScopeError, Target, _row
 from scripts.noetic_storage import open_private
 
 
@@ -111,8 +111,15 @@ class OpermemScope:
         return writer.once("opermem:" + key, request, operation, lambda source: effect(writer.store, source))
 
     def _event(self, key):
-        return next((e for e in _history(self.store) if e["source_ref"].get("adapter") == ADAPTER
-                     and e["source_ref"].get("command_key") == "opermem:" + key), None)
+        sql = ("SELECT sequence,ordinal,effort,instantiation,session,discipline_id,execution_id,kind,data,source_ref,at "
+               "FROM history WHERE (ordinal = ? OR substr(ordinal,1,2) = ?) "
+               "AND json_extract(source_ref, '$.adapter') = ? "
+               "AND json_extract(source_ref, '$.command_key') = ? "
+               "ORDER BY sequence ASC LIMIT 1")
+        with self.store._connection() as db:
+            self.store._position(db, "0")
+            row = db.execute(sql, ("0", "0.", ADAPTER, "opermem:" + key)).fetchone()
+        return _row(row) if row is not None else None
 
     def _authority(self, request, initiator, scope, *, current):
         if request.get("origin") == "human":
@@ -202,8 +209,14 @@ class OpermemScope:
     def validate_store(self, reference, effort_root):
         if not isinstance(reference, dict) or reference.get("effort_root") != effort_root:
             raise ScopeError("Native store correspondence belongs to another effort")
-        found = any(e["kind"] == "opermem-store-bound" and e["source_ref"].get("adapter") == ADAPTER
-                    and e["data"].get("store_ref") == reference for e in _history(self.store))
+        sql = ("SELECT sequence,ordinal,effort,instantiation,session,discipline_id,execution_id,kind,data,source_ref,at "
+               "FROM history WHERE (ordinal = ? OR substr(ordinal,1,2) = ?) "
+               "AND kind = 'opermem-store-bound' "
+               "AND json_extract(source_ref, '$.adapter') = ?")
+        with self.store._connection() as db:
+            self.store._position(db, "0")
+            registrations = [_row(row) for row in db.execute(sql, ("0", "0.", ADAPTER)).fetchall()]
+        found = any(event["data"].get("store_ref") == reference for event in registrations)
         if not found or reference["namespace"] != self.store.namespace or reference["namespace_path"] != str(self.path):
             raise ScopeError("Native store correspondence differs from its canonical registration")
         if str(_absolute(reference["directory"])) != reference["directory"] or str(_absolute(reference["host"], existing=True)) != reference["host"]:
