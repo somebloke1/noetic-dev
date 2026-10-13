@@ -54,7 +54,7 @@ REQUIRED_ASSETS = (*BOOTSTRAP, "scripts/noetic.py", "scripts/noetic_harness.py",
                    "scripts/noetic_opermem_checking.py", "scripts/noetic_opermem_judgment.py",
                    "scripts/noetic_checking_tests.py", "scripts/noetic_opermem_practical.py", "scripts/noetic_opermem_decision.py",
                    "scripts/noetic_opermem_acting.py", "scripts/noetic_act_observation.py",
-                   "scripts/noetic_sessions.py", "scripts/noetic_projects.py", "scripts/noetic_session_extension.mjs",
+                   "scripts/noetic_sessions.py", "scripts/noetic_usage.py", "scripts/noetic_projects.py", "scripts/noetic_session_extension.mjs",
                    "scripts/noetic_efforts.py", "scripts/noetic_purposes.py", "scripts/noetic_recall.py")
 
 

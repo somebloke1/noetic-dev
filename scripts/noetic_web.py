@@ -19,6 +19,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 if __package__:
     from scripts import noetic_access as access
     from scripts import noetic_application as application
+    from scripts import noetic_usage as usage
     from scripts.noetic_scope import ScopeError
     from scripts import noetic_controller as controller
     from scripts import noetic_harness as harness
@@ -29,6 +30,7 @@ else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from scripts import noetic_access as access
     from scripts import noetic_application as application
+    from scripts import noetic_usage as usage
     from scripts.noetic_scope import ScopeError
     import noetic_controller as controller
     import noetic_harness as harness
@@ -444,6 +446,13 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                         result = getattr(sessions, suffix[1])(ordinal, **options)
                     else:
                         raise RequestError(404, "Unknown ordinal read.")
+                elif path == "/api/usage":
+                    params = parse_qs(url.query, keep_blank_values=True)
+                    if set(params) - {"scope", "effort_root"} or any(len(value) != 1 or not value[0] for value in params.values()):
+                        raise RequestError(400, "Usage accepts one explicit nonempty scope or effort_root.")
+                    selection = app.selection({key: value[0] for key, value in params.items()})
+                    app.operation_scope(selection)
+                    result = usage.project(sessions, selection)
                 elif path == "/api/developer-sessions":
                     result = {"sessions": sessions.list(effort_root), "namespace_path": str(sessions.registry.domain.path), "runs_dir": str(root), "projects_root": str(developer_sessions.projects.DEFAULT_PROJECT_ROOT)}
                 elif path.startswith("/api/developer-sessions/"):
