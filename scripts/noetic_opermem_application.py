@@ -55,7 +55,7 @@ def selector_u64(value, label):
 
 def selector_request(body):
     operation = body.get('operation')
-    if operation not in ('insight', 'formulation', 'reflection', 'judgment', 'conditional-structure', 'checking', 'practical-question', 'practical-inquiry'):
+    if operation not in ('insight', 'formulation', 'reflection', 'judgment', 'conditional-structure', 'checking', 'practical-question', 'practical-inquiry', 'deliberation'):
         return body
     selectors = body.get('selectors', {})
     if not isinstance(selectors, dict):
@@ -80,6 +80,15 @@ def selector_request(body):
         normalized['selectors'].update(judgment_ids=judgments)
     elif operation == 'practical-inquiry':
         normalized['selectors']['practical_question_id'] = selector_u64(selectors.get('practical_question_id'), 'PracticalQuestion ID')
+    elif operation == 'deliberation':
+        normalized['selectors']['practical_question_id'] = selector_u64(selectors.get('practical_question_id'), 'PracticalQuestion ID')
+        options = selectors.get('option_ids')
+        if not isinstance(options, list) or len(options) < 2:
+            raise ScopeError('Option IDs require the complete current set of at least two explicitly selected IDs')
+        options = [selector_u64(value, 'Option ID') for value in options]
+        if any(a >= b for a, b in zip(options, options[1:])):
+            raise ScopeError('Option IDs must be in strictly sorted unique native ID order')
+        normalized['selectors'].update(option_ids=options)
     else:
         normalized['selectors']['parent_id'] = selector_u64(selectors.get('parent_id'), 'Parent ID')
         if operation == 'conditional-structure':
