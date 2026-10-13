@@ -428,7 +428,7 @@
       try{const result=await fetchJSON("/api/skills/cost-estimate/execute",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...selection,expected_revision:inspection.revision,profile,refresh_prices:refresh.checked})});if(!usable())return;dirty.clear();apply(result,true);status.textContent=`Cost factors ${result.factor_save||"save outcome unreported"}; rate refresh ${result.refresh?.state||"unreported"}.${result.refresh?.error?` ${result.refresh.error}`:""} Estimate recalculated separately from observed usage.`;}catch(failure){if(usable())status.textContent=`Cost skill run unavailable: ${failure.message}. Unsaved factors are preserved; refresh saved estimates before retrying a revision conflict.`;}finally{pending=false;if(usable())run.disabled=!Number.isInteger(inspection?.revision);}});
     load();return {observe(projection){const pairs=[...new Map((projection.rows||[]).filter(r=>r.provider&&r.model).map(r=>[`${r.provider}\0${r.model}`,r])).values()];if(pairs.length===1){if(!fields.get("provider").value&&!dirty.has("provider"))fields.get("provider").value=pairs[0].provider;if(!fields.get("model").value&&!dirty.has("model"))fields.get("model").value=pairs[0].model;}}};
   }
-  async function usage(context) {
+  async function usage(context, explicitRefresh = false) {
     const state=base(context),selection=scope(),key=scopeKey(),host=context.host;
     if(state.key!==key||!state.metrics){
       state.key=key;state.generation=(state.generation||0)+1;state.pending=false;state.data=null;state.rows=new Map();clear(host);scopeToolbar(host);
@@ -440,7 +440,7 @@
       state.observation=note("Loading accounting observations.");state.observation.id="usage-observation";state.observation.setAttribute("role","status");
       state.coverage=note("");state.coverage.id="usage-coverage";state.cache=note("");state.cache.id="usage-cache-share";
       state.notice=note("Adapter-reported usage; raw provider cache-field presence is unknown. A normalized zero does not establish provider applicability or a zero bill.");state.notice.id="usage-notice";
-      const refresh=action("Refresh accounting",()=>{if(active(host,"usage",key))usage(context);});
+      const refresh=action("Refresh accounting",()=>{if(active(host,"usage",key))usage(context,true);});
       content.append(metrics,state.observation,refresh,state.coverage,state.cache,state.notice,note("Recorded adapter estimates are available in source details; currency and billing basis are not established here."),note("Structured execution accounting is not displayed here."));
       const source=el("details","lib-source");source.append(el("summary","","Accounting source and coverage"),el("pre"));content.append(source);state.source=source.lastChild;
       state.costSkill=costSkill(content,selection,state.metrics.get("estimate"),()=>views.usage===state&&active(host,"usage",key));
@@ -448,7 +448,8 @@
     }
     if(state.pending)return;state.pending=true;
     const generation=state.generation,valid=()=>views.usage===state&&state.generation===generation&&active(host,"usage",key);
-    state.observation.textContent=state.data?"Refreshing accounting; showing last observed records.":"Loading accounting observations; no accounting observed yet.";
+    if(!state.data||explicitRefresh)state.observation.textContent=state.data?"Refreshing accounting; showing last observed records.":"Loading accounting observations; no accounting observed yet.";
+    const slow=setTimeout(()=>{if(valid()&&state.pending&&state.data)state.observation.textContent="Accounting refresh is taking longer; showing last observed records.";},1500);
     try{
       const projection=await fetchJSON(scopedURL("/api/usage",selection));if(!valid())return;state.data=projection;state.costSkill.observe(projection);
       const coverage=projection.coverage||{},fields=coverage.fields||{},totals=projection.totals||{};
@@ -468,7 +469,7 @@
       for(const child of [...state.list.children])if(!rows.includes(child))child.remove();rows.forEach((row,index)=>{if(state.list.children[index]!==row)state.list.insertBefore(row,state.list.children[index]||null);});
       if(!rows.length)placeholder(state.list,"No retained native session observations","No accounting has been observed in this scope; absence is not zero usage or free service.");
     }catch(failure){if(valid())state.observation.textContent=`Accounting observation unavailable: ${failure.message}.${state.data?" Showing last observed accounting.":" No accounting observed for this scope."}`;}
-    finally{if(valid())state.pending=false;}
+    finally{clearTimeout(slow);if(valid())state.pending=false;}
   }
   for (const route of Object.keys(titles)) UI.register(route, context => {
     if (context.route === "runtime") return runtime(context);
