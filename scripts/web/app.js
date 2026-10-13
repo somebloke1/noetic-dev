@@ -361,6 +361,7 @@ async function fetchJSON(url, options = {}) {
     if (version !== accessVersion) throw new Error("Local operator is locked.");
     if (!response.ok) {
       const failure = new Error(body.error || `HTTP ${response.status}`);
+      failure.status = response.status;
       failure.runId = body.run_id;
       throw failure;
     }
@@ -1437,11 +1438,12 @@ async function loadConfiguration() {
 }
 
 async function loadPurposes() {
-  const scopeVersion = operationVersion, scopeKey = operationKey(), request = ++purposeVersion;
+  const scopeVersion = operationVersion, scopeKey = operationKey(), request = ++purposeVersion, access = accessVersion;
   const selection = operationSelection(); error("purpose-error", "");
+  const superseded = () => !operationValid(scopeVersion,scopeKey) || request !== purposeVersion || access !== accessVersion;
   try {
     const result = await fetchJSON(scopedURL("/api/goals", {...selection,...selection.scope ? {include_legacy:"true"} : {}}));
-    if (!operationValid(scopeVersion,scopeKey) || request !== purposeVersion) return;
+    if (superseded()) return;
     text("purpose-database", JSON.stringify(result.stores));
     text("purpose-status", `${result.purposes.length} native purposes · ${result.coverage} coverage${result.namespace_registered === false ? " · application namespace not registered" : ""}`);
     const eligible = result.purposes.filter(item=>operationMode === "effort" && item.reference.owner.kind === "effort" && item.reference.owner.ordinal === selectedEffort);
@@ -1458,13 +1460,14 @@ async function loadPurposes() {
       const details = node("details"), contents = node("pre",JSON.stringify(item,null,2));
       const read = node("button","Refresh exact native purpose"); read.type = "button";
       read.addEventListener("click",async()=>{
-        try { const value = await fetchJSON(scopedURL(`/api/goals/${encodeURIComponent(ref.chain_id)}`,{...selection,store_id:ref.store_id,...selection.scope ? {include_legacy:"true"} : {}})); if (operationValid(scopeVersion,scopeKey) && contents.isConnected) contents.textContent = JSON.stringify(value,null,2); }
-        catch (failure) { if (operationValid(scopeVersion,scopeKey)) error("purpose-error",failure.message); }
+        const readAccess = accessVersion;
+        try { const value = await fetchJSON(scopedURL(`/api/goals/${encodeURIComponent(ref.chain_id)}`,{...selection,store_id:ref.store_id,...selection.scope ? {include_legacy:"true"} : {}})); if (operationValid(scopeVersion,scopeKey) && readAccess === accessVersion && contents.isConnected) contents.textContent = JSON.stringify(value,null,2); }
+        catch (failure) { if (operationValid(scopeVersion,scopeKey) && readAccess === accessVersion) error("purpose-error",failure.message); }
       });
       details.append(node("summary","Native purpose, ownership and source references"),read,contents);
       article.append(node("h3",item.native.chain.primaryGoal),button,node("p",`${ref.owner.kind} ${ref.owner.ordinal || ""} · ${ref.store_id} · ${ref.chain_id} / ${item.native.chain.status}`,"source"),details);return article;
     }));persistUI();
-  } catch (failure) { if (operationValid(scopeVersion,scopeKey)) error("purpose-error",`Purposes unavailable, not an empty history: ${failure.message}`); }
+  } catch (failure) { if (!superseded()) error("purpose-error",`Purposes unavailable, not an empty history: ${failure.message}`); }
 }
 function renderMemoryMatches(matches, semanticMode) {
   const selection = operationSelection(), scopeVersion = operationVersion, scopeKey = operationKey();
@@ -1715,25 +1718,94 @@ const structuredDrafts = (() => {
   function capture() {
     if (!validOwner() || pending) return;
     const previous = storage[owner.key];
-    storage[owner.key] = {fields:{...values(structuredDraftFields),...Object.fromEntries(structuredDraftFields.filter(id=>id in desired).map(id=>[id,desired[id]]))},bindings:{...values(structuredBindings),...Object.fromEntries(structuredBindings.filter(id=>id in desired).map(id=>[id,desired[id]]))},sources:structuredClone(reviewedSources),modified:previous?.modified || Boolean($("start-task").value.trim()),namespace:owner.namespace,effort:owner.effort};
+    storage[owner.key] = {fields:{...values(structuredDraftFields),...Object.fromEntries(structuredDraftFields.filter(id=>id in desired).map(id=>[id,desired[id]]))},bindings:{...values(structuredBindings),...Object.fromEntries(structuredBindings.filter(id=>id in desired).map(id=>[id,desired[id]]))},sources:structuredClone(reviewedSources),modified:previous?.modified || Boolean($("start-task").value.trim()),...(purposeProvenance ? {retired_purpose:purposeProvenance} : {}),namespace:owner.namespace,effort:owner.effort};
     savedUI.structuredDrafts = storage;
     savedUI.structuredDraftOwner = {namespace:owner.namespace,effort:owner.effort};
   }
   function leave() {
     capture(); ++generation; owner = null; desired = {}; invalid.clear(); conflict = ""; pending = true;
+    purposeProvenance = "";
     reviewedSources = [];
+    const provenanceView = document.getElementById("retired-purpose-provenance");
+    if (provenanceView) provenanceView.hidden = true;
     for (const id of [...structuredDraftFields,...structuredBindings]) $(id).value = defaults[id] ?? "";
     renderReviewedSources(); render();
+  }
+  // Durable purpose-link continuity: the complete owner/store/db/chain identity
+  // — not the installed component source — decides whether a saved link still
+  // names the same native purpose chain. The full original saved reference is
+  // kept inspectable whenever a source-only release change is bridged.
+  function purposeIdentity(text) {
+    try {
+      const value = JSON.parse(text);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+      // A bridgeable reference is the complete actual schema: exactly the five
+      // top-level fields with a complete owner — no missing or extra fields.
+      if (Object.keys(value).sort().join(",") !== "chain_id,db_path,owner,source,store_id") return null;
+      const owner = value.owner;
+      if (!owner || typeof owner !== "object" || Array.isArray(owner)
+          || Object.keys(owner).sort().join(",") !== "kind,namespace,ordinal") return null;
+      if ([value.store_id,value.db_path,value.chain_id,value.source,owner.namespace,owner.kind,owner.ordinal]
+          .some(field => typeof field !== "string" || !field.trim())) return null;
+      return JSON.stringify({owner: {namespace: owner.namespace, kind: owner.kind, ordinal: owner.ordinal},
+                             store_id: value.store_id, db_path: value.db_path, chain_id: value.chain_id});
+    } catch (_) { return null; }
+  }
+  function rematchPurpose(saved, entries) {
+    const identity = purposeIdentity(saved);
+    if (!identity) return null;
+    const matches = [...new Set(entries.filter(entry => entry && purposeIdentity(entry) === identity))];
+    return matches.length === 1 ? matches[0] : null;
+  }
+  let purposeProvenance = "";
+  function purposeProvenanceView() {
+    const host = $("start-purpose").closest("[data-settings-panel='purpose']") || $("start-purpose").parentElement;
+    let details = document.getElementById("retired-purpose-provenance");
+    if (!details && host) {
+      details = node("details");
+      details.id = "retired-purpose-provenance";
+      details.append(node("summary", "Retained previous purpose link reference"), node("pre"));
+      details.lastChild.className = "evidence";
+      host.append(details);
+    }
+    return details;
+  }
+  // The retained prior reference renders only for the exact current owned
+  // draft whose selected link shares the prior link's durable identity, so a
+  // past component source is distinguishable from the current one and never
+  // paints a sibling scope or replaces the current binding.
+  function renderPurposeProvenance() {
+    const details = purposeProvenanceView();
+    if (!details) return;
+    const show = Boolean(validOwner() && purposeProvenance
+        && purposeIdentity(purposeProvenance)
+        && purposeIdentity(purposeProvenance) === purposeIdentity($("start-purpose").value));
+    details.hidden = !show;
+    if (show) {
+      const pre = details.querySelector("pre");
+      if (pre.textContent !== purposeProvenance) pre.textContent = purposeProvenance;
+    }
   }
   function restoreChoice(id, entries) {
     if (!validOwner() || !(id in desired)) return;
     const value = desired[id];
-    if (!value || entries.includes(value)) { $(id).value = value; delete desired[id]; invalid.delete(id); }
+    const replacement = id === "start-purpose" && value ? rematchPurpose(value, entries) : null;
+    if (!value || entries.includes(value) || replacement) {
+      $(id).value = replacement ?? value;
+      if (replacement && replacement !== value) {
+        // Retire the complete original saved reference as durable provenance
+        // of this exact owned draft; identity equality is asserted on render.
+        purposeProvenance = value;
+        persistUI();
+      }
+      delete desired[id]; invalid.delete(id);
+    }
     else {
       let option = [...$(id).options].find(x=>x.value===value);
       if (!option) { option = node("option",`Saved reference unavailable · ${value}`); option.value=value; option.disabled=true; $(id).append(option); }
       $(id).value=value; invalid.add(id);
     }
+    renderPurposeProvenance();
     render();
   }
   async function enter() {
@@ -1753,7 +1825,8 @@ const structuredDrafts = (() => {
         for (const id of ["start-profile","reviewed-operation"]) if (draft.fields?.[id]) desired[id]=draft.fields[id];
         for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids","reviewed-practical-question-id","reviewed-option-ids"]){$(id).value=desired[id];delete desired[id];}
         reviewedSources=(draft.sources || []).filter(source=>source.selection?.kind==="effort" && source.selection.effort_root===effort).map(source=>structuredClone(source));
-      } else reviewedSources=[];
+        purposeProvenance = typeof draft.retired_purpose === "string" ? draft.retired_purpose : "";
+      } else { reviewedSources=[]; purposeProvenance = ""; }
       for (const id of [...structuredDraftFields,...structuredBindings]) delete initialForms[id];
       pending=false;renderReviewedSources();render();updateComposer();
       restoreChoice("start-profile", [...$("start-profile").options].map(x=>x.value));
@@ -1761,6 +1834,7 @@ const structuredDrafts = (() => {
       else { delete desired["reviewed-store"]; }
       if (desired["start-purpose"]) { invalid.add("start-purpose");loadPurposes(); }
       else { delete desired["start-purpose"]; }
+      renderPurposeProvenance();
       persistUI();scopeControls();
     } catch (failure) {
       if (request!==generation || access!==accessVersion || scope!==operationKey()) return;
