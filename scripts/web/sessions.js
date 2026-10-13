@@ -242,7 +242,10 @@
     const disabled = projectBrowsing || applicationHistory || selected?.ordinal === "0" || reservedSource(detail?.session);
     $("developer-form").hidden = disabled || Boolean(!project && !starting && !detail);
     $("developer-project-fields").hidden = !project;
-    for (const id of ["developer-workspace", "developer-model"]) $(id).required = project;
+    $("developer-workspace").required = project;
+    $("developer-model").required = project || starting;
+    const settings = document.querySelector("#developer-form .developer-model-settings");
+    if (settings) settings.hidden = !(project || starting);
     $("developer-mode").hidden = $("developer-mode-label").hidden = project || starting || disabled;
     text("developer-prompt-label", project ? "Describe the app or work you want done" : starting ? "Start a new conversation at this position" : `Message this exact context${sourceQualifier(detail?.session)}`);
     text("developer-submit", project ? $("developer-project-mode").value === "create" ? "Create project and start" : "Open project and start" : starting ? "Start conversation" : "Send");
@@ -684,7 +687,7 @@
     try {
       if (!target || starting) {
         const template = target && allSessions.find(row => row.ordinal === target.ordinal && row.is_current);
-        const body = {prompt, model:template?.model || $("developer-model").value, thinking:template?.thinking || $("developer-thinking").value};
+        const body = {prompt, model:$("developer-model").value, thinking:$("developer-thinking").value};
         if (template?.title) body.title = template.title;
         else if (!target && $("developer-project-name").value.trim()) body.title = $("developer-project-name").value;
         if ($("developer-projects-root").value.trim()) body.projects_root = $("developer-projects-root").value.trim();
