@@ -556,6 +556,45 @@ class ScopeStore:
                 result["namespace"] = db.execute("SELECT value FROM metadata WHERE key='namespace'").fetchone()[0]
             return result
 
+    def native_message_population(self, sender, *, scope, population, include_self=False):
+        if population not in ("direct_children", "descendants", "effort"):
+            raise ScopeError("Select direct_children, descendants, or effort broadcast population")
+        with self._read() as db:
+            source, _, _ = self._target(db, sender, current=True)
+            self._scope(db, source, scope)
+            rows = db.execute("SELECT ordinal,parent,allocation FROM positions WHERE effort=? ORDER BY allocation", (source["effort"],)).fetchall()
+            parents = {row["ordinal"]: row["parent"] for row in rows}
+            selected = set()
+            for row in rows:
+                ordinal = row["ordinal"]
+                if population == "effort" or population == "direct_children" and row["parent"] == sender.ordinal:
+                    selected.add(ordinal)
+                elif population == "descendants":
+                    ancestor, seen = row["parent"], set()
+                    while ancestor in parents and ancestor not in seen:
+                        if ancestor == sender.ordinal:
+                            selected.add(ordinal)
+                            break
+                        seen.add(ancestor)
+                        ancestor = parents[ancestor]
+            if include_self:
+                selected.add(sender.ordinal)
+            else:
+                selected.discard(sender.ordinal)
+            recipients = []
+            for row in rows:
+                if row["ordinal"] not in selected:
+                    continue
+                try:
+                    target = self._resolve(db, row["ordinal"], scope, None, None)
+                    _, _, retained = self._target(db, target, current=True)
+                except ScopeError:
+                    continue
+                if retained["native_ref"].get("registry_id"):
+                    recipients.append(target.as_dict())
+            return {"namespace": db.execute("SELECT value FROM metadata WHERE key='namespace'").fetchone()[0],
+                    "recipients": recipients}
+
     def bind_action(self, ordinal, *, scope, kind, payload, source_ref, instantiation=None, session=None):
         with self._write() as db:
             target = self._resolve(db, ordinal, scope, instantiation, session)
