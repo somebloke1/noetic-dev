@@ -64,9 +64,11 @@ function scopeControls() {
   $("memory-target").querySelector('[value="session"]').disabled = !native || !selectedNative.instantiation;
   if ($("memory-target").selectedOptions[0]?.disabled || operationMode !== "effort") $("memory-target").value = "effort";
   if (operationMode === "effort" && effortEnvironment) $("start-workspace").value = effortEnvironment.cwd;
-  $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment || isReviewed() && (!reviewedReady() || !$("reviewed-store").value);
+  $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment || window.NoeticDrafts && !window.NoeticDrafts.ready() || isReviewed() && (!reviewedReady() || !$("reviewed-store").value);
 }
-function changeOperationScope(mode, previous = operationKey()) { operationMode = mode === "effort" && selectedEffort ? "effort" : "application";
+function changeOperationScope(mode, previous = operationKey()) {
+  if (previous !== JSON.stringify(mode === "effort" && selectedEffort ? {effort_root:selectedEffort} : {scope:"application"})) window.NoeticDrafts?.leave();
+  operationMode = mode === "effort" && selectedEffort ? "effort" : "application";
   savedUI.operationMode = operationMode;
   if (operationKey() !== previous) {
     ++operationVersion; ++purposeVersion; ++memoryVersion; ++detailVersion; ++sessionVersion; ++actorLogVersion; ++reuseVersion;
@@ -84,12 +86,14 @@ function changeOperationScope(mode, previous = operationKey()) { operationMode =
     text("start-result", ""); error("start-error", ""); text("summary-content", ""); text("summary-coverage", "");
     text("workspace-apply-result", ""); text("action-result", ""); text("cancel-note", ""); error("action-error", ""); error("cancel-error", "");
   }
+  if (operationKey() !== previous) window.NoeticDrafts?.enter();
   scopeControls(); persistUI();
   if (isReviewed() && operatorToken) loadReviewedSetup();
   if (operatorToken && !$("private-workspace").hidden) refresh();
 }
 window.NoeticEffort = {
   select(root, target) {
+    window.NoeticDrafts?.capture();
     ++developerSubjectVersion;
     const previous = operationKey(), previousTarget = JSON.stringify(selectedNative); selectedEffort = root; selectedNative = target;
     if (JSON.stringify(target) !== previousTarget) {
@@ -110,10 +114,11 @@ function actorIdentity(actor, correspondence = selectedDetail?.correspondence) {
   const participant = correspondence?.participants?.find(row=>row.activation_id === actor.id || actor.actor_id && row.actor_id === actor.actor_id);
   return participant ? `${participant.ordinal}${participant.target ? ` · context ${participant.target.instantiation}/${participant.target.session}` : " · native context unobserved"}` : `Original actor ${actor.ordinal}`;
 }
-const formIds = ["reviewed-parent-id", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
+const formIds = ["reviewed-store", "reviewed-parent-id", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
 const selectionIds = ["actor-select", "artifact-select", "actor-log-select", "report-select", "log-select", "phase-select", "session-select", "compare-left", "compare-right"];
 
 function persistUI() {
+  window.NoeticDrafts?.capture();
   savedUI.selectedId = selectedId;
   savedUI.page = currentPage;
   savedUI.forms = Object.fromEntries(formIds.map((id) => [id, $(id).value]));
@@ -1370,6 +1375,7 @@ async function loadConfiguration() {
     }
     if (!savedUI.forms?.["start-model"] && $("start-client").value === "pi" && $("start-model").value === "openai-codex/gpt-6.1-sol") $("start-profile").value = "pi-direct";
     delete initialForms["start-profile"];
+    window.NoeticDrafts?.restoreChoice("start-profile", [...$("start-profile").options].map(x=>x.value));
     updateComposer();
     document.dispatchEvent(new CustomEvent("noetic:configuration", {detail:configuration}));
   } catch (failure) {
@@ -1389,6 +1395,8 @@ async function loadPurposes() {
     setOptions("start-purpose", [["","No Telos link"], ...eligible.map(item=>[JSON.stringify(item.reference), `${item.native.chain.primaryGoal} · ${item.reference.store_id} / ${item.native.chain.status}`])]);
     if (initialForms["start-purpose"] && eligible.some(item=>JSON.stringify(item.reference) === initialForms["start-purpose"])) $("start-purpose").value = initialForms["start-purpose"];
     delete initialForms["start-purpose"];
+    window.NoeticDrafts?.restoreChoice("start-purpose", [...$("start-purpose").options].map(x=>x.value));
+    scopeControls();
     $("purpose-list").replaceChildren(...result.purposes.map(item=>{
       const ref = item.reference, article = node("article",undefined,"evidence-block");
       const button = node("button",`Use purpose: ${item.native.chain.primaryGoal}`); button.type = "button";
@@ -1422,7 +1430,7 @@ function renderMemoryMatches(matches, semanticMode) {
       use.addEventListener("click", ()=>{
         if (!operationValid(scopeVersion,scopeKey)) return;
         if (!reviewedSources.some(x=>x.source_id === match.source_id)) reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:selection.effort_root}});
-        ++draftVersion; $("start-pattern").value = "opermem-reviewed"; renderReviewedSources(); updateComposer();
+        ++draftVersion; $("start-pattern").value = "opermem-reviewed"; renderReviewedSources(); updateComposer();persistUI();
         text("memory-status", "Qualified source selected for the editable draft. Launch will revalidate its original identity and digest.");
       }); article.append(use);
     }
@@ -1446,7 +1454,7 @@ function updateComposer() {
   $("review-settings-tab").hidden = !(development || reviewed);
   $("cognition-limits").hidden = development || reviewed;
   if (reviewed) { if (!reviewedDefinition && !reviewedLoading) loadReviewedSetup(); reviewedOperation(); }
-  else $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment;
+  else $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment || window.NoeticDrafts && !window.NoeticDrafts.ready();
   $("verify-field").hidden = !development;
   $("review-settings-tab").hidden = !(development || reviewed);
   $("development-limits").hidden = !development;
@@ -1532,7 +1540,7 @@ function initWorkbench() {
     event.currentTarget.form.requestSubmit(submit);
   });
   $("start-form").addEventListener("submit", async event=>{
-    event.preventDefault();if (startPending) return;
+    event.preventDefault();if (startPending || window.NoeticDrafts && !window.NoeticDrafts.ready()) return;
     const scopeVersion = operationVersion, scopeKey = operationKey(), draft = draftVersion, subject = developerSubjectVersion;
     const selection = operationSelection(), environment = effortEnvironment && structuredClone(effortEnvironment);
     startPending = true;scopeControls();error("start-error","");text("start-result","Creating the selected discipline instance and launching its driver…");
@@ -1631,7 +1639,109 @@ function initWorkbench() {
   switchPage(currentPage);
 }
 
+const structuredDraftFields = ["start-task","start-pattern","start-sources","start-verify","start-profile","start-client","start-model","start-qa-model","start-thinking","start-timeout","start-remediations","start-returns","reviewed-operation","reviewed-sources"];
+const structuredBindings = ["reviewed-store","reviewed-parent-id","start-purpose"];
+const structuredDrafts = (() => {
+  let owner = null, generation = 0, pending = false, conflict = "", desired = {}, invalid = new Set();
+  const defaults = {};
+  const storage = savedUI.structuredDrafts && typeof savedUI.structuredDrafts === "object" ? savedUI.structuredDrafts : {};
+  const values = ids => Object.fromEntries(ids.map(id=>[id,$(id).value]));
+  const validOwner = () => owner && owner.scope === operationKey();
+  const substantive = fields => ["start-task","start-sources","start-verify","reviewed-sources"].some(id=>String(fields?.[id] || "").trim());
+  const keyFor = (namespace,effort) => JSON.stringify([namespace,effort]);
+  function render() {
+    text("structured-draft-status", conflict || (pending ? "Checking draft ownership in the current namespace…" : owner ? `Editable draft · Effort ${owner.effort} · namespace ${owner.namespace}${invalid.size ? " · saved references require current selection" : ""}. Results and launch receipts are not restored as draft readiness.` : "No effort owns this editor. Select an effort; unassigned saved text remains separate."));
+    $("start-form").inert = pending || !owner;
+    $("unassigned-draft").hidden = !savedUI.unassignedStructuredDraft;
+    if (savedUI.unassignedStructuredDraft) text("unassigned-draft-text", JSON.stringify(savedUI.unassignedStructuredDraft.fields,null,2));
+    text("copy-unassigned-draft", owner ? `Copy task, source text and settings into Effort ${owner.effort}` : "Select an effort before copying draft text");
+    $("copy-unassigned-draft").disabled = pending || !owner;
+  }
+  function capture() {
+    if (!validOwner() || pending) return;
+    const previous = storage[owner.key];
+    storage[owner.key] = {fields:{...values(structuredDraftFields),...Object.fromEntries(structuredDraftFields.filter(id=>id in desired).map(id=>[id,desired[id]]))},bindings:{...values(structuredBindings),...Object.fromEntries(structuredBindings.filter(id=>id in desired).map(id=>[id,desired[id]]))},sources:structuredClone(reviewedSources),modified:previous?.modified || Boolean($("start-task").value.trim()),namespace:owner.namespace,effort:owner.effort};
+    savedUI.structuredDrafts = storage;
+    savedUI.structuredDraftOwner = {namespace:owner.namespace,effort:owner.effort};
+  }
+  function leave() {
+    capture(); ++generation; owner = null; desired = {}; invalid.clear(); conflict = ""; pending = true;
+    reviewedSources = [];
+    for (const id of [...structuredDraftFields,...structuredBindings]) $(id).value = defaults[id] ?? "";
+    renderReviewedSources(); render();
+  }
+  function restoreChoice(id, entries) {
+    if (!validOwner() || !(id in desired)) return;
+    const value = desired[id];
+    if (!value || entries.includes(value)) { $(id).value = value; delete desired[id]; invalid.delete(id); }
+    else {
+      let option = [...$(id).options].find(x=>x.value===value);
+      if (!option) { option = node("option",`Saved reference unavailable · ${value}`); option.value=value; option.disabled=true; $(id).append(option); }
+      $(id).value=value; invalid.add(id);
+    }
+    render();
+  }
+  async function enter() {
+    const request = ++generation, access = accessVersion, scope = operationKey(), effort = operationSelection().effort_root;
+    if (!effort || !operatorToken) { pending=false;owner=null;render();updateComposer();return; }
+    pending=true;render();scopeControls();
+    try {
+      const witness = await fetchJSON(scopedURL("/api/disciplines",{scope:"application",limit:1}));
+      if (request!==generation || access!==accessVersion || scope!==operationKey()) return;
+      if (!witness.namespace_registered || typeof witness.namespace_id!=="string" || !witness.namespace_id) throw new Error("Application namespace is not registered");
+      const namespace=witness.namespace_id,key=keyFor(namespace,effort),draft=storage[key];
+      owner={namespace,effort,key,scope};desired={};invalid.clear();conflict="";
+      for (const id of [...structuredDraftFields,...structuredBindings]) $(id).value=defaults[id] ?? "";
+      if (draft && draft.namespace===namespace && draft.effort===effort) {
+        for (const id of structuredDraftFields) if (typeof draft.fields?.[id]==="string") $(id).value=draft.fields[id];
+        desired={...Object.fromEntries(structuredBindings.map(id=>[id,String(draft.bindings?.[id] || "")]))};
+        for (const id of ["start-profile","reviewed-operation"]) if (draft.fields?.[id]) desired[id]=draft.fields[id];
+        $("reviewed-parent-id").value=desired["reviewed-parent-id"];delete desired["reviewed-parent-id"];
+        reviewedSources=(draft.sources || []).filter(source=>source.selection?.kind==="effort" && source.selection.effort_root===effort).map(source=>structuredClone(source));
+      } else reviewedSources=[];
+      for (const id of [...structuredDraftFields,...structuredBindings]) delete initialForms[id];
+      pending=false;renderReviewedSources();render();updateComposer();
+      restoreChoice("start-profile", [...$("start-profile").options].map(x=>x.value));
+      if (isReviewed()) { invalid.add("reviewed-store");loadReviewedSetup(); }
+      else { delete desired["reviewed-store"]; }
+      if (desired["start-purpose"]) { invalid.add("start-purpose");loadPurposes(); }
+      else { delete desired["start-purpose"]; }
+      persistUI();scopeControls();
+    } catch (failure) {
+      if (request!==generation || access!==accessVersion || scope!==operationKey()) return;
+      pending=false;owner=null;conflict=`Draft ownership unavailable: ${failure.message}. Retry ownership before starting work.`;render();scopeControls();
+    }
+  }
+  function init() {
+    for (const id of [...structuredDraftFields,...structuredBindings]) {
+      const element=$(id);
+      defaults[id]=element.tagName==="SELECT" ? [...element.options].find(x=>x.defaultSelected)?.value ?? element.options[0]?.value ?? "" : element.defaultValue;
+      element.addEventListener("input",edit);element.addEventListener("change",edit);
+    }
+    if (!savedUI.structuredDraftOwner && substantive(savedUI.forms) && !savedUI.unassignedStructuredDraft) savedUI.unassignedStructuredDraft={fields:Object.fromEntries(structuredDraftFields.map(id=>[id,String(savedUI.forms?.[id] ?? defaults[id] ?? "")]))};
+    for (const id of [...structuredDraftFields,...structuredBindings]) { $(id).value=defaults[id];delete initialForms[id]; }
+    $("copy-unassigned-draft").addEventListener("click",()=>{
+      if (!validOwner() || pending || !savedUI.unassignedStructuredDraft) return;
+      if (storage[owner.key]?.modified || substantive(values(structuredDraftFields))) { conflict="Draft conflict: this effort has edited work. It was preserved; the unassigned original is still available.";render();return; }
+      for (const id of structuredDraftFields) if (typeof savedUI.unassignedStructuredDraft.fields[id]==="string") $(id).value=savedUI.unassignedStructuredDraft.fields[id];
+      for (const id of structuredBindings) $(id).value="";
+      desired={};invalid.clear();reviewedSources=[];conflict="";storage[owner.key]={modified:true};++draftVersion;renderReviewedSources();updateComposer();persistUI();render();
+    });
+    $("retry-draft-owner").addEventListener("click",()=>enter());
+    leave();enter();
+  }
+  function edit(event) {
+    if (!validOwner() || pending) return;
+    delete desired[event.target.id];invalid.delete(event.target.id);conflict="";
+    storage[owner.key] ||= {};storage[owner.key].modified=true;
+    capture();render();scopeControls();persistUI();
+  }
+  return {init,capture,leave,enter,ready:()=>Boolean(validOwner() && !pending && !invalid.size),restoreChoice};
+})();
+window.NoeticDrafts = structuredDrafts;
+
 initWorkbench();
+structuredDrafts.init();
 $("import-previous-drafts").addEventListener("click", importPreviousDrafts);
 $("forget-previous-drafts").addEventListener("click", forgetPreviousDrafts);
 window.addEventListener("hashchange", () => {
@@ -1673,12 +1783,12 @@ function reviewedOperation() {
   const operation=$("reviewed-operation").value || "question",parents={insight:"Question ID · intelligence-question",formulation:"Insight ID · unverified-insight-trace",reflection:"Formulation ID · formulation-hypothesis"},descriptor=reviewedDefinition?.operations.find(x=>x.id===operation);
   $("reviewed-parent-fields").hidden=!parents[operation];text("reviewed-parent-label",parents[operation] || "Exact native parent ID");
   text("reviewed-operation-note",operation==="question"?"Initial question inquiry. Substantive task and selected sources are external evidence; native authority governs admission.":parents[operation]?`${operation[0].toUpperCase()+operation.slice(1)} uses the exact ${parents[operation]} in the selected backing. Task and selected sources remain external evidence; native authority governs eligibility and admission.`:`Native capacity retained. This operation needs ${[...(descriptor?.inputs || []),...(descriptor?.evidence_inputs || [])].join(", ") || "its native prerequisites"}. Its scoped input editor is unavailable in this increment. Select a supported operation to continue.`);
-  $("start-submit").disabled=startPending||operationMode!=="effort"||!effortEnvironment||!reviewedReady()||!$("reviewed-store").value;
+  $("start-submit").disabled=startPending||operationMode!=="effort"||!effortEnvironment||window.NoeticDrafts && !window.NoeticDrafts.ready()||!reviewedReady()||!$("reviewed-store").value;
 }
 function renderReviewedSources() {
   $("reviewed-selected-sources").replaceChildren(...reviewedSources.map(source=>{
     const row = node("div",undefined,"reviewed-source"); const remove = node("button","Remove"); remove.type="button";
-    remove.addEventListener("click",()=>{ reviewedSources=reviewedSources.filter(x=>x !== source); ++draftVersion; renderReviewedSources(); });
+    remove.addEventListener("click",()=>{ reviewedSources=reviewedSources.filter(x=>x !== source); ++draftVersion; renderReviewedSources();persistUI(); });
     row.append(node("span",source.source_id),remove);return row;
   }));
 }
@@ -1691,6 +1801,8 @@ async function loadReviewedSetup() {
     reviewedDefinition = catalog.definitions.find(x=>x.backend === "opermem-reviewed");
     setOptions("reviewed-operation", (reviewedDefinition?.operations || []).map(x=>[x.id,x.id[0].toUpperCase()+x.id.slice(1)]),"question");
     setOptions("reviewed-store",[["","Select backing explicitly"],...backings.stores.map(x=>[x.store_ref.id,x.store_ref.directory])],"");
+    window.NoeticDrafts?.restoreChoice("reviewed-operation", (reviewedDefinition?.operations || []).map(x=>x.id));
+    window.NoeticDrafts?.restoreChoice("reviewed-store", backings.stores.map(x=>x.store_ref.id));
     text("reviewed-store-status",backings.component?.available ? "Registered backings only. Current native standing remains unobserved." : backings.component?.reason || "Native component availability unobserved.");
     await loadReviewedLaunches();
   } catch (failure) { if (operationValid(scopeVersion,key)) text("reviewed-store-status",`Backing selection unavailable: ${failure.message}`); }
