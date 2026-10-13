@@ -33,7 +33,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
   await page.waitForFunction(()=>NoeticSessions.state().history.length===20);
   assert.equal(await page.locator('.history-row').count(),12);
   await page.locator('.history-row summary').first().click();await page.locator('.history-row summary').first().focus();
-  await page.evaluate(()=>{window.inspected=document.querySelector('.history-row summary');NoeticSessions.refresh();});
+  await page.evaluate(()=>{window.inspected=document.querySelector('.history-row summary');NoeticSessions.refresh({explicit:true});});
   const stale=await next();assert.match(await page.locator('#developer-history-coverage').textContent(),/Refreshing.*last observed/s);assert.equal(await page.evaluate(()=>document.activeElement===inspected),true);
   stale.resolve({status:503,body:{error:'owned history read unavailable'}});
   await page.waitForFunction(()=>document.getElementById('developer-error').textContent.includes('owned history read unavailable'));

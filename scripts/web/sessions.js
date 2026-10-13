@@ -476,14 +476,15 @@
     await refresh();
   }
 
-  async function refresh() {
+  async function refresh(options = {}) {
     if (!active() || pending) return;
     pending = true;
     const version = selectionVersion, target = selected && {...selected}, access = accessVersion;
     const valid = () => version === selectionVersion && access === accessVersion && active();
     const readingHistory = Boolean(applicationHistory || (target && !exact(target)));
     let historyReadPending = readingHistory;
-    if (readingHistory) { historyObservation = {...historyObservation,status:"loading",error:null}; renderHistory(); }
+    if (readingHistory && (!historyObservation.observed || options === true || options.explicit || options.type === "click")) { historyObservation = {...historyObservation,status:"loading",error:null}; renderHistory(); }
+    const slowHistory = readingHistory ? setTimeout(()=>{if(valid() && historyReadPending){historyObservation={...historyObservation,status:"loading"};renderHistory();}},1500) : null;
     try {
       const branch = await pages("/api/ordinals/0/branch", "records", {}, valid);
       if (!branch) return;
@@ -523,7 +524,7 @@
         for (const action of ["stop","close","delegate","reopen","succeed"]) $("developer-"+action).disabled = true;
         $("developer-submit").disabled = Boolean(selected); notify();
       }
-    } finally { pending = false; if (version !== selectionVersion && active()) queueMicrotask(refresh); }
+    } finally { clearTimeout(slowHistory);pending = false; if (version !== selectionVersion && active()) queueMicrotask(refresh); }
   }
 
   async function act(action) {
