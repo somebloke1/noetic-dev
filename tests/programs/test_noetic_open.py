@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class NoeticOpenTests(unittest.TestCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory(prefix="noetic-open-", dir="/tmp/opencode")
+        temporary = tempfile.TemporaryDirectory(prefix="noetic-open-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.runs = self.root / ".runtime/runs"
@@ -221,7 +221,7 @@ class NoeticOpenTests(unittest.TestCase):
                     self.assertEqual(stdout, "")
                     self.assertIn(f"HTTP {status}", stderr)
                     browser.assert_not_called()
-        self.assertEqual(requests, [("HEAD", "/api/runs", f"Bearer {TOKEN}")] * 2)
+        self.assertEqual(requests, [("HEAD", "/api/runs?scope=application", f"Bearer {TOKEN}")] * 2)
         self.assertEqual(self.inventory(), before)
 
     def test_custom_service_path_and_readonly_success_handoff(self):

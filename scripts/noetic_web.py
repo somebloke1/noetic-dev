@@ -729,7 +729,7 @@ def open_workspace(token_file: Path, port: int) -> None:
     try:
         # HTTPConnection neither uses environment proxies nor follows redirects.
         with closing(http.client.HTTPConnection("127.0.0.1", port, timeout=5)) as client:
-            client.request("HEAD", "/api/runs", headers={"Authorization": f"Bearer {token}"})
+            client.request("HEAD", "/api/runs?scope=application", headers={"Authorization": f"Bearer {token}"})
             with client.getresponse() as response:
                 status = response.status
                 content_type = response.getheader("Content-Type", "").split(";", 1)[0]
