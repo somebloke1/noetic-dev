@@ -45,7 +45,7 @@ class ControllerViewTests(unittest.TestCase):
                 if isinstance(data, dict):
                     body = json.dumps({"scope": "application", **data})
         with closing(http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)) as connection:
-            connection.request(method, route, body=body, headers={"Authorization": f"Bearer {self.server.token}", **(headers or {})})
+            connection.request(method, route, body=body, headers=headers or {})
             response = connection.getresponse()
             content = response.read()
             self.assertEqual(response.status, expected, content)
@@ -403,7 +403,7 @@ process.stdin.on('end', async () => {
   const el = id => { assert.ok(elements.has(id), `Missing DOM id ${id}`); return elements.get(id); };
   const requests = [], storage = new Map();
    const sandbox = { fixture, console, AbortController, structuredClone, URL, URLSearchParams, CustomEvent: class { constructor(type, options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
-    location: {hash: '#token=fixture-operator-token-with-32-characters', pathname: '/', search: '', origin: 'http://127.0.0.1:8765', reload() {}},
+    location: {hash: '#run-detail', pathname: '/', search: '', origin: 'http://127.0.0.1:8765', reload() {}},
     history: {replaceState() {}},
     localStorage: {removeItem() {}},
     sessionStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},

@@ -11,18 +11,8 @@
 <script defer="" src="/sessions.js"></script>
 <script defer="" src="/shell.js"></script><script defer="" src="/shell-agentics.js"></script><script defer="" src="/shell-library.js"></script><link href="/shell-agentics.css" rel="stylesheet"/><link href="/shell-library.css" rel="stylesheet"/></head>
 <body>
-<section aria-labelledby="access-heading" id="operator-access">
-<h1 id="access-heading">noetic-dev</h1>
-<p id="access-status" role="status">Locked. Open the pairing URL from the server owner's terminal or enter its local token.</p>
-<form id="access-form">
-<label for="access-token">local operator token, not provider credential</label>
-<input autocomplete="off" id="access-token" required="" spellcheck="false" type="password"/>
-<button type="submit">Unlock</button>
-</form>
-<button hidden="" id="access-lock" type="button">Lock</button>
-<button id="access-logout" type="button">Log out</button>
-</section>
-<div hidden="" id="private-workspace"><div hidden="" id="legacy-storage">
+
+<div id="private-workspace"><div hidden="" id="legacy-storage">
 
 <a class="skip-link" href="#run-detail">Skip to selected run</a>
 <header class="masthead">
@@ -276,6 +266,6 @@
 <button id="forget-previous-drafts" type="button">Forget previous drafts</button>
 </section><div class="error global-error" hidden="" id="fetch-error" role="alert"></div><div class="error" hidden="" id="shell-observation-error" role="alert"></div><div class="error" hidden="" id="shell-global-error" role="alert"></div><header class="page-header" id="shell-heading"><div><div class="page-eyebrow" id="shell-eyebrow"></div><h1 id="shell-page-title">Workspaces</h1><p id="shell-description"></p><div id="shell-project-scope"></div></div><div class="page-actions" id="shell-actions"></div></header><nav aria-label="Effort sections" class="workspace-tabs" hidden="" id="shell-tabs"></nav><div id="shell-content"></div></main>
 </div><dialog class="command-dialog" id="shell-command-dialog"><form method="dialog"><header><strong>Go to…</strong><button aria-label="Close search">×</button></header></form><input aria-label="Find a view, effort, or ordinal" id="shell-command-query" placeholder="Find a view, effort, or ordinal…" type="search"/><div id="shell-command-results"></div></dialog></div>
-<noscript>This operator requires JavaScript for pairing. All JSON API requests require a local operator bearer token.</noscript>
+<noscript>This workspace requires JavaScript for local API navigation.</noscript>
 </body>
 </html>

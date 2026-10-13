@@ -1,15 +1,23 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const tokenKey = "noetic-operator-token";
-let operatorToken = "";
 let accessVersion = 0;
-const fragmentToken = new URLSearchParams(location.hash.slice(1)).get("token");
-if (fragmentToken !== null) history.replaceState(null, "", location.pathname + location.search);
-try {
-  operatorToken = fragmentToken ?? sessionStorage.getItem(tokenKey) ?? "";
-  if (operatorToken) sessionStorage.setItem(tokenKey, operatorToken);
-} catch (_) { operatorToken = fragmentToken || ""; }
+// Local-operator token auth/pairing is removed: this identifier remains only
+// as a constant workspace-ready alias for the read-only sessions.js `active()`
+// compatibility read. It is never token text, never looked up, never sent.
+let operatorToken = true;
+// Obsolete credential artifacts are discarded without reading or echoing any
+// stored value: the recognized legacy sessionStorage key and the legacy #token
+// fragment parameter are dropped; unrelated saved state and other fragment
+// parameters are preserved.
+try { sessionStorage.removeItem("noetic-operator-token"); } catch (_) { /* Storage is optional. */ }
+{
+  const legacy = new URLSearchParams(location.hash.slice(1));
+  if (legacy.has("token")) {
+    legacy.delete("token");
+    history.replaceState(null, "", location.pathname + location.search + (legacy.toString() ? "#" + legacy.toString() : ""));
+  }
+}
 let savedUI = {};
 try { savedUI = JSON.parse(sessionStorage.getItem("noetic-workspace-v1") || "{}"); } catch (_) { /* Storage is optional. */ }
 const initialForms = { ...savedUI.forms };
@@ -89,8 +97,8 @@ function changeOperationScope(mode, previous = operationKey()) {
   }
   if (operationKey() !== previous) {window.NoeticDrafts?.enter();window.NoeticPurposeDrafts?.enter();}
   scopeControls(); persistUI();
-  if (isReviewed() && operatorToken) loadReviewedSetup();
-  if (operatorToken && !$("private-workspace").hidden) refresh();
+  if (isReviewed()) loadReviewedSetup();
+  if (!$("private-workspace").hidden) refresh();
 }
 window.NoeticEffort = {
   select(root, target) {
@@ -132,47 +140,6 @@ function persistUI() {
   try { sessionStorage.setItem("noetic-workspace-v1", JSON.stringify(savedUI)); } catch (_) { /* No storage must not stop work. */ }
 }
 
-function lockAccess(forget = false, replacementToken = "") {
-  persistUI();
-  operatorToken = "";
-  ++accessVersion;
-  try {
-    sessionStorage.removeItem(tokenKey);
-    if (replacementToken) sessionStorage.setItem(tokenKey, replacementToken);
-    if (forget) sessionStorage.removeItem("noetic-workspace-v1");
-  } catch (_) { /* Storage is optional. */ }
-  $("private-workspace").hidden = true;
-  $("private-workspace").replaceChildren();
-  $("access-token").value = "";
-  // Reload discards private DOM, in-flight renderers and payloads, retaining only tab drafts on lock.
-  location.reload();
-}
-
-async function unlockAccess() {
-  if (!operatorToken) return;
-  const version = accessVersion;
-  try {
-    // Pair from the fast authenticated boundary, not the execution register:
-    // a stalled or failing run read must not hold pairing hostage.
-    const boundary = await fetchJSON("/api/access");
-    if (version !== accessVersion) return;
-    if (boundary?.authenticated !== true) throw new Error("Access boundary did not confirm authentication.");
-    try { sessionStorage.setItem(tokenKey, operatorToken); } catch (_) { /* Storage is optional. */ }
-    $("private-workspace").hidden = false;
-    renderReuseNotice();
-    $("access-form").hidden = true;
-    $("access-lock").hidden = false;
-    text("access-status", "Local operator connected");
-    offerPreviousDrafts();
-    loadConfiguration();
-    refresh();
-    window.NoeticSessions?.refresh();
-  } catch (_) {
-    if (version !== accessVersion) return;
-    text("access-status", "Unable to pair. Check the server and local operator token.");
-  }
-}
-
 function offerPreviousDrafts() {
   try {
     $("previous-drafts").hidden = localStorage.getItem("noetic-workspace-v1") === null;
@@ -185,7 +152,7 @@ function offerPreviousDrafts() {
 }
 
 function importPreviousDrafts() {
-  if (!operatorToken || $("private-workspace").hidden) return;
+  if ($("private-workspace").hidden) return;
   if (!window.confirm("Import previous drafts and replace this tab's saved forms and view selections?")) return;
   try {
     const raw = localStorage.getItem("noetic-workspace-v1");
@@ -243,14 +210,11 @@ function importPreviousDrafts() {
     }
     if (!Object.keys(imported).length) throw new Error();
     const copy = JSON.stringify(imported);
-    sessionStorage.setItem(tokenKey, operatorToken);
     sessionStorage.setItem("noetic-workspace-v1", copy);
-    if (sessionStorage.getItem(tokenKey) !== operatorToken
-        || sessionStorage.getItem("noetic-workspace-v1") !== copy
-        || localStorage.getItem("noetic-workspace-v1") !== raw) throw new Error();
+    if (sessionStorage.getItem("noetic-workspace-v1") !== copy
+        || localStorage.getItem("noetic-workspace-v1") !== raw) throw Error();
     localStorage.removeItem("noetic-workspace-v1");
-    // Do not persist the current form over the verified import during reload.
-    operatorToken = "";
+    // Reload discards in-flight renderers; the import replaces this tab's view.
     ++accessVersion;
     $("private-workspace").hidden = true;
     $("private-workspace").replaceChildren();
@@ -261,7 +225,7 @@ function importPreviousDrafts() {
 }
 
 function forgetPreviousDrafts() {
-  if (!operatorToken || $("private-workspace").hidden) return;
+  if ($("private-workspace").hidden) return;
   if (!window.confirm("Permanently forget previous drafts from this browser? This cannot be undone.")) return;
   try {
     localStorage.removeItem("noetic-workspace-v1");
@@ -351,17 +315,15 @@ async function fetchJSON(url, options = {}) {
       if (!Object.hasOwn(body,"effort_root") && !Object.hasOwn(body,"scope")) options = {...options,body:JSON.stringify({...body,...operationSelection()})};
     }
   }
-  if (!operatorToken) throw new Error("Local operator is locked.");
   const version = accessVersion;
   const controller = new AbortController();
   const milliseconds = options.method === "POST" ? 180000 : 45000;
   const timeout = setTimeout(() => controller.abort(), milliseconds);
   try {
-    const response = await fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${operatorToken}` }, cache: "no-store", signal: controller.signal });
-    if (version !== accessVersion) throw new Error("Local operator is locked.");
-    if (response.status === 401) { lockAccess(); throw new Error("Local operator pairing required."); }
+    const response = await fetch(url, { ...options, headers: { ...options.headers }, cache: "no-store", signal: controller.signal });
+    if (version !== accessVersion) throw new Error("Superseded by a newer request generation.");
     const body = await response.json();
-    if (version !== accessVersion) throw new Error("Local operator is locked.");
+    if (version !== accessVersion) throw new Error("Superseded by a newer request generation.");
     if (!response.ok) {
       const failure = new Error(body.error || `HTTP ${response.status}`);
       failure.status = response.status;
@@ -859,7 +821,7 @@ async function loadDetail() {
 }
 
 async function refresh() {
-  if (!operatorToken || $("private-workspace").hidden || refreshPending) return;
+  if ($("private-workspace").hidden || refreshPending) return;
   refreshPending = true;
   $("refresh").disabled = true;
   const scopeVersion = operationVersion;
@@ -1837,7 +1799,7 @@ const structuredDrafts = (() => {
   }
   async function enter() {
     const request = ++generation, access = accessVersion, scope = operationKey(), effort = operationSelection().effort_root;
-    if (!effort || !operatorToken) { pending=false;owner=null;render();updateComposer();return; }
+    if (!effort) { pending=false;owner=null;render();updateComposer();return; }
     pending=true;render();scopeControls();
     try {
       const witness = await fetchJSON(scopedURL("/api/disciplines",{scope:"application",limit:1}));
@@ -1903,7 +1865,7 @@ const purposeDrafts=(()=>{
   function render(){text("purpose-draft-owner",problem || (pending?"Checking purpose draft ownership…":owner?`Purpose draft · ${owner.selection.effort_root?"Effort "+owner.selection.effort_root:"Application"} · namespace ${owner.namespace}. Creating is an explicit action in this owner.`:"Purpose draft owner unobserved. Retry before creating."));$("purpose-goal").disabled=!ready();$("purpose-create").disabled=!ready()||purposeCreatePending;$("purpose-unassigned").hidden=!savedUI.unassignedPurposeDraft;text("purpose-unassigned-text",savedUI.unassignedPurposeDraft||"");text("purpose-copy-unassigned",owner?`Copy purpose text into ${owner.selection.effort_root?"Effort "+owner.selection.effort_root:"Application"}`:"Verify an owner before copying");$("purpose-copy-unassigned").disabled=!ready();}
   function capture(){if(!ready())return;drafts[owner.key]={text:$("purpose-goal").value,namespace:owner.namespace,selection:owner.selection};savedUI.purposeDrafts=drafts;savedUI.purposeDraftOwner={namespace:owner.namespace,selection:owner.selection};}
   function leave(){capture();++generation;owner=null;pending=true;problem="";$("purpose-goal").value="";render();}
-  async function enter(){capture();const request=++generation,access=accessVersion,scope=operationKey(),selection=operationSelection();pending=true;problem="";owner=null;$("purpose-goal").value="";render();if(!operatorToken){pending=false;render();return;}try{const witness=await fetchJSON(scopedURL("/api/disciplines",{scope:"application",limit:1}));if(request!==generation||access!==accessVersion||scope!==operationKey())return;if(!witness.namespace_registered||typeof witness.namespace_id!=="string"||!witness.namespace_id)throw new Error("Application namespace unregistered");const namespace=witness.namespace_id,key=JSON.stringify([namespace,selection]);owner={namespace,key,scope,selection,access};const draft=drafts[key];$("purpose-goal").value=draft?.namespace===namespace&&JSON.stringify(draft.selection)===JSON.stringify(selection)?draft.text||"":"";pending=false;render();persistUI();}catch(failure){if(request!==generation||access!==accessVersion||scope!==operationKey())return;pending=false;problem=`Purpose ownership unavailable: ${failure.message}. Retry before creating.`;render();}}
+  async function enter(){capture();const request=++generation,access=accessVersion,scope=operationKey(),selection=operationSelection();pending=true;problem="";owner=null;$("purpose-goal").value="";render();try{const witness=await fetchJSON(scopedURL("/api/disciplines",{scope:"application",limit:1}));if(request!==generation||access!==accessVersion||scope!==operationKey())return;if(!witness.namespace_registered||typeof witness.namespace_id!=="string"||!witness.namespace_id)throw new Error("Application namespace unregistered");const namespace=witness.namespace_id,key=JSON.stringify([namespace,selection]);owner={namespace,key,scope,selection,access};const draft=drafts[key];$("purpose-goal").value=draft?.namespace===namespace&&JSON.stringify(draft.selection)===JSON.stringify(selection)?draft.text||"":"";pending=false;render();persistUI();}catch(failure){if(request!==generation||access!==accessVersion||scope!==operationKey())return;pending=false;problem=`Purpose ownership unavailable: ${failure.message}. Retry before creating.`;render();}}
   function init(){if(!savedUI.purposeDraftOwner&&savedUI.forms?.["purpose-goal"]&&!savedUI.unassignedPurposeDraft)savedUI.unassignedPurposeDraft=String(savedUI.forms["purpose-goal"]);delete initialForms["purpose-goal"];$("purpose-goal").value="";$("purpose-goal").addEventListener("input",()=>{capture();persistUI();});$("purpose-retry-owner").addEventListener("click",enter);$("purpose-copy-unassigned").addEventListener("click",()=>{if(!ready()||!savedUI.unassignedPurposeDraft)return;if($("purpose-goal").value.trim()){problem="Purpose draft conflict: edited text was preserved; unassigned original remains available.";render();return;}$("purpose-goal").value=savedUI.unassignedPurposeDraft;++purposeDraftVersion;problem="";capture();render();persistUI();});enter();}
   return {init,capture,leave,enter,ready,render};
 })();
@@ -1915,28 +1877,26 @@ structuredDrafts.init();purposeDrafts.init();
 $("import-previous-drafts").addEventListener("click", importPreviousDrafts);
 $("forget-previous-drafts").addEventListener("click", forgetPreviousDrafts);
 window.addEventListener("hashchange", () => {
-  const token = new URLSearchParams(location.hash.slice(1)).get("token");
-  if (token === null) return;
-  history.replaceState(null, "", location.pathname + location.search);
-  if (operatorToken) {
-    // Replacing a pairing discards its private DOM and in-flight renderers before reopening.
-    lockAccess(false, token);
-    return;
-  }
-  operatorToken = token;
-  ++accessVersion;
-  unlockAccess();
+  // A legacy #token fragment is discarded without reading its value; other
+  // fragment parameters are preserved. No credential, context or ownership
+  // state changes, so no request generation is invalidated.
+  const legacy = new URLSearchParams(location.hash.slice(1));
+  if (!legacy.has("token")) return;
+  legacy.delete("token");
+  history.replaceState(null, "", location.pathname + location.search + (legacy.toString() ? "#" + legacy.toString() : ""));
 });
-$("access-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  operatorToken = $("access-token").value.trim();
-  $("access-token").value = "";
-  ++accessVersion;
-  unlockAccess();
-});
-$("access-lock").addEventListener("click", () => lockAccess());
-$("access-logout").addEventListener("click", () => lockAccess(true));
-unlockAccess();
+function openWorkspace() {
+  $("private-workspace").hidden = false;
+  renderReuseNotice();
+  for (const id of ["access-form", "access-lock"]) { const control = $(id); if (control) control.hidden = true; }
+  const status = $("access-status");
+  if (status) text("access-status", "Local workspace ready");
+  offerPreviousDrafts();
+  loadConfiguration();
+  refresh();
+  window.NoeticSessions?.refresh();
+}
+openWorkspace();
 setInterval(refresh, 5000);
 
 
