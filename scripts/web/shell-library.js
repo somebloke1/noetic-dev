@@ -508,4 +508,79 @@
   document.addEventListener("noetic:configuration",()=>{const host=get("shell-content");if(host && ["models","configuration"].includes(host.dataset.route)) UI.refresh();});
   document.addEventListener("noetic:runs",()=>{const host=get("shell-content");if(host && ["runtime","artifacts","executions","usage","memory"].includes(host.dataset.route)) UI.refresh();});
   document.addEventListener("noetic:run-detail",()=>{const host=get("shell-content");if(host && ["artifacts","executions"].includes(host.dataset.route)) UI.refresh();});
+
+  // New-project folder default (O03): in create mode with no explicitly set
+  // folder, the visible folder is suggested from the actual configured Projects
+  // location plus the project name as typed. Any explicit folder edit —
+  // including clearing it — is authoritative; name/location edits then never
+  // overwrite it, and existing-project mode never derives a folder.
+  (() => {
+    const ids = ["developer-project-mode", "developer-project-name", "developer-workspace", "developer-projects-root"];
+    if (!ids.every(id => get(id)) || get("developer-project-path-status")) return;
+    const folderInput = get("developer-workspace");
+    const status = document.createElement("p");
+    status.id = "developer-project-path-status";
+    status.className = "evidence-note";
+    status.setAttribute("role", "status");
+    folderInput.after(status);
+    // A restored nonempty folder is already a deliberate manual value.
+    let manual = folderInput.value !== "";
+    const isCreate = () => get("developer-project-mode").value === "create";
+    const validName = raw => raw.trim() !== "" && raw !== "." && raw !== ".." && !/[/\\]/.test(raw);
+    // Generated folder updates must reach the existing private persistence
+    // (bound to the field's input/change listeners) without counting as an
+    // explicit manual edit or recursing into this module's own handler.
+    const setFolder = value => {
+      folderInput.value = value;
+      folderInput.dispatchEvent(new Event("input", {bubbles: true}));
+    };
+    const update = () => {
+      if (!isCreate() || manual) {
+        status.textContent = manual ? "Folder set explicitly; project name and Projects location edits will not change it."
+          : "Open an existing project by folder or name.";
+        return;
+      }
+      const rawName = get("developer-project-name").value;
+      // Surrounding whitespace is insignificant exactly as in the existing
+      // create POST; a bare "/" root is a real location, not an absent one.
+      const rawRoot = get("developer-projects-root").value.trim();
+      const root = rawRoot === "/" ? "/" : rawRoot.replace(/\/+$/, "");
+      if (root !== "" && !root.startsWith("/") && !root.startsWith("~")) {
+        setFolder("");
+        status.textContent = "Projects location must be absolute or a ~ home form; a relative Projects location is not supported, so no folder is suggested. Set the folder explicitly to override.";
+        return;
+      }
+      if (!validName(rawName)) {
+        setFolder("");
+        status.textContent = rawName.trim() === ""
+          ? "Project folder appears once a project name is set; or set the folder explicitly."
+          : "This project name cannot form a folder (a name must not be '.' or '..' or contain path separators); set the folder explicitly if intended.";
+        return;
+      }
+      const suggested = root === "" ? ""
+        : root.endsWith("/") ? root + rawName : root + "/" + rawName;
+      setFolder(suggested);
+      status.textContent = suggested === ""
+        ? "Set a Projects location to suggest a folder, or set the folder explicitly."
+        : "Suggested from the current Projects location and project name; edit the folder to override.";
+    };
+    for (const id of ["developer-project-name", "developer-projects-root"]) {
+      for (const event of ["input", "change"]) get(id).addEventListener(event, () => { if (!manual && isCreate()) update(); });
+    }
+    get("developer-project-mode").addEventListener("change", () => {
+      // A folder already shown in another mode stays deliberate.
+      if (folderInput.value !== "") manual = true;
+      update();
+    });
+    folderInput.addEventListener("input", event => {
+      // Only genuine user edits make the folder authoritative; generated
+      // suggestion writes dispatch untrusted input events for persistence.
+      if (!event.isTrusted) return;
+      manual = true;
+      update();
+    });
+    // An asynchronous refresh may fill an empty Projects location from the API.
+    document.addEventListener("noetic:sessions", () => { if (!manual && isCreate()) update(); });
+    update();
+  })();
 })();
