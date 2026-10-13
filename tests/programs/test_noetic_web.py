@@ -11,6 +11,7 @@ import tempfile
 import threading
 import unittest
 from urllib.parse import urlencode
+from unittest.mock import patch
 
 from scripts import noetic_run as runtime
 from scripts import noetic_web as web
@@ -53,6 +54,8 @@ class OperatorViewTests(unittest.TestCase):
         self.thread.join(timeout=5)
 
     def request(self, path, method="GET"):
+        if method in ("GET", "HEAD") and path.startswith(("/api/runs", "/api/search")):
+            path += ("&" if "?" in path else "?") + "scope=application"
         with closing(http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)) as connection:
             connection.request(method, path, headers={"Authorization": f"Bearer {self.server.token}"})
             response = connection.getresponse()
@@ -135,24 +138,28 @@ class OperatorViewTests(unittest.TestCase):
 
     def test_search_refreshes_real_evidence_with_attribution(self):
         result = self.search("amber")
-        self.assertEqual({m["field"] for m in result["matches"]}, {"goal", "work", "review"})
-        self.assertEqual(result["indexed_entries"], 3)
-        for match in result["matches"]:
+        self.assertEqual({m["source"] for m in result["results"]}, {"goal", "work", "review", "review.recorded.evidence"})
+        self.assertEqual(result["index"]["entries"], 4)
+        self.assertFalse(result["authoritative"])
+        self.assertTrue(all(m["ownership"] == "unassigned-legacy" and m["semantic_authority"] == "none" for m in result["results"]))
+        for match in result["results"]:
             self.assertEqual(match["run_id"], self.run.name)
             self.assertEqual(match["state"], "accepted")
             self.assertEqual(Path(match["source_path"]).parent, self.run)
         (self.run / "work.md").write_text("Test-authored newlyindexedmarker", encoding="utf-8")
-        self.assertEqual(self.search("newlyindexedmarker")["matches"][0]["source"], "work.md")
+        self.assertEqual(self.search("newlyindexedmarker")["results"][0]["source"], "work")
         (self.run / "review.md").unlink()
-        match = self.search("retainedmarker")["matches"][0]
+        match = self.search("retainedmarker")["results"][0]
         self.assertEqual(match["source"], "review.recorded.evidence")
         self.assertEqual(match["source_path"], str(self.run / "events.sqlite3"))
         event = next(e for e in runtime.read_events(self.run) if e["sequence"] == match["event_sequence"])
         self.assertEqual(event["kind"], "review.recorded")
-        self.assertEqual(self.search("no-such-evidence")["matches"], [])
-        self.assertEqual(self.search("")["matches"], [])
-        self.assertEqual(len(self.search("test", limit=1)["matches"]), 1)
-        self.assertEqual(self.search("test", limit=1000)["limit"], 100)
+        self.assertEqual(self.search("no-such-evidence")["results"], [])
+        self.api("/api/search?q=", 400)
+        self.assertEqual(len(self.search("test", limit=1)["results"]), 1)
+        with patch.object(self.server.application, "lexical", wraps=self.server.application.lexical) as bounded:
+            self.search("test", limit=1000)
+            bounded.assert_called_once_with("test", {"kind": "application"}, 100)
         self.api("/api/search?q=test&limit=bad", 400)
 
     def test_missing_and_corrupt_runs_have_controlled_responses(self):
@@ -160,11 +167,11 @@ class OperatorViewTests(unittest.TestCase):
         damaged = self.runs / "damaged"
         damaged.mkdir()
         (damaged / "events.sqlite3").write_bytes(b"not a sqlite database")
-        self.assertIn("Cannot read local evidence", self.api("/api/runs/damaged", 422)["error"])
+        self.assertIn("Run ownership cannot authorize", self.api("/api/runs/damaged", 403)["error"])
         listing = self.api("/api/runs")
         self.assertEqual([r["run_id"] for r in listing["runs"]], [self.run.name])
         self.assertTrue(any("damaged" in warning for warning in listing["warnings"]))
-        self.assertTrue(self.search("amber")["matches"])
+        self.assertTrue(self.search("amber")["results"])
         with closing(sqlite3.connect(self.run / "events.sqlite3")) as connection:
             with connection:
                 connection.execute("UPDATE events SET data = '[]' WHERE sequence = 1")
@@ -178,7 +185,7 @@ class OperatorViewTests(unittest.TestCase):
             thread.start()
             try:
                 with closing(http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)) as connection:
-                    for route, field in (("/api/runs", "runs"), ("/api/search?q=amber", "matches")):
+                    for route, field in (("/api/runs?scope=application", "runs"), ("/api/search?q=amber&scope=application", "results")):
                         connection.request("GET", route, headers={"Authorization": f"Bearer {server.token}"})
                         response = connection.getresponse()
                         self.assertEqual(response.status, 200)
@@ -191,7 +198,7 @@ class OperatorViewTests(unittest.TestCase):
     def test_path_escape_rejected_for_runs_artifacts_and_search(self):
         for identifier in ("..", "%2e%2e", "%2e%2e%2foutside", "%2Ftmp", "nested/run", "bad%5crun", "%00", ""):
             with self.subTest(identifier=identifier):
-                self.api("/api/runs/" + identifier, 400)
+                self.api("/api/runs/" + identifier, 404 if identifier == "nested/run" else 400)
         self.api("/%2e%2e/noetic_run.py", 404)
         outside_runs = self.root / "outside-runs"
         with redirect_stdout(io.StringIO()):
@@ -199,7 +206,7 @@ class OperatorViewTests(unittest.TestCase):
         (self.runs / outside.name).symlink_to(outside, target_is_directory=True)
         self.api(f"/api/runs/{outside.name}", 403)
         self.assertEqual([r["run_id"] for r in self.api("/api/runs")["runs"]], [self.run.name])
-        self.assertEqual(self.search("outsideonlymarker")["matches"], [])
+        self.api("/api/search?q=outsideonlymarker", 403)
         external_report = self.root / "external.md"
         external_report.write_text("Test-authored outsidereportmarker", encoding="utf-8")
         (self.run / "work.md").unlink()
@@ -207,7 +214,7 @@ class OperatorViewTests(unittest.TestCase):
         detail = self.api(f"/api/runs/{self.run.name}")
         self.assertIn("outside", detail["artifacts"]["work.md"]["error"])
         self.assertNotIn("text", detail["artifacts"]["work.md"])
-        self.assertEqual(self.search("outsidereportmarker")["matches"], [])
+        self.api("/api/search?q=outsidereportmarker", 403)
         (self.run / "events.sqlite3").unlink()
         (self.run / "events.sqlite3").symlink_to(outside / "events.sqlite3")
         self.api(f"/api/runs/{self.run.name}", 403)

@@ -163,7 +163,7 @@ class DeveloperSessionApiTests(unittest.TestCase):
         self.assertEqual(result["text"], "print('usable source')\n")
         self.assertEqual((target.read_bytes(), target.stat().st_mtime_ns), source)
         legacy = runtime.create_run({"goal":"Legacy actual project"}, self.workspace, self.runs)
-        status, historical = self.request(f"/api/runs/{legacy.name}/project-file?path=app.py")
+        status, historical = self.request(f"/api/runs/{legacy.name}/project-file?path=app.py&scope=application")
         self.assertEqual(status, 200, historical)
         self.assertEqual(historical["text"], result["text"])
         self.assertEqual(self.request(f"/api/developer-sessions/{item['id']}/file?path=../outside")[0], 400)

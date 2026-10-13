@@ -159,7 +159,7 @@ class ProcessBoundaryTests(unittest.TestCase):
                     processes.save(self.owner, {"identity": bad})
                     self.assertFalse(processes.inspect(self.owner)["cleanup_confirmed"])
 
-    def test_code_only_gate_accepts_prior_boot_without_changing_terminal_history(self):
+    def test_code_only_gate_checks_ownership_without_interpreting_history(self):
         self.state = controller.begin_activation(self.run / "controller.sqlite3", self.activation, self.state["version"])
         self.state = controller.cancel_run(self.run / "controller.sqlite3", "Prior boot fixture")
         owner = {"pid": os.getpid(), "pgid": os.getpid(), "start_ticks": 1,
@@ -169,8 +169,11 @@ class ProcessBoundaryTests(unittest.TestCase):
         with patch.object(processes, "identity", side_effect=AssertionError("No PID lookup")), \
                 patch.object(processes.os, "killpg", side_effect=AssertionError("No group probe or signal")):
             report = release._check_code_state(self.root / "runs", False)
-            self.assertTrue(report["historical_cleanup_confirmed"])
-            self.assertEqual(report["unknown_ownership_records"], 0)
+            self.assertFalse(report["historical_cleanup_confirmed"])
+            self.assertIsNone(report["unknown_ownership_records"])
+            self.assertEqual(report["history_assessment"], "not_performed")
+            self.assertEqual(report["data_compatibility"], "unknown")
+            self.assertEqual(report["ownership_records_inspected"], 1)
             self.assertEqual(harness.inspect(self.run), self.state)
         self.assertEqual(before, {p.relative_to(self.run): p.read_bytes()
                                  for p in self.run.rglob("*") if p.is_file()})
@@ -178,12 +181,16 @@ class ProcessBoundaryTests(unittest.TestCase):
             processes.save(self.owner, {"identity": {**owner, "boot_id": bad}})
             with patch.object(processes, "identity", return_value={**owner, "boot_id": bad}), \
                     patch.object(processes.os, "killpg"):
-                with self.assertRaisesRegex(ValueError, "cleanup unconfirmed"):
+                with self.assertRaisesRegex(ValueError, "code switch refused"):
                     release._check_code_state(self.root / "runs", False)
         processes.save(self.owner, {"identity": owner})
         runtime.record(self.run, "step.started", {"step": f"{self.activation}/actor"})
-        with self.assertRaisesRegex(ValueError, "Unfinished process observation"):
-            release._check_code_state(self.root / "runs", False)
+        before = {p.relative_to(self.run): p.read_bytes() for p in self.run.rglob("*") if p.is_file()}
+        with patch.object(runtime, "read_events", side_effect=AssertionError("No semantic history read")):
+            report = release._check_code_state(self.root / "runs", False)
+        self.assertEqual(report["history_assessment"], "not_performed")
+        self.assertFalse(report["historical_cleanup_confirmed"])
+        self.assertEqual(before, {p.relative_to(self.run): p.read_bytes() for p in self.run.rglob("*") if p.is_file()})
 
     def test_absent_group_is_safe_and_not_success(self):
         child = processes.spawn([sys.executable, "-c", "pass"], cwd=self.root, env=None,
