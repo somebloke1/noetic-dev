@@ -22,6 +22,9 @@
   let pending = false;
   let actionPending = false;
   let observationError = false;
+  let queueState = null, recalled = null, activityTool = null;
+  const submissionLedger = new Map(), unsentDrafts = new Map();
+  let submissionSequence = 0;
   const fields = ["developer-projects-root", "developer-workspace", "developer-project-name", "developer-project-mode", "developer-model", "developer-thinking", "developer-prompt", "developer-mode"];
   const persist = () => {
     drafts[key(selected)] = $("developer-prompt").value;
@@ -194,6 +197,45 @@
     }
   }
 
+  const promptHistory = () => {
+    const key = selected ? JSON.stringify([accessVersion, selected]) : null;
+    return (key && submissionLedger.get(key)?.history) || [];
+  };
+  function renderActivity() {
+    const state = detail?.session;
+    if (!state) { developerActivity.hidden = true; queueSummary.hidden = true; return; }
+    const labels = {submitted:"submitted", running:"running · working", needs_input:"needs input", idle:"idle", failed:"failed"};
+    const parts = [];
+    if (state.broker_owned) parts.push("Broker owned — ownership is not generation");
+    parts.push(`observed state: ${labels[state.status] || state.status || "unobserved"}`);
+    if (state.error) parts.push(state.error);
+    if (activityTool) parts.push(`tool ${activityTool.name} · ${activityTool.state}`);
+    if (observationError) parts.push("Last observed; current state unavailable.");
+    developerActivity.textContent = parts.join(" · ");
+    developerActivity.hidden = false;
+    const steering = queueState?.steering || [], followUp = queueState?.followUp || [];
+    queueSummary.textContent = queueState
+      ? `Observed native queue: steering ${steering.length} · followUp ${followUp.length}${steering.length || followUp.length ? "" : " · observed empty"}. Observed queue state is separate from consumption or completion.`
+      : "Observed native queue: none observed for this exact context; observed queue state is separate from consumption or completion.";
+    queueSummary.hidden = false;
+  }
+  function renderSubmissions() {
+    const key = selected ? JSON.stringify([accessVersion, selected]) : null;
+    const attempts = (key && submissionLedger.get(key)?.attempts) || [];
+    submissionsHost.replaceChildren(...attempts.map(attempt => {
+      const article = node("article", undefined, "developer-submission");
+      article.dataset.submissionId = attempt.id;
+      article.dataset.state = attempt.state;
+      const target = attempt.returnedTarget ? `${attempt.returnedTarget.ordinal} · instantiation ${attempt.returnedTarget.instantiation} / context ${attempt.returnedTarget.session}` : "not returned";
+      const label = attempt.state === "accepted" ? `Accepted · binding ${attempt.binding ?? "not returned"} · target ${target}`
+        : attempt.state === "failed" ? `Failed · ${attempt.error || "prompt refused"}`
+        : attempt.state === "unknown" ? `Acceptance unknown / unconfirmed${attempt.error ? ` · ${attempt.error}` : ""} — inspect exact state before retry; nothing was resent`
+        : "Sending";
+      article.append(node("h4", `${label} · mode ${attempt.mode}`), node("pre", attempt.text));
+      return article;
+    }));
+    submissionsHost.hidden = !attempts.length;
+  }
   function composer() {
     const project = !selected && !effort && !projectBrowsing;
     const starting = newConversation || Boolean(selected && !exact(selected));
@@ -344,6 +386,7 @@
     let partial = null;
     for (const event of events) {
       const record = event.record || {};
+      if (record.type === "queue_update") queueState = {observed: true, steering: Array.isArray(record.steering) ? record.steering : [], followUp: Array.isArray(record.followUp) ? record.followUp : []};
       if (record.type === "message_start" && record.message?.role === "assistant") partial = {blocks: new Map()};
       if (record.type === "message_update") {
         const update = record.assistantMessageEvent || {};
@@ -380,6 +423,13 @@
     }
     const container = transcriptContainer, atBottom = transcriptReflowing() ? transcriptFollowing : transcriptAtBottom();
     transcriptFollowing = atBottom;
+    let anchor = null;
+    if (!atBottom) {
+      const top = container.getBoundingClientRect().top;
+      const first = [...container.children].find(row => row.getBoundingClientRect().bottom > top + 4);
+      const identity = first?.dataset.messageSequence ? `m:${first.dataset.messageSequence}` : first?.dataset.toolCallId ? `t:${first.dataset.toolCallId}` : null;
+      if (identity) anchor = {identity, offset: first.getBoundingClientRect().top - top};
+    }
     if (transcriptView !== selectionVersion) { transcriptView = selectionVersion; transcriptRows.clear(); }
     const retained = new Map(), rows = entries.map(({message,tool}) => {
       const identity = tool?.key || `message:${message.key}`, signature = JSON.stringify([tool || message,sourceQualifier(detail.session),detail.session.ordinal,detail.session.original_ordinal]);
@@ -427,7 +477,13 @@
     for (const child of [...container.children]) if (!rows.includes(child)) child.remove();
     rows.forEach((row,index)=>{if(container.children[index] !== row) container.insertBefore(row,container.children[index] || null);});
     if (atBottom) container.scrollTop = container.scrollHeight;
+    else if (anchor) {
+      const selector = anchor.identity.startsWith("m:") ? `[data-message-sequence="${CSS.escape(anchor.identity.slice(2))}"]` : `[data-tool-call-id="${CSS.escape(anchor.identity.slice(2))}"]`;
+      const restored = container.querySelector(selector);
+      if (restored) container.scrollTop += restored.getBoundingClientRect().top - container.getBoundingClientRect().top - anchor.offset;
+    }
     const lastTool = [...tools.values()].at(-1);
+    activityTool = lastTool || null;
     const result = $("developer-result");
     result.hidden = !["idle", "closed"].includes(detail.session.status) || !messages.some(message => message.role === "assistant");
     if (!result.hidden) {
@@ -476,7 +532,7 @@
     $("developer-form").hidden = applicationHistory || selected?.ordinal === "0" || Boolean(detail?.session.effort_root && !detail.session.target);
     renderHistory();
     copyActions.hidden=!detail||newConversation||applicationHistory||reservedSource(detail?.session);copySession.disabled=copyActions.hidden;copySession.hidden=copyActions.hidden;
-    if (!detail) { copySnapshot=null;copyStatus.textContent="";text("developer-attention", ""); $("developer-attention").hidden = true; composer(); notify(); return; }
+    if (!detail) { copySnapshot=null;copyStatus.textContent="";text("developer-attention", ""); $("developer-attention").hidden = true; renderActivity(); renderSubmissions(); composer(); notify(); return; }
     const item = detail.session;
     text("developer-heading", item.title); text("developer-location", item.workspace); text("developer-status", item.status);
     const position = positions.find(row => row.ordinal === item.ordinal);
@@ -494,7 +550,7 @@
     $("developer-succeed").disabled = !item.is_current || actionPending;
     text("developer-details", JSON.stringify(item,null,2));
     if ($("developer-evidence").open) text("developer-events", JSON.stringify(events,null,2));
-    conversation(); composer(); notify();
+    conversation(); renderActivity(); renderSubmissions(); composer(); notify();
   }
 
   async function select(target, options = {}) {
@@ -512,6 +568,7 @@
     $("developer-transcript").replaceChildren(); $("developer-dialogs").replaceChildren();
     $("developer-dialogs").dataset.signature = ""; $("developer-evidence").open = false;
     $("developer-delegate-form").hidden = true; $("developer-succession-form").hidden = true;
+    recalled = null; queueState = null;
     text("developer-ack", ""); switchPage("developer"); persist(); renderRail(); renderDetail();
     await refresh();
   }
@@ -561,6 +618,7 @@
       if (valid()) {
         observationError = true; error("developer-error", `Observation unavailable: ${failure.message}`);
         if (historyReadPending) { historyObservation = {...historyObservation,status:"error",error:failure.message}; renderHistory(); }
+        renderActivity();
         for (const action of ["stop","close","delegate","reopen","succeed"]) $("developer-"+action).disabled = true;
         $("developer-submit").disabled = Boolean(selected); notify();
       }
@@ -584,10 +642,44 @@
     if (event.repeat || actionPending || submit.disabled) return;
     event.currentTarget.form.requestSubmit(submit);
   });
+  $("developer-prompt").addEventListener("keydown", event => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey || event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
+    const prompt = $("developer-prompt");
+    const atStart = prompt.selectionStart === 0 && prompt.selectionEnd === 0;
+    const atEnd = prompt.selectionStart === prompt.value.length && prompt.selectionEnd === prompt.value.length;
+    if (event.key === "ArrowUp" && !atStart) return;
+    if (event.key === "ArrowDown" && !atEnd) return;
+    const history = promptHistory();
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (recalled) {
+        if (recalled.index > 0) { recalled.index -= 1; recalled.value = history[recalled.index]; prompt.value = recalled.value; prompt.setSelectionRange(0, 0); }
+      } else if (history.length) {
+        recalled = {index: history.length - 1, value: history[history.length - 1]};
+        if (selected) unsentDrafts.set(JSON.stringify([accessVersion, selected]), prompt.value);
+        prompt.value = recalled.value;
+        prompt.setSelectionRange(0, 0);
+      }
+    } else if (recalled) {
+      event.preventDefault();
+      if (recalled.index < history.length - 1) {
+        recalled.index += 1; recalled.value = history[recalled.index];
+        prompt.value = recalled.value;
+        prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+      } else {
+        prompt.value = (selected && unsentDrafts.get(JSON.stringify([accessVersion, selected]))) ?? "";
+        recalled = null;
+        prompt.setSelectionRange(prompt.value.length, prompt.value.length);
+      }
+    }
+  });
+  $("developer-prompt").addEventListener("input", () => { if (recalled && $("developer-prompt").value !== recalled.value) recalled = null; });
   $("developer-form").addEventListener("submit", async event => {
     event.preventDefault(); if (actionPending || projectBrowsing) return;
-    const target = selected && {...selected}, version = selectionVersion, revision = promptRevision, prompt = $("developer-prompt").value;
+    const target = selected && {...selected}, version = selectionVersion, access = accessVersion, revision = promptRevision, prompt = $("developer-prompt").value;
     const starting = newConversation || Boolean(target && !exact(target));
+    let preserveDraft = false;
     actionPending = true; composer(); error("developer-error", "");
     try {
       if (!target || starting) {
@@ -606,19 +698,42 @@
           const registered = await post("/api/efforts", {intent:prompt,environment:{cwd}});
           result = await post("/api/developer-sessions", {...body,effort_root:registered.effort.ordinal});
         }
-        if (version === selectionVersion) {
+        if (version === selectionVersion && access === accessVersion) {
           const draft = revision === promptRevision && $("developer-prompt").value === prompt ? "" : $("developer-prompt").value;
           $("developer-prompt").value = draft;
           const landing = select(sessionTarget(result.session), {draft}), landingVersion = selectionVersion;
           await landing;
-          if (landingVersion === selectionVersion) text("developer-ack", "Prompt accepted. Follow actual output and settled state here.");
+          if (landingVersion === selectionVersion && access === accessVersion) text("developer-ack", "Prompt accepted. Follow actual output and settled state here.");
         }
       } else {
         const mode = $("developer-mode").value;
-        await post(endpoint("prompt",target), {...scope(target),message:prompt,mode});
-        if (version === selectionVersion) text("developer-ack", mode === "steer" ? "Steering accepted; Pi applies it after the current tool turn." : mode === "follow_up" ? "Follow-up accepted or queued; delivery and completion appear in the conversation." : "Prompt accepted; completion is observed separately.");
+        const originKey = JSON.stringify([access, target]);
+        const originValid = () => access === accessVersion && version === selectionVersion && same(target, selected);
+        const ledger = submissionLedger.get(originKey) || {attempts: [], history: []};
+        submissionLedger.set(originKey, ledger);
+        const attempt = {id: `submission-${++submissionSequence}`, text: prompt, mode, state: "sending", binding: null, returnedTarget: null, error: ""};
+        ledger.attempts.push(attempt);
+        renderSubmissions();
+        let failure = null, result = null;
+        try { result = await post(endpoint("prompt",target), {...scope(target),message:prompt,mode}); }
+        catch (caught) { failure = caught; }
+        if (!failure && result?.accepted === true) {
+          attempt.state = "accepted"; attempt.binding = result.binding_id ?? null; attempt.returnedTarget = result.target ?? null;
+          ledger.history.push(prompt);
+          if (originValid()) recalled = null;
+        } else if (failure && failure.status === 400) {
+          attempt.state = "failed"; attempt.error = failure.message || "Prompt refused."; preserveDraft = true;
+        } else {
+          attempt.state = "unknown"; attempt.error = failure?.message || ""; preserveDraft = true;
+        }
+        if (originKey === JSON.stringify([accessVersion, selected])) renderSubmissions();
+        if (attempt.state === "accepted") {
+          if (originValid()) text("developer-ack", mode === "steer" ? "Steering accepted; Pi applies it after the current tool turn." : mode === "follow_up" ? "Follow-up accepted or queued; delivery and completion appear in the conversation." : "Prompt accepted; completion is observed separately.");
+        } else if (failure && originValid()) {
+          error("developer-error", failure.message || "Prompt response unavailable.");
+        }
       }
-      if (version === selectionVersion && revision === promptRevision && $("developer-prompt").value === prompt) { $("developer-prompt").value = ""; persist(); }
+      if (!preserveDraft && access === accessVersion && version === selectionVersion && revision === promptRevision && $("developer-prompt").value === prompt) { $("developer-prompt").value = ""; persist(); }
     } catch (failure) { if (version === selectionVersion) error("developer-error",failure.message); }
     finally { actionPending = false; composer(); await refresh(); }
   });
@@ -702,6 +817,15 @@
   window.NoeticSessions = {refresh,open:select,state,browseProject,
     returnToContext:()=>returnContext ? select({...returnContext.target},{history:returnContext.history}) : Promise.resolve(),
     observeReturns: () => { observeReturns = true; return refresh(); }};
+  const developerActivity = node("p", undefined, "source");
+  developerActivity.id = "developer-activity";
+  developerActivity.setAttribute("role", "status");
+  const queueSummary = node("p", undefined, "source");
+  queueSummary.id = "developer-queue-summary";
+  queueSummary.setAttribute("role", "status");
+  const submissionsHost = node("div");
+  submissionsHost.id = "developer-submissions";
+  $("developer-transcript").before(developerActivity, queueSummary, submissionsHost);
   composer(); renderDetail();
   setInterval(refresh, 1200);
   if (active()) refresh();
