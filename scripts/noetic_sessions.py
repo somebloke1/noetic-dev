@@ -574,11 +574,17 @@ class SessionService:
             raise SessionError(409, "Historical superseded instantiation cannot reopen as its successor.")
         if instance["current_session"] not in (None, target["session"]):
             raise SessionError(409, "Historical superseded session cannot replace the designated current session.")
-        binding = self.bind(target, "reopen", {}, effort_root=effort_root)
         item = self.inspect(selected["id"])
         if not item["broker_owned"]:
             if not item["process"]["cleanup_confirmed"]:
                 raise SessionError(409, "Prior process cleanup is unconfirmed; refusing a second actor.")
+            if selected["native_session_file"] and not Path(selected["native_session_file"]).exists():
+                raise SessionError(409, f"Conversation {target['ordinal']} (instantiation {target['instantiation']}, "
+                    f"session {target['session']}) could not be resumed: saved native transcript "
+                    f"{selected['native_session_file']} is unavailable. Restore the saved transcript or explicitly "
+                    "open a new conversation. Retained history remains available.")
+        binding = self.bind(target, "reopen", {}, effort_root=effort_root)
+        if not item["broker_owned"]:
             self._launch(item["id"])
             self.registry.event(item["id"], "host", {"type": "session_reopened", "binding_id": binding["id"]})
         return {**self.inspect(item["id"]), "binding_id": binding["id"], "native_ref": binding["native_ref"]}

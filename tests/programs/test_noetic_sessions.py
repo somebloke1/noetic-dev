@@ -168,6 +168,38 @@ class SessionTests(unittest.TestCase):
         self.assertEqual([m["content"] for m in json.loads(Path(native).read_text()) if m["role"] == "user"],
                          ["persist after planned context", "continue original"])
 
+    def test_reopen_with_missing_retained_native_transcript_refuses_and_new_conversation_works(self):
+        fixture = self.home / "planned-context.py"
+        fixture.write_text(FIXTURE.read_text().replace('"sessionFile": str(path)',
+            '"sessionFile": str(path), "plannedContextExists": path.exists()'))
+        self.service.pi_command = [sys.executable, str(fixture)]
+        effort = self.register_effort("missing transcript")
+        item = self.create("lost context", effort_root=effort)
+        self.wait(item["id"])
+        target, native = item["target"], item["native_session_file"]
+        self.service.shutdown(item["id"])
+        self.wait(item["id"], "closed")
+        deadline = time.monotonic() + 5
+        while self.service.inspect(item["id"])["broker_owned"] and time.monotonic() < deadline:
+            time.sleep(.05)
+        Path(native).unlink()
+        before_records = self.records(item["id"])
+        with self.assertRaisesRegex(sessions.SessionError, "native transcript.*unavailable"):
+            self.service.reopen(item["id"], effort_root=effort)
+        self.assertEqual(self.records(item["id"]), before_records)
+        self.assertEqual(self.service.inspect(item["id"])["status"], "closed")
+        self.assertFalse(self.service.inspect(item["id"])["broker_owned"])
+        replacement = self.create("fresh conversation", effort_root=effort)
+        self.wait(replacement["id"])
+        self.assertEqual(replacement["ordinal"], item["ordinal"])
+        self.assertNotEqual(replacement["target"], target)
+        self.assertNotEqual(replacement["native_session_file"], native)
+        self.assertTrue(replacement["target"]["session"] > target["session"])
+        self.service.prompt(replacement["target"], "new exact work", effort_root=effort)
+        self.wait(replacement["id"])
+        messages = [m["content"] for m in json.loads(Path(replacement["native_session_file"]).read_text()) if m["role"] == "user"]
+        self.assertEqual(messages, ["fresh conversation", "new exact work"])
+
     def test_failed_native_start_keeps_reservation_without_invented_context(self):
         effort = self.register_effort("failed launch")
         self.service.pi_command = [str(self.home / "missing-native-client")]
