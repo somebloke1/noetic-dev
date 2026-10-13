@@ -1904,6 +1904,18 @@ async function startReviewed({scopeVersion,scopeKey,draft,subject,selection,envi
   text("start-result",`${result.launch_id}: ${result.status}. ${result.run_id ? "Original run "+result.run_id : "No execution claim until original preparation is observed."}`);
   $("reviewed-launches").open=true; await loadReviewedLaunches(); await refresh();
 }
+function renderRawArtifact(host, name, artifact) {
+  if (!artifact || artifact.error || typeof artifact.text !== "string") {
+    const message = !artifact ? `No retained raw text for ${name} observed. No rounded native projection is substituted.`
+      : artifact.error ? `${artifact.source_path || name} · read error: ${artifact.error}. No rounded native projection is substituted.`
+      : `${artifact.source_path || name} · retained artifact carries no raw text. No rounded native projection is substituted.`;
+    host.replaceChildren(node("p", message, "source"));return;
+  }
+  const note = `${artifact.source_path || name} · ${artifact.truncated ? "truncated to the first 1048576 bytes; full original remains in the local file" : artifact.text === "" ? "file exists and is empty" : "retained original bytes"} · historical evidence only; current Opermem standing is assessed separately.`;
+  if (host.children.length === 2 && host.children[0].textContent === note && host.children[1].textContent === artifact.text) return;
+  const pre = node("pre");pre.textContent = artifact.text;
+  host.replaceChildren(node("p", note, "source"), pre);
+}
 function renderReviewedDetail(detail) {
   queueMicrotask(()=>document.dispatchEvent(new CustomEvent("noetic:run-detail",{detail:{run:detail}})));
   const {status,application:info,correspondence,preparation,population}=detail;
@@ -1911,9 +1923,12 @@ function renderReviewedDetail(detail) {
   text("run-goal",status.goal);text("task-body",status.goal);text("run-state",status.state);text("state-note","External review, native disposition and purpose synchronization are separate observations.");
   text("workspace",preparation.workspace);text("goal-ref",preparation.purpose_ref ? JSON.stringify(preparation.purpose_ref) : "No purpose linked");text("last-event",detail.events.at(-1)?.occurred_at || "No journal event");text("detail-observed",date(detail.observed_at));
   for(const field of ["controller-pattern","controller-machine","controller-phase","controller-generation","controller-budgets","controller-actor","controller-source","cancel-note","telos-chain","telos-subgoal","telos-result"])text(field,"Not applicable to reviewed inquiry; original evidence above.");
-  $("controller-phases").replaceChildren();text("driver-data",JSON.stringify(info,null,2));
+  $("controller-phases").replaceChildren();
+  const n=info.native;
+  const driverSummary={...info,native:{...n,receipt:"Inspect the opermem-receipt.json raw row for observed source and qualification; historical evidence only."}};
+  text("driver-data",JSON.stringify(driverSummary,null,2));
   text("event-count",`${detail.events.length} retained events`);text("journal-source",preparation.run_dir);
-  const eventSignature=JSON.stringify(detail.events);if(timelineSignature!==eventSignature){timelineSignature=eventSignature;renderEventWindow("timeline",detail.events,event=>{const item=node("li");item.append(node("pre",JSON.stringify(event,null,2)));return item;});}
+  const eventSignature=JSON.stringify(detail.events);if(timelineSignature!==eventSignature){timelineSignature=eventSignature;renderEventWindow("timeline",detail.events,event=>{const item=node("li");item.append(node("p","Browser projection of a parsed journal event row; the original journal remains locally retained.","source"),node("pre",JSON.stringify(event,null,2)));return item;});}
   renderEvidence("report",$("report-select").value);renderEvidence("log",$("log-select").value);
   $("controller-summary").hidden=false;$("legacy-execution").hidden=true;$("workspace-result").hidden=true;$("workspace-apply").hidden=true;
   for(const id of ["advance-one","advance-all","pause-pattern","cancel-pattern","phases-tab","compare-tab","controller-tab"])$(id).hidden=true;
@@ -1924,7 +1939,6 @@ function renderReviewedDetail(detail) {
   text("primary-model",`${info.configuration.client} · ${info.configuration.model || "client default"} · review ${info.configuration.qa_model || "inherits main"}`);
   text("primary-progress",`${preparation.operation} · ${status.state}`);text("driver-activity",info.reason);text("steering-note",info.unavailable_controls);
   $("primary-attention").hidden=true;
-  const n=info.native;
   text("reviewed-progress",`${info.driver?.launch_id || "Launch mapping unavailable"} · ${info.driver?.status || info.activity}. Driver ownership ${info.driver?.driver_owned ? "observed" : "not observed"}; this does not establish model progress.`);
   $("reviewed-dispositions").replaceChildren(...[`External review: ${info.review.outcome || "not recorded"}`,`Native: ${n.disposition}`,`Telos: ${n.telos_error ? "synchronization error" : n.telos ? "result retained" : preparation.purpose_ref ? "not synchronized" : "no link"}`].map(x=>node("span",x)));
   const report=(detail.artifacts["work.md"]?.text || "No substantive report retained yet.").split("OPERMEM_CONTRIBUTION_JSON:")[0].trim();
@@ -1933,7 +1947,9 @@ function renderReviewedDetail(detail) {
   $("reviewed-recover-contribution").hidden=!info.actions.recover_contribution;
   $("reviewed-recover-correlation").hidden=!info.actions.recover_correlation;
   const host=$("reviewed-evidence-content");
-  const rows=[["Frozen original preparation",preparation],["Actual participants and original correspondence",correspondence],["Retained native packets at original cut",correspondence.native_link?.context || null],["Native receipt",n.receipt],["Pending native contribution",detail.artifacts["opermem-pending.json"] || null],["Launch and separate dispositions",info],["Original ordered events",detail.events]];
+  for(const name of ["opermem-link.json","opermem-scope.json","opermem-receipt.json","opermem-pending.json"]){let item=[...host.children].find(x=>x.dataset.key===name);if(!item){item=node("details");item.dataset.key=name;item.append(node("summary",`${name} · retained original raw text (historical bytes, not current Opermem standing)`),node("div",undefined,"raw-artifact"));host.append(item);}renderRawArtifact(item.lastChild,name,detail.artifacts[name]);}
+  const link={...correspondence,native_link:"Inspect the whole opermem-link.json raw row for observed source and qualification; historical evidence only."};
+  const rows=[["Preparation summary (browser projection)",preparation],["Actual participants and correspondence summary",link],["Launch and separate dispositions",driverSummary],["Ordered events (browser projection; original journal locally retained)",detail.events]];
   for(const [label,value] of rows){let item=[...host.children].find(x=>x.dataset.key===label);if(!item){item=node("details");item.dataset.key=label;item.append(node("summary",label),node("pre"));host.append(item);}const data=JSON.stringify(value,null,2);if(item.lastChild.textContent!==data)item.lastChild.textContent=data;}
   text("summary-selection",status.run_id);$("summary-generate").disabled=true;
   $("empty-state").hidden=true;$("selected-run").hidden=false;$("session-tab").hidden=false;
