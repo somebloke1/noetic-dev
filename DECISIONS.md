@@ -254,3 +254,23 @@ Adopt the smallest durable recurrence design: repair route_evidence.py to use th
 
 Do not claim that integration_id 15368 authenticates a workflow path. In this public user-owned repository, native required workflows and push path restrictions are unavailable. A strong resolution requires either transfer to a Team organization with required workflows or a separately hosted GitHub App with its private key outside candidate Actions and a required App-bound check. Defer app registration/service creation because it introduces a new high-value credential and operational service beyond the minimal recurrence repair; retain the risk as explicit and do not treat current required checks as cryptographic workflow provenance.
 <!-- governance-crud:end id=dec-20260717-0002 -->
+
+<!-- governance-crud:start id=dec-20261013-0001 -->
+## dec-20261013-0001: Continue from bounded accepted delivery; preserve mission and component authority
+
+- Ledger: decisions
+- Status: accepted
+- Repository: /home/dgk/.codex/worktrees/accepted-source-delivery/feature-cognitional-event-journal
+- Created: 2026-10-13
+- Updated: 2026-10-13
+- Tags: mission,continuity,team,authority,P3,P4
+- Confidence: high
+
+Retain the current three-paragraph global development goal. Its mission is general useful continuing work across distinct efforts, differentiated component/native semantic authority, persistent global ordinal identity/delegation/accountability and correlated history, independently operable development/recovery, supplied-design workflows, qualified reuse and human judgment. The previous team's accepted changes justify continuing from the preserved delivery; they do not establish all fourteen cognitive workflows, semantic promotion, or complete-framework delivery.
+
+Current execution directions supersede older client/model/gating prescriptions where inconsistent: product reference execution currently uses Pi, with portable runtime boundaries remaining intended; the supplied desktop-browser design governs current GUI direction; superior portable re-instantiation preserves APM invariants rather than requiring a blind implementation lift; ordinary development is not gated by agent-authored attestation, mandatory GPU availability, or new approval rituals. Research contributor Git/publication practices before changing them. Preserve historical entries as dated evidence.
+
+Preparation uses 14 registered role definitions, substantive external Flash work at LOW by explicit user decision, editable maintained pointers, native 500k compaction and 64000 output defaults, 20 reported concurrent Flash requests, flexible evidence-based model oversight and event-driven mutable peer language. All 14 definitions carry the shared directive to minimize superfluous explicit thinking, use learned model representations before thinking-token emission, and cultivate discernment and attunement to inner state, responsiveness and generativity while preserving verification and honest uncertainty. These are development controls, not product-global assumptions. Do not use billion-context. The future team remains unlaunched pending restart, explicit resumption and actual capacity/definition-loading verification.
+
+Sources: [goal](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/goal-refinement-review/goal.md), [Root final review](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/team14-strategy/root-final-goal-review.md), [current policy](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/team14-strategy/current-policy.md), [GLM accepted client policy](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/glm53-budget/independent-qa/report.md), [operating plan](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/team14-strategy/operating-plan.md).
+<!-- governance-crud:end id=dec-20261013-0001 -->

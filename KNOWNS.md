@@ -225,3 +225,21 @@ System systemd units noetic-dev-agent-review-broker.service and noetic-dev-actio
 
 GitHub Actions App integration 15368 identifies all repository Actions workflows, so integration-bound context names do not distinguish the protected workflow from a candidate-created same-name workflow. Native required-workflow rules are organization/enterprise controls and are unavailable for this user-owned public repository; public personal repositories also cannot use push file-path restrictions. Strong available alternatives are transfer to a Team organization or a separately credentialed GitHub App hosted outside candidate Actions. Sources: official GitHub ruleset/required-workflow/GitHub App docs and live repository API behavior.
 <!-- governance-crud:end id=k-20260717-0004 -->
+
+<!-- governance-crud:start id=k-20261013-0001 -->
+## k-20261013-0001: Previous UI team closed; accepted delivery and source preserved
+
+- Ledger: knowns
+- Status: verified
+- Repository: /home/dgk/.codex/worktrees/accepted-source-delivery/feature-cognitional-event-journal
+- Created: 2026-10-13
+- Updated: 2026-10-13
+- Tags: ui-team,closure,delivery,scope,P1
+- Confidence: high
+
+The previous UI team stopped at 2026-10-13T04:00:00Z. The retained sampler reports 496 seeded tests and 466 observed joint cells across 17 destinations; visible state hints are not backend lifecycle authority and coverage is not exhaustive. HCI recorded 15 verified findings; implementation/acceptance belongs to the source owners, sole Validator and Integrator rather than the observation packets.
+
+Root subsequently delivered F054 and F058/F059 with PASS receipts: latest release 0.3.0-54967e42cfbc8b9b, 11 native contexts preserved and 0 new native messages. PR 95 was human rebase-merged; post-merge CI 38348250082 is SUCCESS at source 19f70eb8fb85121ba7a5a2282a9bc9517ff1d7f4, including Branch validation. This establishes the bounded accepted source/delivery, not whole-framework completion or human judgment of cognitive value.
+
+Sources: [team closure](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/ui-three-hour-feedback/final-report.json), [HCI closure](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/ui-three-hour-human-interaction/final-window-checkpoint.json), [F054](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/accepted-later-source-preservation/F054-commit-receipt.json), [F058/F059](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/accepted-later-source-preservation/F058-F059-commit-receipt.json), [post-merge CI](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/source-ci-readiness/post-merge-38348250082-completed.json).
+<!-- governance-crud:end id=k-20261013-0001 -->
