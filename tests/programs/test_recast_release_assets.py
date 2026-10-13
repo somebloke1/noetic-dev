@@ -126,7 +126,7 @@ from scripts import noetic_web, noetic_opermem, noetic_opermem_acting, noetic_ac
 from scripts import noetic_purpose_binding
 assert noetic_web.WEB_DIR.is_relative_to(Path(sys.prefix))
 assert not any("source" in p for p in sys.path)
-server = noetic_web.create_server(Path(sys.argv[1]) / "runs", port=0, access_token="a" * 64,
+server = noetic_web.create_server(Path(sys.argv[1]) / "runs", port=0,
                                   namespace_path=Path(sys.argv[1]) / "ordinals.sqlite3")
 thread = threading.Thread(target=server.serve_forever, daemon=True)
 thread.start()

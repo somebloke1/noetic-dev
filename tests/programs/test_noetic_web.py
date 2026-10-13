@@ -57,7 +57,7 @@ class OperatorViewTests(unittest.TestCase):
         if method in ("GET", "HEAD") and path.startswith(("/api/runs", "/api/search")):
             path += ("&" if "?" in path else "?") + "scope=application"
         with closing(http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=10)) as connection:
-            connection.request(method, path, headers={"Authorization": f"Bearer {self.server.token}"})
+            connection.request(method, path)
             response = connection.getresponse()
             return response.status, dict(response.getheaders()), response.read()
 
@@ -186,7 +186,7 @@ class OperatorViewTests(unittest.TestCase):
             try:
                 with closing(http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)) as connection:
                     for route, field in (("/api/runs?scope=application", "runs"), ("/api/search?q=amber&scope=application", "results")):
-                        connection.request("GET", route, headers={"Authorization": f"Bearer {server.token}"})
+                        connection.request("GET", route)
                         response = connection.getresponse()
                         self.assertEqual(response.status, 200)
                         self.assertEqual(json.loads(response.read())[field], [])

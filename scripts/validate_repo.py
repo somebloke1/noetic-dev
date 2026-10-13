@@ -47,7 +47,6 @@ REQUIRED = [
     "scripts/noetic_memory.py",
     "scripts/noetic_web.py",
     "scripts/noetic_application.py",
-    "scripts/noetic_access.py",
     "scripts/noetic_storage.py",
     "scripts/noetic_processes.py",
     "scripts/noetic_release.py",

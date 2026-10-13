@@ -30,8 +30,8 @@ class DisciplineCatalogTests(unittest.TestCase):
         self.server.server_close()
         self.thread.join(5)
 
-    def request(self, path, expected=200, *, paired=True, method='GET'):
-        headers = {'Authorization': f'Bearer {self.server.token}'} if paired else {}
+    def request(self, path, expected=200, *, stale_header=False, method='GET'):
+        headers = {"Authorization": "stale synthetic operator header"} if stale_header else {}
         with closing(http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=10)) as connection:
             connection.request(method, path, headers=headers)
             response = connection.getresponse()
@@ -109,10 +109,10 @@ class DisciplineCatalogTests(unittest.TestCase):
         self.assertEqual(a['selection'], {'kind': 'effort', 'effort_root': owners[0]['ordinal']})
         self.assertEqual(before, self.snapshot())
 
-    def test_selection_auth_and_query_errors(self):
+    def test_selection_stale_header_and_query_errors(self):
         self.setup_instances()
         before = self.snapshot()
-        self.request('/api/disciplines?scope=application', 401, paired=False)
+        self.request('/api/disciplines?scope=application', stale_header=True)
         for query in ('', '?scope=application&effort_root=0.0', '?scope=', '?scope=unknown',
                       '?scope=application&limit=0', '?scope=application&limit=1001', '?scope=application&after=-1',
                       '?scope=application&limit=no', '?scope=application&scope=application',
@@ -166,6 +166,6 @@ class DisciplineCatalogTests(unittest.TestCase):
                         if mime == 'font/woff2':
                             self.assertNotIn('charset', response.getheader('Content-Type'))
                         self.assertEqual(response.read(), b'fixture asset')
-                self.request('/fonts/unlisted.woff2', 401, paired=False)
+                self.request('/fonts/unlisted.woff2', 404, stale_header=True)
                 self.request('/fonts/unlisted.woff2', 404)
                 self.request('/fonts/../namespace.sqlite3', 404)

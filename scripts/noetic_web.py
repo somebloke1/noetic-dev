@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hmac
 import http.client
 from contextlib import closing
 from datetime import datetime, timezone
@@ -17,7 +16,6 @@ import sys
 from urllib.parse import parse_qs, unquote, urlsplit
 
 if __package__:
-    from scripts import noetic_access as access
     from scripts import noetic_application as application
     from scripts import noetic_attachments as attachments
     from scripts import noetic_usage as usage
@@ -30,7 +28,6 @@ if __package__:
     from scripts import noetic_run as runtime
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from scripts import noetic_access as access
     from scripts import noetic_application as application
     from scripts import noetic_attachments as attachments
     from scripts import noetic_usage as usage
@@ -353,39 +350,19 @@ def project_file(workspace, reference):
 
 def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 8765,
                   *, telos_db: Path | None = None, telos_source: Path | None = None,
-                  access_token: str | None = None, session_command: list[str] | None = None, namespace_path: Path | None = None, opermem_host: Path | None = None) -> ThreadingHTTPServer:
+                  session_command: list[str] | None = None, namespace_path: Path | None = None, opermem_host: Path | None = None) -> ThreadingHTTPServer:
     """Create, but do not start, the server. Port 0 asks the OS for a free port."""
     root = Path(runs_dir).expanduser().resolve()
-    token = access.validate_token(access_token) if access_token is not None else access.generate_token()
     sessions = developer_sessions.SessionService(root, pi_command=session_command, namespace_path=namespace_path)
     app = application.Application(root, telos_db=telos_db, telos_source=telos_source, opermem_host=opermem_host,
                                   namespace_path=sessions.registry.domain.path, sessions_home=root)
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args) -> None:
-            # Request targets and malformed request lines can contain pasted secrets.
-            # Pairing is printed only to the trusted launching terminal, never HTTP logs.
             pass
 
         def send_error(self, code, message=None, explain=None) -> None:
             self.json_response(code, {"error": self.responses.get(code, ("Request failed",))[0]})
-
-        def parse_request(self) -> bool:
-            if not super().parse_request():
-                return False
-            try:
-                public = (self.command in ("GET", "HEAD") and unquote(urlsplit(self.path).path)
-                          in STATIC_ASSETS)
-            except ValueError:
-                public = False
-            if not public:
-                headers = self.headers.get_all("Authorization", [])
-                supplied = headers[0].encode("utf-8") if len(headers) == 1 else b""
-                if not hmac.compare_digest(supplied, f"Bearer {token}".encode("ascii")):
-                    self.close_connection = True
-                    self.json_response(401, {"error": "Local operator pairing required."})
-                    return False
-            return True
 
         def respond(self, status: int, body: bytes, content_type: str) -> None:
             self.send_response(status)
@@ -417,11 +394,7 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                         return int(params[name][0]) if name in params else default
                     except ValueError:
                         raise RequestError(400, f"{name} must be an integer.") from None
-                if path == "/api/access":
-                    # Fast authenticated boundary: parse_request already enforced
-                    # the exact bearer guard; no DB, run, native or model reads.
-                    result = {"authenticated": True}
-                elif path == "/api/opermem/stores":
+                if path == "/api/opermem/stores":
                     selection = app.selection({key: params[key][0] for key in ("scope", "effort_root") if key in params})
                     result = app.reviewed().registrations(selection)
                 elif path == "/api/application/launches":
@@ -754,65 +727,55 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
     server = ThreadingHTTPServer((host, port), Handler)
     server.application = app
     server.developer_sessions = sessions
-    server.token = token
-    server.pairing_url = f"http://{host}:{server.server_port}/#token={token}"
     return server
 
 
-def open_workspace(token_file: Path, port: int) -> None:
-    """Check the existing GUI, then request a browser handoff without printing its token."""
-    token = access.read_token(token_file)
+def open_workspace(port: int) -> None:
+    """Check the static local page, then request a plain browser handoff."""
     destination = f"http://127.0.0.1:{port}/"
     try:
         # HTTPConnection neither uses environment proxies nor follows redirects.
         with closing(http.client.HTTPConnection("127.0.0.1", port, timeout=5)) as client:
-            client.request("HEAD", "/api/runs?scope=application", headers={"Authorization": f"Bearer {token}"})
+            client.request("HEAD", "/")
             with client.getresponse() as response:
                 status = response.status
                 content_type = response.getheader("Content-Type", "").split(";", 1)[0]
     except (OSError, http.client.HTTPException):
         raise ValueError(f"Cannot reach the local GUI at {destination}. Check that it is running and --port matches its listener; no service was started.") from None
-    if status == 401:
-        raise ValueError("The local GUI rejected this operator token. Match --token-file (and --runs-dir for the default token path) to the running service, then retry.")
-    if status != 200 or content_type != "application/json":
+    if status != 200 or content_type != "text/html":
         raise ValueError(f"Local GUI readiness check failed (HTTP {status}). Check the running GUI and --port; redirects are not followed and no browser was opened.")
     try:
-        # Isolate browser output at the process boundary: launchers can echo the
-        # pairing URL to inherited file descriptors, not just Python streams.
         subprocess.run([
             sys.executable, "-I", "-c",
             "import sys, webbrowser; sys.exit(0 if webbrowser.open(sys.argv[1], new=2) else 1)",
-            destination + "#token=" + token,
+            destination,
         ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             timeout=15, check=True)
     except (OSError, subprocess.SubprocessError):
-        raise ValueError("Browser handoff failed or was refused. Run noetic open from your local graphical session and check the default browser (or BROWSER), then retry. No pairing URL was printed.") from None
-    print(f"Browser handoff requested for {destination} This does not confirm a rendered or authenticated tab.")
+        raise ValueError("Browser handoff failed or was refused. Run noetic open from your local graphical session and check the default browser (or BROWSER), then retry. No browser handoff was confirmed.") from None
+    print(f"Browser handoff requested for {destination} This does not confirm a rendered tab.")
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     opening = bool(argv and argv[0] == "open")
     parser = argparse.ArgumentParser(description=(
-        "Request a browser handoff to the already-running local GUI using its existing owner token. "
-        "Match the serve selectors; no GUI, model or token is started/created."
+        "Request a browser handoff to the already-running local GUI. "
+        "Match the serve selectors; no GUI or model is started."
         if opening else __doc__))
     parser.add_argument("--runs-dir", type=Path, default=Path.cwd() / ".runtime/runs")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--token-file", type=Path, help="Owner-only local operator token file (default: RUNS_DIR/../.operator-access/token)")
     args = parser.parse_args(argv[1:] if opening else argv)
     minimum_port = 1 if opening else 0
     if not minimum_port <= args.port <= 65535:
         parser.error(f"--port must be between {minimum_port} and 65535" +
                      ("; select the running GUI's actual port" if opening else ""))
     try:
-        token_file = args.token_file or args.runs_dir.expanduser().resolve().parent / ".operator-access" / "token"
         if opening:
-            open_workspace(token_file, args.port)
+            open_workspace(args.port)
             return 0
-        token = access.load_token(token_file)
-        with create_server(args.runs_dir, port=args.port, access_token=token) as server:
-            print(f"noetic-dev operator pairing (keep private): {server.pairing_url}", flush=True)
+        with create_server(args.runs_dir, port=args.port) as server:
+            print(f"noetic-dev workspace: http://127.0.0.1:{server.server_port}/", flush=True)
             print(f"Operator workspace runs: {args.runs_dir.expanduser().resolve()}", flush=True)
             try:
                 server.serve_forever()

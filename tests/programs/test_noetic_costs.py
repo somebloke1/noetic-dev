@@ -193,7 +193,7 @@ class CostRoutesTests(unittest.TestCase):
             try:
                 def call(path, body=None):
                     with contextlib.closing(http.client.HTTPConnection(*server.server_address, timeout=10)) as connection:
-                        headers = {"Authorization": "Bearer " + server.token}
+                        headers = {}
                         if body is not None:
                             headers["Content-Type"] = "application/json"
                         connection.request("GET" if body is None else "POST", path,

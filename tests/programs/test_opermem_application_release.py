@@ -81,7 +81,7 @@ owner=canonical.create_effort(intent='ordinary project inquiry',environment={'cw
 server=noetic_web.create_server(runs,port=0,namespace_path=ns);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
 def api(path,body=None):
  with closing(http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=20)) as conn:
-  conn.request('POST' if body is not None else 'GET',path,json.dumps(body) if body is not None else None,{'Authorization':'Bearer '+server.token,'Content-Type':'application/json'})
+  conn.request('POST' if body is not None else 'GET',path,json.dumps(body) if body is not None else None,{'Content-Type':'application/json'})
   response=conn.getresponse();data=json.loads(response.read());assert response.status in (200,201,202),(response.status,data);return data
 try:
  definition=next(d for d in api('/api/disciplines?effort_root='+owner['ordinal'])['definitions'] if d.get('backend')==component.BACKEND)

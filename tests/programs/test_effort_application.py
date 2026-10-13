@@ -105,7 +105,7 @@ class EffortApplicationTests(unittest.TestCase):
         server=server or self.server
         with closing(http.client.HTTPConnection('127.0.0.1',server.server_port,timeout=30)) as connection:
             connection.request('POST' if body is not None else 'GET',path,json.dumps(body) if body is not None else None,
-                {'Authorization':f'Bearer {server.token}','Content-Type':'application/json'})
+                {'Content-Type':'application/json'})
             response=connection.getresponse();data=json.loads(response.read());self.assertEqual(response.status,expected,data);return data
 
     def instance(self, index=0, pattern='cognition'):

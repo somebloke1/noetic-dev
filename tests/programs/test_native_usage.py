@@ -6,7 +6,7 @@ import threading
 import unittest
 from contextlib import closing
 
-from scripts import noetic_access as access, noetic_usage as usage, noetic_web as web
+from scripts import noetic_usage as usage, noetic_web as web
 from scripts.noetic_sessions import SessionService
 
 
@@ -99,14 +99,13 @@ class NativeUsageTests(unittest.TestCase):
     def test_http_explicit_scope_and_read_only_projection(self):
         self.event(self.owned, self.end())
         before = self.service.registry.path.read_bytes()
-        token = access.generate_token()
-        server = web.create_server(self.runs, port=0, namespace_path=self.namespace, access_token=token)
+        server = web.create_server(self.runs, port=0, namespace_path=self.namespace)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             def get(path):
                 connection = http.client.HTTPConnection(*server.server_address)
-                connection.request("GET", path, headers={"Authorization": "Bearer " + token})
+                connection.request("GET", path)
                 response = connection.getresponse()
                 status, body = response.status, json.loads(response.read())
                 connection.close()

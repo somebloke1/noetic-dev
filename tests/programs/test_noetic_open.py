@@ -1,4 +1,4 @@
-"""Implementation checks: ephemeral loopback GUI, synthetic tokens, mocked browser handoff."""
+"""Implementation checks: ephemeral loopback GUI, plain URL, mocked browser handoff."""
 
 from contextlib import closing, redirect_stderr, redirect_stdout
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -16,7 +16,6 @@ from unittest.mock import patch
 import zipfile
 
 from scripts import noetic
-from scripts import noetic_access as access
 from scripts import noetic_release as release
 from scripts import noetic_run as runtime
 from scripts import noetic_web as web
@@ -69,7 +68,7 @@ class NoeticOpenTests(unittest.TestCase):
         return result
 
     def start_server(self, server=None):
-        server = server or web.create_server(self.runs, port=0, access_token=TOKEN)
+        server = server or web.create_server(self.runs, port=0)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(thread.join, 5)
@@ -86,89 +85,66 @@ class NoeticOpenTests(unittest.TestCase):
              ["--runs-dir", str(self.root / "selected/runs"), "--port", "9876"],
              self.root / "selected/runs", None, 9876),
             ({"NOETIC_STATE_HOME": str(self.root / "ignored"), "HOME": str(self.root)},
-             ["--runs-dir=~/selected/runs", "--token-file=~/owner/token", "--port=8765"],
-             self.root / "selected/runs", Path("~/owner/token"), 8765),
+             ["--runs-dir=~/selected/runs", "--port=8765"],
+             self.root / "selected/runs", None, 8765),
         ]
         before = self.inventory()
-        for env, args, runs, token_file, port in cases:
+        for env, args, runs, _, port in cases:
             with self.subTest(args=args, env=env), patch.dict(os.environ, env):
                 with patch.object(web, "open_workspace") as handoff:
                     self.assertEqual(self.call(*args)[0], 0)
-                handoff.assert_called_once_with(token_file or runs.parent / ".operator-access/token", port)
+                handoff.assert_called_once_with(port)
         self.assertEqual(self.inventory(), before)
 
-    def test_open_rejects_zero_or_invalid_port_before_reading_token(self):
+    def test_open_rejects_zero_or_invalid_port_before_browser_handoff(self):
         before = self.inventory()
-        with patch.object(access, "read_token") as read_token:
+        with patch.object(web, "open_workspace") as handoff:
             for port in ("0", "-1", "65536", "not-a-port"):
                 with self.subTest(port=port):
                     code, stdout, stderr = self.call("--port", port)
                     self.assertEqual(code, 2)
                     self.assertEqual(stdout, "")
                     self.assertIn("--port", stderr)
-            read_token.assert_not_called()
+            handoff.assert_not_called()
         self.assertEqual(self.inventory(), before)
 
-    def test_serve_environment_token_creation_then_readonly_open(self):
+    def test_serve_environment_and_readonly_open_without_operator_files(self):
         state = self.root / "bound state"
+        before = self.inventory()
         with patch.dict(os.environ, {"NOETIC_STATE_HOME": str(state)}):
-            with patch.object(access, "generate_token", return_value=TOKEN), \
+            with patch.object(web, "create_server", wraps=web.create_server) as factory, \
                     patch.object(web.ThreadingHTTPServer, "serve_forever", side_effect=KeyboardInterrupt), \
+                    patch.object(os, "open", side_effect=AssertionError("No operator credential access")), \
                     redirect_stdout(io.StringIO()):
                 self.assertEqual(noetic.main(["serve", "--port", "0"]), 0)
-            path = state / ".operator-access/token"
-            self.assertEqual(access.read_token(path), TOKEN)
-            server = self.start_server(web.create_server(state / "runs", port=0, access_token=TOKEN))
-            before = self.inventory()
+            factory.assert_called_once_with(state / "runs", port=0)
+            server = self.start_server(web.create_server(state / "runs", port=0))
             with patch.object(web.subprocess, "run") as browser:
                 self.assertEqual(self.call("--port", server.server_port)[0], 0)
                 browser.assert_called_once()
-            self.assertEqual(self.inventory(), before)
-            self.assertFalse((state / "runs").exists())
+        self.assertEqual(self.inventory(), before)
+        self.assertFalse((state / "runs").exists())
 
-    def test_missing_token_and_parent_are_not_created_or_inferred(self):
-        custom = self.token_file("home/.local/share/noetic-dev/operator-access/token")
-        # An installed service's custom token is not a fallback for the serve default.
-        for path in (None, self.root / "absent/parent/token", custom.with_name("missing")):
-            with self.subTest(path=path), patch.object(web.subprocess, "run") as browser:
-                before = self.inventory()
-                code, stdout, stderr = self.call(*(["--token-file", path] if path else []))
-                self.assertEqual(code, 1)
-                self.assertEqual(stdout, "")
-                self.assertIn("missing", stderr)
-                self.assertIn("--token-file", stderr)
-                browser.assert_not_called()
-                self.assertEqual(self.inventory(), before)
-
-    def test_invalid_content_and_permissions_are_not_repaired(self):
-        cases = [(b"short\n", 0o600, 0o700), (TOKEN.encode() + b"\nextra", 0o600, 0o700),
-                 (b"\xff\n", 0o600, 0o700), (TOKEN.encode(), 0o644, 0o700),
-                 (TOKEN.encode(), 0o600, 0o777)]
-        for index, (content, mode, parent_mode) in enumerate(cases):
-            path = self.token_file(f"invalid-{index}/token")
-            path.write_bytes(content)
-            path.chmod(mode)
-            path.parent.chmod(parent_mode)
-            with self.subTest(index=index), patch.object(web.subprocess, "run") as browser:
-                before = self.inventory()
-                code, stdout, stderr = self.call("--token-file", path)
-                self.assertEqual(code, 1)
-                self.assertEqual(stdout, "")
-                self.assertIn("operator token", stderr)
-                self.assertEqual(self.inventory(), before)
-                browser.assert_not_called()
-
-    def test_existing_token_owner_validation_is_reused(self):
-        path = self.token_file()
+    def test_obsolete_operator_file_is_untouched_and_option_is_removed(self):
+        self.token_file(content="discarded-synthetic-legacy-value")
         before = self.inventory()
-        with patch.object(access.os, "getuid", return_value=os.getuid() + 1):
-            code, _, stderr = self.call("--token-file", path)
-        self.assertEqual(code, 1)
-        self.assertIn("owner-controlled", stderr)
+        server = self.start_server()
+        with patch.object(os, "open", side_effect=AssertionError("No operator credential access")), \
+                patch.object(web.subprocess, "run") as browser:
+            self.assertEqual(self.call("--port", server.server_port)[0], 0)
+            browser.assert_called_once()
+        self.assertEqual(self.inventory(), before)
+        with patch.object(web.subprocess, "run") as browser:
+            code, _, stderr = self.call("--token-file", self.root / "not-read")
+            self.assertEqual(code, 2)
+            self.assertIn("unrecognized arguments", stderr)
+            browser.assert_not_called()
         self.assertEqual(self.inventory(), before)
 
+
+
+
     def test_unavailable_listener_does_not_open_browser(self):
-        self.token_file()
         before = self.inventory()
         # Reserve a real ephemeral port without listening, rather than probing production.
         with closing(socket.socket()) as unavailable, patch.object(web.subprocess, "run") as browser:
@@ -181,21 +157,8 @@ class NoeticOpenTests(unittest.TestCase):
         self.assertIn("--port", stderr)
         self.assertEqual(self.inventory(), before)
 
-    def test_gui_rejects_stale_but_well_formed_token_before_browser_handoff(self):
-        self.token_file(content="b" * 43)
-        server = self.start_server()
-        before = self.inventory()
-        with patch.object(web.subprocess, "run") as browser:
-            code, stdout, stderr = self.call("--port", server.server_port)
-            browser.assert_not_called()
-        self.assertEqual(code, 1)
-        self.assertEqual(stdout, "")
-        self.assertIn("rejected this operator token", stderr)
-        self.assertIn("--token-file", stderr)
-        self.assertEqual(self.inventory(), before)
 
     def test_readiness_failure_does_not_follow_redirects_or_use_environment_proxy(self):
-        self.token_file()
         requests = []
         status = 302
 
@@ -221,26 +184,25 @@ class NoeticOpenTests(unittest.TestCase):
                     self.assertEqual(stdout, "")
                     self.assertIn(f"HTTP {status}", stderr)
                     browser.assert_not_called()
-        self.assertEqual(requests, [("HEAD", "/api/runs?scope=application", f"Bearer {TOKEN}")] * 2)
+        self.assertEqual(requests, [("HEAD", "/", None)] * 2)
         self.assertEqual(self.inventory(), before)
 
     def test_custom_service_path_and_readonly_success_handoff(self):
-        path = self.token_file("home/.local/share/noetic-dev/operator-access/token")
         runtime.create_run({"goal": "Synthetic opener history"}, self.root, self.runs)
         server = self.start_server()
         before = self.inventory()
         with patch.dict(os.environ, {"NOETIC_STATE_HOME": str(self.root / "ignored")}), \
-                patch.object(access, "load_token", side_effect=AssertionError("Opener must not create tokens")), \
+                patch.object(web, "run_summaries", side_effect=AssertionError("Opener must not inspect runs")), \
                 patch.object(web.subprocess, "run") as browser:
-            code, stdout, stderr = self.call("--runs-dir", self.runs, "--token-file", path,
+            code, stdout, stderr = self.call("--runs-dir", self.runs,
                                              "--port", server.server_port)
         self.assertEqual(code, 0)
         self.assertEqual(stderr, "")
         self.assertIn("Browser handoff requested", stdout)
-        self.assertIn("does not confirm a rendered or authenticated tab", stdout)
+        self.assertIn("does not confirm a rendered tab", stdout)
         command = browser.call_args.args[0]
         self.assertEqual(command[:3], [sys.executable, "-I", "-c"])
-        self.assertEqual(command[-1], server.pairing_url)
+        self.assertEqual(command[-1], f"http://127.0.0.1:{server.server_port}/")
         self.assertNotIn("?", command[-1])
         self.assertEqual(browser.call_args.kwargs, dict(
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -249,7 +211,6 @@ class NoeticOpenTests(unittest.TestCase):
         self.assertFalse((self.runs.parent / ".operator-access").exists())
 
     def test_mocked_browser_in_real_child_cannot_leak_url_on_false_exception_or_success(self):
-        self.token_file()
         server = self.start_server()
         before = self.inventory()
         real_run = subprocess.run
@@ -268,7 +229,7 @@ class NoeticOpenTests(unittest.TestCase):
             )
 
             def browser_child(command, **kwargs):
-                self.assertEqual(command[-1], server.pairing_url)
+                self.assertEqual(command[-1], f"http://127.0.0.1:{server.server_port}/")
                 self.assertEqual(kwargs, dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                               stderr=subprocess.DEVNULL, timeout=15, check=True))
                 return real_run([*command[:3], fixture + command[3], *command[4:]], **kwargs)
@@ -284,11 +245,10 @@ class NoeticOpenTests(unittest.TestCase):
                     self.assertIn("Browser handoff requested", stdout)
                 self.assertEqual(self.inventory(), before)
 
-    def test_launcher_error_and_timeout_do_not_print_exception_with_pairing_url(self):
-        self.token_file()
+    def test_launcher_error_and_timeout_do_not_print_exception_details(self):
         server = self.start_server()
         before = self.inventory()
-        for error in (OSError(server.pairing_url), subprocess.TimeoutExpired(server.pairing_url, 15)):
+        for error in (OSError(f"http://127.0.0.1:{server.server_port}/"), subprocess.TimeoutExpired(f"http://127.0.0.1:{server.server_port}/", 15)):
             with self.subTest(error=type(error).__name__), patch.object(web.subprocess, "run", side_effect=error):
                 code, stdout, stderr = self.call("--port", server.server_port)
                 self.assertEqual(code, 1)

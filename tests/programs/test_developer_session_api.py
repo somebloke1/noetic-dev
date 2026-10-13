@@ -1,4 +1,4 @@
-"""Real authenticated HTTP, temporary Git projects and live model-free brokers."""
+"""Local HTTP, temporary Git projects and live model-free brokers."""
 from contextlib import closing
 import http.client
 import json
@@ -30,10 +30,10 @@ class DeveloperSessionApiTests(unittest.TestCase):
     def stop_server(self):
         self.server.shutdown(); self.server.server_close(); self.thread.join(timeout=5)
 
-    def request(self, path, body=None, *, authenticated=True, method=None):
+    def request(self, path, body=None, *, stale_header=False, method=None):
         headers = {"Content-Type": "application/json"}
-        if authenticated:
-            headers["Authorization"] = f"Bearer {self.server.token}"
+        if stale_header:
+            headers["Authorization"] = "stale synthetic operator header"
         with closing(http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=25)) as client:
             client.request(method or ("POST" if body is not None else "GET"), path,
                            body=json.dumps(body) if body is not None else None, headers=headers)
@@ -105,9 +105,9 @@ class DeveloperSessionApiTests(unittest.TestCase):
         self.assertEqual(status, 200, later)
         self.assertTrue(later["records"])
 
-    def test_authenticated_read_empty_registry_and_open_existing_never_create_project(self):
+    def test_local_read_empty_registry_and_open_existing_never_create_project(self):
         self.assertFalse(self.runs.exists())
-        self.assertEqual(self.request("/api/developer-sessions", authenticated=False)[0], 401)
+        self.assertEqual(self.request("/api/developer-sessions", stale_header=True)[0], 200)
         self.assertFalse(self.runs.exists())
         self.assertEqual(self.request("/api/developer-sessions")[1]["sessions"], [])
         self.assertFalse(self.runs.exists())
@@ -159,7 +159,7 @@ class DeveloperSessionApiTests(unittest.TestCase):
         target.write_text("print('usable source')\n")
         source = target.read_bytes(), target.stat().st_mtime_ns
         route = f"/api/developer-sessions/{item['id']}/file?path=app.py"
-        self.assertEqual(self.request(route, authenticated=False)[0], 401)
+        self.assertEqual(self.request(route, stale_header=True)[0], 200)
         status, result = self.request(route)
         self.assertEqual(status, 200, result)
         self.assertEqual(result["text"], "print('usable source')\n")

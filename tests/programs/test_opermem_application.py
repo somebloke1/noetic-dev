@@ -84,7 +84,7 @@ class ReviewedApplicationTests(unittest.TestCase):
     def request(self,path,expected=200,body=None):
         with closing(http.client.HTTPConnection('127.0.0.1',self.server.server_port,timeout=20)) as connection:
             connection.request('POST' if body is not None else 'GET',path,json.dumps(body) if body is not None else None,
-                               {'Authorization':'Bearer '+self.server.token,'Content-Type':'application/json'})
+                               {'Content-Type':'application/json'})
             response=connection.getresponse();data=json.loads(response.read())
             self.assertEqual(response.status,expected,data);return data
 

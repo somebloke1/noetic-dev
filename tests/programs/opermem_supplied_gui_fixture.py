@@ -33,7 +33,7 @@ def launch(argv, **kwargs):
 transport = patch.object(reviewed.subprocess,'Popen',side_effect=launch);transport.start()
 server = web.create_server(root/'runs',port=0,namespace_path=ns,opermem_host=Path(os.environ['OPERMEM_OPERATION_HOST']),session_command=['/bin/false'])
 thread = threading.Thread(target=server.serve_forever,daemon=True);thread.start()
-print(json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'token':server.token,'root':str(root),'project':str(cwd),'source':str(source),'backing':str(root/'native-A')}),flush=True)
+print(json.dumps({'url':'http://127.0.0.1:'+str(server.server_port),'root':str(root),'project':str(cwd),'source':str(source),'backing':str(root/'native-A')}),flush=True)
 try:
     for line in sys.stdin:
         command = json.loads(line)

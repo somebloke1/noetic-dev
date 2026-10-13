@@ -162,7 +162,7 @@ class ApplicationGuiTests(unittest.TestCase):
                 data.pop("telos_chain", None)
         with closing(http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=30)) as connection:
             connection.request(method, route, body=json.dumps(data) if data is not None else None,
-                               headers={"Authorization": f"Bearer {server.token}", **(headers if headers is not None else {"Content-Type": "application/json"})})
+                               headers=headers if headers is not None else {"Content-Type": "application/json"})
             response = connection.getresponse()
             body = response.read()
             self.assertEqual(response.status, expected, body)
@@ -374,7 +374,7 @@ class ApplicationGuiTests(unittest.TestCase):
         before = snapshot()
         for role in ("work", "review"):
             route = f"/api/runs/{run.name}/sessions/{role}/transcript"
-            self.request(route, 401, headers={"Authorization": ""})
+            self.request(route, headers={"Authorization": "stale operator header"})
             response = self.request(route)
             self.assertTrue(response["truncated"])
             self.assertGreater(response["byte_start"], 0)
@@ -506,7 +506,7 @@ class ApplicationGuiTests(unittest.TestCase):
                     patch.object(harness, "drive", side_effect=AssertionError("GET must not drive")), \
                     patch.object(harness, "resume", side_effect=AssertionError("GET must not resume")), \
                     patch.object(application.subprocess, "Popen", side_effect=AssertionError("GET must not spawn")):
-                self.request(route, 401, headers={"Authorization": ""})
+                self.request(route, headers={"Authorization": "stale operator header"})
                 self.request(route, method="HEAD")
                 setup = self.request(route)
                 self.request(route, 405, "POST", {})

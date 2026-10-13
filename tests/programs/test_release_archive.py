@@ -549,18 +549,17 @@ class ReleaseArchiveTests(unittest.TestCase):
         self.assertEqual(os.readlink(public), str(legacy))
         self.assertEqual(legacy.read_bytes(), original_launcher)
         # Actual installed GUI, both the reported explicit invocation shape and
-        # its bound default, with synthetic access material outside retained state.
+        # its bound default, without operator credentials.
         for paths in (("--runs-dir", str(external / "runs")), ()):
-            server = subprocess.Popen([str(wrapper), "serve", *paths, "--port", "0",
-                                       "--token-file", str(self.root / "test-access/token")],
+            server = subprocess.Popen([str(wrapper), "serve", *paths, "--port", "0"],
                                       cwd=self.root, env=env, stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE, text=True)
             try:
                 self.assertTrue(select.select([server.stdout], [], [], 10)[0], "GUI did not start")
                 line = server.stdout.readline()
-                self.assertIn("http://127.0.0.1:", line, "GUI pairing line missing")
-                base, token = line.strip().split("http://", 1)[1].split("/#token=")
-                request = Request(f"http://{base}/api/runs/{run.name}?scope=application", headers={"Authorization": f"Bearer {token}"})
+                self.assertIn("http://127.0.0.1:", line, "GUI workspace URL missing")
+                base = line.strip().split("http://", 1)[1].rstrip("/")
+                request = Request(f"http://{base}/api/runs/{run.name}?scope=application")
                 with urlopen(request, timeout=10) as response:
                     detail = json.load(response)
                 self.assertEqual(detail["controller"], state)
