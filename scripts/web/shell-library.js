@@ -326,7 +326,7 @@
     if (!detail) {placeholder(state.list,"Select a recorded execution","Artifacts retain their original run, version, actor, and acceptance context.");state.list.append(action("Browse executions",()=>UI.navigate("executions")));return;}
     const typed = Object.values(detail.controller?.artifacts || {});
     for (const artifact of typed) {
-      const row = action("",()=>{ get("artifact-select").value = artifact.id; get("artifact-select").dispatchEvent(new Event("change",{bubbles:true})); if (typeof switchView === "function") switchView("controller"); });row.className = "lib-run-row";
+      const row = action("",()=>{ const select=get("artifact-select"); select.value = artifact.id; select.dispatchEvent(new Event("change",{bubbles:true})); if (typeof switchView === "function") switchView("controller"); revealArtifact(artifact.id); });row.className = "lib-run-row";
       const text = el("span"); text.append(el("strong","",artifact.type),el("small","lib-mono",`${artifact.id} · ${artifact.phase} · generation ${artifact.generation} · ${artifact.produced_by || "actor unknown"}`));row.append(text,UI.badge(artifact.partial ? "Partial" : "Retained",""),el("span","","›"));state.list.append(row);
     }
     for (const name of Object.keys(detail.artifacts || {})) {
@@ -336,6 +336,18 @@
     }
     if (!typed.length && !Object.keys(detail.artifacts || {}).length) placeholder(state.list,"No retained outputs","This execution has not produced readable artifacts.");
     if (typeof switchView === "function") switchView(typed.length ? "controller" : "reports");
+  }
+  function revealArtifact(id) {
+    const select = get("artifact-select"), content = get("artifact-content");
+    if (!select || !content || UI.route() !== "artifacts" || select.value !== id || !content.isConnected) return;
+    const key = scopeKey(), runId = (typeof selectedDetail !== "undefined" && selectedDetail?.status?.run_id) || null;
+    requestAnimationFrame(()=>{
+      if (UI.route() !== "artifacts" || key !== scopeKey() || runId !== ((typeof selectedDetail !== "undefined" && selectedDetail?.status?.run_id) || null) || select.value !== id || !content.isConnected) return;
+      const rect = select.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+      if (rect.top < 0 || rect.bottom > innerHeight || content.getBoundingClientRect().top >= innerHeight) select.scrollIntoView({block:"start"});
+      content.focus({preventScroll:true});
+    });
   }
   function memory(context) {
     const state = base(context), key = scopeKey();
