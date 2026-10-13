@@ -152,8 +152,11 @@ async function unlockAccess() {
   if (!operatorToken) return;
   const version = accessVersion;
   try {
-    await fetchJSON("/api/runs?scope=application");
+    // Pair from the fast authenticated boundary, not the execution register:
+    // a stalled or failing run read must not hold pairing hostage.
+    const boundary = await fetchJSON("/api/access");
     if (version !== accessVersion) return;
+    if (boundary?.authenticated !== true) throw new Error("Access boundary did not confirm authentication.");
     try { sessionStorage.setItem(tokenKey, operatorToken); } catch (_) { /* Storage is optional. */ }
     $("private-workspace").hidden = false;
     renderReuseNotice();
@@ -1962,11 +1965,11 @@ function renderReviewedSources() {
   }));
 }
 async function loadReviewedSetup() {
-  const version = ++reviewedVersion, scopeVersion=operationVersion, key=operationKey(), selection=operationSelection();
+  const version = ++reviewedVersion, scopeVersion=operationVersion, key=operationKey(), selection=operationSelection(), access=accessVersion;
   reviewedLoading = true;
   try {
     const [catalog, backings] = await Promise.all([fetchJSON(scopedURL("/api/disciplines",selection)),fetchJSON(scopedURL("/api/opermem/stores",selection))]);
-    if (version !== reviewedVersion || !operationValid(scopeVersion,key)) return;
+    if (version !== reviewedVersion || access !== accessVersion || !operationValid(scopeVersion,key)) return;
     reviewedDefinition = catalog.definitions.find(x=>x.backend === "opermem-reviewed");
     setOptions("reviewed-operation", (reviewedDefinition?.operations || []).map(x=>[x.id,x.id[0].toUpperCase()+x.id.slice(1)]),"question");
     setOptions("reviewed-store",[["","Select backing explicitly"],...backings.stores.map(x=>[x.store_ref.id,x.store_ref.directory])],"");
@@ -1974,8 +1977,8 @@ async function loadReviewedSetup() {
     window.NoeticDrafts?.restoreChoice("reviewed-store", backings.stores.map(x=>x.store_ref.id));
     text("reviewed-store-status",backings.component?.available ? "Registered backings only. Current native standing remains unobserved." : backings.component?.reason || "Native component availability unobserved.");
     await loadReviewedLaunches();
-  } catch (failure) { if (operationValid(scopeVersion,key)) text("reviewed-store-status",`Backing selection unavailable: ${failure.message}`); }
-  finally { reviewedLoading=false; if (operationValid(scopeVersion,key) && isReviewed()) reviewedOperation(); }
+  } catch (failure) { if (access === accessVersion && operationValid(scopeVersion,key)) text("reviewed-store-status",`Backing selection unavailable: ${failure.message}`); }
+  finally { reviewedLoading=false; if (access === accessVersion && operationValid(scopeVersion,key) && isReviewed()) reviewedOperation(); }
 }
 async function registerReviewedStore() {
   const scopeVersion=operationVersion,key=operationKey(),selection=operationSelection();

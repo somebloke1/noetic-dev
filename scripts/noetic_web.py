@@ -415,7 +415,11 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                         return int(params[name][0]) if name in params else default
                     except ValueError:
                         raise RequestError(400, f"{name} must be an integer.") from None
-                if path == "/api/opermem/stores":
+                if path == "/api/access":
+                    # Fast authenticated boundary: parse_request already enforced
+                    # the exact bearer guard; no DB, run, native or model reads.
+                    result = {"authenticated": True}
+                elif path == "/api/opermem/stores":
                     selection = app.selection({key: params[key][0] for key in ("scope", "effort_root") if key in params})
                     result = app.reviewed().registrations(selection)
                 elif path == "/api/application/launches":
