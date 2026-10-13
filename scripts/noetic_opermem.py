@@ -83,56 +83,131 @@ class OperationHost:
         transcript = private_dir(transcript)
         if any(transcript.iterdir()) or transcript == store:
             raise ValueError("transcript must be a fresh empty directory separate from the store")
+        # Capture lives in a fresh private sibling; the native host validates the
+        # transcript directory itself as empty at startup, so nothing enters it.
+        self.capture_dir = transcript.parent / (transcript.name + "-bridge")
+        try:
+            self.capture_dir.mkdir(mode=0o700)
+        except FileExistsError:
+            raise ValueError("Opermem host capture directory already exists; choose a fresh transcript") from None
+        # stderr is captured straight to disk so diagnostics cannot be lost to
+        # pipe backpressure even when an exchange has already raised.
+        self._stderr_capture = open(self.capture_dir / "stderr.raw", "xb")
         self.process = subprocess.Popen([str(binary), str(store), str(transcript)], env={},
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE)
+                                        stderr=self._stderr_capture)
         self.sequence = 0
 
     def __enter__(self):
         return self
 
+    def _captured_stderr(self) -> str:
+        try:
+            data = (self.capture_dir / "stderr.raw").read_bytes()
+        except OSError:
+            return ""
+        return data.decode(errors="replace")[:500]
+
+    def _retain_process(self, status, shutdown: bool) -> None:
+        with open(self.capture_dir / "process.json", "x", encoding="utf-8") as stream:
+            json.dump({"returncode": status, "shutdown_timed_out": shutdown}, stream, sort_keys=True)
+            stream.write("\n")
+
+    def _retain_response(self, response: bytearray) -> None:
+        with open(self.capture_dir / f"{self.sequence:04d}-response.raw", "xb") as stream:
+            stream.write(response)
+
+    def _failure_evidence(self) -> str:
+        status = self.process.poll()
+        exit_note = f"exit {status}" if status is not None else "process still running"
+        return f"{exit_note}; stderr: {self._captured_stderr()!r}; evidence: {self.capture_dir}"
+
     def __exit__(self, exc_type, exc, traceback):
         assert self.process.stdin is not None
         self.process.stdin.close()
+        shutdown_failure = None
+        status = None
         try:
             try:
                 status = self.process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as failure:
+                shutdown_failure = failure
                 self.process.kill()
-                self.process.wait()
-                raise RuntimeError("Opermem operation host did not exit") from exc
-            assert self.process.stderr is not None
-            diagnostic = self.process.stderr.read().decode(errors="replace")[:500]
+                try:
+                    status = self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    status = None
         finally:
-            assert self.process.stdout is not None and self.process.stderr is not None
+            assert self.process.stdout is not None
+            if self.process.poll() is not None:
+                trailing = bytearray()
+                while True:
+                    chunk = os.read(self.process.stdout.fileno(), 65536)
+                    if not chunk:
+                        break
+                    trailing.extend(chunk)
+                if trailing:
+                    with open(self.capture_dir / "remaining-stdout.raw", "xb") as stream:
+                        stream.write(trailing)
             self.process.stdout.close()
-            self.process.stderr.close()
+            self._stderr_capture.flush()
+            self._stderr_capture.close()
+        self._retain_process(status, shutdown_failure is not None)
+        if shutdown_failure is not None:
+            # A shutdown timeout must never mask a qualified exchange failure:
+            # the primary error keeps its label and evidence path as the surfaced
+            # prefix, the secondary shutdown status is appended, and the original
+            # exception stays chained.
+            if exc_type is not None:
+                primary = str(exc) if exc is not None else exc_type.__name__
+                raise RuntimeError(f"{primary}; secondary: Opermem operation host shutdown timed out "
+                                   f"and was terminated; exit {status}; evidence: {self.capture_dir}") from exc
+            raise RuntimeError("Opermem operation host did not exit; "
+                               f"evidence: {self.capture_dir}") from shutdown_failure
         if status != 0 and exc_type is None:
-            raise RuntimeError(f"Opermem operation host exited {status}: {diagnostic}")
+            raise RuntimeError(f"Opermem operation host exited {status}: {self._captured_stderr()}")
 
     def exchange(self, kind: str, payload: dict) -> dict:
         self.sequence += 1
         frame = {"correlation_id": self.sequence, "expected_architecture_semantics": 1,
                  "expected_policy_version": 1, "expected_schema_version": 3, "kind": kind,
                  "payload": payload, "protocol_version": 1, "request_id": self.sequence}
+        request = canonical(frame) + b"\n"
+        with open(self.capture_dir / f"{self.sequence:04d}-request.raw", "xb") as stream:
+            stream.write(request)
         assert self.process.stdin is not None and self.process.stdout is not None
-        self.process.stdin.write(canonical(frame) + b"\n")
+        self.process.stdin.write(request)
         self.process.stdin.flush()
-        deadline = time.monotonic() + 10
+
+        def fail(label: str, cause=None):
+            raise RuntimeError(f"Opermem operation host {label} after request {self.sequence}; "
+                               f"{self._failure_evidence()}") from cause
+
         response = bytearray()
+        deadline = time.monotonic() + 10
         while not response.endswith(b"\n"):
             remaining = deadline - time.monotonic()
             if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                self._retain_response(response)
                 raise TimeoutError("Opermem operation host response timed out")
             chunk = os.read(self.process.stdout.fileno(), 65536)
-            if not chunk or len(response) + len(chunk) > 524288:
-                raise RuntimeError("Opermem operation host response missing or oversized")
+            if not chunk:
+                self._retain_response(response)
+                fail("response-eof")
             response.extend(chunk)
-        result = json.loads(response)
+            if len(response) > 524288:
+                self._retain_response(response)
+                fail("response-oversized")
+        self._retain_response(response)
+        try:
+            result = json.loads(response)
+        except (ValueError, UnicodeDecodeError) as exc:
+            fail("response-json-invalid", exc)
         if (result.get("request_id") != self.sequence
                 or result.get("correlation_id") != self.sequence
                 or result.get("class") not in ("success", "idempotency-replay")):
-            raise RuntimeError(f"Opermem {kind} refused: {result.get('class')} / {result.get('kind')}")
+            raise RuntimeError(f"Opermem {kind} refused: {result.get('class')} / {result.get('kind')}"
+                               f"; evidence: {self.capture_dir}")
         return result
 
     def context(self, purpose: dict) -> dict:

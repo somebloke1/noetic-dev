@@ -13,6 +13,33 @@ runner creates new directories with mode 0700; an existing public directory is
 rejected. The current Rust host uses fixed bootstrap experience and workspace
 identities. They are local markers, not registered repository sources.
 
+Host exchange evidence capture: for each host session the bridge creates a
+fresh private sibling `<transcript-name>-bridge` directory next to the native
+transcript directory, created exclusively. Bridge captures leave the native
+transcript directory empty for its startup validation; the native host then
+writes its own transcript. Every exchange retains its exact outgoing canonical request
+plus terminating LF as `NNNN-request.raw`, and the raw response bytes actually
+read — including a first overshoot chunk, an empty file for EOF, or a malformed
+but observed body — as `NNNN-response.raw`, numbered by exchange sequence.
+`stderr.raw` holds the host's exact stderr bytes (streamed to disk, so nothing
+is lost to pipe backpressure even when an exchange has raised);
+`remaining-stdout.raw` retains any trailing unframed stdout bytes after exit
+when present; `process.json` records the true returncode and
+`shutdown_timed_out`. An exchange can end in distinguishable ways: success
+(parsed and correlation/class gated exactly as before), native refusal (a
+well-formed envelope the gate rejects, whose exact body determines its standing),
+`response-eof` (stdout closed without a complete response),
+`response-oversized` (observed bytes exceeded the 524288-byte bound; the capture
+includes the first overshoot chunk, at most 65536 bytes, and may omit later bytes),
+and `response-json-invalid` (bytes ended with LF but did
+not decode). EOF, oversize and decode failures raise RuntimeError with the
+outcome label, the process exit status when known, bounded human stderr and the
+absolute capture path, chained to the underlying decode error where one exists.
+The capture directory is the retrieval location; no native admission, response
+normalization or effect inference is derived from it. In particular, exit 65 with
+`invalid-request` on stderr and no response is an observed process/input refusal;
+it is not a native semantic refusal receipt or proof of zero effects.
+
 ```sh
 noetic opermem --host /path/to/opermem-operation-host \
   --store /private/opermem-store --runs-dir /private/runs \
