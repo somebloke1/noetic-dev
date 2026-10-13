@@ -182,7 +182,7 @@
     });
     map.replaceChildren(...sessions.map(item=> {
       const row=btn("",()=>window.NoeticSessions.open(targetOf(item)),"agentics-session-row");row.dataset.sessionId=item.id;
-      const target=item.target;row.append(el("code","",item.ordinal||item.original_ordinal||"Native source"),el("strong","",item.title||item.id),el("small","",target ? `Instantiation ${target.instantiation} · session ${target.session} · ${item.is_current ? "current" : "retained"}` : "Original namespace · unadopted"),el("span",`state-pill ${stateOf(item)}`,item.status));
+      const target=item.target;row.append(el("code","",item.ordinal||item.original_ordinal||"Native source"),el("strong","",item.title||item.id),el("small","",target ? `Instantiation ${target.instantiation} · session ${target.session} · ${item.is_current ? "current" : "retained"}` : item.effort_root || item.identity_origin==="ordinal-reserved" ? "Reserved position · native context unobserved" : "Original namespace · unadopted"),el("span",`state-pill ${stateOf(item)}`,item.status));
       return row;
     }));
     if(!sessions.length)map.append(el("p","agentics-empty","No retained native sessions in this view."));
@@ -215,15 +215,16 @@
   }
 
   function drawInspector() {
-    const selected=snapshot.selected, session=snapshot.detail?.session;
+    const selected=snapshot.selected, session=snapshot.detail?.session || (selected?.id ? (snapshot.sessions||[]).find(item=>item.id===selected.id) : null);
+    const reserved=Boolean(session && !session.target && (session.effort_root || session.identity_origin==="ordinal-reserved"));
     const projectDraft=!selected&&!snapshot.applicationHistory;
-    const original=Boolean(session ? session.identity_origin === "legacy-unadopted" || !session.target && !session.effort_root : selected?.id && !selected.ordinal && !selected.effort_root);
+    const original=Boolean(!reserved && (session ? session.identity_origin === "legacy-unadopted" || !session.target && !session.effort_root : selected?.id && !selected.ordinal && !selected.effort_root));
     const ordinal=original ? session?.original_ordinal||session?.ordinal||"Native" : selected?.ordinal||session?.ordinal||"0";
     const row=original||projectDraft ? null : (snapshot.positions||[]).find(item=>item.ordinal===ordinal), current=original||projectDraft ? null : occupantContext(ordinal);
     const parent=original && session?.parent_id ? (snapshot.sessions||[]).find(item=>item.id===session.parent_id) : null;
-    const root=!original&&!projectDraft && ordinal==="0", exact=Boolean(selected?.instantiation||selected?.id);
+    const root=!original&&!projectDraft && ordinal==="0", exact=!reserved && Boolean(selected?.instantiation||selected?.id);
     const badge=el("div","agent-avatar violet",projectDraft?"+":ordinal), identity=el("div");
-    identity.append(el("span","panel-kicker",projectDraft ? "Project conversation" : original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",projectDraft ? "Open or create a project" : exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
+    identity.append(el("span","panel-kicker",projectDraft ? "Project conversation" : reserved ? "Reserved position · native context unobserved" : original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",projectDraft ? "Open or create a project" : reserved ? `Position ${ordinal}` : exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
     const context=btn("Context",()=>{const evidence=document.getElementById("developer-evidence");evidence.open=!evidence.open;},"session-context-button"); context.disabled=!session&&!row;
     inspectorHeading.replaceChildren(badge,identity,context);
     document.getElementById("agentics-position-status").hidden=provenance.hidden=occupant.hidden=projectDraft;
@@ -244,8 +245,8 @@
     if(responsibility.querySelector("pre").textContent!==mandateSource)responsibility.querySelector("pre").textContent=mandateSource;
     provenance.replaceChildren(provenanceHeading);
     const who=el("div");who.append(el("span","",original ? "Application correspondence" : "Current occupant"),el("strong","",original ? "Unadopted native source" : root ? "No native actor" : row?.current_instantiation ? `Instantiation ${row.current_instantiation} · ${current?.model || "native model unobserved"}` : current?.target ? `Instantiation ${current.target.instantiation} · ${current.model || "native model unobserved"}` : "No instantiation observed"));
-    const selectedContext=el("div");selectedContext.append(el("span","","Selected context"),el("strong","",exact ? selected.instantiation ? `Instantiation ${selected.instantiation} · session ${selected.session}${session?.is_current ? " · current" : " · retained"}` : `Native session ${selected.id}${original ? " · original namespace · unadopted" : ""}` : "Position history"));occupant.replaceChildren(who,selectedContext);
-    inspector.dataset.positionOnly=String(snapshot.applicationHistory||root);
+    const selectedContext=el("div");selectedContext.append(el("span","","Selected context"),el("strong","",reserved ? `Reserved position ${ordinal} · native context unobserved · record ${session.id}` : exact ? selected.instantiation ? `Instantiation ${selected.instantiation} · session ${selected.session}${session?.is_current ? " · current" : " · retained"}` : `Native session ${selected.id}${original ? " · original namespace · unadopted" : ""}` : "Position history"));occupant.replaceChildren(who,selectedContext);
+    inspector.dataset.positionOnly=String(snapshot.applicationHistory||root||reserved);
     inspector.dataset.exact=String(exact);
   }
   function draw() {
