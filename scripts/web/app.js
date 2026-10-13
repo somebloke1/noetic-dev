@@ -64,13 +64,13 @@ function scopeControls() {
   $("memory-target").querySelector('[value="session"]').disabled = !native || !selectedNative.instantiation;
   if ($("memory-target").selectedOptions[0]?.disabled || operationMode !== "effort") $("memory-target").value = "effort";
   if (operationMode === "effort" && effortEnvironment) $("start-workspace").value = effortEnvironment.cwd;
-  $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment || isReviewed() && ($("reviewed-operation").value !== "question" || !$("reviewed-store").value);
+  $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment || isReviewed() && (!reviewedReady() || !$("reviewed-store").value);
 }
 function changeOperationScope(mode, previous = operationKey()) { operationMode = mode === "effort" && selectedEffort ? "effort" : "application";
   savedUI.operationMode = operationMode;
   if (operationKey() !== previous) {
     ++operationVersion; ++purposeVersion; ++memoryVersion; ++detailVersion; ++sessionVersion; ++actorLogVersion; ++reuseVersion;
-    ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];
+    ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];$("reviewed-parent-id").value="";
     $("reviewed-selected-sources").replaceChildren(); $("reviewed-launch-list").replaceChildren();
     $("reviewed-store").replaceChildren(node("option", "Select backing explicitly")); $("reviewed-store").firstChild.value = "";
     delete $("reviewed-store").dataset.options; text("reviewed-store-status", "Scope changed. Select a backing explicitly.");
@@ -110,7 +110,7 @@ function actorIdentity(actor, correspondence = selectedDetail?.correspondence) {
   const participant = correspondence?.participants?.find(row=>row.activation_id === actor.id || actor.actor_id && row.actor_id === actor.actor_id);
   return participant ? `${participant.ordinal}${participant.target ? ` · context ${participant.target.instantiation}/${participant.target.session}` : " · native context unobserved"}` : `Original actor ${actor.ordinal}`;
 }
-const formIds = ["reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
+const formIds = ["reviewed-parent-id", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
 const selectionIds = ["actor-select", "artifact-select", "actor-log-select", "report-select", "log-select", "phase-select", "session-select", "compare-left", "compare-right"];
 
 function persistUI() {
@@ -1306,7 +1306,7 @@ async function reuseSetup() {
       $("start-pattern").value = f.pattern; $("start-task").value = f.task; $("start-client").value = f.client;
       $("start-model").value = f.model || ""; $("start-qa-model").value = f.qa_model || "";
       $("start-thinking").value = f.thinking || "high"; $("start-profile").value = "";
-      $("reviewed-operation").value = f.operation; $("reviewed-store").value = ""; $("start-purpose").value = "";
+      $("reviewed-operation").value = f.operation; $("reviewed-parent-id").value=""; $("reviewed-store").value = ""; $("start-purpose").value = "";
       $("reviewed-sources").value = f.sources.filter(x=>typeof x === "string").join("\n");
       reviewedSources = f.sources.filter(x=>typeof x === "object").map(x=>({...x})); renderReviewedSources();
       ++draftVersion; savedUI.reuseSetup = {source_run_id:setup.source_run_id,warnings:setup.warnings}; renderReuseNotice();
@@ -1459,8 +1459,9 @@ function updateComposer() {
 
 function initWorkbench() {
   $("reviewed-refresh").addEventListener("click", loadReviewedSetup);
-  $("reviewed-operation").addEventListener("change", reviewedOperation);
-  $("reviewed-store").addEventListener("change", ()=>{ ++draftVersion; reviewedOperation(); });
+  $("reviewed-operation").addEventListener("change",()=>{++draftVersion;reviewedOperation();});
+  $("reviewed-parent-id").addEventListener("input",()=>{++draftVersion;reviewedOperation();});
+  $("reviewed-store").addEventListener("change", ()=>{ ++draftVersion; $("reviewed-parent-id").value="";reviewedOperation(); });
   $("reviewed-register").addEventListener("click", registerReviewedStore);
   for (const kind of ["contribution", "correlation"]) $("reviewed-recover-"+kind).addEventListener("click", ()=>recoverReviewed(kind));
   for (const id of formIds) {
@@ -1659,11 +1660,20 @@ unlockAccess();
 setInterval(refresh, 5000);
 
 
+function reviewedSelectors(required = false) {
+  const operation=$("reviewed-operation").value || "question";
+  if(operation==="question")return {};
+  if(!["insight","formulation","reflection"].includes(operation)){if(required)throw new Error("The selected operation's scoped editor is unavailable.");return null;}
+  const parent=$("reviewed-parent-id").value.trim();
+  if(!/^[1-9][0-9]*$/.test(parent)||parent.length>20||BigInt(parent)>18446744073709551615n){if(required)throw new Error("Enter the exact positive decimal native parent ID (u64) in this backing.");return null;}
+  return {parent_id:parent};
+}
+function reviewedReady() {return reviewedSelectors()!==null;}
 function reviewedOperation() {
-  const operation = $("reviewed-operation").value || "question";
-  const descriptor = reviewedDefinition?.operations.find(x=>x.id === operation);
-  text("reviewed-operation-note", operation === "question" ? "Initial question inquiry. Substantive task and selected sources are external evidence; native authority governs admission." : `Native capacity retained. This operation needs ${[...(descriptor?.inputs || []),...(descriptor?.evidence_inputs || [])].join(", ") || "its native prerequisites"}. Its scoped input editor is unavailable in this increment. Select Question to launch an inquiry.`);
-  $("start-submit").disabled = startPending || operationMode !== "effort" || !effortEnvironment || operation !== "question" || !$("reviewed-store").value;
+  const operation=$("reviewed-operation").value || "question",parents={insight:"Question ID · intelligence-question",formulation:"Insight ID · unverified-insight-trace",reflection:"Formulation ID · formulation-hypothesis"},descriptor=reviewedDefinition?.operations.find(x=>x.id===operation);
+  $("reviewed-parent-fields").hidden=!parents[operation];text("reviewed-parent-label",parents[operation] || "Exact native parent ID");
+  text("reviewed-operation-note",operation==="question"?"Initial question inquiry. Substantive task and selected sources are external evidence; native authority governs admission.":parents[operation]?`${operation[0].toUpperCase()+operation.slice(1)} uses the exact ${parents[operation]} in the selected backing. Task and selected sources remain external evidence; native authority governs eligibility and admission.`:`Native capacity retained. This operation needs ${[...(descriptor?.inputs || []),...(descriptor?.evidence_inputs || [])].join(", ") || "its native prerequisites"}. Its scoped input editor is unavailable in this increment. Select a supported operation to continue.`);
+  $("start-submit").disabled=startPending||operationMode!=="effort"||!effortEnvironment||!reviewedReady()||!$("reviewed-store").value;
 }
 function renderReviewedSources() {
   $("reviewed-selected-sources").replaceChildren(...reviewedSources.map(source=>{
@@ -1730,12 +1740,12 @@ async function loadReviewedLaunches() {
 }
 async function startReviewed({scopeVersion,scopeKey,draft,subject,selection,environment}) {
   if (!selection.effort_root || !environment) throw new Error("Select a registered effort first.");
-  if ($("reviewed-operation").value !== "question") throw new Error("The selected operation's scoped editor is unavailable.");
+  const operation=$("reviewed-operation").value || "question",selectors=reviewedSelectors(true);
   const task=$("start-task").value, store_id=$("reviewed-store").value;
   if (!store_id) throw new Error("Select a backing explicitly.");
   const sources=[...$("reviewed-sources").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),...reviewedSources];
   const assignment={backend:"opermem-reviewed",...selection,initiator:selection.effort_root,environment,origin:"human",human_ref:{origin:"local-human-operator"}};
-  const payload={backend:"opermem-reviewed",command_id:crypto.randomUUID(),...selection,environment,origin:assignment.origin,human_ref:assignment.human_ref,task,workspace:environment.cwd,store_id,sources,mode:"inquiry",operation:"question",client:$("start-client").value,model:$("start-model").value || null,qa_model:$("start-qa-model").value || null,timeout:Number($("start-timeout").value),...$("start-client").value==="pi" ? {thinking:$("start-thinking").value} : {},...$("start-purpose").value ? {purpose_ref:JSON.parse($("start-purpose").value)} : {}};
+  const payload={backend:"opermem-reviewed",command_id:crypto.randomUUID(),...selection,environment,origin:assignment.origin,human_ref:assignment.human_ref,task,workspace:environment.cwd,store_id,sources,mode:"inquiry",operation,selectors,client:$("start-client").value,model:$("start-model").value || null,qa_model:$("start-qa-model").value || null,timeout:Number($("start-timeout").value),...$("start-client").value==="pi" ? {thinking:$("start-thinking").value} : {},...$("start-purpose").value ? {purpose_ref:JSON.parse($("start-purpose").value)} : {}};
   const instance=await fetchJSON("/api/disciplines",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...assignment,command_id:crypto.randomUUID(),intent:task})});
   // Instance creation is useful retained work; a changed scope or edited draft does not authorize its launch.
   if (!operationValid(scopeVersion,scopeKey) || draft!==draftVersion || subject!==developerSubjectVersion) return;
