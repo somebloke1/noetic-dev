@@ -3,8 +3,9 @@
 (() => {
   let layout, canvas, inspector, viewport, map, tabs, filter, zoomLabel, inspectorHeading, provenance, occupant;
   let headerDelegate;
-  let treeDisclosure, treeCoverage, treeMore, treeLimit=40, treeScope="";
-  let snapshot = {}, view = "tree", zoom = 85, paneWidth = 500, filterEffort = "", find = "", drawingSignature = "";
+  let treeDisclosure, treeCoverage, treeMore, treeReveal, treeLimit=40, treeScope="";
+  let expandedBranches=new Set(["0"]), lastTreeSelection="";
+  let snapshot = {}, view = "tree", zoom = 100, paneWidth = 500, filterEffort = "", find = "", drawingSignature = "";
   const ui = () => window.NoeticUI;
   const el = (tag, cls, value) => ui().element(tag, cls, value);
   const btn = (value, action, cls = "secondary-button") => ui().button(value, action, cls);
@@ -72,7 +73,7 @@
     for (const value of ["running","waiting","dormant"]) { const entry = el("span"); entry.append(el("i",`legend-dot ${value}`),document.createTextNode(value[0].toUpperCase()+value.slice(1))); legend.append(entry); }
     const zooms = el("div","zoom-controls"); zooms.setAttribute("aria-label","Tree zoom controls");
     const out = btn("−",() => setZoom(zoom-15),""); out.setAttribute("aria-label","Zoom out");
-    zoomLabel = btn(`${zoom}%`,fit,"zoom-value"); zoomLabel.setAttribute("aria-label","Fit tree to view");
+    zoomLabel = btn(`${zoom}%`,fit,"zoom-value"); zoomLabel.setAttribute("aria-label","Fit visible tree to view");
     const more = btn("+",() => setZoom(zoom+15),""); more.setAttribute("aria-label","Zoom in"); zooms.append(out,zoomLabel,more);
     tools.append(legend,zooms); toolbar.append(tabs,tools);
     const filterBar = el("div","agentics-filter"); filter = el("select","topology-mode"); filter.setAttribute("aria-label","Filter topology by effort");
@@ -80,7 +81,9 @@
     const search = el("input","agentics-find"); search.type="search"; search.placeholder="Find position…"; search.setAttribute("aria-label","Find position");
     search.addEventListener("input",() => {find=search.value;drawingSignature="";draw();}); filterBar.append(filter,search);
     treeDisclosure=el("div","agentics-tree-disclosure");treeCoverage=el("span");treeCoverage.id="agentics-tree-coverage";treeCoverage.setAttribute("role","status");
-    treeMore=btn("Show more positions",()=>{treeLimit+=40;drawingSignature="";draw();});treeMore.id="agentics-tree-more";treeDisclosure.append(treeCoverage,treeMore);
+    treeMore=btn("Show more positions",()=>{treeLimit+=40;drawingSignature="";draw();});treeMore.id="agentics-tree-more";treeReveal=btn("Reveal selected",()=>revealSelected());treeReveal.id="agentics-reveal-selected";
+    const collapse=btn("Collapse other branches",()=>{expandedBranches=new Set(selectedPath());expandedBranches.add("0");drawingSignature="";draw();});collapse.id="agentics-collapse-other";
+    treeDisclosure.append(treeCoverage,treeMore,collapse,treeReveal);
     viewport = el("div","agentics-viewport"); map=el("div","node-map agentics-node-map"); viewport.append(map); canvas.append(toolbar,filterBar,treeDisclosure,viewport);
     const resizer=el("div","pane-resizer inner-resizer"); resizer.tabIndex=0; resizer.setAttribute("role","separator"); resizer.setAttribute("aria-label","Resize agentics tree and conversation"); resizer.setAttribute("aria-orientation","vertical"); resizer.setAttribute("aria-valuemin","260"); resizer.setAttribute("aria-valuemax","760"); resizer.setAttribute("aria-valuenow",String(paneWidth));
     resizer.addEventListener("keydown",event => {if (["ArrowLeft","ArrowRight"].includes(event.key)) {event.preventDefault();setWidth(paneWidth+(event.key === "ArrowRight" ? 20 : -20));}});
@@ -95,6 +98,7 @@
     const positionStatus=el("div","inspector-status"); positionStatus.id="agentics-position-status";
     inspector.append(inspectorHeading,positionStatus,provenance,occupant);
     layout.append(canvas,resizer,inspector);host.append(layout);
+    new ResizeObserver(()=>{if(view==="tree"&&layout.isConnected){drawingSignature="";draw();}}).observe(viewport);
     ui().mount("developer-page",inspector);
     const evidence=document.getElementById("developer-evidence"), header=document.getElementById("developer-header");
     let retained=document.getElementById("agentics-retained-details");
@@ -127,35 +131,45 @@
     if(selectedOrdinal)includePath(selectedOrdinal);
     return rows.filter(row=>included.has(row.ordinal));
   }
+  function selectedPath() {
+    const byOrdinal=new Map((snapshot.positions||[]).map(row=>[row.ordinal,row])),path=[],seen=new Set();
+    let ordinal=snapshot.selected?.ordinal;
+    if(ordinal==="0")return ["0"];
+    while(byOrdinal.has(ordinal)&&!seen.has(ordinal)){seen.add(ordinal);path.push(ordinal);ordinal=byOrdinal.get(ordinal).parent;}
+    if(ordinal==="0")path.push("0");
+    return path;
+  }
+  function revealSelected() {
+    const path=selectedPath();if(!path.length)return;
+    for(const ordinal of path.slice(1))expandedBranches.add(ordinal);
+    drawingSignature="";draw();
+    const card=[...map.querySelectorAll('.responsibility-node')].find(node=>node.dataset.ordinal===path[0]);
+    if(card){viewport.scrollTop=Math.max(0,card.offsetTop*zoom/100-20);viewport.scrollLeft=0;card.focus({preventScroll:true});}
+  }
   function drawTree(matching) {
-    const rows=treeProjection(matching,treeLimit,snapshot.selected?.ordinal),extras=rows.length-Math.min(treeLimit,matching.length);
-    treeCoverage.textContent=`Showing ${rows.length} of ${matching.length} matching positions${extras?` · ${extras} ancestor/selected-path positions retained beyond disclosure`:''}. Find position searches the complete matching topology.`;
-    treeMore.disabled=rows.length===matching.length;treeMore.textContent=treeMore.disabled?"All matching positions shown":`Show ${Math.min(40,matching.length-treeLimit)} more positions`;
-    const children=new Map(), byOrdinal=new Map(rows.map(row=>[row.ordinal,row]));
-    for (const row of rows) { const parent=byOrdinal.has(row.parent) ? row.parent : null; if (!children.has(parent)) children.set(parent,[]);children.get(parent).push(row); }
-    const locations=new Map(), visiting=new Set();let leaf=0,maxDepth=0;
-    function place(row,depth) {
-      if (locations.has(row.ordinal) || visiting.has(row.ordinal)) return;
-      visiting.add(row.ordinal); const descendants=(children.get(row.ordinal)||[]).filter(child=>!visiting.has(child.ordinal));
-      for (const child of descendants) place(child,depth+1);
-      const points=descendants.map(child=>locations.get(child.ordinal)).filter(Boolean);
-      const x=points.length ? (points[0].x+points.at(-1).x)/2 : 30+leaf++*222;
-      locations.set(row.ordinal,{x,y:36+depth*122});visiting.delete(row.ordinal);maxDepth=Math.max(maxDepth,depth);
-    }
-    for (const root of children.get(null)||[]) place(root,0);
-    for (const row of rows) if (!locations.has(row.ordinal)) place(row,0);
-    const width=Math.max(700,leaf*222+50),height=Math.max(480,(maxDepth+1)*122+70);
-    map.style.width=`${width}px`;map.style.minWidth=`${width}px`;map.style.height=`${height}px`;map.dataset.width=String(width);
+    const path=selectedPath(),selected=path[0]||"",selection=JSON.stringify(snapshot.selected||null);
+    if(selection!==lastTreeSelection){lastTreeSelection=selection;for(const ordinal of path.slice(1))expandedBranches.add(ordinal);}
+    treeReveal.disabled=!selected||!matching.some(row=>row.ordinal===selected);
+    const byOrdinal=new Map(matching.map(row=>[row.ordinal,row])),children=new Map();
+    for(const row of matching){const parent=byOrdinal.has(row.parent)?row.parent:null;if(!children.has(parent))children.set(parent,[]);children.get(parent).push(row);}
+    const visible=[],depths=new Map(),seen=new Set();
+    function walk(row,depth){if(seen.has(row.ordinal))return;seen.add(row.ordinal);visible.push(row);depths.set(row.ordinal,depth);if(find||expandedBranches.has(row.ordinal))for(const child of children.get(row.ordinal)||[])walk(child,depth+1);}
+    for(const row of children.get(null)||[])walk(row,0);
+    // Cyclic records remain addressable without inferring a new parent.
+    for(const row of matching){let cursor=row,chain=new Set();while(cursor&& !seen.has(cursor.ordinal)&&!chain.has(cursor.ordinal)){chain.add(cursor.ordinal);cursor=byOrdinal.get(cursor.parent);}if(cursor&&chain.has(cursor.ordinal))walk(row,0);}
+    const rows=treeProjection(visible,treeLimit,selected),collapsed=matching.length-visible.length,undisclosed=visible.length-rows.length;
+    treeCoverage.textContent=`Showing ${rows.length} of ${matching.length} matching positions · ${collapsed} hidden in collapsed branches · ${undisclosed} awaiting disclosure${selected&&!rows.some(row=>row.ordinal===selected)?" · selected position is hidden in this view":""}. Find searches the complete scoped topology.${find?" Search temporarily reveals branches; clear Find to change expansion.":""}`;
+    treeMore.disabled=undisclosed===0;treeMore.textContent=treeMore.disabled?"All expanded positions shown":`Show ${Math.min(40,undisclosed)} more positions`;
+    const locations=new Map(rows.map((row,index)=>[row.ordinal,{x:40+(depths.get(row.ordinal)||0)*24,y:16+index*102}]));
+    const width=Math.max(230,...[...locations.values()].map(p=>p.x+202)),height=Math.max(32,rows.length*102+16);
+    map.style.width=`${width}px`;map.style.minWidth="0";map.style.height=`${height}px`;map.dataset.width=String(width);
     const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("width",String(width));svg.setAttribute("height",String(height));svg.classList.add("agentics-connectors");svg.setAttribute("aria-hidden","true");
-    for (const row of rows) {
-      const parent=locations.get(row.parent),child=locations.get(row.ordinal);if(!parent||!child)continue;
-      const path=document.createElementNS(svg.namespaceURI,"path");const middle=(parent.y+86+child.y)/2;
-      if(row.origin === "human")path.classList.add("human-assignment");
-      path.setAttribute("d",`M ${parent.x+95} ${parent.y+86} V ${middle} H ${child.x+95} V ${child.y}`);svg.append(path);
-    }
-    const focused=map.contains(document.activeElement)?document.activeElement.dataset.ordinal:null;
-    map.replaceChildren(svg,...rows.map(row=>{const p=locations.get(row.ordinal);return nodeCard(row,p.x,p.y);})); setZoom(zoom);
-    if(focused)[...map.querySelectorAll('.responsibility-node')].find(node=>node.dataset.ordinal===focused)?.focus({preventScroll:true});
+    for(const row of rows){const parent=locations.get(row.parent),child=locations.get(row.ordinal);if(!parent||!child)continue;const line=document.createElementNS(svg.namespaceURI,"path");if(row.origin==="human")line.classList.add("human-assignment");line.dataset.parent=row.parent;line.dataset.child=row.ordinal;line.setAttribute("d",`M ${parent.x-12} ${parent.y+43} V ${child.y+43} H ${child.x-4}`);svg.append(line);}
+    function descendants(ordinal){const found=new Set([ordinal]),pending=[...(children.get(ordinal)||[])];while(pending.length){const row=pending.pop();if(found.has(row.ordinal))continue;found.add(row.ordinal);pending.push(...children.get(row.ordinal)||[]);}return found.size-1;}
+    const active=map.contains(document.activeElement)?{ordinal:document.activeElement.dataset.ordinal,branch:document.activeElement.dataset.branch}:null,scrollTop=viewport.scrollTop,scrollLeft=viewport.scrollLeft;
+    const nodes=[];for(const row of rows){const p=locations.get(row.ordinal);nodes.push(nodeCard(row,p.x,p.y));const count=descendants(row.ordinal);if(!count)continue;const expanded=Boolean(find||expandedBranches.has(row.ordinal)),toggle=btn(expanded?"−":"+",()=>{if(expandedBranches.has(row.ordinal))expandedBranches.delete(row.ordinal);else expandedBranches.add(row.ordinal);drawingSignature="";draw();},"agentics-branch-toggle");toggle.dataset.branch=row.ordinal;toggle.style.left=`${p.x-32}px`;toggle.style.top=`${p.y+29}px`;toggle.setAttribute("aria-expanded",String(expanded));toggle.setAttribute("aria-label",`${expanded?"Collapse":"Expand"} branch ${row.ordinal} (${count} descendants)`);toggle.title=`${count} descendants${find?" · clear Find to change branch expansion":""}`;toggle.disabled=Boolean(find);const badge=el("small","agentics-descendant-count",`${count} descendants`);badge.style.left=`${p.x}px`;badge.style.top=`${p.y+87}px`;nodes.push(toggle,badge);}
+    map.replaceChildren(svg,...nodes);setZoom(zoom);viewport.scrollTop=scrollTop;viewport.scrollLeft=scrollLeft;
+    if(active){const selector=active.branch?'.agentics-branch-toggle':'.responsibility-node',key=active.branch?'branch':'ordinal',value=active.branch||active.ordinal;[...map.querySelectorAll(selector)].find(node=>node.dataset[key]===value)?.focus({preventScroll:true});}
   }
   function drawSessions(rows) {
     map.style.cssText=""; map.dataset.width="700";
@@ -245,7 +259,7 @@
       filter.replaceChildren(option,...roots.map(row=>{const item=el("option","",`${row.ordinal} · ${row.intent || "Effort"}`);item.value=row.ordinal;return item;}));filter.value=filterEffort;
     }
     if(headerDelegate)headerDelegate.disabled=!snapshot.detail?.session.broker_owned||!snapshot.detail?.session.is_current||snapshot.observationError;
-    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session]);
+    const rows=positions(), signature=JSON.stringify([rows,snapshot.sessions,snapshot.selected,view,filterEffort,find,treeLimit,[...expandedBranches],snapshot.applicationEvents,snapshot.observationError,snapshot.projectFilter,snapshot.detail?.session]);
     if(drawingSignature!==signature) {drawingSignature=signature; if(view==="tree")drawTree(rows);else if(view==="sessions")drawSessions(rows);else drawReturns(rows);drawInspector();}
   }
   function render({host,snapshot:next}) {
