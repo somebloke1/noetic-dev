@@ -23,10 +23,11 @@ import zipfile
 from scripts.noetic_archive import (MAX_BYTES, MAX_FILES, read_regular, safe_name, private_directory,
                                    read_bundle, write_bundle, extract_files, quiescent_run)
 from scripts.noetic_storage import open_private, inspect_tree
-from scripts import noetic_opermem_application as opermem_component
+from scripts import noetic_opermem_component as opermem_component
 
 BOOTSTRAP = ("scripts/__init__.py", "scripts/noetic_storage.py", "scripts/noetic_processes.py",
              "scripts/noetic_archive.py", "scripts/noetic_release.py",
+             "scripts/noetic_opermem_component.py",
              "scripts/noetic_opermem_application.py", "scripts/noetic_opermem.py", "scripts/noetic_opermem_scope.py",
              "scripts/noetic_opermem_checking.py", "scripts/noetic_opermem_judgment.py",
              "scripts/noetic_opermem_practical.py", "scripts/noetic_opermem_decision.py",
