@@ -59,7 +59,7 @@ function scopeControls() {
   setOptions("operation-scope", [["application","Application · all efforts and original histories"], ...selectedEffort ? [["effort",`Effort ${selectedEffort} · ${effortPositions.find(row=>row.ordinal===selectedEffort)?.intent || "selected responsibility"}`]] : []], operationMode);
   $("operation-scope").value = operationMode;
   text("legacy-scope-banner", operationMode === "effort" && selectedEffort ? `Effort ${selectedEffort} · workflows, purposes and recall use explicit ownership. Original unassigned histories remain in Application scope.` : "Application scope · all declared efforts and original unassigned histories. Select an effort to start structured work.");
-  const native = selectedNative?.effort_root === selectedEffort;
+  const native = operationMode === "effort" && selectedNative?.effort_root === selectedEffort;
   $("memory-target").querySelector('[value="ordinal"]').disabled = !native || !selectedNative.ordinal;
   $("memory-target").querySelector('[value="session"]').disabled = !native || !selectedNative.instantiation;
   if ($("memory-target").selectedOptions[0]?.disabled || operationMode !== "effort") $("memory-target").value = "effort";
@@ -1588,6 +1588,7 @@ function initWorkbench() {
   });
   $("memory-form").addEventListener("submit",async event=>{
     event.preventDefault();const scopeVersion = operationVersion,scopeKey = operationKey(),targetVersion = recallTargetVersion,request = ++memoryVersion;
+    if($("memory-target").value!=="effort" && (operationMode!=="effort" || $("memory-target").selectedOptions[0]?.disabled)){error("memory-error","The requested recall subject is unavailable. Select its owning effort and exact position/context first; no broader search was run.");return;}
     $("memory-submit").disabled = true;error("memory-error","");
     const semanticMode = $("memory-mode").value === "semantic",query = $("memory-query").value;
     const base = operationSelection(),kind = operationMode === "effort" ? $("memory-target").value : "application";
