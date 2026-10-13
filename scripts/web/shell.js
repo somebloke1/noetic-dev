@@ -35,6 +35,7 @@ const icon = (name, size=18) => {const holder=document.createElement('template')
 const badge = (value, tone='neutral') => el('span',`status-badge ${tone}`,value);
 let view = {route:'workspaces',subview:''}, snapshotData = {}, projectFilter = null, suppressPage = false, generation=0;
 let portfolioQuery='',portfolioLimit=12,commandMode='';
+let effortDraft=null,effortDraftNotice='',effortSync=null,effortInputs=null;
 try {view={...view,...JSON.parse(sessionStorage.getItem('noetic-shell-view')||'{}')};}catch(_){}
 const nav = [
  ['workspaces','Workspaces','grid'],['agentics','Agentics','branch'],null,
@@ -163,10 +164,34 @@ routes.set('workspaces',overview);
 function newEffort({host}){
  heading({eyebrow:'NEW RESPONSIBILITY',title:'New effort',description:'Declare the intention and project environment. Its ordinal persists across conversations.',actions:[]});if(host.dataset.ready==='effort')return;host.dataset.ready='effort';host.className='new-effort-content';
  const p=card('EFFORT SCOPE','What are you working toward?'),form=el('form','effort-create-form');
- for(const [id,label,placeholder,tag]of[['effort-intent','Effort intention','Build a shared reading list','textarea'],['effort-directory','Project folder','/path/to/project','input']]){const l=el('label','',label);l.htmlFor=id;const input=el(tag);input.id=id;input.required=true;input.placeholder=placeholder;if(tag==='textarea')input.rows=3;form.append(l,input);}
+const inputs={};for(const [id,label,placeholder,tag]of[['effort-intent','Effort intention','Build a shared reading list','textarea'],['effort-directory','Project folder','/path/to/project','input']]){const l=el('label','',label);l.htmlFor=id;const input=el(tag);inputs[id]=input;input.id=id;input.required=true;input.placeholder=placeholder;if(tag==='textarea')input.rows=3;form.append(l,input);}
+ if(!effortDraft)effortDraft={intent:'',cwd:'',pending:null};
+ inputs['effort-intent'].value=effortDraft.intent;inputs['effort-directory'].value=effortDraft.cwd;
  form.append(el('p','field-note','Register an existing folder without starting a model. Several efforts may share a folder and retain separate intentions.'));
- const submit=button('Create effort',null,'primary-button');submit.type='submit';const status=el('p','form-status');status.setAttribute('role','status');form.append(submit,status);
- form.addEventListener('submit',async e=>{e.preventDefault();submit.disabled=true;const intent=$('effort-intent').value.trim(),cwd=$('effort-directory').value.trim();try{const response=await fetchJSON('/api/efforts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent,environment:{cwd},human_ref:{origin:'local-operator'},source_ref:{kind:'desktop-effort-form'}})});await window.NoeticSessions.refresh();await chooseEffort(response.effort);}catch(f){status.textContent=f.message;submit.disabled=false;}});p.append(form);host.replaceChildren(p);
+ const submit=button('Create effort',null,'primary-button');submit.type='submit';const status=el('p','form-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');form.append(submit,status);
+ const showStatus=message=>{status.textContent=message||'';};
+ const syncPending=()=>{const pending=effortDraft&&effortDraft.pending;const unchanged=Boolean(pending&&effortDraft.intent===pending.rawIntent&&effortDraft.cwd===pending.rawCwd);
+  const busy=Boolean(pending&&pending.sending),created=Boolean(pending&&pending.created&&!pending.sending);submit.disabled=busy||(created&&unchanged);submit.setAttribute('aria-busy',String(busy));submit.setAttribute('aria-disabled',String(submit.disabled));if(busy)showStatus('Creating effort…');else if(created)showStatus(pending.refreshError?`Effort ${pending.ordinal||'created'} was created, but refreshing the workspace failed: ${pending.refreshError}. The draft is kept; submitting the same effort again is disabled to avoid a duplicate.`:`Effort created${pending.ordinal?` as ${pending.ordinal}`:''}.`);else if(pending&&pending.error)showStatus(`Creating the effort failed: ${pending.error}. The draft is retained; submit again to retry.`);else if(effortDraftNotice)showStatus(effortDraftNotice);else showStatus('');};
+ syncPending();effortSync=syncPending;effortInputs=inputs;
+ const capture=()=>{effortDraft.intent=inputs['effort-intent'].value;effortDraft.cwd=inputs['effort-directory'].value;effortDraftNotice='';syncPending();};
+ for(const id of ['effort-intent','effort-directory'])inputs[id].addEventListener('input',capture);
+ form.addEventListener('submit',e=>{e.preventDefault();const d=effortDraft||(effortDraft={intent:'',cwd:'',pending:null});  if(d.pending&&(d.pending.sending||(d.pending.created&&d.intent===d.pending.rawIntent&&d.cwd===d.pending.rawCwd)))return;effortDraftNotice='';capture();
+  const pending={rawIntent:d.intent,rawCwd:d.cwd,contextEffort:snapshotData.effort??null,generation,intent:d.intent.trim(),cwd:d.cwd.trim(),sending:true,created:false,error:'',refreshError:''};d.pending=pending;syncPending();
+  (async()=>{const syncIfAttached=()=>{if(view.route==='new-effort'){render();if(effortInputs){effortInputs['effort-intent'].value=effortDraft?effortDraft.intent:'';effortInputs['effort-directory'].value=effortDraft?effortDraft.cwd:'';}if(effortSync)effortSync();}};
+   try{const response=await fetchJSON('/api/efforts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:pending.intent,environment:{cwd:pending.cwd},human_ref:{origin:'local-operator'},source_ref:{kind:'desktop-effort-form'}})});
+    pending.sending=false;pending.created=true;pending.ordinal=response?.effort?.ordinal||'';syncIfAttached();
+    try{await window.NoeticSessions.refresh();}catch(f){if(!pending.ordinal)pending.refreshError=f.message;}
+    const sameContext=generation===pending.generation&&view.route==='new-effort'&&(snapshotData.effort??null)===pending.contextEffort;
+    const unchanged=effortDraft===d&&d.intent===pending.rawIntent&&d.cwd===pending.rawCwd;
+    if(sameContext&&unchanged){
+     const observed=(window.NoeticSessions.state().positions||[]).some(row=>row.ordinal===pending.ordinal&&row.effort===row.ordinal);
+     if(observed){await chooseEffort(response.effort);if(effortDraft===d&&d.intent===pending.rawIntent&&d.cwd===pending.rawCwd)effortDraft=null;}
+     else pending.refreshError='the created effort was not observed after refresh';
+    }else if(unchanged){d.intent='';d.cwd='';effortDraftNotice=`Effort created${pending.ordinal?` as ${pending.ordinal}`:''}.`;}
+    syncIfAttached();
+   }catch(f){pending.sending=false;pending.error=f.message;syncIfAttached();}
+  })();
+ });p.append(form);host.replaceChildren(p);
  const create=card('NEW PROJECT','Create a folder and start work');create.append(el('p','empty-note','Use the project conversation flow to create a new project and begin with a first instruction.'),button('Create project and conversation',()=>{window.NoeticSessions.open(null);$('developer-project-mode').value='create';$('developer-project-mode').dispatchEvent(new Event('change',{bubbles:true}));navigate('agentics');},'secondary-button'));host.append(create);
 }
 routes.set('new-effort',newEffort);
