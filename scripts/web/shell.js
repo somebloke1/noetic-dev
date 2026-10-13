@@ -235,6 +235,10 @@ function newEffort({host}){
  const p=card('EFFORT SCOPE','What are you working toward?'),form=el('form','effort-create-form');
 const inputs={};for(const [id,label,placeholder,tag]of[['effort-intent','Effort intention','Build a shared reading list','textarea'],['effort-directory','Project folder','/path/to/project','input']]){const l=el('label','',label);l.htmlFor=id;const input=el(tag);inputs[id]=input;input.id=id;input.required=true;input.placeholder=placeholder;if(tag==='textarea')input.rows=3;form.append(l,input);}
  if(!effortDraft)effortDraft={intent:'',cwd:'',pending:null};
+ if(!effortDraft.cwd&&!effortDraft.pending&&!inputs['effort-directory'].value){
+  const folder=window.NoeticUI?.snapshot?.().projectFilter||roots().find(row=>row.ordinal===snapshotData.effort)?.environment?.cwd||'';
+  if(folder)effortDraft.cwd=folder;
+ }
  inputs['effort-intent'].value=effortDraft.intent;inputs['effort-directory'].value=effortDraft.cwd;
  form.append(el('p','field-note','Register an existing folder without starting a model. Several efforts may share a folder and retain separate intentions.'));
  const submit=button('Create effort',null,'primary-button');submit.type='submit';const status=el('p','form-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');form.append(submit,status);
@@ -249,13 +253,16 @@ const inputs={};for(const [id,label,placeholder,tag]of[['effort-intent','Effort 
   (async()=>{const syncIfAttached=()=>{if(view.route==='new-effort'){render();if(effortInputs){effortInputs['effort-intent'].value=effortDraft?effortDraft.intent:'';effortInputs['effort-directory'].value=effortDraft?effortDraft.cwd:'';}if(effortSync)effortSync();}};
    try{const response=await fetchJSON('/api/efforts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:pending.intent,environment:{cwd:pending.cwd},human_ref:{origin:'local-operator'},source_ref:{kind:'desktop-effort-form'}})});
     pending.sending=false;pending.created=true;pending.ordinal=response?.effort?.ordinal||'';syncIfAttached();
-    try{await window.NoeticSessions.refresh();}catch(f){if(!pending.ordinal)pending.refreshError=f.message;}
+    let observation=null;
+    try{observation=await window.NoeticSessions.observedRefresh();}catch(f){if(!pending.ordinal)pending.refreshError=f.message;}
     const sameContext=generation===pending.generation&&view.route==='new-effort'&&(snapshotData.effort??null)===pending.contextEffort;
     const unchanged=effortDraft===d&&d.intent===pending.rawIntent&&d.cwd===pending.rawCwd;
     if(sameContext&&unchanged){
-     const observed=(window.NoeticSessions.state().positions||[]).some(row=>row.ordinal===pending.ordinal&&row.effort===row.ordinal);
+     const state=window.NoeticSessions.state();
+     const observationFailed=Boolean(observation&&!observation.observed||state.observationError);
+     const observed=!observationFailed&&(state.positions||[]).some(row=>row.ordinal===pending.ordinal&&row.effort===row.ordinal);
      if(observed){await chooseEffort(response.effort);if(effortDraft===d&&d.intent===pending.rawIntent&&d.cwd===pending.rawCwd)effortDraft=null;}
-     else pending.refreshError='the created effort was not observed after refresh';
+     else pending.refreshError=observationFailed?`Effort ${pending.ordinal||'created'} keeps its registration receipt and unsent draft; the post-mutation observation was unavailable and duplicate submission stays prevented.`:'the created effort was not observed after refresh';
     }else if(unchanged){d.intent='';d.cwd='';effortDraftNotice=`Effort created${pending.ordinal?` as ${pending.ordinal}`:''}.`;}
     syncIfAttached();
    }catch(f){pending.sending=false;pending.error=f.message;syncIfAttached();}

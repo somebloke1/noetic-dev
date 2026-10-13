@@ -20,6 +20,7 @@
   let events = [];
   let cursor = 0;
   let pending = false;
+  let readCompletion = null, releaseRead = null;
   let actionPending = false;
   let observationError = false;
   let queueState = null, recalled = null, activityTool = null;
@@ -703,8 +704,9 @@
   }
 
   async function refresh(options = {}) {
-    if (!active() || pending) return;
+    if (!active() || pending) return false;
     pending = true;
+    readCompletion = new Promise(resolve => { releaseRead = resolve; });
     const version = selectionVersion, target = selected && {...selected}, access = accessVersion;
     const valid = () => version === selectionVersion && access === accessVersion && active();
     const readingHistory = Boolean(applicationHistory || (target && !exact(target)));
@@ -751,7 +753,27 @@
         for (const action of ["stop","close","delegate","reopen","succeed"]) $("developer-"+action).disabled = true;
         $("developer-submit").disabled = Boolean(selected); notify();
       }
-    } finally { clearTimeout(slowHistory);pending = false; if (version !== selectionVersion && active()) queueMicrotask(refresh); }
+    } finally {
+      clearTimeout(slowHistory);pending = false;
+      if (releaseRead) { const release = releaseRead; releaseRead = null; readCompletion = null; release(); }
+      if (version !== selectionVersion && active()) queueMicrotask(refresh);
+    }
+    return true;
+  }
+
+  async function observedRefresh() {
+    // Awaitable post-mutation observation: wait out any older in-flight read, then start
+    // one genuinely fresh read begun after the mutation receipt. A read superseded by a
+    // scope/selection change is retried within this bounded coalescing loop and never
+    // reported as a successful observation; no timers, poll loops or background service.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (!pending) {
+        if (await refresh(true)) return {observed: true};
+      } else if (readCompletion) {
+        await readCompletion;
+      }
+    }
+    return {observed: false, error: "Post-mutation observation unavailable: another read stayed in flight."};
   }
 
   async function act(action) {
@@ -960,7 +982,7 @@
     }
     return select(null,{browse:true,project});
   }
-  window.NoeticSessions = {refresh,open:select,state,browseProject,
+  window.NoeticSessions = {refresh,observedRefresh,open:select,state,browseProject,
     returnToContext:()=>returnContext ? select({...returnContext.target},{history:returnContext.history}) : Promise.resolve(),
     observeReturns: () => { observeReturns = true; return refresh(); }};
   const developerActivity = node("p", undefined, "source");
