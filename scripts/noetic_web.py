@@ -20,6 +20,7 @@ if __package__:
     from scripts import noetic_access as access
     from scripts import noetic_application as application
     from scripts import noetic_usage as usage
+    from scripts import noetic_costs as costs
     from scripts.noetic_scope import ScopeError
     from scripts import noetic_controller as controller
     from scripts import noetic_harness as harness
@@ -31,6 +32,7 @@ else:
     from scripts import noetic_access as access
     from scripts import noetic_application as application
     from scripts import noetic_usage as usage
+    from scripts import noetic_costs as costs
     from scripts.noetic_scope import ScopeError
     import noetic_controller as controller
     import noetic_harness as harness
@@ -446,6 +448,13 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                         result = getattr(sessions, suffix[1])(ordinal, **options)
                     else:
                         raise RequestError(404, "Unknown ordinal read.")
+                elif path == "/api/skills/cost-estimate":
+                    params = parse_qs(url.query, keep_blank_values=True)
+                    if set(params) - {"scope", "effort_root"} or any(len(value) != 1 or not value[0] for value in params.values()):
+                        raise RequestError(400, "Cost skill accepts one explicit nonempty scope or effort_root.")
+                    selection = app.selection({key: value[0] for key, value in params.items()})
+                    app.operation_scope(selection)
+                    result = costs.inspect(app, selection, accounting=usage.project(sessions, selection))
                 elif path == "/api/usage":
                     params = parse_qs(url.query, keep_blank_values=True)
                     if set(params) - {"scope", "effort_root"} or any(len(value) != 1 or not value[0] for value in params.values()):
@@ -580,7 +589,7 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                     len(parts) == 5 and parts[1:3] == ["api", "actions"] and parts[4] == "deliver") or (
                     len(parts) == 5 and parts[1:3] == ["api", "developer-sessions"]
                     and parts[4] in ("prompt", "stop", "shutdown", "reopen", "delegate", "dialog"))
-                application_action = path_name in ("/api/opermem/stores", "/api/application/start", "/api/disciplines", "/api/goals", "/api/memory/semantic", "/api/diagnostics/refresh")
+                application_action = path_name in ("/api/opermem/stores", "/api/application/start", "/api/disciplines", "/api/goals", "/api/memory/semantic", "/api/diagnostics/refresh", "/api/skills/cost-estimate/execute")
                 if self.command != "POST" or url.query or not (run_action or application_action or session_action):
                     raise RequestError(405, "Read-only route; use an explicit application action endpoint.")
                 origin = self.headers.get("Origin")
@@ -645,7 +654,11 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                         if action == "reopen":
                             result = {"session": result}
                 elif application_action:
-                    if path_name == "/api/opermem/stores":
+                    if path_name == "/api/skills/cost-estimate/execute":
+                        selection = app.selection(body)
+                        app.operation_scope(selection)
+                        result = costs.execute(app, body, accounting=usage.project(sessions, selection))
+                    elif path_name == "/api/opermem/stores":
                         result, code = app.reviewed().register(body), 201
                     elif path_name == "/api/application/start":
                         result, code = app.start(body), 202
