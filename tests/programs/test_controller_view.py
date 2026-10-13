@@ -33,7 +33,17 @@ class ControllerViewTests(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def request(self, route, expected=200, method="GET", body=None, headers=None):
+    def request(self, route, expected=200, method="GET", body=None, headers=None, scoped=True):
+        if scoped and method in ("GET", "HEAD") and route.startswith(("/api/runs", "/api/search")):
+            route += ("&" if "?" in route else "?") + "scope=application"
+        if scoped and method == "POST" and route.startswith("/api/runs/") and isinstance(body, str):
+            try:
+                data = json.loads(body)
+            except ValueError:
+                pass
+            else:
+                if isinstance(data, dict):
+                    body = json.dumps({"scope": "application", **data})
         with closing(http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)) as connection:
             connection.request(method, route, body=body, headers={"Authorization": f"Bearer {self.server.token}", **(headers or {})})
             response = connection.getresponse()
@@ -95,6 +105,19 @@ class ControllerViewTests(unittest.TestCase):
 
     def detail(self, run):
         return self.request(f"/api/runs/{run.name}")
+
+    def test_missing_scope_is_rejected_without_mutating_controller(self):
+        run, state = self.start()
+        before = self.snapshot()
+        with patch.object(web.harness, "cancel", wraps=harness.cancel) as cancel:
+            for method in ("GET", "HEAD"):
+                for route in ("/api/runs", f"/api/runs/{run.name}", "/api/search?q=fixture"):
+                    self.request(route, 400, method, scoped=False)
+            self.request(f"/api/runs/{run.name}/cancel", 400, "POST", '{"confirm":true}',
+                         {"Content-Type": "application/json"}, scoped=False)
+            cancel.assert_not_called()
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(controller.inspect_run(run / "controller.sqlite3"), state)
 
     def cancel(self, run, expected=200, **kwargs):
         return self.request(f"/api/runs/{run.name}/cancel", expected, "POST",
@@ -321,26 +344,44 @@ process.stdin.on('data', chunk => input += chunk);
 process.stdin.on('end', async () => {
   const fixture = JSON.parse(input);
   class Element {
-    constructor(tag) { this.tagName = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.handlers = {}; this.hidden = false; this._text = ''; this.classList = {remove() {}, toggle() {return true;}}; }
-    set textContent(value) { this._text = String(value); this.children = []; }
-    get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
-    set value(value) { this._value = value; }
+    constructor(tag) { this.tagName=tag.toUpperCase(); this.defaultValue=''; this.children=[]; this.dataset={}; this.attributes={}; this.handlers={}; this.hidden=false; this._text=''; this.classList={remove(){},toggle(){return true;}}; }
+    set textContent(value) { this.replaceChildren(); this._text=String(value); }
+    get textContent() { return this._text+this.children.map(child=>child.textContent).join(''); }
+    set value(value) { this._value=value; }
     get value() { return this._value ?? this.children[0]?.value ?? ''; }
-    append(...items) { this.children.push(...items); }
-    replaceChildren(...items) { this.children = items; this._text = ''; if (this.tagName === 'select') delete this._value; }
-    setAttribute(key, value) { this.attributes[key] = String(value); }
+    set id(value) { this.attributes.id=String(value); elements.set(String(value),this); }
+    get id() { return this.attributes.id || ''; }
+    get options() { return this.children; }
+    get selectedOptions() { return this.children.filter(child=>child.value===this.value); }
+    get firstChild() { return this.children[0] || null; }
+    append(...items) { for(const item of items) this.insertBefore(item,null); }
+    replaceChildren(...items) { for(const child of this.children) child.parentNode=null; this.children=[]; this._text=''; if(this.tagName==='SELECT') delete this._value; this.append(...items); }
+    insertBefore(item,reference) {
+      if(item===reference) return item;
+      if(item.parentNode) item.parentNode.children=item.parentNode.children.filter(child=>child!==item);
+      const index=reference ? this.children.indexOf(reference) : this.children.length;
+      this.children.splice(index<0 ? this.children.length : index,0,item); item.parentNode=this;
+      if(item.id) elements.set(item.id,item); return item;
+    }
+    before(...items) { if(this.parentNode) for(const item of items) this.parentNode.insertBefore(item,this); }
+    remove() { if(this.parentNode) this.parentNode.children=this.parentNode.children.filter(child=>child!==this); this.parentNode=null; if(this.id && elements.get(this.id)===this) elements.delete(this.id); }
+    contains(item) { return this===item || this.children.some(child=>child.contains(item)); }
+    setAttribute(key,value) { if(key==='id') this.id=value; else this.attributes[key]=String(value); }
     getAttribute(key) { return this.attributes[key] ?? null; }
-    addEventListener(key, handler) { this.handlers[key] = handler; }
+    addEventListener(key,handler) { this.handlers[key]=handler; }
     focus() {}
     scrollIntoView() {}
     querySelectorAll(selector) {
-      const descendants = this.children.flatMap(child => [child, ...child.querySelectorAll('*')]);
-      return descendants.filter(child => selector === '*' || child.tagName === selector ||
-        (selector === 'details[open]' && child.tagName === 'details' && child.open));
+      const descendants=this.children.flatMap(child=>[child,...child.querySelectorAll('*')]);
+      return descendants.filter(child=>selector==='*' || child.tagName===selector.toUpperCase() || (selector==='details[open]' && child.tagName==='DETAILS' && child.open));
     }
-    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+    querySelector(selector) {
+      const value=selector.match(/^\[value="([^"]+)"\]$/)?.[1];
+      return value==null ? this.querySelectorAll(selector)[0] || null : this.children.find(child=>child.value===value) || null;
+    }
   }
   const elements = new Map(), views = [], pages = [];
+  const documentRoot = new Element('body');
   for (const match of fixture.html.matchAll(/<([a-z0-9-]+)\b([^>]*)>/g)) {
     const element = new Element(match[1]);
     for (const attr of match[2].matchAll(/([a-z-]+)="([^"]*)"/g)) {
@@ -348,31 +389,44 @@ process.stdin.on('end', async () => {
       if (attr[1] === 'id') elements.set(attr[2], element);
       if (attr[1] === 'data-view') { element.dataset.view = attr[2]; views.push(element); }
       if (attr[1] === 'data-page') { element.dataset.page = attr[2]; pages.push(element); }
-      if (attr[1] === 'value') element.value = attr[2];
+      if (attr[1] === 'value') element.value = element.defaultValue = attr[2];
     }
     element.hidden = /\bhidden\b/.test(match[2]);
+    documentRoot.append(element);
+  }
+  for (const match of fixture.html.matchAll(/<select\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
+    const select = elements.get(match[1]);
+    for (const option of match[2].matchAll(/<option\b[^>]*value="([^"]*)"[^>]*>/g)) {
+      const child = new Element('option'); child.value = option[1]; select.append(child);
+    }
   }
   const el = id => { assert.ok(elements.has(id), `Missing DOM id ${id}`); return elements.get(id); };
   const requests = [], storage = new Map();
-   const sandbox = { fixture, console, AbortController, URLSearchParams, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
-    location: {hash: '#token=fixture-operator-token-with-32-characters', pathname: '/', search: '', reload() {}},
+   const sandbox = { fixture, console, AbortController, structuredClone, URL, URLSearchParams, CustomEvent: class { constructor(type, options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
+    location: {hash: '#token=fixture-operator-token-with-32-characters', pathname: '/', search: '', origin: 'http://127.0.0.1:8765', reload() {}},
     history: {replaceState() {}},
     localStorage: {removeItem() {}},
     sessionStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
     window: { confirm: () => false, addEventListener() {} },
     fetch: (url, options) => { requests.push({url, options}); return new Promise(() => {}); },
-    document: { getElementById: el, createElement: tag => new Element(tag), querySelectorAll: selector => selector === '[data-page]' ? pages : views } };
+    document: { dispatchEvent: () => true, getElementById: id=>elements.get(id) || null, createElement: tag => new Element(tag), querySelectorAll: selector => selector === '[data-page]' ? pages : views } };
   vm.createContext(sandbox);
   vm.runInContext(fixture.script, sandbox);
   const run = code => vm.runInContext(code, sandbox);
   const transcriptTool = run('transcriptEntry({kind:"tool", event_type:"tool_use", timestamp:1700000000000, content:{tool:"read", state:{status:"completed", input:{filePath:"fixture.txt"}, output:"Fixture data\\nSecond line"}}})');
   assert.match(transcriptTool.textContent, /Tool read \/ completed/);
   assert.match(transcriptTool.textContent, /Fixture data\nSecond line/);
-  assert.equal(transcriptTool.querySelectorAll('details').length, 1);
+  assert.deepEqual(transcriptTool.querySelectorAll('summary').map(item=>item.textContent), ['Tool input', 'Tool output']);
   const transcriptFinal = run('transcriptEntry({kind:"final",content:{final:{stopReason:"stop",content:[{type:"text",text:"Fixture final answer"}]}}})');
-  assert.match(transcriptFinal.textContent, /Final response \/ stop/);
+  assert.match(transcriptFinal.textContent, /Final response · stop/);
   assert.match(transcriptFinal.textContent, /Fixture final answer/);
-  const show = name => run(`selectedDetail = fixture.${name}; selectedId = selectedDetail.status.run_id; renderDetail(selectedDetail);`);
+  const show = name => {
+    run(`selectedDetail = fixture.${name}; selectedId = selectedDetail.status.run_id; renderDetail(selectedDetail);`);
+    for(const id of ['controller-events','timeline']) {
+      const more=elements.get(`${id}-disclosure`)?.querySelector('button');
+      while(more && !more.disabled) more.handlers.click();
+    }
+  };
   el('report-select').value = 'changes.diff';
   el('log-select').value = 'verify.stderr.log';
   el('actor-log-select').value = 'prompt.txt';
@@ -411,7 +465,12 @@ process.stdin.on('end', async () => {
   assert.equal(requests.filter(r => r.options?.method === 'POST').length, 0, 'Background rendering does not infer or mutate');
   run('switchPage("workspace")');
   run('renderRuns(fixture.runs)');
-  assert.match(el('run-list').textContent, /implementation.*completed.*gen 1/);
+  const completed = el('run-list').children.find(row=>row.dataset.runId===fixture.development.status.run_id);
+  assert.ok(completed, 'Exact original run remains reachable in the list');
+  assert.match(completed.textContent, /completed/);
+  assert.match(completed.textContent, /implementation/);
+  assert.match(completed.textContent, /Original namespace · unassigned/);
+  assert.match(el('controller-generation').textContent, /Generation 1/);
   run('switchView("controller")');
   el('actor-select').value = 'activation-0';
   el('artifact-select').value = 'artifact-2';
@@ -443,15 +502,15 @@ process.stdin.on('end', async () => {
   assert.match(el('phase-history').textContent, /What is the measured value/);
   run('switchView("session")');
   const beforeClose = requests.length;
-  el('close-session').handlers.click();
-  assert.equal(requests.length, beforeClose, 'Closing session never stops work');
+  run('switchView("phases")');
+  assert.equal(requests.length, beforeClose, 'Leaving transcript inspection never stops work');
   assert.equal(el('phases-view').hidden, false);
   el('artifact-select').value = fixture.cognitive.controller.slots['effective.P1'];
   run('renderArtifact()');
   assert.match(el('artifact-standing').textContent, /Current effective/);
   show('active');
   assert.equal(el('cancel-pattern').hidden, false);
-  assert.match(el('controller-actor').textContent, /actor-0 \/ 0.0/);
+  assert.match(el('controller-actor').textContent, /actor-0 \/ Original actor 0\.0 \/ activation-0/);
   const before = requests.length;
   await el('cancel-pattern').handlers.click();
   assert.equal(requests.length, before, 'Declined confirmation must not request cancellation');
@@ -461,7 +520,7 @@ process.stdin.on('end', async () => {
   assert.equal(request.url, `/api/runs/${fixture.active.status.run_id}/cancel`);
   assert.equal(request.options.method, 'POST');
   assert.equal(request.options.headers['Content-Type'], 'application/json');
-  assert.deepEqual(JSON.parse(request.options.body), {confirm: true});
+  assert.deepEqual(JSON.parse(request.options.body), {confirm: true, scope:'application'});
   assert.match(el('cancel-note').textContent, /terminal state is not yet known/);
   fixture.active.cancel_requested = true;
   show('active');
@@ -473,7 +532,12 @@ process.stdin.on('end', async () => {
    assert.equal(requests.at(-1).url, `/api/runs/${fixture.development.status.run_id}/cancel`);
    assert.match(el('cancel-note').textContent, /terminal outcome is unchanged/);
   show('legacy');
-  assert.equal(el('controller-summary').hidden, true);
+  assert.equal(el('controller-summary').hidden, false);
+  assert.equal(el('primary-progress').textContent, 'work: pending · verify: pending · review: pending');
+  assert.equal(el('primary-agent').textContent, 'Worker');
+  for (const id of ['advance-one','advance-all','pause-pattern','cancel-pattern','controller-tab','phases-tab','compare-tab']) {
+    assert.equal(el(id).hidden, true, `Legacy history has no controller control ${id}`);
+  }
   assert.equal(el('controller-view').hidden, true);
   assert.equal(el('legacy-execution').hidden, false);
   assert.equal(el('run-state').textContent, 'unfinished');
