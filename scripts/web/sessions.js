@@ -83,7 +83,8 @@
   }
   const content = (message) => typeof message?.content === "string" ? message.content :
     (Array.isArray(message?.content) ? message.content.filter(block => block.type === "text").map(block => block.text || "").join("\n") : "");
-  const originalSource = item => Boolean(item && (item.identity_origin === "legacy-unadopted" || !item.target && !item.effort_root));
+  const reservedSource = item => Boolean(item && !item.target && (item.identity_origin === "ordinal-reserved" || item.effort_root));
+  const originalSource = item => Boolean(item && !reservedSource(item) && (item.identity_origin === "legacy-unadopted" || !item.target && !item.effort_root));
   const sourceQualifier = item => originalSource(item) ? " · original namespace · unadopted" : "";
   const ordinalSort = (a, b) => a.ordinal.localeCompare(b.ordinal, "en", {numeric: true});
 
@@ -160,7 +161,7 @@
   function composer() {
     const project = !selected && !effort;
     const starting = newConversation || Boolean(selected && !exact(selected));
-    const disabled = applicationHistory || selected?.ordinal === "0";
+    const disabled = applicationHistory || selected?.ordinal === "0" || reservedSource(detail?.session);
     $("developer-form").hidden = disabled || Boolean(!project && !starting && !detail);
     $("developer-project-fields").hidden = !project;
     for (const id of ["developer-workspace", "developer-model"]) $(id).required = project;
@@ -384,8 +385,8 @@
     }
     const session=detail.session,identity=session.target?`Application position ${session.ordinal} · instantiation ${session.target.instantiation} · session ${session.target.session}`:`Original namespace · unadopted · ordinal ${session.original_ordinal || session.ordinal}`;
     const snapshotRows=entries.map(({message,tool})=>message?`[${message.sender?`Agent ${message.sender.ordinal} / ${message.sender.instantiation} / ${message.sender.session}`:message.role}]\n${message.copyText}`:`[Tool ${tool.name} · ${tool.state}]\nArguments:\n${tool.args===undefined?"Arguments unobserved":JSON.stringify(tool.args,null,2)}\nOutput:\n${["finished","error"].includes(tool.state)?(typeof tool.result==="string"?tool.result:Array.isArray(tool.result?.content)?tool.result.content.map(block=>block.type==="text"?block.text||"":`[non-text ${block.type||"output"} omitted]`).join("\n"):tool.result===undefined?"No output observed":JSON.stringify(tool.result,null,2)):"[Incomplete tool output excluded]"}`);
-    copySnapshot=[`${identity} · native ID ${session.id}\nCompleted retained conversation snapshot ${new Date().toISOString()}${observationError?" · last observed; refresh unavailable":""}`,`${messages.length} completed messages · ${tools.size} distinct tools`,...snapshotRows,...(partial?.blocks.size?["[Streaming assistant text excluded]"]:[])].join("\n\n");
-    copyCoverage.textContent=`${messages.length} completed messages · ${tools.size} distinct tools${partial?.blocks.size?" · streaming text excluded":""}`;copySession.disabled=false;
+    copySnapshot=reservedSource(session) ? null : [`${identity} · native ID ${session.id}\nCompleted retained conversation snapshot ${new Date().toISOString()}${observationError?" · last observed; refresh unavailable":""}`,`${messages.length} completed messages · ${tools.size} distinct tools`,...snapshotRows,...(partial?.blocks.size?["[Streaming assistant text excluded]"]:[])].join("\n\n");
+    copyCoverage.textContent=`${messages.length} completed messages · ${tools.size} distinct tools${partial?.blocks.size?" · streaming text excluded":""}`;copySession.disabled=reservedSource(session);
     transcriptRows = retained;
     for (const child of [...container.children]) if (!rows.includes(child)) child.remove();
     rows.forEach((row,index)=>{if(container.children[index] !== row) container.insertBefore(row,container.children[index] || null);});
@@ -438,7 +439,7 @@
     $("developer-transcript").hidden = !detail || newConversation || applicationHistory;
     $("developer-form").hidden = applicationHistory || selected?.ordinal === "0" || Boolean(detail?.session.effort_root && !detail.session.target);
     renderHistory();
-    copyActions.hidden=!detail||newConversation||applicationHistory;copySession.disabled=copyActions.hidden;
+    copyActions.hidden=!detail||newConversation||applicationHistory||reservedSource(detail?.session);copySession.disabled=copyActions.hidden;
     if (!detail) { copySnapshot=null;copyStatus.textContent="";text("developer-attention", ""); $("developer-attention").hidden = true; composer(); notify(); return; }
     const item = detail.session;
     text("developer-heading", item.title); text("developer-location", item.workspace); text("developer-status", item.status);
