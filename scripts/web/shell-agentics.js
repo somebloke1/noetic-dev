@@ -172,7 +172,7 @@
     if(active){const selector=active.branch?'.agentics-branch-toggle':'.responsibility-node',key=active.branch?'branch':'ordinal',value=active.branch||active.ordinal;[...map.querySelectorAll(selector)].find(node=>node.dataset[key]===value)?.focus({preventScroll:true});}
   }
   function drawSessions(rows) {
-    map.style.cssText=""; map.dataset.width="700";
+    map.style.cssText="width:100%"; map.dataset.width=String(viewport.clientWidth);
     const selectedOrdinals=new Set(rows.map(row=>row.ordinal));
     const sessions=(snapshot.sessions||[]).filter(item=> {
       const scoped=Boolean(filterEffort||snapshot.projectFilter);
