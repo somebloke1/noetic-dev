@@ -94,6 +94,7 @@
     if (!external && (!session || /^(?:[a-z][a-z0-9+.-]*:|#)/i.test(reference) && !/^\//.test(reference))) return node("span", label);
     const link = node("a", label);
     if (external) { link.href = reference; link.target = "_blank"; link.rel = "noopener noreferrer"; return link; }
+    const location = /:(\d+)(?::\d+)?$/.exec(reference);
     const cleaned = reference.replace(/:\d+(?::\d+)?$/, "");
     const run = session.kind === "run";
     const prefix = run ? "workspace" : "developer";
@@ -104,8 +105,28 @@
       try {
         const result = await fetchJSON(link.getAttribute("href"));
         if ((!run && version !== selectionVersion) || (run && (session.viewVersion !== operationVersion || session.id !== selectedId))) return;
-        text(`${prefix}-file-path`, result.path); text(`${prefix}-file-text`, result.text);
-        $(`${prefix}-file-view`).hidden = false; $(`${prefix}-file-text`).focus();
+        const pre = $(`${prefix}-file-text`);
+        const lines = location ? result.text.split("\n") : null;
+        const index = lines ? Number(location[1]) - 1 : -1;
+        error(run ? "action-error" : "developer-error", "");
+        text(`${prefix}-file-path`, location ? `${result.path}:${location[1]}` : result.path);
+        if (lines && index >= 0 && index < lines.length) {
+          // Concatenated span text equals the returned source byte-for-byte; only the requested line is marked.
+          const head = document.createElement("span"); head.textContent = lines.slice(0, index).join("\n") + (index ? "\n" : "");
+          const mark = document.createElement("mark");
+          const tail = document.createElement("span");
+          const hasFollowingLine = index + 1 < lines.length;
+          mark.textContent = lines[index] + (lines[index] === "" && hasFollowingLine ? "\n" : "");
+          tail.textContent = (lines[index] !== "" && hasFollowingLine ? "\n" : "") + lines.slice(index + 1).join("\n");
+          pre.replaceChildren(head, mark, tail);
+          $(`${prefix}-file-view`).hidden = false;
+          mark.scrollIntoView({block: "center"});
+        } else {
+          pre.textContent = result.text;
+          $(`${prefix}-file-view`).hidden = false;
+          if (lines) error(run ? "action-error" : "developer-error", `Line ${location[1]} is not present in ${cleaned}.`);
+        }
+        pre.focus({preventScroll: true});
       } catch (failure) { if (run ? session.viewVersion === operationVersion && session.id === selectedId : version === selectionVersion) error(run ? "action-error" : "developer-error", failure.message); }
     });
     return link;
@@ -135,9 +156,14 @@
         list = null; continue;
       }
       if (code) { code.push(line); continue; }
-      const heading = /^(#{1,6})\s+(.*)/.exec(line), bullet = /^\s*(?:[-*]|\d+\.)\s+(.*)/.exec(line);
+      const heading = /^(#{1,6})\s+(.*)/.exec(line), bullet = /^\s*([-*]|(\d+)\.)\s+(.*)/.exec(line);
       if (heading) { const el = node(`h${Math.min(heading[1].length+2,6)}`); el.append(inline(heading[2], session)); holder.append(el); list = null; }
-      else if (bullet) { if (!list) { list = node("ul"); holder.append(list); } const el = node("li"); el.append(inline(bullet[1], session)); list.append(el); }
+      else if (bullet) {
+        const ordered = bullet[2] !== undefined;
+        if (!list || list.tagName !== (ordered ? "OL" : "UL")) { list = node(ordered ? "ol" : "ul"); if (ordered) list.start = Number(bullet[2]); holder.append(list); }
+        const el = node("li"); if (ordered) el.value = Number(bullet[2]);
+        el.append(inline(bullet[3], session)); list.append(el);
+      }
       else { list = null; if (line.trim()) { const el = node("p"); el.append(inline(line, session)); holder.append(el); } }
     }
     if (code) holder.append(node("pre", code.join("\n")));
