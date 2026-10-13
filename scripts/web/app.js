@@ -1472,8 +1472,23 @@ async function loadPurposes() {
     }));persistUI();
   } catch (failure) { if (!superseded()) error("purpose-error",`Purposes unavailable, not an empty history: ${failure.message}`); }
 }
+function sourcePreviewOf(match) {
+  if (!match || typeof match !== "object") return null;
+  const string = value => typeof value === "string" && value.trim() ? value : null;
+  return {
+    source_id: string(match.source_id), source_text_sha256: string(match.source_text_sha256),
+    recorded_type: string(match.source), disposition: string(match.disposition),
+    ordinal: string(match.ordinal), effort_root: string(match.effort_root),
+    context: match.target && Number.isFinite(match.target.instantiation) && Number.isFinite(match.target.session) ? `${match.target.instantiation}/${match.target.session}` : null,
+    event: Number.isFinite(match.event_sequence) ? match.event_sequence : null,
+    occurred_at: string(match.occurred_at),
+    authoritative: match.authoritative === true,
+    semantic_authority: string(match.semantic_authority),
+    snippet: string(match.snippet)
+  };
+}
 function renderMemoryMatches(matches, semanticMode) {
-  const selection = operationSelection(), scopeVersion = operationVersion, scopeKey = operationKey();
+  const selection = operationSelection(), scopeVersion = operationVersion, scopeKey = operationKey(), access = accessVersion;
   $("memory-results").replaceChildren(...(matches.length ? matches.map(match=>{
     const article = node("article",undefined,"search-result");
     const owner = match.effort_root ? `Effort ${match.effort_root} · ${match.ordinal || "source"}${match.target ? ` · context ${match.target.instantiation}/${match.target.session}` : ""}` : "Original namespace · unassigned";
@@ -1487,8 +1502,15 @@ function renderMemoryMatches(matches, semanticMode) {
     if (selection.effort_root && match.source_id && match.source_text_sha256) {
       const use = node("button", "Select source for inquiry draft"); use.type = "button";
       use.addEventListener("click", ()=>{
-        if (!operationValid(scopeVersion,scopeKey)) return;
-        if (!reviewedSources.some(x=>x.source_id === match.source_id)) reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:selection.effort_root}});
+        if (!operationValid(scopeVersion,scopeKey) || access !== accessVersion) return;
+        const preview = sourcePreviewOf(match);
+        const existing = reviewedSources.find(x=>x.source_id === match.source_id);
+        if (existing) {
+          // Launch revalidation stays authoritative: an already-bound exact source never changes fingerprint here.
+          if (existing.source_text_sha256 === match.source_text_sha256 && !existing.preview && preview && preview.source_text_sha256 === match.source_text_sha256) existing.preview = preview;
+        } else {
+          reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:selection.effort_root},...(preview && preview.source_id === match.source_id && preview.source_text_sha256 === match.source_text_sha256 ? {preview} : {})});
+        }
         ++draftVersion; $("start-pattern").value = "opermem-reviewed"; renderReviewedSources(); updateComposer();persistUI();
         text("memory-status", "Qualified source selected for the editable draft. Launch will revalidate its original identity and digest.");
       }); article.append(use);
@@ -1959,9 +1981,53 @@ function reviewedOperation() {
 }
 function renderReviewedSources() {
   $("reviewed-selected-sources").replaceChildren(...reviewedSources.map(source=>{
-    const row = node("div",undefined,"reviewed-source"); const remove = node("button","Remove"); remove.type="button";
-    remove.addEventListener("click",()=>{ reviewedSources=reviewedSources.filter(x=>x !== source); ++draftVersion; renderReviewedSources();persistUI(); });
-    row.append(node("span",source.source_id),remove);return row;
+    const scopeVersion=operationVersion, scopeKey=operationKey(), access=accessVersion;
+    const stale=()=>!operationValid(scopeVersion,scopeKey)||access!==accessVersion;
+    const row = node("div",undefined,"reviewed-source");
+    const previewData = source.preview && source.preview.source_id === source.source_id && source.preview.source_text_sha256 === source.source_text_sha256 ? source.preview : null;
+    const humanize = value => typeof value === "string" ? value.replaceAll("_"," ").replaceAll("-"," ") : value;
+    // retired malformed replacement literal (was intended as a space):") : value;
+    const title = node("div",previewData ? `Recorded ${humanize(previewData.recorded_type) || "source"} · ${humanize(previewData.disposition) || "retained source"}` : "Selected retained source","source");
+    const contextParts = [];
+    if (previewData) {
+      if (previewData.effort_root) contextParts.push(`Effort ${previewData.effort_root}`);
+      if (previewData.ordinal && previewData.ordinal !== previewData.effort_root) contextParts.push(`position ${previewData.ordinal}`);
+      if (previewData.context) contextParts.push(`context ${previewData.context}`);
+      if (previewData.event != null) contextParts.push(`event ${previewData.event}`);
+      if (previewData.occurred_at) contextParts.push(previewData.occurred_at);
+    }
+    const context = node("div",contextParts.length ? contextParts.join(" · ") : "Recorded provenance appears in exact details","source");
+    const identity = node("pre",JSON.stringify({source_id:source.source_id,source_text_sha256:source.source_text_sha256,selection:source.selection ?? null,authoritative:previewData ? previewData.authoritative : null,semantic_authority:previewData ? previewData.semantic_authority || "none" : "unobserved"},null,2));
+    const details = node("details");
+    details.append(node("summary","Exact source identity, selection and standing"));
+    if (previewData && previewData.snippet) {
+      details.append(node("p","Excerpt · retained recalled snippet; not the full source text and no native standing","source"),node("pre",previewData.snippet));
+    } else {
+      details.append(node("p","Preview unavailable: no retained display excerpt was selected for this exact binding; no source text is fetched or invented.","source"));
+    }
+    details.append(identity);
+    const preview = node("button","Preview"); preview.type="button"; preview.setAttribute("aria-expanded","false");
+    preview.addEventListener("click",()=>{
+      if (stale()) return;
+      details.open = !details.open;
+      preview.setAttribute("aria-expanded",String(details.open));
+    });
+    const remove = node("button","Remove"); remove.type="button";
+    remove.addEventListener("click",()=>{
+      if (stale()) return;
+      const wasFocused = document.activeElement === remove, index = reviewedSources.indexOf(source);
+      reviewedSources = reviewedSources.filter(x=>x !== source); ++draftVersion; renderReviewedSources();persistUI();
+      if (wasFocused) {
+        const rows=[...$("reviewed-selected-sources").querySelectorAll(".reviewed-source")];
+        const target=rows[Math.min(index,rows.length-1)];
+        (target ? target.querySelector("button") : $("reviewed-sources"))?.focus({preventScroll:true});
+      }
+    });
+    const actions = node("span",undefined,"reviewed-source-actions"); actions.append(preview,remove);
+    actions.style.cssText="display:flex;flex:none;align-items:flex-start;gap:8px;white-space:nowrap";
+    const readable = node("div",undefined,"reviewed-source-context"); readable.append(title,context,details);
+    readable.style.cssText="flex:1 1 auto;min-width:0";
+    row.append(readable,actions);return row;
   }));
 }
 async function loadReviewedSetup() {
@@ -2031,7 +2097,7 @@ async function startReviewed({scopeVersion,scopeKey,draft,subject,selection,envi
   if(checking&&(!/^\/\S/.test(checking.checking_spec)||!/^\/\S/.test(checking.checking_context)))throw new Error("Checking requires explicit absolute checking-specification and retained checking-context source paths; the result and provenance are host-captured, not selected.");
   const task=$("start-task").value, store_id=$("reviewed-store").value;
   if (!store_id) throw new Error("Select a backing explicitly.");
-  const sources=[...$("reviewed-sources").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),...reviewedSources];
+  const sources=[...$("reviewed-sources").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),...reviewedSources.map(source=>({source_id:source.source_id,source_text_sha256:source.source_text_sha256,...(source.selection ? {selection:source.selection} : {})}))];
   const assignment={backend:"opermem-reviewed",...selection,initiator:selection.effort_root,environment,origin:"human",human_ref:{origin:"local-human-operator"}};
   const payload={backend:"opermem-reviewed",command_id:crypto.randomUUID(),...selection,environment,origin:assignment.origin,human_ref:assignment.human_ref,task,workspace:environment.cwd,store_id,sources,mode:"inquiry",operation,selectors,...(checking||{}),client:$("start-client").value,model:$("start-model").value || null,qa_model:$("start-qa-model").value || null,timeout:Number($("start-timeout").value),...$("start-client").value==="pi" ? {thinking:$("start-thinking").value} : {},...$("start-purpose").value ? {purpose_ref:JSON.parse($("start-purpose").value)} : {}};
   const instance=await fetchJSON("/api/disciplines",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...assignment,command_id:crypto.randomUUID(),intent:task})});
