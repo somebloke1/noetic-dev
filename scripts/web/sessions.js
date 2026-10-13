@@ -6,6 +6,7 @@
   let selected = saved.selected && typeof saved.selected === "object" ? saved.selected : null;
   let effort = saved.effort || null;
   let positions = [], historyRecords = [], applicationEvents = [];
+  let historyObservation = {status:"unobserved",observed:false,error:null};
   let observeReturns = false;
   let newConversation = Boolean(saved.newConversation);
   let applicationHistory = Boolean(saved.applicationHistory);
@@ -31,7 +32,7 @@
     $(id).addEventListener("change", persist);
   }
   const state = () => JSON.parse(JSON.stringify({positions, sessions:allSessions, selected, effort, detail,
-    history:historyRecords, events, newConversation, applicationHistory, applicationEvents, observationError}));
+    history:historyRecords, historyObservation, events, newConversation, applicationHistory, applicationEvents, observationError}));
   const notify = () => document.dispatchEvent(new CustomEvent("noetic:sessions", {detail:state()}));
   const active = () => operatorToken && !$('private-workspace').hidden;
   const post = (path, body = {}) => fetchJSON(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
@@ -207,9 +208,11 @@
     const start = Math.max(0,filtered.length-historyWindow.count), inspecting = list.contains(document.activeElement) || list.querySelector("details[open]");
     historyWindow.start = historyWindow.start !== null && inspecting ? Math.min(historyWindow.start,start) : start;
     const visible = filtered.slice(historyWindow.start);
-    historyControls.coverage.textContent = `Showing latest ${visible.length} of ${filtered.length} matching events · ${historyRecords.length} total events. Complete earlier history remains available.`;
-    historyControls.more.disabled = historyWindow.start === 0;
-    historyControls.more.textContent = historyWindow.start ? `Load earlier ${Math.min(12,historyWindow.start)} events` : "All matching events shown";
+    const observation = historyObservation;
+    const availability = observation.status === "loading" ? "Refreshing retained history; showing last observed records." : observation.status === "error" ? "History refresh unavailable; showing last observed records." : "Complete earlier history remains available.";
+    historyControls.coverage.textContent = observation.observed ? `Showing latest ${visible.length} of ${filtered.length} matching events · ${historyRecords.length} total events. ${availability}` : observation.status === "error" ? "History observation unavailable. No retained history has been observed for this selection." : observation.status === "loading" ? "Loading retained history. No observation yet for this selection." : "Retained history not yet observed for this selection.";
+    historyControls.more.disabled = !observation.observed || historyWindow.start === 0;
+    historyControls.more.textContent = !observation.observed ? "Earlier history awaits observation" : historyWindow.start ? `Load earlier ${Math.min(12,historyWindow.start)} events` : "All matching events shown";
     const retained = new Map();
     const rows = visible.map(record => {
       const identity = JSON.stringify([record.sequence, record.ordinal, record.effort]);
@@ -235,7 +238,7 @@
     historyRows = retained;
     for (const child of [...list.children]) if (!rows.includes(child)) child.remove();
     rows.forEach((row, index) => { if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null); });
-    if (!filtered.length) list.append(node("p", historyRecords.length ? "No events match these filters." : positions.length ? "No retained events in this view." : "No registered application namespace yet. Open / Create project to declare an effort; original histories remain unadopted."));
+    if (!filtered.length) list.append(node("p", !observation.observed ? observation.status === "error" ? "Retained history observation is unavailable for this selection." : "Waiting for retained history observation." : historyRecords.length ? "No events match these filters." : positions.length ? "No retained events observed in this view." : "No registered application namespace observed. Open / Create project to declare an effort; original histories remain unadopted."));
   }
 
   let transcriptView = -1, transcriptRows = new Map();
@@ -416,7 +419,7 @@
     applicationHistory = Boolean(options.history); newConversation = Boolean(options.newConversation);
     $("developer-prompt").value = options.draft ?? drafts[key(target)] ?? "";
     error("developer-error", ""); observationError = false;
-    detail = null; events = []; historyRecords = []; cursor = 0; transcriptFollowing = true; ++selectionVersion;
+    detail = null; events = []; historyRecords = []; historyObservation = {status:"unobserved",observed:false,error:null}; cursor = 0; transcriptFollowing = true; ++selectionVersion;
     $("developer-file-view").hidden = true; $("developer-result").hidden = true;
     $("developer-transcript").dataset.signature = "";
     $("developer-transcript").replaceChildren(); $("developer-dialogs").replaceChildren();
@@ -431,6 +434,9 @@
     pending = true;
     const version = selectionVersion, target = selected && {...selected}, access = accessVersion;
     const valid = () => version === selectionVersion && access === accessVersion && active();
+    const readingHistory = Boolean(applicationHistory || (target && !exact(target)));
+    let historyReadPending = readingHistory;
+    if (readingHistory) { historyObservation = {...historyObservation,status:"loading",error:null}; renderHistory(); }
     try {
       const branch = await pages("/api/ordinals/0/branch", "records", {}, valid);
       if (!branch) return;
@@ -451,6 +457,7 @@
       } else if (target || applicationHistory) {
         const value = await pages(`/api/ordinals/${encodeURIComponent(applicationHistory ? "0" : target.ordinal)}/history`, "records", applicationHistory ? {} : scope(target), valid);
         if (!value) return; historyRecords = value.rows;
+        historyObservation = {status:"observed",observed:true,error:null}; historyReadPending = false;
         if (applicationHistory) applicationEvents = value.rows;
       }
       if (observeReturns && !applicationHistory) {
@@ -462,6 +469,7 @@
     } catch (failure) {
       if (valid()) {
         observationError = true; error("developer-error", `Observation unavailable: ${failure.message}`);
+        if (historyReadPending) { historyObservation = {...historyObservation,status:"error",error:failure.message}; renderHistory(); }
         for (const action of ["stop","close","delegate","reopen","succeed"]) $("developer-"+action).disabled = true;
         $("developer-submit").disabled = Boolean(selected); notify();
       }
