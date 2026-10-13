@@ -55,7 +55,7 @@ def selector_u64(value, label):
 
 def selector_request(body):
     operation = body.get('operation')
-    if operation not in ('insight', 'formulation', 'reflection', 'judgment', 'conditional-structure'):
+    if operation not in ('insight', 'formulation', 'reflection', 'judgment', 'conditional-structure', 'checking'):
         return body
     selectors = body.get('selectors', {})
     if not isinstance(selectors, dict):
@@ -74,6 +74,8 @@ def selector_request(body):
         normalized['selectors']['parent_id'] = selector_u64(selectors.get('parent_id'), 'Parent ID')
         if operation == 'conditional-structure':
             normalized['selectors']['formulation_id'] = selector_u64(selectors.get('formulation_id'), 'Formulation ID')
+        if operation == 'checking':
+            normalized['selectors']['warrant_id'] = selector_u64(selectors.get('warrant_id'), 'Warrant ID')
     return normalized
 
 
