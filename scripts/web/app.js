@@ -72,7 +72,7 @@ function changeOperationScope(mode, previous = operationKey()) {
   savedUI.operationMode = operationMode;
   if (operationKey() !== previous) {
     ++operationVersion; ++purposeVersion; ++memoryVersion; ++detailVersion; ++sessionVersion; ++actorLogVersion; ++reuseVersion;
-    ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];$("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";
+    ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];$("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";
     $("reviewed-selected-sources").replaceChildren(); $("reviewed-launch-list").replaceChildren();
     $("reviewed-store").replaceChildren(node("option", "Select backing explicitly")); $("reviewed-store").firstChild.value = "";
     delete $("reviewed-store").dataset.options; text("reviewed-store-status", "Scope changed. Select a backing explicitly.");
@@ -114,7 +114,7 @@ function actorIdentity(actor, correspondence = selectedDetail?.correspondence) {
   const participant = correspondence?.participants?.find(row=>row.activation_id === actor.id || actor.actor_id && row.actor_id === actor.actor_id);
   return participant ? `${participant.ordinal}${participant.target ? ` · context ${participant.target.instantiation}/${participant.target.session}` : " · native context unobserved"}` : `Original actor ${actor.ordinal}`;
 }
-const formIds = ["reviewed-store", "reviewed-parent-id", "reviewed-warrant-id", "reviewed-condition-ids", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
+const formIds = ["reviewed-store", "reviewed-parent-id", "reviewed-warrant-id", "reviewed-condition-ids", "reviewed-formulation-id", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
 const selectionIds = ["actor-select", "artifact-select", "actor-log-select", "report-select", "log-select", "phase-select", "session-select", "compare-left", "compare-right"];
 
 function persistUI() {
@@ -1311,7 +1311,7 @@ async function reuseSetup() {
       $("start-pattern").value = f.pattern; $("start-task").value = f.task; $("start-client").value = f.client;
       $("start-model").value = f.model || ""; $("start-qa-model").value = f.qa_model || "";
       $("start-thinking").value = f.thinking || "high"; $("start-profile").value = "";
-      $("reviewed-operation").value = f.operation; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value=""; $("reviewed-store").value = ""; $("start-purpose").value = "";
+      $("reviewed-operation").value = f.operation; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value=""; $("reviewed-store").value = ""; $("start-purpose").value = "";
       $("reviewed-sources").value = f.sources.filter(x=>typeof x === "string").join("\n");
       reviewedSources = f.sources.filter(x=>typeof x === "object").map(x=>({...x})); renderReviewedSources();
       ++draftVersion; savedUI.reuseSetup = {source_run_id:setup.source_run_id,warnings:setup.warnings}; renderReuseNotice();
@@ -1468,8 +1468,8 @@ function updateComposer() {
 function initWorkbench() {
   $("reviewed-refresh").addEventListener("click", loadReviewedSetup);
   $("reviewed-operation").addEventListener("change",()=>{++draftVersion;reviewedOperation();});
-  for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids"])$(id).addEventListener("input",()=>{++draftVersion;reviewedOperation();});
-  $("reviewed-store").addEventListener("change", ()=>{ ++draftVersion; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";reviewedOperation(); });
+  for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id"])$(id).addEventListener("input",()=>{++draftVersion;reviewedOperation();});
+  $("reviewed-store").addEventListener("change", ()=>{ ++draftVersion; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";reviewedOperation(); });
   $("reviewed-register").addEventListener("click", registerReviewedStore);
   for (const kind of ["contribution", "correlation"]) $("reviewed-recover-"+kind).addEventListener("click", ()=>recoverReviewed(kind));
   for (const id of formIds) {
@@ -1640,7 +1640,7 @@ function initWorkbench() {
 }
 
 const structuredDraftFields = ["start-task","start-pattern","start-sources","start-verify","start-profile","start-client","start-model","start-qa-model","start-thinking","start-timeout","start-remediations","start-returns","reviewed-operation","reviewed-sources"];
-const structuredBindings = ["reviewed-store","reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","start-purpose"];
+const structuredBindings = ["reviewed-store","reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","start-purpose"];
 const structuredDrafts = (() => {
   let owner = null, generation = 0, pending = false, conflict = "", desired = {}, invalid = new Set();
   const defaults = {};
@@ -1696,7 +1696,7 @@ const structuredDrafts = (() => {
         for (const id of structuredDraftFields) if (typeof draft.fields?.[id]==="string") $(id).value=draft.fields[id];
         desired={...Object.fromEntries(structuredBindings.map(id=>[id,String(draft.bindings?.[id] || "")]))};
         for (const id of ["start-profile","reviewed-operation"]) if (draft.fields?.[id]) desired[id]=draft.fields[id];
-        for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids"]){$(id).value=desired[id];delete desired[id];}
+        for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id"]){$(id).value=desired[id];delete desired[id];}
         reviewedSources=(draft.sources || []).filter(source=>source.selection?.kind==="effort" && source.selection.effort_root===effort).map(source=>structuredClone(source));
       } else reviewedSources=[];
       for (const id of [...structuredDraftFields,...structuredBindings]) delete initialForms[id];
@@ -1779,14 +1779,16 @@ function reviewedSelectors(required = false) {
     if(!u64(warrant)||!conditions.length||conditions.some((value,index)=>!u64(value)||index>0&&BigInt(value)<=BigInt(conditions[index-1]))){if(required)throw new Error("Enter the exact positive decimal warrant ID and complete strictly increasing condition IDs, one per line (u64). Native authority checks the complete set and eligibility.");return null;}
     return {warrant_id:warrant,condition_ids:conditions};
   }
-  if(!["insight","formulation","reflection"].includes(operation)){if(required)throw new Error("The selected operation's scoped editor is unavailable.");return null;}
+  if(!["insight","formulation","reflection","conditional-structure"].includes(operation)){if(required)throw new Error("The selected operation's scoped editor is unavailable.");return null;}
   const parent=$("reviewed-parent-id").value.trim();
   if(!/^[1-9][0-9]*$/.test(parent)||parent.length>20||BigInt(parent)>18446744073709551615n){if(required)throw new Error("Enter the exact positive decimal native parent ID (u64) in this backing.");return null;}
+  if(operation==="conditional-structure"){const formulation=$("reviewed-formulation-id").value.trim();if(!u64(formulation)){if(required)throw new Error("Enter the exact positive decimal native Formulation anchor ID (u64) in this backing.");return null;}return {parent_id:parent,formulation_id:formulation};}
   return {parent_id:parent};
 }
 function reviewedReady() {return reviewedSelectors()!==null;}
 function reviewedOperation() {
-  const operation=$("reviewed-operation").value || "question",parents={insight:"Question ID · intelligence-question",formulation:"Insight ID · unverified-insight-trace",reflection:"Formulation ID · formulation-hypothesis"},descriptor=reviewedDefinition?.operations.find(x=>x.id===operation);
+  const operation=$("reviewed-operation").value || "question",parents={insight:"Question ID · intelligence-question",formulation:"Insight ID · unverified-insight-trace",reflection:"Formulation ID · formulation-hypothesis","conditional-structure":"Reflection ID · reflection-question"},descriptor=reviewedDefinition?.operations.find(x=>x.id===operation);
+  $("reviewed-formulation-fields").hidden=operation!=="conditional-structure";
   $("reviewed-judgment-fields").hidden=operation!=="judgment";
   $("reviewed-parent-fields").hidden=!parents[operation];text("reviewed-parent-label",parents[operation] || "Exact native parent ID");
   text("reviewed-operation-note",operation==="question"?"Initial question inquiry. Substantive task and selected sources are external evidence; native authority governs admission.":operation==="judgment"?"Judgment uses an exact conditional-structure warrant and its complete checked condition set. Task and sources remain external evidence; native authority governs evidence, ancestry, eligibility and admission.":parents[operation]?`${operation[0].toUpperCase()+operation.slice(1)} uses the exact ${parents[operation]} in the selected backing. Task and selected sources remain external evidence; native authority governs eligibility and admission.`:`Native capacity retained. This operation needs ${[...(descriptor?.inputs || []),...(descriptor?.evidence_inputs || [])].join(", ") || "its native prerequisites"}. Its scoped input editor is unavailable in this increment. Select a supported operation to continue.`);
