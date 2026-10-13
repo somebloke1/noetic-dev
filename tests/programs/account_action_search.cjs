@@ -1,0 +1,41 @@
+const {chromium}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
+ const root=path.resolve(__dirname,'../..'),env={...process.env};delete env.USER_PROVIDED_PASSWORD;
+ const browser=await chromium.launch({headless:true,env,executablePath:process.env.NOETIC_TEST_CHROMIUM||undefined});
+ try{
+  const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route('http://fixture/**',route=>route.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(root,'scripts/web/index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,'')}));
+  await page.goto('http://fixture/');
+  await page.addScriptTag({content:`window.$=id=>document.getElementById(id);sessionStorage.setItem('noetic-shell-view',JSON.stringify({route:'models'}));window.NoeticSessions={state:()=>({positions:[],sessions:[]})};window.fetchJSON=async()=>({});window.authCalls=[];for(const name of ['lock','logout'])$('access-'+name).addEventListener('click',()=>authCalls.push(name));$('private-workspace').hidden=false;`});
+  await page.addScriptTag({path:path.join(root,'scripts/web/shell.js')});
+  const query=page.locator('#shell-command-query'),results=page.locator('#shell-command-results');
+  await page.locator('#shell-account').click();
+  assert.deepEqual(await results.locator('button').allTextContents(),['Lock workspace','Log out']);
+  await query.fill('Log');
+  assert.deepEqual(await results.locator('button').allTextContents(),['Log out'],'account search retains its action population');
+  await query.fill('LOCK');
+  assert.deepEqual(await results.locator('button').allTextContents(),['Lock workspace'],'case-insensitive account search');
+  await results.getByRole('button',{name:'Lock workspace',exact:true}).press('Enter');
+  assert.deepEqual(await page.evaluate(()=>authCalls),['lock']);
+  assert.equal(await page.locator('#shell-command-dialog').evaluate(e=>e.open),false);
+  await page.locator('#shell-account').click();
+  assert.equal(await query.inputValue(),'','fresh account opening clears old search');
+  await query.fill('missing-action');assert.equal(await results.innerText(),'No matches.');
+  await query.fill('');await results.getByRole('button',{name:'Log out',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>authCalls),['lock','logout'],'only the selected stub action executes');
+  await page.locator('#shell-command').click();await query.fill('Log');
+  assert.equal(await results.innerText(),'No matches.','ordinary command opening resets account mode');
+  await query.fill('Usage');
+  assert.deepEqual(await results.locator('button').allTextContents(),['Usage metrics']);
+  await results.getByRole('button',{name:'Usage metrics',exact:true}).click();
+  assert.equal(await page.evaluate(()=>NoeticUI.route()),'usage');
+  await page.locator('#shell-account').click();await query.fill('Log');await page.keyboard.press('Control+k');
+  assert.equal(await page.locator('#shell-command-dialog').evaluate(e=>e.open),false);
+  await page.keyboard.press('Control+k');await query.fill('Model');
+  assert.deepEqual(await results.locator('button').allTextContents(),['Model registry'],'keyboard command opening also resets mode');
+  assert.deepEqual(await page.evaluate(()=>authCalls),['lock','logout']);
+  assert.deepEqual(errors,[]);
+  console.log('PASS account action search: scoped query/clear/no-match, exact stub actions, command and keyboard mode reset');
+ }finally{await browser.close();}
+})().catch(error=>{console.error(error);process.exitCode=1;});

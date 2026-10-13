@@ -34,7 +34,7 @@ const button = (value, action, className='') => {const b=el('button',className,v
 const icon = (name, size=18) => {const holder=document.createElement('template');holder.innerHTML=referenceIcon(name,size);return holder.content.firstElementChild;};
 const badge = (value, tone='neutral') => el('span',`status-badge ${tone}`,value);
 let view = {route:'workspaces',subview:''}, snapshotData = {}, projectFilter = null, suppressPage = false, generation=0;
-let portfolioQuery='',portfolioLimit=12;
+let portfolioQuery='',portfolioLimit=12,commandMode='';
 try {view={...view,...JSON.parse(sessionStorage.getItem('noetic-shell-view')||'{}')};}catch(_){}
 const nav = [
  ['workspaces','Workspaces','grid'],['agentics','Agentics','branch'],null,
@@ -176,12 +176,13 @@ function recordsView({host,route}){
  if(route==='history'){const b=button('Open global ordinal history',()=>{window.NoeticSessions.open(null,{history:true});navigate('agentics');},'secondary-button');host.append(b);}if(route==='closed')p.append(el('p','field-note','Effort lifecycle closure is not exposed by the current application. Closing a session does not close its effort.'));
 }
 for(const route of ['history','attention','closed'])routes.set(route,recordsView);
-function renderCommand(mode=''){
+function renderCommand(mode=commandMode){
+ commandMode=mode;
  const query=$('shell-command-query').value.toLowerCase(),holder=$('shell-command-results');holder.replaceChildren();
  const items=mode==='access'?[['Lock workspace',()=> $('access-lock').click()],['Log out',()=> $('access-logout').click()]]:[...Object.entries(labels).map(([r,label])=>[label,()=>navigate(r)]),...roots().map(p=>[`${p.ordinal} · ${p.intent}`,()=>chooseEffort(p)]),...(snapshotData.positions||[]).filter(p=>p.effort!==p.ordinal).map(p=>[`${p.ordinal} · ${p.intent||'Position'}`,()=>{window.NoeticSessions.open({ordinal:p.ordinal,...p.effort?{effort_root:p.effort}:{}});navigate('agentics');}])];
  for(const [label,fn]of items.filter(([label])=>label.toLowerCase().includes(query)))holder.append(button(label,()=>{$('shell-command-dialog').close();fn();},'command-result'));if(!holder.children.length)holder.append(el('p','empty-note','No matches.'));
 }
-function openCommand(){renderCommand();$('shell-command-dialog').showModal();$('shell-command-query').focus();}
+function openCommand(){renderCommand('');$('shell-command-dialog').showModal();$('shell-command-query').focus();}
 $('shell-search').addEventListener('click',openCommand);$('shell-command').addEventListener('click',openCommand);$('shell-breadcrumb-choice').addEventListener('click',openCommand);$('shell-command-query').addEventListener('input',()=>renderCommand());
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if($('shell-command-dialog').open)$('shell-command-dialog').close();else openCommand();}});
 document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;else if(snapshotData.selected){const owner=roots().find(row=>row.ordinal===snapshotData.effort);projectFilter=owner?.environment?.cwd||null;}renderSidebar();render();});
