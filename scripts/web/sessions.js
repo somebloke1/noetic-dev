@@ -7,6 +7,7 @@
   let effort = saved.effort || null;
   let positions = [], historyRecords = [], applicationEvents = [];
   let historyObservation = {status:"unobserved",observed:false,error:null};
+  let historyCache = null, returnsCache = null;
   let observeReturns = false;
   let newConversation = Boolean(saved.newConversation);
   let applicationHistory = Boolean(saved.applicationHistory);
@@ -45,16 +46,40 @@
   const exact = target => Boolean(target?.instantiation || target?.id);
   const same = (a,b) => key(a) === key(b);
   const query = values => new URLSearchParams(values).toString();
-  async function pages(path, field, values = {}, valid = () => true) {
+  async function pages(path, field, values = {}, valid = () => true, inspect = () => {}) {
     const rows = []; let after = Number(values.after || 0);
     while (valid()) {
       const result = await fetchJSON(`${path}?${query({...values, after, limit: field === "events" ? 500 : 100})}`);
       if (!valid()) return null;
+      inspect(result);
       rows.push(...(result[field] || []));
       if (!(result[field]?.length) || !result.next_after || result.next_after <= after) return {result, rows};
       after = result.next_after;
     }
     return null;
+  }
+  async function historyPages(path, values, retained, cache, valid, reset) {
+    const binding = JSON.stringify([path,values,accessVersion]);
+    let append = Boolean(cache?.namespace_id && cache.binding === binding);
+    const restart = Symbol("history namespace changed");
+    for (let attempt=0;attempt<2;attempt++) {
+      let namespace, first = true;
+      try {
+        const value = await pages(path,"records",{...values,after:append?cache.cursor:0},valid,result=>{
+          const observed = typeof result.namespace_id === "string" && result.namespace_id ? result.namespace_id : null;
+          if (first) {
+            first = false; namespace = observed;
+            if (append && namespace !== cache.namespace_id) { append=false; reset(); throw restart; }
+          } else if (namespace !== observed) { reset(); throw new Error("History namespace changed during pagination; refresh to observe complete history."); }
+        });
+        if (!value) return null;
+        return {rows:append ? retained.concat(value.rows) : value.rows,
+          cache:namespace ? {binding,namespace_id:namespace,cursor:value.result.next_after || 0} : null};
+      } catch (failure) {
+        if (failure !== restart) throw failure;
+      }
+    }
+    throw new Error("History namespace changed repeatedly; refresh to observe complete history.");
   }
   const content = (message) => typeof message?.content === "string" ? message.content :
     (Array.isArray(message?.content) ? message.content.filter(block => block.type === "text").map(block => block.text || "").join("\n") : "");
@@ -178,7 +203,7 @@
   function renderHistory() {
     $("developer-history-panel").hidden = !applicationHistory && !(selected && !exact(selected));
     text("developer-history-heading", applicationHistory ? "Application history · all efforts" : `Position ${selected?.ordinal || ""} · responsibility and history`);
-    const view = JSON.stringify([selectionVersion, applicationHistory, selected, effort]);
+    const view = JSON.stringify([selectionVersion, applicationHistory, selected, effort, historyCache?.namespace_id]);
     const list = $("developer-history-list");
     if (!historyControls) {
       const controls = node("div",undefined,"history-controls"), searchLabel = node("label","Find event or source"), search = node("input"), kindLabel = node("label","Event kind"), kind = node("select");
@@ -419,7 +444,7 @@
     applicationHistory = Boolean(options.history); newConversation = Boolean(options.newConversation);
     $("developer-prompt").value = options.draft ?? drafts[key(target)] ?? "";
     error("developer-error", ""); observationError = false;
-    detail = null; events = []; historyRecords = []; historyObservation = {status:"unobserved",observed:false,error:null}; cursor = 0; transcriptFollowing = true; ++selectionVersion;
+    detail = null; events = []; historyRecords = []; historyCache = null; historyObservation = {status:"unobserved",observed:false,error:null}; cursor = 0; transcriptFollowing = true; ++selectionVersion;
     $("developer-file-view").hidden = true; $("developer-result").hidden = true;
     $("developer-transcript").dataset.signature = "";
     $("developer-transcript").replaceChildren(); $("developer-dialogs").replaceChildren();
@@ -455,14 +480,17 @@
         const value = await pages(endpoint("", target), "events", {...scope(target),after:cursor}, valid);
         if (!value) return; detail = value.result; events.push(...value.rows); cursor = value.result.next_after || cursor;
       } else if (target || applicationHistory) {
-        const value = await pages(`/api/ordinals/${encodeURIComponent(applicationHistory ? "0" : target.ordinal)}/history`, "records", applicationHistory ? {} : scope(target), valid);
-        if (!value) return; historyRecords = value.rows;
+        const value = await historyPages(`/api/ordinals/${encodeURIComponent(applicationHistory ? "0" : target.ordinal)}/history`, applicationHistory ? {} : scope(target), historyRecords, historyCache, valid,()=>{
+          historyRecords=[]; historyCache=null; historyObservation={status:"loading",observed:false,error:null};
+          if(applicationHistory){applicationEvents=[];returnsCache=null;} renderHistory(); notify();
+        });
+        if (!value) return; historyRecords = value.rows; historyCache = value.cache;
         historyObservation = {status:"observed",observed:true,error:null}; historyReadPending = false;
-        if (applicationHistory) applicationEvents = value.rows;
+        if (applicationHistory) {applicationEvents = value.rows;returnsCache = null;}
       }
       if (observeReturns && !applicationHistory) {
-        const value = await pages("/api/ordinals/0/history", "records", {}, valid);
-        if (!value) return; applicationEvents = value.rows;
+        const value = await historyPages("/api/ordinals/0/history", {}, applicationEvents, returnsCache, valid,()=>{applicationEvents=[];returnsCache=null;notify();});
+        if (!value) return; applicationEvents = value.rows; returnsCache = value.cache;
       }
       if (observationError) { error("developer-error", ""); observationError = false; }
       renderRail(); renderDetail();

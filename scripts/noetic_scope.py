@@ -712,7 +712,10 @@ class ScopeStore:
             records = [_row(row) for row in rows]
             if describe_roots:
                 records = [self._describe(db, row["ordinal"]) if row["effort"] == row["ordinal"] else row for row in records]
-            return {"records": records, "next_after": records[-1][key] if records else after}
+            result = {"records": records, "next_after": records[-1][key] if records else after}
+            if table == "history":
+                result["namespace_id"] = db.execute("SELECT value FROM metadata WHERE key='namespace'").fetchone()[0]
+            return result
 
     def branch(self, ordinal="0", *, scope=None, after=0, limit=100, describe_roots=False):
         return self._page("positions", ordinal, scope=scope, after=after, limit=limit, describe_roots=describe_roots)
