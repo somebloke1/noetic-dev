@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import fcntl
 import hashlib
@@ -588,7 +589,7 @@ class SessionService:
         binding = self.bind(address, "prompt", {"message": text(message, "Message"), "mode": mode}, effort_root=effort_root)
         return self.deliver(binding["id"], effort_root=effort_root)
 
-    def message(self, sender, recipient, message, mode="follow_up", *, effort_root=None, in_reply_to=None):
+    def message(self, sender, recipient, message, mode="follow_up", *, effort_root=None, in_reply_to=None, fanout=None):
         if mode not in ("prompt", "steer", "follow_up"):
             raise SessionError(400, "Select prompt, steer, or follow_up.")
         source = self.select(sender, effort_root=effort_root, current=True)
@@ -600,12 +601,86 @@ class SessionService:
                 raise SessionError(409, "Reply does not match the original exact sender and recipient.")
         provenance = {"origin": "agent", "sender": source["target"], "recipient": destination["target"],
                       "effort_root": source["effort_root"], "reply_to": source["target"], "in_reply_to": in_reply_to}
+        if fanout is not None:
+            provenance["fanout"] = fanout
         binding = self.registry.domain.store().bind_action(destination["ordinal"], scope=Scope.effort(source["effort_root"]),
             kind="agent_message", payload={"message": text(message, "Message"), "mode": mode, "provenance": provenance},
             source_ref={"journal": str(self.registry.path), "session_id": source["id"], "act": "agent-send", "sender": source["target"]},
             instantiation=destination["target"]["instantiation"], session=destination["target"]["session"])
-        self.registry.event(source["id"], "host", {"type": "agent_message_sent", "binding_id": binding["id"], "provenance": provenance})
-        return self.deliver(binding["id"], effort_root=source["effort_root"])
+        attempted = False
+        try:
+            self.registry.event(source["id"], "host", {"type": "agent_message_sent", "binding_id": binding["id"], "provenance": provenance})
+            attempted = True
+            return self.deliver(binding["id"], effort_root=source["effort_root"])
+        except (SessionError, OSError, sqlite3.Error) as exc:
+            exc.binding_id = binding["id"]
+            exc.message_outcome = "uncertain" if attempted else "not-dispatched"
+            raise
+
+    def fanout(self, sender, request):
+        kind = request["action"]
+        mode = request.get("mode", "follow_up")
+        if kind not in ("multicast", "broadcast") or mode not in ("steer", "follow_up"):
+            raise SessionError(400, "Select multicast/broadcast and steer/follow_up mode.")
+        body = text(request.get("message"), "Message")
+        include_self = request.get("include_self", False)
+        if type(include_self) is not bool:
+            raise SessionError(400, "include_self must be boolean.")
+        source, context = self._select(sender, current=True, include_effort=True)
+        population = request.get("population") if kind == "broadcast" else "explicit"
+        if kind == "broadcast":
+            try:
+                snapshot = self.registry.domain.store().native_message_population(Target(**source["target"]),
+                    scope=Scope.effort(source["effort_root"]), population=population, include_self=include_self)
+            except ScopeError as exc:
+                raise SessionError(400, str(exc)) from exc
+            if snapshot["namespace"] != context["namespace"]:
+                raise SessionError(409, "Namespace changed before broadcast recipient snapshot.")
+            targets = snapshot["recipients"]
+        else:
+            targets = request.get("targets")
+            if not isinstance(targets, list) or len(targets) > 128:
+                raise SessionError(400, "Multicast requires an explicit list of at most 128 exact targets.")
+        recipients, excluded, seen = [], [], set()
+        for index, target in enumerate(targets):
+            if (not isinstance(target, dict) or set(target) != {"ordinal", "instantiation", "session"} or
+                    not isinstance(target["ordinal"], str) or not re.fullmatch(r"0(?:\.[0-9]+)*", target["ordinal"]) or
+                    any(type(target[key]) is not int or target[key] < 1 for key in ("instantiation", "session"))):
+                raise SessionError(400, "Multicast recipients must be exact ordinal/instantiation/session objects.")
+            key = (target["ordinal"], target["instantiation"], target["session"])
+            reason = "duplicate" if key in seen else "self" if target == source["target"] and not include_self else None
+            seen.add(key)
+            if reason:
+                excluded.append({"index": index, "target": dict(target), "reason": reason})
+            else:
+                recipients.append(dict(target))
+        if len(recipients) > 128:
+            raise SessionError(400, "Broadcast exceeds 128 current native recipients; choose a smaller population or explicit multicast.")
+        batch_id = str(uuid.uuid4())
+        envelope = {"batch_id": batch_id, "kind": kind, "population": population,
+                    "sender": source["target"], "effort_root": source["effort_root"], "namespace": context["namespace"],
+                    "recipients": recipients, "excluded": excluded, "include_self": include_self}
+        self.registry.event(source["id"], "host", {"type": "agent_fanout_started", **envelope, "message": body, "mode": mode})
+        provenance = {"batch_id": batch_id, "kind": kind, "population": population, "recipient_count": len(recipients)}
+
+        def send(target):
+            try:
+                if self.registry.domain.store().namespace != context["namespace"]:
+                    raise SessionError(409, "Namespace changed after fanout snapshot; recipient not dispatched.")
+                data = self.message(source["target"], target, body, mode, effort_root=source["effort_root"], fanout=provenance)
+                result = {"target": target, "status": "accepted", "data": data}
+            except (SessionError, ScopeError, OSError, sqlite3.Error) as exc:
+                result = {"target": target, "status": "failed", "error": str(exc), "error_status": getattr(exc, "status", 503),
+                          "outcome": getattr(exc, "message_outcome", "not-dispatched"), "binding_id": getattr(exc, "binding_id", None)}
+            try:
+                self.registry.event(source["id"], "host", {"type": "agent_fanout_recipient", "batch_id": batch_id, **result})
+            except (SessionError, ScopeError, OSError, sqlite3.Error) as exc:
+                result["receipt_error"] = str(exc)
+            return result
+
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(executor.map(send, recipients))
+        return {**envelope, "results": results, "completion": "per-recipient acceptance is not processing, completion, or reply; inspect failed/uncertain recipients before any explicit retry"}
 
     def stop(self, address, *, effort_root=None):
         binding = self.bind(address, "stop", {}, effort_root=effort_root)
@@ -751,6 +826,8 @@ class Broker:
             self.service.select(provenance["sender"], effort_root=item["effort_root"], current=True)
             self.registry.event(self.sid, "host", {"type": "agent_message_received", "binding_id": binding["id"], "provenance": provenance})
             return {**binding["payload"], "binding_id": binding["id"]}
+        if action in ("multicast", "broadcast"):
+            return self.service.fanout(self.sid, request)
         if action == "delegate":
             child = self.service.create({key: request[key] for key in ("prompt", "title", "model", "thinking", "mandate") if key in request}, parent_id=self.sid)
             self.registry.event(self.sid, "host", {"type": "agent_delegated", "child_id": child["id"], "ordinal": child["ordinal"], "parentTarget": self.registry.get(self.sid)["target"], "childTarget": child["target"]})

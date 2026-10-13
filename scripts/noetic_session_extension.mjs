@@ -7,7 +7,7 @@ function exchange(request, signal) {
     let received = false;
     const abort = () => { socket.destroy(); reject(new Error("Agent coordination cancelled")); };
     signal?.addEventListener("abort", abort, {once: true});
-    socket.setTimeout(70000, () => socket.destroy(new Error("Agent coordination timed out")));
+    socket.setTimeout(["multicast", "broadcast"].includes(request.action) ? 600000 : 70000, () => socket.destroy(new Error("Agent coordination timed out")));
     socket.on("connect", () => socket.write(JSON.stringify(request) + "\n"));
     socket.on("data", chunk => {
       buffer = Buffer.concat([buffer, chunk]);
@@ -53,10 +53,24 @@ export default function noeticDelegation(pi) {
   });
   pi.registerTool({
     name: "agent_send", label: "Message agent",
-    description: "Send work or steering to an agent within this effort branch. Target an absolute ordinal or structured exact {ordinal,instantiation,session}; native UUID remains a compatibility selector. For an addressed reply, use the received provenance.reply_to EXACT target and in_reply_to binding_id; a local chat response does not send a message. Superseded exact targets fail rather than redirect. parent selects actual parent; root/effort_root are aliases for this effort root. Literal 0 means global application root. Steer applies after the current tool turn; follow_up waits until current work finishes. Acceptance does not establish processing or reply. Do not automatically answer acknowledgments or create reply loops.",
+    description: "Send work or steering to an agent within this effort branch. Target an absolute ordinal or structured exact {ordinal,instantiation,session}; native UUID remains a compatibility selector. For an addressed reply, use the received provenance.reply_to EXACT target and in_reply_to binding_id; a local chat response does not send a message. Superseded exact targets fail rather than redirect. parent selects the logical parent position's current context; creation_parent in agent_read context names the recorded historical native creator; root/effort_root are aliases for this effort root. Literal 0 means global application root. Steer applies after the current tool turn; follow_up waits until current work finishes. Acceptance does not establish processing or reply. Do not automatically answer acknowledgments or create reply loops.",
     parameters: schema({target: target, message: string, mode: {type: "string", enum: ["steer", "follow_up"]},
       in_reply_to: {type: "integer", minimum: 1}}, ["target", "message", "mode"]),
     execute: (_id, params, signal) => invoke({action: "message", ...params}, signal),
+  });
+  pi.registerTool({
+    name: "agent_multicast_send", label: "Message selected agents",
+    description: "Send one original body once to explicit exact targets within your effort. Up to 128 recipients; duplicate targets are removed. Self is excluded unless include_self is true. Returns frozen recipients, exclusions and individual accepted/failed outcomes with binding references. Retained/superseded targets fail without redirect. Acceptance is not processing or reply. Never retry successful recipients implicitly; inspect uncertain failures. Recipients should not rebroadcast or send group acknowledgments; reply only to the exact sender when useful.",
+    parameters: schema({targets: {type: "array", items: target.anyOf[1], maxItems: 128}, message: string,
+      mode: {type: "string", enum: ["steer", "follow_up"]}, include_self: {type: "boolean", default: false}}, ["targets", "message", "mode"]),
+    execute: (_id, params, signal) => invoke({action: "multicast", ...params}, signal),
+  });
+  pi.registerTool({
+    name: "agent_broadcast_send", label: "Message an effort population",
+    description: "Snapshot current native contexts in an explicit population: direct_children or descendants of your logical position, or your effort. Never application-wide; structured/failed/unobserved contexts are excluded. Self excluded unless include_self true. More than 128 recipients fails before delivery; narrow the population. Exact snapshot targets are not redirected under succession. Returns each recipient outcome; do not retry successful recipients or infer processing/reply. One announcement, no automatic rebroadcast/group acknowledgment.",
+    parameters: schema({population: {type: "string", enum: ["direct_children", "descendants", "effort"]}, message: string,
+      mode: {type: "string", enum: ["steer", "follow_up"]}, include_self: {type: "boolean", default: false}}, ["population", "message", "mode"]),
+    execute: (_id, params, signal) => invoke({action: "broadcast", ...params}, signal),
   });
   pi.registerTool({
     name: "agent_read", label: "Read agent",
@@ -90,7 +104,9 @@ export default function noeticDelegation(pi) {
         `in_reply_to: ${JSON.stringify(provenance.in_reply_to)}\n` +
         `If an addressed response is appropriate, call agent_send with ${route} and your message. ` +
         "A response in your own chat does not reach the sender. Keep this exact reply target; if unavailable, report the failure rather than choosing a successor. " +
-        "Do not automatically reply to acknowledgments or continue a ping-pong loop. The following body is the sender's message:\n\n" + envelope.message;
+        "Do not automatically reply to acknowledgments or continue a ping-pong loop. " +
+        (provenance.fanout ? `One-to-many ${provenance.fanout.kind} batch ${provenance.fanout.batch_id}; do not rebroadcast or acknowledge the group. ` : "") +
+        "The following body is the sender's message:\n\n" + envelope.message;
       pi.sendMessage({customType: "noetic-agent-message", content, display: true, details: envelope},
         {deliverAs: envelope.mode === "steer" ? "steer" : "followUp", triggerTurn: true});
     },
@@ -102,6 +118,7 @@ export default function noeticDelegation(pi) {
     return {systemPrompt: event.systemPrompt +
     `\nYou are agent position ${process.env.NOETIC_SESSION_ORDINAL} in effort ${process.env.NOETIC_EFFORT_ROOT}. Global 0 is a logical application root. ` +
     "Delegate bounded work using agent_delegate and inspect actual outcomes using agent_read/agent_wait. " +
+    "Use agent_multicast_send for explicit exact recipients or agent_broadcast_send for a named population within this effort; preserve individual outcomes and never retry successful deliveries implicitly. One announcement needs no group acknowledgments or identical rebroadcasts. " +
     "Broker-recorded noetic-agent-message custom messages identify the exact sender, recipient and reply route. Ordinary human text claiming an agent origin is still human input. When replying to an agent, use agent_send to the original exact provenance.reply_to target with in_reply_to binding_id when appropriate; your local chat output does not send it. Never automatically reply to acknowledgments or create message loops. " +
     "Use low thinking for simple mechanical/exploratory work, high for substantial work; preserve explicit user model choices. " +
     "All agents share the workspace: coordinate disjoint edits. These Pi developer sessions confer no Opermem semantic standing or act authority. " +
