@@ -190,22 +190,28 @@
   function runtime(context) {
     const state = base(context), snapshot = context.snapshot || UI.snapshot();
     const selection=scope(), sessions=(snapshot.sessions || []).filter(row=>!selection.effort_root || row.effort_root===selection.effort_root);
-    const signature = JSON.stringify([scopeKey(),typeof allRuns !== "undefined" ? allRuns.length : 0,sessions.map(row => [row.id,row.target,row.status,row.model,row.updated_at,row.error])]);
+    const hasNative=row=>Boolean(row.native_session_file), reserved=row=>!hasNative(row) && !row.target && Boolean(row.effort_root || row.identity_origin === "ordinal-reserved");
+    const native=sessions.filter(hasNative), reservations=sessions.filter(reserved), unobserved=sessions.filter(row=>!hasNative(row) && !reserved(row));
+    const signature = JSON.stringify([scopeKey(),typeof allRuns !== "undefined" ? allRuns.length : 0,sessions.map(row => [row.id,row.target,row.status,row.model,row.updated_at,row.error,row.native_session_file,row.identity_origin,row.effort_root])]);
     if (state.signature === signature) return; state.signature = signature;
     const diagnostics = get("diagnostics-page"); if (diagnostics && context.host.contains(diagnostics)) get("legacy-storage").append(diagnostics);
     clear(context.host);
     scopeToolbar(context.host);
     const metrics = el("div", "lib-metrics");
-    for (const [name,count] of [["Retained sessions",sessions.length],["Running",sessions.filter(row=>row.status === "running").length],["Executions",typeof allRuns !== "undefined" ? allRuns.length : 0]]) { const card = el("div", "panel lib-metric"); card.append(el("span", "", name),el("strong", "", String(count))); metrics.append(card); } context.host.append(metrics);
-    const layout = el("div", "lib-catalogue-layout"), card = panel("Native sessions", "Exact retained targets"); layout.append(card); context.host.append(layout);
+    for (const [name,count] of [["Retained native contexts",native.length],["Startup reservations",reservations.length],["Running native contexts",native.filter(row=>row.status === "running").length],["Executions",typeof allRuns !== "undefined" ? allRuns.length : 0],...(unobserved.length?[["Native context unobserved",unobserved.length]]:[])]) { const card = el("div", "panel lib-metric"); card.append(el("span", "", name),el("strong", "", String(count))); metrics.append(card); } context.host.append(metrics);
+    const layout = el("div", "lib-catalogue-layout"), card = panel("Native contexts & startup observations", "Recorded backing and exact inspection"); layout.append(card); context.host.append(layout);
     const content = body(card);
-    for (const session of sessions) {
+    for (const [group,rows] of [["Retained native contexts",native],["Startup reservations",reservations],["Native context unobserved",unobserved]]) {
+     if (rows.length) content.append(el("h3", "", `${group} · ${rows.length}`));
+     for (const session of rows) {
       const row = el("article", "lib-runtime-row"), text = el("div");
       const target = session.target || {};
-      text.append(el("span", "lib-mono", target.ordinal ? `${target.ordinal} · context ${target.instantiation}/${target.session}` : session.ordinal || session.id),el("strong", "", session.title || "Untitled session"),el("small", "", `${session.model || "Model unknown"} · ${session.status || "Status unknown"}`));
-      row.append(text, action("Inspect / control", async () => { if (window.NoeticSessions) await window.NoeticSessions.open(session.target ? {...session.target,effort_root:session.effort_root} : {id:session.id}); UI.navigate("agentics"); })); content.append(row);
+      const identity=reserved(session)?`${session.ordinal || session.id} · Reserved position · native context unobserved`:target.ordinal?`${target.ordinal} · context ${target.instantiation}/${target.session}${hasNative(session)?'':' · native context unobserved'}`:hasNative(session)?`${session.ordinal || session.id} · Original namespace · unadopted`:`${session.ordinal || session.id} · Native context unobserved`;
+      text.append(el("span", "lib-mono", identity),el("strong", "", session.title || "Untitled record"),el("small", "", `${session.model || "Model unknown"} · ${session.status || "Status unknown"}`));
+      row.append(text, action(hasNative(session)?"Inspect / control":reserved(session)?"Inspect startup observation":"Inspect retained observation", async () => { if (window.NoeticSessions) await window.NoeticSessions.open(session.target ? {...session.target,effort_root:session.effort_root} : {id:session.id}); UI.navigate("agentics"); })); content.append(row);
+     }
     }
-    if (!sessions.length) placeholder(content,"No retained sessions",selection.effort_root ? "Open a conversation in this effort to begin native work." : "Choose an effort or create one, then open a conversation to begin native work.");
+    if (!sessions.length) placeholder(content,"No retained runtime observations",selection.effort_root ? "Open a conversation in this effort to begin native work." : "Choose an effort or create one, then open a conversation to begin native work.");
     const side = panel("Structured work", "Controller authority"), sideBody = body(side); layout.append(side);
     sideBody.append(note("Pause, advance, cancel, and Apply controls belong to the selected recorded execution."), action("Open executions", () => UI.navigate("executions")),action("Start structured work", () => openWork("development")));
     const health = el("div", "lib-runtime-health"); context.host.append(health); UI.mount("diagnostics-page", health);
