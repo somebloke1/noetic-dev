@@ -386,17 +386,50 @@ def _coexist_recognize(path, evidence, state_root, record):
             "namespace_path": argv[7]}
 
 
+def _coexist_evidence(home, coexist):
+    """Normalize one release ID string or an explicit iterable of them into
+    individually verified release evidence; explicitly declared duplicates deduplicate."""
+    if coexist is None:
+        return []
+    declared = [coexist] if isinstance(coexist, str) else list(coexist)
+    evidence, seen = [], set()
+    for release in declared:
+        if not isinstance(release, str):
+            raise ValueError("Select an installed retained broker release ID from status")
+        if release in seen:
+            continue
+        seen.add(release)
+        evidence.append(_coexist_release(home, release))
+    return evidence
+
+
+def _coexist_match(path, evidence_list, record):
+    """Bind one broker to exactly ONE distinct declared release evidence by exact
+    site-packages cwd; recognition then enforces the full release shape once."""
+    if len(evidence_list) == 1:
+        return evidence_list[0]
+    cwd = _proc_link(record["identity"]["pid"], "cwd")
+    matches = [evidence for evidence in evidence_list if evidence["site_packages"] == cwd]
+    if not matches:
+        raise ValueError(f"Recognized broker cwd does not match the named release: {path}")
+    if len(matches) > 1:
+        raise ValueError(f"Broker cwd matches multiple declared releases: {path}")
+    return matches[0]
+
+
 def _coexist_plan(state_root, home, coexist):
-    """Named-release evidence plus currently recognized live broker sessions."""
+    """Declared-release evidence plus currently recognized live broker sessions."""
     from scripts import noetic_processes
-    evidence = _coexist_release(home, coexist)
+    evidence_list = _coexist_evidence(home, coexist)
     recognized = {}
     for path in (p for p in _code_state_paths(state_root) if _coexist_shape(p, state_root)):
         record = noetic_processes.inspect(path)
         if record["state"] == "owned":
+            evidence = _coexist_match(path, evidence_list, record)
             broker = _coexist_recognize(path, evidence, state_root, record)
+            broker["release"] = evidence["release"]
             recognized[path.parent.name] = broker
-    return evidence, recognized
+    return evidence_list, recognized
 
 
 def _check_code_state(state_root, allow_held, *, coexist=None, coexist_home=None, expected=None):
@@ -404,35 +437,43 @@ def _check_code_state(state_root, allow_held, *, coexist=None, coexist_home=None
     from scripts import noetic_processes
     paths = _code_state_paths(state_root)
     ownership = [p for p in paths if p.name.endswith("-ownership.json")]
-    evidence = _coexist_release(coexist_home, coexist) if coexist else None
+    evidence_list = _coexist_evidence(coexist_home, coexist) if coexist else []
     recognized = []
     for path in ownership:
         record = noetic_processes.inspect(path)
-        # Only an exact recognized live developer-session broker of the named
+        # Only an exact recognized live developer-session broker of a declared
         # retained release is exempt; every other record follows the ordinary gate.
-        if evidence and _coexist_shape(path, state_root) and record["state"] == "owned":
-            recognized.append(_coexist_recognize(path, evidence, state_root, record))
+        if evidence_list and _coexist_shape(path, state_root) and record["state"] == "owned":
+            evidence = _coexist_match(path, evidence_list, record)
+            broker = _coexist_recognize(path, evidence, state_root, record)
+            broker["release"] = evidence["release"]
+            recognized.append(broker)
             continue
         if not record["cleanup_confirmed"]:
             raise ValueError("Known live or unverifiable owned group; code switch refused")
     # Missing identity cannot be counted without interpreting potentially broken
     # histories. Even ended recorded groups do not certify all historical cleanup.
-    result = {"mode": "code-only" if not evidence else "code-only-coexistence",
+    result = {"mode": "code-only" if not evidence_list else "code-only-coexistence",
               "retained_state": "available" if state_root.is_dir() else "absent",
             "history_assessment": "not_performed", "data_compatibility": "unknown",
             "process_inspection": "existing ownership records and cooperative locks only",
             "ownership_records_inspected": len(ownership),
             "historical_cleanup_confirmed": False, "unknown_ownership_records": None,
             "message": "code updated, historical cleanup unconfirmed"}
-    if evidence:
+    if evidence_list:
         # Pre-switch recheck: recognition above re-read live identities and the
-        # named retained root was re-verified; nothing else is exempt. The final
-        # live set must exactly match the initial recognition (same sessions,
-        # pid/start_ticks and namespace); any change refuses before the switch.
+        # declared retained roots were re-verified; nothing else is exempt. The
+        # final live set must exactly match the initial recognition (same
+        # sessions, pid/start_ticks, namespace and matched release); any change
+        # refuses before the switch.
         if expected is not None and {b["session"]: b for b in recognized} != expected:
             raise ValueError("Recognized broker set or identity changed during maintenance; refusing before switch")
-        result["coexistence"] = {"broker_release": evidence["release"],
-                                 "recognized_brokers": recognized}
+        if len(evidence_list) == 1:
+            result["coexistence"] = {"broker_release": evidence_list[0]["release"],
+                                     "recognized_brokers": recognized}
+        else:
+            result["coexistence"] = {"broker_releases": sorted({b["release"] for b in recognized}),
+                                     "recognized_brokers": recognized}
         result["message"] = "code updated, recognized live brokers preserved, historical cleanup unconfirmed"
     return result
 
@@ -669,8 +710,8 @@ def main(argv=None):
     for command in (install, back):
         command.add_argument("--allow-held", action="store_true")
         command.add_argument("--code-only", action="store_true", help="Switch code without assessing retained history; require existing locks and recorded process safety")
-        command.add_argument("--coexist-brokers-from", metavar="RELEASE_ID", default=None,
-                             help="Explicit retained-broker coexistence: code-only only; recognize live developer-session brokers of this installed release; caller declares the compatible code pair")
+        command.add_argument("--coexist-brokers-from", metavar="RELEASE_ID", default=None, action="append",
+                             help="Explicit retained-broker coexistence: code-only only; recognize live developer-session brokers of these installed releases (repeatable); caller declares the compatible code pair")
     args = vars(parser.parse_args(argv))
     command = args.pop("command")
     if command in ("install", "rollback"):
