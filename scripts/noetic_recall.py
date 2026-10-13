@@ -158,6 +158,69 @@ def _opermem_participants(adapter, binding):
     return participants
 
 
+def _partial_author_source(run_dir, correlation, part, owner):
+    """External unreviewed partial author proposal from retained raw author
+    output when no participant observation exists. Derived only from the actual
+    terminal assistant text of the single completed native session; never
+    writes run files, never asserts review, receipt or native standing, and
+    binds its identity to the exact raw stdout digest so later raw changes
+    cannot be carried by a stale selection."""
+    from scripts import noetic_develop as develop
+    path = run_dir / (part["step"] + ".stdout.log")
+    try:
+        if path.is_symlink() or path.resolve().parent != run_dir.resolve():
+            return None
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    stdout_sha256 = hashlib.sha256(raw).hexdigest()
+    # Exact current-completion invariants over the whole retained stream, in
+    # addition to the terminal-turn parse: no contradictory error event, and the
+    # meaningful lifecycle must end at a completed agent turn. Installed Pi
+    # 0.87.1 emits one documented settlement notification (`agent_settled`,
+    # AgentSettledEvent: run fully settled with no automatic retry, compaction
+    # or queued continuation) after that terminal turn; only that legitimate
+    # settlement metadata may follow it. A later started turn, trailing session
+    # identity, any other unknown trailing record, or unframed/malformed bytes
+    # is not a completed author proposal.
+    try:
+        events = [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if not events or not all(isinstance(event, dict) for event in events):
+        return None
+    if any(event.get("type") == "error" for event in events):
+        return None
+    terminal = next((index for index in range(len(events) - 1, -1, -1)
+                     if events[index].get("type") == "agent_end"), None)
+    if terminal is None or any(event.get("type") != "agent_settled" for event in events[terminal + 1:]):
+        return None
+    try:
+        text = develop.parse_transcript(path, "pi")["text"].strip()
+    except Exception:
+        return None
+    if not text:
+        return None
+    # Actual retained native/program standing, never a guessed label: a
+    # retained receipt or pending command contradicts the unobserved-participant
+    # fallback and is excluded rather than mislabeled.
+    if (run_dir / "opermem-receipt.json").exists() or (run_dir / "opermem-pending.json").exists():
+        return None
+    review_state = "retained-review-present" if (run_dir / "review.md").exists() else "unreviewed"
+    return _source(text,
+        source_id=f"{run_dir.name}:opermem-unreviewed-author:{part['step']}:{stdout_sha256}",
+        source_path=path, source="opermem-unreviewed-author",
+        source_ref={"stdout_sha256": stdout_sha256, "step": part["step"]},
+        owner=owner, field="opermem-author-partial", collection="external-unreviewed-partial",
+        run_id=run_dir.name, external=True,
+        program_status=correlation.get("run_status", "unknown"),
+        native_submission="not-submitted", review=review_state,
+        source_namespace={"kind": "store-qualified-opermem", **correlation.get("native_store_identity", {}),
+                          "run_id": run_dir.name})
+
+
 def _opermem_sources(run_dir, correlation, namespace, positions, selected, sessions, exact, selection):
     from scripts import noetic_develop as develop
     root = correlation["effort_root"]
@@ -178,6 +241,12 @@ def _opermem_sources(run_dir, correlation, namespace, positions, selected, sessi
                        current=native["current"] if native else None, status=native["status"] if native else None)
         observed = part["observation"]
         if observed is None:
+            # No participant observation was recorded (e.g. the program failed
+            # after the author finished): surface the faithful completed author
+            # proposal as external unreviewed partial work, without writing or
+            # promoting anything.
+            if partial := _partial_author_source(run_dir, correlation, part, owner):
+                result.append(partial)
             continue
         path = Path(observed["stdout"])
         if target and (observed.get("native_ref") != part["native_session_ref"] or observed.get("target") != target):
@@ -397,10 +466,12 @@ def collect(*, namespace_path, sessions_home, runs_dir, selection):
                     if owned is None or owned[1] != binding:
                         raise ScopeError("Selected owned Opermem run differs from canonical execution identity")
                     link = owned[2]
+                    run_status = runtime.project(runtime.read_events(run_dir))["state"]
                     correlation = {"effort_root": binding["effort_root"], "namespace": binding["namespace"],
                         "namespace_path": binding["namespace_path"], "initiator": binding["initiator"],
                         "execution_id": binding["execution_id"], "participants": eligible, "native_link": link,
                         "host_sources": binding["host_sources"], "occasion_selection": binding["occasion_selection"],
+                        "run_status": run_status,
                         "native_store_identity": {"directory": link["store"],
                             "workspace_id": link["context"]["pinned_canonical_cut"]["workspace_id"],
                             "authority_scope_id": link["context"]["pinned_canonical_cut"]["authority_scope_id"]}}

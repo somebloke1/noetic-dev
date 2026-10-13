@@ -665,7 +665,8 @@ class ReviewedApplication:
         events = runtime.read_events(run) if (run / 'events.sqlite3').exists() else []
         artifacts = {}
         for name in ('task.md', 'work.md', 'review.md', 'opermem-link.json', 'opermem-scope.json',
-                     'opermem-receipt.json', 'opermem-pending.json', 'options.json'):
+                     'opermem-receipt.json', 'opermem-pending.json', 'options.json',
+                     'work.stdout.log', 'work.stderr.log', 'review.stdout.log', 'review.stderr.log'):
             path = run / name
             if path.exists():
                 from scripts.noetic_application import contained
@@ -673,7 +674,8 @@ class ReviewedApplication:
                 with path.open('rb') as stream:
                     data = stream.read(1024 * 1024 + 1)
                 artifacts[name] = {'source_path': str(path), 'text': data[:1024 * 1024].decode('utf8', errors='replace'),
-                                   'truncated': len(data) > 1024 * 1024}
+                                   'truncated': len(data) > 1024 * 1024,
+                                   'sha256': hashlib.sha256((run / name).read_bytes()).hexdigest()}
         return {'status': {'run_id': run_id, 'goal': binding['task']['text'], 'workspace': binding['workspace'],
                           'state': correlation['run_status'], 'backend': BACKEND}, 'backend': BACKEND,
                 'events': events, 'artifacts': artifacts, 'controller': None, 'controller_path': None,
