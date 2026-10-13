@@ -74,7 +74,7 @@ function changeOperationScope(mode, previous = operationKey()) {
   if (operationKey() !== previous) {
     ++operationVersion; ++purposeVersion; ++memoryVersion; ++detailVersion; ++sessionVersion; ++actorLogVersion; ++reuseVersion;
     ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];$("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";
-    $("reviewed-selected-sources").replaceChildren(); $("reviewed-launch-list").replaceChildren();
+    $("reviewed-selected-sources").replaceChildren(); $("reviewed-launch-list").replaceChildren();text("reviewed-launch-status","Launch observations not yet read in this scope.");
     $("reviewed-store").replaceChildren(node("option", "Select backing explicitly")); $("reviewed-store").firstChild.value = "";
     delete $("reviewed-store").dataset.options; text("reviewed-store-status", "Scope changed. Select a backing explicitly.");
     $("reviewed-result").hidden = true; $("reviewed-evidence").hidden = true; $("reviewed-evidence-content").replaceChildren();
@@ -1867,8 +1867,10 @@ async function loadReviewedLaunches() {
         if(launch.run_id && !row.querySelector("button")){const inspect=node("button","Inspect original execution");inspect.type="button";inspect.addEventListener("click",()=>{if(operationValid(scopeVersion,key))selectRun(launch.run_id);});row.append(inspect);}
       }
       for(const row of existing.values())row.remove();
-      if(!result.launches.length && !host.firstChild)host.append(node("p","No retained launch commands in this scope."));
     }
+    if(!result.launches.length && !host.textContent.trim())host.replaceChildren(node("p","No retained launch commands in this scope."));
+    text("reviewed-launch-status",`Launch commands observed · ${result.launches.length} retained in this scope. Observation does not start work.`);
+    if($("start-result").textContent.startsWith("Launch observation unavailable:"))text("start-result","");
     if (reviewedLaunch && reviewedLaunch.scopeKey===key) {
       const launch=result.launches.find(x=>x.launch_id===reviewedLaunch.id);
       if (launch) {
@@ -1876,7 +1878,7 @@ async function loadReviewedLaunches() {
         if (launch.run_id && reviewedLaunch.draft===draftVersion && reviewedLaunch.subject===developerSubjectVersion && !reviewedLaunch.selected) {reviewedLaunch.selected=true;await selectRun(launch.run_id);}
       }
     }
-  } catch (failure) {if (operationValid(scopeVersion,key)) text("start-result",`Launch observation unavailable: ${failure.message}. Refresh retained commands before retrying.`);}
+  } catch (failure) {if (operationValid(scopeVersion,key)) text("reviewed-launch-status",`Launch observation unavailable: ${failure.message}. Refresh retained commands before retrying.`);}
 }
 async function startReviewed({scopeVersion,scopeKey,draft,subject,selection,environment}) {
   if (!selection.effort_root || !environment) throw new Error("Select a registered effort first.");
