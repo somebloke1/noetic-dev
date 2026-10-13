@@ -94,3 +94,18 @@
 .agentics-branch-toggle {position:absolute; z-index:2; width:24px; height:28px; padding:0; border:1px solid var(--ink-200); border-radius:5px; background:var(--paper); color:var(--violet-700); cursor:pointer;}
 .agentics-branch-toggle:disabled {cursor:default; opacity:.5;}
 .agentics-descendant-count {position:absolute; color:var(--ink-500); font-size:8px;}
+
+button.noetic-copy,.agentics-inspector .developer-actions button.noetic-copy,.agentics-inspector .developer-actions button.noetic-icon-action {
+  display:inline-grid;place-items:center;width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--ink-400);box-sizing:border-box;cursor:pointer;vertical-align:middle;flex-shrink:0;
+}
+button.noetic-copy:hover,.agentics-inspector .developer-actions button.noetic-icon-action:hover {background:var(--ink-100);color:var(--ink-700);}
+button.noetic-copy:focus-visible,.agentics-inspector .developer-actions button.noetic-icon-action:focus-visible {outline:2px solid var(--violet-600);outline-offset:2px;color:var(--ink-700);}
+button.noetic-copy:disabled,.agentics-inspector .developer-actions button.noetic-icon-action:disabled {opacity:.4;cursor:default;}
+button.noetic-copy[data-copied] {color:var(--green-700);}
+.developer-copy-actions {display:flex;flex-wrap:wrap;gap:4px 10px;padding:3px 14px;font-size:10px;color:var(--ink-400);}
+.noetic-copy-prose {position:relative;padding-right:34px;min-height:28px;box-sizing:border-box;}
+.noetic-copy-prose>.noetic-copy {position:absolute;right:0;top:0;}
+.developer-markdown pre.noetic-code-block {position:relative;overflow:visible;white-space:normal;padding:28px 8px 8px;border-radius:6px;}
+.noetic-code-block>.noetic-copy {position:absolute;right:4px;top:0;}
+.developer-markdown .noetic-code-source {display:block;white-space:pre;overflow-x:auto;overflow-wrap:normal;word-break:normal;padding:0;max-width:100%;}
+.noetic-tool-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;}
