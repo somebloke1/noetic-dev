@@ -286,6 +286,42 @@ With writers stopped and the installed CLI available, subsequent code maintenanc
 /private/noetic-adopted/bin/noetic release rollback legacy --code-only
 ```
 
+`--coexist-brokers-from RELEASE_ID` is an explicit, code-only-only coexistence
+route for install and rollback. It is refused without `--code-only`, and it
+refuses a nonexistent, malformed (`legacy` or unparseable), checksum-tampered or
+payload-changed named retained release: the named release root, manifest,
+wheel payload, installed venv files and interpreter are fully verified before
+any exemption applies. The caller explicitly declares that this exact old/new
+code pair is compatible; this is an observed-pair decision, never a universal
+version-compatibility claim, and the operator owns that responsibility.
+
+When the option is given, exactly one narrow exemption from the ordinary
+code-only process gates is granted: a live developer-session broker recorded at
+the exact path `STATE/runs/developer-sessions/<uuid>/broker-ownership.json` of
+the named retained release, whose recorded identity matches the current boot,
+live PID and start ticks, whose actual `/proc` cwd is that release's
+`venv/lib/python*/site-packages`, whose actual `/proc/PID/exe` is that release's
+`venv/bin/python`, and whose exact broker command line is
+`-m scripts.noetic_sessions broker STATE/runs <same-uuid> <numeric-fd>
+<absolute-namespace-path>`. `argv0` is accepted only as a lexical match of
+either the named release interpreter or the managed `current/venv/bin/python`
+alias; the alias is never resolved, because it moves with the pointer while
+`/proc/PID/exe` remains the immutable old interpreter. Only that session's own
+`broker.lock` is exempt from the cooperative lock hold; every other busy lock,
+and every other live, mismatched, uncertain, malformed or non-broker ownership
+record, is still a concrete refusal. The named retained release and the
+recognized identities are rechecked immediately before the pointer switch; a
+changed observation refuses the switch without changing `current`. No signal is
+ever sent, no namespace or history file is read or written, no native replay,
+reopen or migration is performed, and no recorded group is relabeled as
+cleaned up. Install and rollback retain the old immutable code root in place;
+nothing is deleted or copied between installed homes. Rollback may name the old
+broker release as the coexistence source even while `current` selects the new
+release. The maintenance result reports the preserved brokers under
+`coexistence.recognized_brokers` with the message **code updated, recognized
+live brokers preserved, historical cleanup unconfirmed**; this is distinct from
+ordinary cleanup and does not certify history assessment.
+
 `rollback legacy` makes the private wrapper execute the retained original
 launcher in its original cwd; it does not reinstall, validate or repair the old uv
 environment. Use the original explicit `serve --runs-dir ... --port 8765` arguments

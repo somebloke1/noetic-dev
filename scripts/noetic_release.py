@@ -218,7 +218,7 @@ def status(home):
 
 
 @contextmanager
-def maintenance(home, allow_held, *, code_only=False, adoption=None):
+def maintenance(home, allow_held, *, code_only=False, adoption=None, coexist=None, coexist_state=None):
     home = Path(home).absolute()
     if home == Path.home() or home == Path(home.anchor) or any((home / n).exists() for n in (".git", "pyproject.toml")):
         raise ValueError("Select a dedicated private app home, not a home directory or checkout")
@@ -250,8 +250,17 @@ def maintenance(home, allow_held, *, code_only=False, adoption=None):
             paths = sorted(state.rglob("*.lock"))
         # Independent drivers survive server closure. The operator must also stop
         # launchers and noncooperating writers; these locks are not a daemon manager.
+        recognized = set()
+        if code_only and coexist:
+            _, recognized_brokers = _coexist_plan(state, home, coexist)
+            if coexist_state is not None:
+                coexist_state["expected"] = recognized_brokers
+            recognized = set(recognized_brokers)
         for path in (p for p in paths if p.name.endswith(".lock")):
             if not code_only and path.name in ("driver.lock", "application-driver.lock") and (path.parent / "events.sqlite3").is_file():
+                continue
+            # Only the exact recognized live broker's own session lock is exempt.
+            if code_only and path.name == "broker.lock" and _coexist_shape(path, state) and path.parent.name in recognized:
                 continue
             stream = stack.enter_context(path.open("rb") if code_only else open_private(path, "a"))
             try:
@@ -302,22 +311,130 @@ def _code_state_paths(state_root):
     return sorted(paths)
 
 
-def _check_code_state(state_root, allow_held):
+def _proc_link(pid, name):
+    return os.readlink(f"/proc/{pid}/{name}")
+
+
+def _proc_cmdline(pid):
+    return Path(f"/proc/{pid}/cmdline").read_bytes()
+
+
+_COEXIST_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+
+
+def _coexist_shape(path, state_root):
+    """Exact developer-session broker ownership path shape; no history reading."""
+    session = path.parent
+    return (path.name in ("broker.lock", "broker-ownership.json")
+            and re.fullmatch(_COEXIST_UUID, session.name) is not None
+            and session.parent == Path(state_root) / "runs" / "developer-sessions")
+
+
+def _coexist_release(home, coexist):
+    """Verify the named retained release root, payload and interpreter; read-only."""
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{16}", coexist or ""):
+        raise ValueError("Select an installed retained broker release ID from status")
+    home = Path(home).absolute()
+    root = home / "releases" / coexist
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError("Named retained broker release is missing")
+    manifest = json.loads(read_regular(root / "release.json"))
+    identity = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
+    if coexist != manifest["release_version"] + "-" + identity:
+        raise ValueError("Named retained broker release identity mismatch")
+    files = {name: read_regular(root / name) for name in manifest["files"]}
+    if manifest["files"] != {n: hashlib.sha256(d).hexdigest() for n, d in files.items()}:
+        raise ValueError("Named retained broker release checksum mismatch")
+    validate_assets(files, manifest)
+    python = root / "venv/bin/python"
+    if not python.is_file():
+        raise ValueError("Named retained broker release interpreter missing")
+    check_installed_files(root, files[manifest["wheel"]])
+    sites = [p for p in (root / "venv/lib").glob("python*/site-packages") if p.is_dir()]
+    if len(sites) != 1:
+        raise ValueError("Named retained broker release site-packages is unresolved")
+    return {"home": str(home), "release": coexist, "root": str(root),
+            "exe": str(python), "site_packages": str(sites[0])}
+
+
+def _coexist_recognize(path, evidence, state_root, record):
+    """Recognize one live developer-session broker of the named release via /proc."""
+    from scripts import noetic_processes
+    session = path.parent.name
+    if record.get("state") != "owned" or "identity" not in record:
+        raise ValueError(f"Known live or unverifiable owned group; code switch refused: {path}")
+    pid = record["identity"]["pid"]
+    cwd = _proc_link(pid, "cwd")
+    if cwd != evidence["site_packages"]:
+        raise ValueError(f"Recognized broker cwd does not match the named release: {path}")
+    if Path(_proc_link(pid, "exe")) != Path(os.path.realpath(evidence["exe"])):
+        raise ValueError(f"Broker executable does not match the named release: {path}")
+    try:
+        argv = [item.decode("utf-8") for item in _proc_cmdline(pid).split(b"\0") if item]
+    except UnicodeDecodeError:
+        raise ValueError(f"Broker command line is not decodable: {path}")
+    alias = str(Path(evidence["home"]) / "current" / "venv" / "bin" / "python")
+    # argv0 is accepted only lexically; the managed current alias moves after a
+    # pointer switch and is never resolved here.
+    if not argv or argv[0] not in (alias, evidence["exe"]):
+        raise ValueError(f"Broker argv0 is neither the named release interpreter nor the managed current alias: {path}")
+    if argv[1:6] != ["-m", "scripts.noetic_sessions", "broker", str(Path(state_root) / "runs"), session]:
+        raise ValueError(f"Broker command line does not match this session and runs root: {path}")
+    if len(argv) != 8 or not argv[6].isdigit() or not argv[7].startswith("/"):
+        raise ValueError(f"Broker namespace descriptor/path is invalid: {path}")
+    return {"session": session, "pid": pid, "start_ticks": record["identity"]["start_ticks"],
+            "namespace_path": argv[7]}
+
+
+def _coexist_plan(state_root, home, coexist):
+    """Named-release evidence plus currently recognized live broker sessions."""
+    from scripts import noetic_processes
+    evidence = _coexist_release(home, coexist)
+    recognized = {}
+    for path in (p for p in _code_state_paths(state_root) if _coexist_shape(p, state_root)):
+        record = noetic_processes.inspect(path)
+        if record["state"] == "owned":
+            broker = _coexist_recognize(path, evidence, state_root, record)
+            recognized[path.parent.name] = broker
+    return evidence, recognized
+
+
+def _check_code_state(state_root, allow_held, *, coexist=None, coexist_home=None, expected=None):
     """Check recorded process safety; leave historical semantics and compatibility unknown."""
     from scripts import noetic_processes
     paths = _code_state_paths(state_root)
     ownership = [p for p in paths if p.name.endswith("-ownership.json")]
+    evidence = _coexist_release(coexist_home, coexist) if coexist else None
+    recognized = []
     for path in ownership:
-        if not noetic_processes.inspect(path)["cleanup_confirmed"]:
+        record = noetic_processes.inspect(path)
+        # Only an exact recognized live developer-session broker of the named
+        # retained release is exempt; every other record follows the ordinary gate.
+        if evidence and _coexist_shape(path, state_root) and record["state"] == "owned":
+            recognized.append(_coexist_recognize(path, evidence, state_root, record))
+            continue
+        if not record["cleanup_confirmed"]:
             raise ValueError("Known live or unverifiable owned group; code switch refused")
     # Missing identity cannot be counted without interpreting potentially broken
     # histories. Even ended recorded groups do not certify all historical cleanup.
-    return {"mode": "code-only", "retained_state": "available" if state_root.is_dir() else "absent",
+    result = {"mode": "code-only" if not evidence else "code-only-coexistence",
+              "retained_state": "available" if state_root.is_dir() else "absent",
             "history_assessment": "not_performed", "data_compatibility": "unknown",
             "process_inspection": "existing ownership records and cooperative locks only",
             "ownership_records_inspected": len(ownership),
             "historical_cleanup_confirmed": False, "unknown_ownership_records": None,
             "message": "code updated, historical cleanup unconfirmed"}
+    if evidence:
+        # Pre-switch recheck: recognition above re-read live identities and the
+        # named retained root was re-verified; nothing else is exempt. The final
+        # live set must exactly match the initial recognition (same sessions,
+        # pid/start_ticks and namespace); any change refuses before the switch.
+        if expected is not None and {b["session"]: b for b in recognized} != expected:
+            raise ValueError("Recognized broker set or identity changed during maintenance; refusing before switch")
+        result["coexistence"] = {"broker_release": evidence["release"],
+                                 "recognized_brokers": recognized}
+        result["message"] = "code updated, recognized live brokers preserved, historical cleanup unconfirmed"
+    return result
 
 
 def _switch(home, release):
@@ -381,7 +498,10 @@ def _launcher_text(home, binding, *, generation=3):
 
 
 def install_release(archive, home, *, allow_held=False, python=sys.executable,
-                    code_only=False, adopt_state=None, legacy_launcher=None, legacy_cwd=None):
+                    code_only=False, adopt_state=None, legacy_launcher=None, legacy_cwd=None,
+                    coexist=None):
+    if coexist is not None and not code_only:
+        raise ValueError("Broker coexistence requires --code-only")
     if sys.platform != "linux" or sys.version_info < (3, 10):
         raise ValueError("Requires POSIX Linux and Python 3.10+")
     check_node24()
@@ -402,11 +522,14 @@ def install_release(archive, home, *, allow_held=False, python=sys.executable,
         if resolved_state.is_relative_to(resolved_home) or resolved_home.is_relative_to(resolved_state):
             raise ValueError("Code home and external state must be disjoint")
         adoption = {"state": str(state), "legacy_launcher": str(launcher), "legacy_cwd": str(cwd)}
-    with maintenance(home, allow_held, code_only=code_only, adoption=adoption) as home, ExitStack() as stack:
+    coexist_state = {}
+    with maintenance(home, allow_held, code_only=code_only, adoption=adoption, coexist=coexist,
+                     coexist_state=coexist_state) as home, ExitStack() as stack:
         binding = adoption or status(home)["adoption"]
         state_root = Path(binding.get("state", str(home / "state")))
         if code_only:
-            result = _check_code_state(state_root, allow_held)
+            result = _check_code_state(state_root, allow_held, coexist=coexist, coexist_home=home,
+                                       expected=coexist_state.get("expected"))
         else:
             _check_state(home, stack, allow_held)
             result = {"mode": "strict", "message": "code updated"}
@@ -454,7 +577,8 @@ def install_release(archive, home, *, allow_held=False, python=sys.executable,
                            check=True, env=env, cwd=home, stdout=subprocess.DEVNULL)
             check_installed_files(target, files[manifest["wheel"]])
             if code_only:
-                result = _check_code_state(state_root, allow_held)
+                result = _check_code_state(state_root, allow_held, coexist=coexist, coexist_home=home,
+                                           expected=coexist_state.get("expected"))
             wrapper_started = True
             with open_private(wrapper, "w") as stream:
                 stream.write(wrapper_text)
@@ -476,13 +600,18 @@ def install_release(archive, home, *, allow_held=False, python=sys.executable,
     return {**status(home), "previous": before["current"], "advanced": False}
 
 
-def rollback(home, release, *, allow_held=False, code_only=False):
+def rollback(home, release, *, allow_held=False, code_only=False, coexist=None):
     if release != "legacy" and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{16}", release):
         raise ValueError("Select an installed release ID from status")
+    if coexist is not None and not code_only:
+        raise ValueError("Broker coexistence requires --code-only")
     check_node24()
-    with maintenance(home, allow_held, code_only=code_only) as home, ExitStack() as stack:
+    coexist_state = {}
+    with maintenance(home, allow_held, code_only=code_only, coexist=coexist,
+                     coexist_state=coexist_state) as home, ExitStack() as stack:
         if code_only:
-            result = _check_code_state(Path(status(home)["state"]), allow_held)
+            result = _check_code_state(Path(status(home)["state"]), allow_held, coexist=coexist, coexist_home=home,
+                                       expected=coexist_state.get("expected"))
         else:
             _check_state(home, stack, allow_held)
             result = {"mode": "strict", "message": "code updated"}
@@ -508,7 +637,8 @@ def rollback(home, release, *, allow_held=False, code_only=False):
             raise ValueError("Installed interpreter missing")
         check_installed_files(target, files[manifest["wheel"]])
         if code_only:
-            result = _check_code_state(Path(status(home)["state"]), allow_held)
+            result = _check_code_state(Path(status(home)["state"]), allow_held, coexist=coexist, coexist_home=home,
+                                       expected=coexist_state.get("expected"))
         _switch(home, release)
         with open_private(home / "maintenance-result.json", "w") as stream:
             json.dump(result, stream, sort_keys=True)
@@ -539,8 +669,12 @@ def main(argv=None):
     for command in (install, back):
         command.add_argument("--allow-held", action="store_true")
         command.add_argument("--code-only", action="store_true", help="Switch code without assessing retained history; require existing locks and recorded process safety")
+        command.add_argument("--coexist-brokers-from", metavar="RELEASE_ID", default=None,
+                             help="Explicit retained-broker coexistence: code-only only; recognize live developer-session brokers of this installed release; caller declares the compatible code pair")
     args = vars(parser.parse_args(argv))
     command = args.pop("command")
+    if command in ("install", "rollback"):
+        args["coexist"] = args.pop("coexist_brokers_from")
     try:
         result = {"build": build_release, "install": install_release, "rollback": rollback, "status": status}[command](**args)
         print(json.dumps(result, indent=2))
