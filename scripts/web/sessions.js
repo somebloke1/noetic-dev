@@ -295,7 +295,6 @@
   function conversation() {
     const transcriptSignature = JSON.stringify([selected,events,detail.session.status,detail.session.workspace,detail.session.title,detail.session.identity_origin,detail.session.original_ordinal,detail.session.effort_root,detail.session.target]);
     if ($("developer-transcript").dataset.signature === transcriptSignature) return;
-    $("developer-transcript").dataset.signature = transcriptSignature;
     const messages = [], entries = [], tools = new Map(), dialogs = new Map();
     const toolAt = (id, sequence) => {
       const identity = id || `unidentified:${sequence}`;
@@ -321,7 +320,7 @@
         const message = record.message, rendered = content(message);
         const omitted=Array.isArray(message.content)?message.content.filter(block=>!["text","toolCall"].includes(block.type)).map(block=>`[non-text ${block.type || "content"} omitted]`):[];
         if (rendered || message.errorMessage || omitted.length) {
-          const item = {key:event.sequence, role:message.role, text:agentEnvelope?.message || rendered || message.errorMessage, outcome:message.stopReason,
+          const item = {key:event.sequence, role:message.role, text:agentEnvelope?.message || rendered || message.errorMessage || "", outcome:message.stopReason,
             copyText:[agentEnvelope?.message || rendered || message.errorMessage || "",...omitted].filter(Boolean).join("\n"), sender:agentEnvelope?.provenance.sender, binding_id:agentEnvelope?.binding_id, recipient:agentEnvelope?.provenance.recipient};
           messages.push(item); entries.push({message:item});
         }
@@ -371,6 +370,7 @@
         article.dataset.messageSequence = message.key;
         const heading = message.sender ? `Agent ${message.sender.ordinal} · instantiation ${message.sender.instantiation} · session ${message.sender.session}` : message.role === "user" ? "You" : `Agent ${detail.session.original_ordinal && originalSource(detail.session) ? detail.session.original_ordinal : detail.session.ordinal}${sourceQualifier(detail.session)}`;
         article.append(node("h3", heading), message.role === "assistant" ? markdown(message.text) : node("pre", message.text),copyControl("Copy message",()=>message.copyText));
+        if(!message.text)article.append(node("p",message.copyText,"source"));
         copyBlocks(article);
         if (message.sender) article.append(node("small", `Message ${message.binding_id} · to ${message.recipient.ordinal} · instantiation ${message.recipient.instantiation} · session ${message.recipient.session}`));
         if (["error", "aborted"].includes(message.outcome)) article.append(node("small", message.outcome));
@@ -429,6 +429,7 @@
         return form;
       }));
     }
+    $("developer-transcript").dataset.signature = transcriptSignature;
   }
 
   function renderDetail() {
