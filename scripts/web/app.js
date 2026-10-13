@@ -73,7 +73,7 @@ function changeOperationScope(mode, previous = operationKey()) {
   savedUI.operationMode = operationMode;
   if (operationKey() !== previous) {
     ++operationVersion; ++purposeVersion; ++memoryVersion; ++detailVersion; ++sessionVersion; ++actorLogVersion; ++reuseVersion;
-    ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];$("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";$("reviewed-checking-spec").value="";$("reviewed-checking-context").value="";$("reviewed-judgment-ids").value="";
+    ++reviewedVersion; reviewedLaunch = null; reviewedSources = [];$("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";$("reviewed-checking-spec").value="";$("reviewed-checking-context").value="";$("reviewed-judgment-ids").value="";$("reviewed-practical-question-id").value="";
     $("reviewed-selected-sources").replaceChildren(); $("reviewed-launch-list").replaceChildren();text("reviewed-launch-status","Launch observations not yet read in this scope.");
     $("reviewed-store").replaceChildren(node("option", "Select backing explicitly")); $("reviewed-store").firstChild.value = "";
     delete $("reviewed-store").dataset.options; text("reviewed-store-status", "Scope changed. Select a backing explicitly.");
@@ -116,7 +116,7 @@ function actorIdentity(actor, correspondence = selectedDetail?.correspondence) {
   const participant = correspondence?.participants?.find(row=>row.activation_id === actor.id || actor.actor_id && row.actor_id === actor.actor_id);
   return participant ? `${participant.ordinal}${participant.target ? ` · context ${participant.target.instantiation}/${participant.target.session}` : " · native context unobserved"}` : `Original actor ${actor.ordinal}`;
 }
-const formIds = ["reviewed-store", "reviewed-parent-id", "reviewed-warrant-id", "reviewed-condition-ids", "reviewed-formulation-id", "reviewed-checking-spec", "reviewed-checking-context", "reviewed-judgment-ids", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
+const formIds = ["reviewed-store", "reviewed-parent-id", "reviewed-warrant-id", "reviewed-condition-ids", "reviewed-formulation-id", "reviewed-checking-spec", "reviewed-checking-context", "reviewed-judgment-ids", "reviewed-practical-question-id", "reviewed-sources", "reviewed-operation", "start-pattern", "start-workspace", "start-task", "start-sources", "start-verify", "start-profile", "start-client", "start-model", "start-qa-model", "start-thinking", "start-timeout", "start-remediations", "start-returns", "start-purpose", "memory-mode", "memory-query", "purpose-goal", "run-filter", "status-filter", "pattern-filter", "role-filter"];
 const selectionIds = ["actor-select", "artifact-select", "actor-log-select", "report-select", "log-select", "phase-select", "session-select", "compare-left", "compare-right"];
 
 function persistUI() {
@@ -1314,7 +1314,7 @@ async function reuseSetup() {
       $("start-pattern").value = f.pattern; $("start-task").value = f.task; $("start-client").value = f.client;
       $("start-model").value = f.model || ""; $("start-qa-model").value = f.qa_model || "";
       $("start-thinking").value = f.thinking || "high"; $("start-profile").value = "";
-      $("reviewed-operation").value = f.operation; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";$("reviewed-checking-spec").value="";$("reviewed-checking-context").value="";$("reviewed-judgment-ids").value=""; $("reviewed-store").value = ""; $("start-purpose").value = "";
+      $("reviewed-operation").value = f.operation; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";$("reviewed-checking-spec").value="";$("reviewed-checking-context").value="";$("reviewed-judgment-ids").value="";$("reviewed-practical-question-id").value=""; $("reviewed-store").value = ""; $("start-purpose").value = "";
       $("reviewed-sources").value = f.sources.filter(x=>typeof x === "string").join("\n");
       reviewedSources = f.sources.filter(x=>typeof x === "object").map(x=>({...x})); renderReviewedSources();
       ++draftVersion; savedUI.reuseSetup = {source_run_id:setup.source_run_id,warnings:setup.warnings}; renderReuseNotice();
@@ -1471,8 +1471,8 @@ function updateComposer() {
 function initWorkbench() {
   $("reviewed-refresh").addEventListener("click", loadReviewedSetup);
   $("reviewed-operation").addEventListener("change",()=>{++draftVersion;reviewedOperation();});
-  for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids"])$(id).addEventListener("input",()=>{++draftVersion;reviewedOperation();});
-  $("reviewed-store").addEventListener("change", ()=>{ ++draftVersion; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";$("reviewed-checking-spec").value="";$("reviewed-checking-context").value="";$("reviewed-judgment-ids").value="";reviewedOperation(); });
+  for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids","reviewed-practical-question-id"])$(id).addEventListener("input",()=>{++draftVersion;reviewedOperation();});
+  $("reviewed-store").addEventListener("change", ()=>{ ++draftVersion; $("reviewed-parent-id").value="";$("reviewed-warrant-id").value="";$("reviewed-condition-ids").value="";$("reviewed-formulation-id").value="";$("reviewed-checking-spec").value="";$("reviewed-checking-context").value="";$("reviewed-judgment-ids").value="";$("reviewed-practical-question-id").value="";reviewedOperation(); });
   $("reviewed-register").addEventListener("click", registerReviewedStore);
   for (const kind of ["contribution", "correlation"]) $("reviewed-recover-"+kind).addEventListener("click", ()=>recoverReviewed(kind));
   for (const id of formIds) {
@@ -1645,7 +1645,7 @@ function initWorkbench() {
 }
 
 const structuredDraftFields = ["start-task","start-pattern","start-sources","start-verify","start-profile","start-client","start-model","start-qa-model","start-thinking","start-timeout","start-remediations","start-returns","reviewed-operation","reviewed-sources"];
-const structuredBindings = ["reviewed-store","reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids","start-purpose"];
+const structuredBindings = ["reviewed-store","reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids","reviewed-practical-question-id","start-purpose"];
 const structuredDrafts = (() => {
   let owner = null, generation = 0, pending = false, conflict = "", desired = {}, invalid = new Set();
   const defaults = {};
@@ -1701,7 +1701,7 @@ const structuredDrafts = (() => {
         for (const id of structuredDraftFields) if (typeof draft.fields?.[id]==="string") $(id).value=draft.fields[id];
         desired={...Object.fromEntries(structuredBindings.map(id=>[id,String(draft.bindings?.[id] || "")]))};
         for (const id of ["start-profile","reviewed-operation"]) if (draft.fields?.[id]) desired[id]=draft.fields[id];
-        for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids"]){$(id).value=desired[id];delete desired[id];}
+        for(const id of ["reviewed-parent-id","reviewed-warrant-id","reviewed-condition-ids","reviewed-formulation-id","reviewed-checking-spec","reviewed-checking-context","reviewed-judgment-ids","reviewed-practical-question-id"]){$(id).value=desired[id];delete desired[id];}
         reviewedSources=(draft.sources || []).filter(source=>source.selection?.kind==="effort" && source.selection.effort_root===effort).map(source=>structuredClone(source));
       } else reviewedSources=[];
       for (const id of [...structuredDraftFields,...structuredBindings]) delete initialForms[id];
@@ -1801,6 +1801,9 @@ function reviewedSelectors(required = false) {
   if(operation==="practical-question"){const judgments=$("reviewed-judgment-ids").value.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
     if(!judgments.length||judgments.some((value,index)=>!u64(value)||index>0&&BigInt(value)<=BigInt(judgments[index-1]))){if(required)throw new Error("Enter the exact positive decimal live Judgment IDs you select, one per line in strictly increasing order (u64). Native authority checks each Judgment's kind, whole retained context and current eligibility; IDs are never sorted, coalesced or inferred.");return null;}
     return {judgment_ids:judgments};}
+  if(operation==="practical-inquiry"){const question=$("reviewed-practical-question-id").value.trim();
+    if(!u64(question)){if(required)throw new Error("Enter the exact positive decimal active PracticalQuestion ID (u64) you select in this backing. Native authority checks the whole retained question, its Judgment basis and current cut; nothing is inferred or carried from other editors.");return null;}
+    return {practical_question_id:question};}
   if(operation==="checking"){const condition=$("reviewed-parent-id").value.trim(),warrant=$("reviewed-warrant-id").value.trim();
     if(!u64(condition)||!u64(warrant)){if(required)throw new Error("Enter the exact positive decimal warrant-condition ID and warrant ID (u64) in this backing. Native authority checks ancestry, closed evidence and eligibility.");return null;}
     return {parent_id:condition,warrant_id:warrant};}
@@ -1817,9 +1820,10 @@ function reviewedOperation() {
   $("reviewed-warrant-fields").hidden=!["judgment","checking"].includes(operation);
   $("reviewed-judgment-fields").hidden=operation!=="judgment";
   $("reviewed-practical-fields").hidden=operation!=="practical-question";
+  $("reviewed-practical-question-fields").hidden=operation!=="practical-inquiry";
   $("reviewed-checking-fields").hidden=operation!=="checking";
   $("reviewed-parent-fields").hidden=!parents[operation];text("reviewed-parent-label",parents[operation] || "Exact native parent ID");
-  text("reviewed-operation-note",operation==="question"?"Initial question inquiry. Substantive task and selected sources are external evidence; native authority governs admission.":operation==="judgment"?"Judgment uses an exact conditional-structure warrant and its complete checked condition set. Task and sources remain external evidence; native authority governs evidence, ancestry, eligibility and admission.":operation==="checking"?"Checking uses one exact unchecked warrant condition and its warrant in the selected backing, with an explicit closed checking specification and retained whole context. The host validates binding and hashes and captures command evidence; native authority admits evidence-observation. A passed test and this editor never affirm judgment.":operation==="practical-question"?"Practical question asks, from the exact live Judgments you select, what to investigate or do next toward the effort purpose. Selected yea, nay and perchance voices and their limits stay whole; retrieved voices are never contribution-validated here. The explicit task is editable and asking grants no decision, plan or act authority; native eligibility governs admission.":parents[operation]?`${operation[0].toUpperCase()+operation.slice(1)} uses the exact ${parents[operation]} in the selected backing. Task and selected sources remain external evidence; native authority governs eligibility and admission.`:`Native capacity retained. This operation needs ${[...(descriptor?.inputs || []),...(descriptor?.evidence_inputs || [])].join(", ") || "its native prerequisites"}. Its scoped input editor is unavailable in this increment. Select a supported operation to continue.`);
+  text("reviewed-operation-note",operation==="question"?"Initial question inquiry. Substantive task and selected sources are external evidence; native authority governs admission.":operation==="judgment"?"Judgment uses an exact conditional-structure warrant and its complete checked condition set. Task and sources remain external evidence; native authority governs evidence, ancestry, eligibility and admission.":operation==="checking"?"Checking uses one exact unchecked warrant condition and its warrant in the selected backing, with an explicit closed checking specification and retained whole context. The host validates binding and hashes and captures command evidence; native authority admits evidence-observation. A passed test and this editor never affirm judgment.":operation==="practical-question"?"Practical question asks, from the exact live Judgments you select, what to investigate or do next toward the effort purpose. Selected yea, nay and perchance voices and their limits stay whole; retrieved voices are never contribution-validated here. The explicit task is editable and asking grants no decision, plan or act authority; native eligibility governs admission.":operation==="practical-inquiry"?"Practical inquiry proposes one candidate course from the selected active PracticalQuestion toward the effort purpose. The exact selected question, its retained Judgment basis and the current native cut stay authoritative; one proposal is retained per inquiry, and further alternatives need a fresh inquiry. The task stays editable, and asking grants no decision, plan or act authority.":parents[operation]?`${operation[0].toUpperCase()+operation.slice(1)} uses the exact ${parents[operation]} in the selected backing. Task and selected sources remain external evidence; native authority governs eligibility and admission.`:`Native capacity retained. This operation needs ${[...(descriptor?.inputs || []),...(descriptor?.evidence_inputs || [])].join(", ") || "its native prerequisites"}. Its scoped input editor is unavailable in this increment. Select a supported operation to continue.`);
   $("start-submit").disabled=startPending||operationMode!=="effort"||!effortEnvironment||window.NoeticDrafts && !window.NoeticDrafts.ready()||!reviewedReady()||!$("reviewed-store").value||operation==="checking"&&!["reviewed-checking-spec","reviewed-checking-context"].every(id=>/^\/\S/.test($(id).value.trim()));
 }
 function renderReviewedSources() {
