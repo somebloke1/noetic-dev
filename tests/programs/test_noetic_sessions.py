@@ -429,7 +429,8 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(result["child"]["parent_id"], root["id"])
         self.assertEqual(result["status"], "idle")
         self.assertTrue(result["sent"]["accepted"])
-        self.assertEqual(len(result["tree"]), 2)
+        self.assertEqual(len(result["tree"]["branch"]), 2)
+        self.assertEqual(result["tree"]["context"]["effort"]["ordinal"], root["effort_root"])
 
     def test_private_files_and_short_socket_for_long_runs_root(self):
         long_root = self.home / ("a" * 100) / ("b" * 100)

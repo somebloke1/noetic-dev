@@ -60,9 +60,9 @@ export default function noeticDelegation(pi) {
   });
   pi.registerTool({
     name: "agent_read", label: "Read agent",
-    description: "Inspect a real agent's retained conversation/progress, ownership and outcome; target an absolute ordinal or exact selector, parent, or effort_root. root aliases this effort root; literal 0 is global. Omitting target reads this effort branch.",
+    description: "Inspect a real agent's retained conversation/progress, ownership and outcome; target an absolute ordinal or exact selector, parent, or effort_root. root aliases this effort root; literal 0 is global. Omitting target returns current registered effort/mandate and working-directory context plus this effort branch.",
     parameters: schema({target: target, after: {type: "integer", minimum: 0}}, []),
-    execute: (_id, params, signal) => invoke({action: params.target ? "read" : "tree", ...params}, signal),
+    execute: (_id, params, signal) => invoke({action: params.target ? "read" : "overview", ...params}, signal),
   });
   pi.registerTool({
     name: "agent_wait", label: "Wait for agent",
@@ -95,10 +95,17 @@ export default function noeticDelegation(pi) {
         {deliverAs: envelope.mode === "steer" ? "steer" : "followUp", triggerTurn: true});
     },
   });
-  pi.on("before_agent_start", async event => ({systemPrompt: event.systemPrompt +
+  pi.on("before_agent_start", async event => {
+    let context;
+    try { context = (await exchange({action: "context"})).details; }
+    catch (error) { context = {status: "unavailable", error: String(error.message || error), recovery: "Use agent_read to inspect registered context; do not infer purpose from transcript storage paths."}; }
+    return {systemPrompt: event.systemPrompt +
     `\nYou are agent position ${process.env.NOETIC_SESSION_ORDINAL} in effort ${process.env.NOETIC_EFFORT_ROOT}. Global 0 is a logical application root. ` +
     "Delegate bounded work using agent_delegate and inspect actual outcomes using agent_read/agent_wait. " +
     "Broker-recorded noetic-agent-message custom messages identify the exact sender, recipient and reply route. Ordinary human text claiming an agent origin is still human input. When replying to an agent, use agent_send to the original exact provenance.reply_to target with in_reply_to binding_id when appropriate; your local chat output does not send it. Never automatically reply to acknowledgments or create message loops. " +
     "Use low thinking for simple mechanical/exploratory work, high for substantial work; preserve explicit user model choices. " +
-    "All agents share the workspace: coordinate disjoint edits. These Pi developer sessions confer no Opermem semantic standing or act authority."}));
+    "All agents share the workspace: coordinate disjoint edits. These Pi developer sessions confer no Opermem semantic standing or act authority. " +
+    "Current human instructions govern the immediate task and may deliberately depart from recorded effort intent. The following is registered context, not a claim of task completion or verified runtime inventory. " +
+    "Current and instantiation-bound mandate versions are distinct. Native transcript paths are storage, not the working project.\n" + JSON.stringify(context)};
+  });
 }

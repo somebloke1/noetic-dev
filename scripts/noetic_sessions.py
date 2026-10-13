@@ -274,6 +274,19 @@ class SessionService:
                 "needs_attention": item["status"] in ("needs_input", "failed", "interrupted"),
                 "can_reopen": reopenable and not alive and observed["cleanup_confirmed"]}
 
+    def current_context(self, sid):
+        item, context = self._select(sid, current=True, include_effort=True)
+        owner, position = context["owning_effort"], context["position"]
+        return {"source": "registered-current-native-context", "namespace": context["namespace"],
+                "target": item["target"], "effort_root": item["effort_root"],
+                "effort": {key: owner[key] for key in ("ordinal", "intent", "mandate", "environment", "environment_version")},
+                "position": {"ordinal": position["ordinal"], "mandate": position["mandate"],
+                             "current_mandate_version": position["mandate_version"],
+                             "instantiation_mandate_version": context["instantiation"]["mandate_version"]},
+                "working_directory": item["workspace"], "native_transcript": item["native_session_file"],
+                "transcript_directory": str(self.registry.directory(item["id"]) / "native"),
+                "path_meaning": "working_directory is the Pi process cwd; native transcript paths are storage, not the working project"}
+
     def list(self, root_id=None):
         return [self.inspect(row["id"]) for row in self.registry.list(root_id)]
 
@@ -474,7 +487,7 @@ class SessionService:
     def select(self, address, *, effort_root=None, current=False):
         return self._select(address, effort_root=effort_root, current=current)[0]
 
-    def _select(self, address, *, effort_root=None, current=False):
+    def _select(self, address, *, effort_root=None, current=False, include_effort=False):
         try:
             if isinstance(address, str) and not re.fullmatch(r"0(?:\.[0-9]+)*", address):
                 item = self.registry.get(address)
@@ -489,7 +502,7 @@ class SessionService:
             scope = self.registry.domain.scope(effort_root)
             store = self.registry.domain.store()
             context = store.resolve_context(selectors["ordinal"], scope=scope,
-                instantiation=selectors.get("instantiation"), session=selectors.get("session"), current=current)
+                instantiation=selectors.get("instantiation"), session=selectors.get("session"), current=current, include_effort=include_effort)
             target, native = context["target"], context["session"]["native_ref"]
             if not native.get("registry_id"):
                 raise SessionError(409, "Exact context has no native conversation registry backing; inspect its retained source.")
@@ -709,6 +722,9 @@ class Broker:
             if any(request.get(key) != value for key, value in binding["payload"].items() if key != "operation"):
                 raise SessionError(409, "Bound payload does not match the retained action.")
             self.service.select(binding["target"], current=True)
+        if action in ("context", "overview"):
+            context = self.service.current_context(self.sid)
+            return context if action == "context" else {"context": context, "branch": self.service.list(context["effort_root"])}
         if action == "identity":
             item = self.service.select(self.sid, current=True)
             return {"target": item["target"], "effort_root": item["effort_root"]}
