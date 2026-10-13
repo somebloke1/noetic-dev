@@ -70,10 +70,22 @@ class DisciplineCatalogTests(unittest.TestCase):
         self.assertFalse(result['namespace_registered'])
         self.assertIsNone(result['namespace_id'])
         self.assertEqual(result['instances'], [])
-        self.assertEqual({d['pattern'] for d in result['definitions']}, {'cognition', 'development'})
+        self.assertEqual({d['pattern'] for d in result['definitions']}, {'cognition', 'development', 'opermem-reviewed'})
         for item in result['definitions']:
-            self.assertEqual(item['definition_ref'], disciplines.definition(item['pattern']))
-            self.assertTrue(item['definition']['phases'])
+            if item['pattern'] == 'opermem-reviewed':
+                self.assertEqual(item['backend'], 'opermem-reviewed')
+                self.assertEqual(item['definition_ref']['id'], 'noetic:opermem-reviewed')
+                self.assertEqual(item['definition'], item['definition_ref']['descriptor'])
+                self.assertEqual([operation['id'] for operation in item['operations']], [
+                    'question', 'insight', 'formulation', 'reflection', 'conditional-structure', 'checking',
+                    'judgment', 'practical-question', 'practical-inquiry', 'practical-insight', 'deliberation',
+                    'decision', 'planning', 'acting'])
+                self.assertTrue(all(operation['requires_native_prerequisites'] for operation in item['operations']))
+                self.assertFalse(item['capabilities']['apply'])
+                self.assertFalse(item['capabilities']['continue_conversation'])
+            else:
+                self.assertEqual(item['definition_ref'], disciplines.definition(item['pattern']))
+                self.assertTrue(item['definition']['phases'])
         self.request('/api/disciplines?effort_root=0.0', 422)
         self.assertEqual(before, self.snapshot())
 

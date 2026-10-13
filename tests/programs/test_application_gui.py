@@ -472,7 +472,7 @@ class ApplicationGuiTests(unittest.TestCase):
             self.assertNotIn("results", result)
             self.request(f"/api/runs/{run['run_id']}/summary", 422, "POST", {})
 
-    def test_mobile_and_workbench_dom_structure_contract(self):
+    def test_recast_shell_and_retained_workbench_dom_structure_contract(self):
         html = (web.WEB_DIR / "index.html").read_text()
         css = (web.WEB_DIR / "style.css").read_text()
         for page in ("workspace", "new", "history", "memory", "purposes", "diagnostics"):
@@ -481,11 +481,12 @@ class ApplicationGuiTests(unittest.TestCase):
         for view in ("phases", "session", "compare"):
             self.assertIn(f'aria-controls="{view}-view"', html)
         self.assertIn('aria-controls="operator-rail"', html)
-        self.assertIn(".run-rail.navigation-open { display: block; }", css)
-        self.assertIn("@media (max-width: 760px)", css)
-        self.assertIn(".form-grid, .phase-columns { grid-template-columns: minmax(0, 1fr); }", css)
-        self.assertIn("resize: horizontal", css)
-        self.assertIn('id="session-transcript" class="transcript" tabindex="0"', html)
+        for region in ("global-rail", "effort-sidebar", "main-workspace"):
+            self.assertIn(f'class="{region}"', html)
+        self.assertIn(".app-shell {", css)
+        self.assertIn("grid-template-columns: var(--rail-width,64px) var(--sidebar-width,248px) minmax(0, 1fr)", css)
+        self.assertIn("@media(max-width:1180px)", css)
+        self.assertRegex(html, r'<div\b(?=[^>]*\bid="session-transcript")(?=[^>]*\bclass="transcript")(?=[^>]*\btabindex="0")[^>]*>')
         self.assertNotIn("requires a wider viewport", html)
 
     def test_reuse_setup_exact_mapping_readonly_auth_and_new_run_guards(self):

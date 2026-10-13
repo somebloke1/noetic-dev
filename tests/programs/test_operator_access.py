@@ -72,14 +72,14 @@ class OperatorAccessTests(unittest.TestCase):
         run = runtime.create_run({"goal": "synthetic confidential prompt"}, self.root, self.runs)
         controller.start_run(run / "controller.sqlite3", controller.PATTERN_DIR / "cognition.json",
                              "synthetic confidential prompt", self.root)
-        route = f"/api/runs/{run.name}"
+        route = f"/api/runs/{run.name}?scope=application"
         self.assertEqual(self.request(route)[0], 401)
         code, _, body = self.request(route, token=self.server.token)
         self.assertEqual(code, 200)
         self.assertIn(b"synthetic confidential prompt", body)
         self.assertNotIn(self.server.token.encode(), body)
         self.assertEqual(self.request(route, "HEAD", self.server.token)[::2], (200, b""))
-        action = route + "/pause"
+        action = f"/api/runs/{run.name}/pause"
         headers = {"Content-Type": "application/json"}
         self.assertEqual(self.request(action, "POST", headers=headers, body="{}")[0], 401)
         self.assertFalse((run / "pause.requested").exists())
@@ -87,7 +87,7 @@ class OperatorAccessTests(unittest.TestCase):
         self.assertEqual(self.request(action, "POST", self.server.token, body="{}")[0], 415)
         self.assertFalse((run / "pause.requested").exists())
         self.assertEqual(self.request(action, "POST", self.server.token,
-                                      {**headers, "Origin": f"http://127.0.0.1:{self.server.server_port}"}, "{}")[0], 202)
+                                      {**headers, "Origin": f"http://127.0.0.1:{self.server.server_port}"}, '{"scope":"application"}')[0], 202)
         self.assertTrue((run / "pause.requested").exists())
         self.assertEqual(self.request("/api/unknown", token=self.server.token)[0], 404)
 
@@ -175,21 +175,34 @@ process.stdin.on('data', chunk => input += chunk);
 process.stdin.on('end', async () => {
   const fixture = JSON.parse(input);
   const token = 'synthetic-pairing-token-with-32-characters';
-  assert.match(fixture.html, /id="access-token" type="password"/);
+  assert.match(fixture.html, /<input\b(?=[^>]*\bid="access-token")(?=[^>]*\btype="password")[^>]*>/);
   assert.match(fixture.html, /local operator token, not provider credential/);
-  assert.match(fixture.html, /id="private-workspace" hidden/);
+  assert.match(fixture.html, /<div\b(?=[^>]*\bid="private-workspace")(?=[^>]*\bhidden(?:=|\s|>))[^>]*>/);
   function launch(hash = '', stored = new Map(), legacy = new Map()) {
     const elements = new Map();
-    for (const match of fixture.html.matchAll(/id="([^"]+)"/g)) elements.set(match[1], {
-      value: '', hidden: true, children: [], handlers: {}, dataset: {}, scrollTop: 0,
-      addEventListener(k, fn) { this.handlers[k] = fn; }, replaceChildren(...items) { this.children = items; },
-      querySelectorAll() { return []; }, setAttribute() {}
-    });
+    function element(tagName = 'div') { return {
+      tagName, hidden:true, children:[], handlers:{}, dataset:{}, attributes:{}, style:{}, scrollTop:0,
+      get value() { return this._value ?? this.children[0]?.value ?? ''; }, set value(value) { this._value=value; },
+      get firstChild() { return this.children[0] || null; },
+      get selectedOptions() { return this.children.filter(child => child.value === this.value); },
+      append(...items) { this.children.push(...items); },
+      addEventListener(k, fn) { this.handlers[k] = fn; },
+      replaceChildren(...items) { this.children=items; if(this.tagName==='select') delete this._value; },
+      querySelectorAll() { return []; },
+      querySelector(selector) { const value=selector.match(/^\[value="([^"]+)"\]$/)?.[1]; return this.children.find(child=>child.value===value) || null; },
+      setAttribute(k,v) { this.attributes[k]=String(v); }, getAttribute(k) { return this.attributes[k] ?? null; },
+      classList:{remove(){},toggle(){return true;}}, focus(){}, scrollIntoView(){}
+    }; }
+    for (const match of fixture.html.matchAll(/<([a-z0-9-]+)\b[^>]*\bid="([^"]+)"[^>]*>/g)) elements.set(match[2], element(match[1]));
+    for (const match of fixture.html.matchAll(/<select\b[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) {
+      const select=elements.get(match[1]);
+      for(const option of match[2].matchAll(/<option\b[^>]*value="([^"]*)"[^>]*>/g)) { const child=element('option'); child.value=option[1]; select.append(child); }
+    }
     let reloads = 0;
     const requests = [], replaced = [], handlers = {}, legacyAccess = [];
-    const sandbox = {URLSearchParams, AbortController, console, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
+    const sandbox = {URL, URLSearchParams, AbortController, console, CustomEvent: class { constructor(type,options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
       window: {confirm: () => true, addEventListener(name, handler) { handlers[name] = handler; }},
-      location: {hash, pathname: '/', search: '', reload() { reloads++; }},
+      location: {hash, pathname: '/', search: '', origin:'http://127.0.0.1:8765', reload() { reloads++; }},
       history: {replaceState(...args) { replaced.push(args); sandbox.location.hash = ''; }},
       localStorage: {
         getItem(key) { legacyAccess.push('read'); return legacy.get(key) ?? null; },
@@ -197,7 +210,7 @@ process.stdin.on('end', async () => {
         setItem() { assert.fail('No localStorage writes'); }
       },
       sessionStorage: {getItem: k => stored.get(k), setItem: (k,v) => stored.set(k,v), removeItem: k => stored.delete(k)},
-      document: {getElementById: k => elements.get(k), querySelectorAll: () => []},
+      document: {getElementById: k => elements.get(k), createElement: element, dispatchEvent:()=>true, querySelectorAll: () => []},
       fetch: (url, options) => { requests.push({url, options}); return new Promise(() => {}); }};
     vm.createContext(sandbox);
     vm.runInContext(fixture.script, sandbox);

@@ -427,7 +427,7 @@ class ReleaseArchiveTests(unittest.TestCase):
         wrapper.write_text(prior)
         release.install_release(update, home, code_only=True)
         modern = wrapper.read_bytes()
-        self.assertIn(b"noetic-private-launcher-v2", modern)
+        self.assertIn(b"noetic-private-launcher-v3", modern)
         next_bundle = self.additional_bundle("idempotent wrapper fixture")
         wrapper.write_bytes(modern + b"# customization\n")
         with self.assertRaisesRegex(ValueError, "unmanaged"):
@@ -454,7 +454,7 @@ class ReleaseArchiveTests(unittest.TestCase):
         wrapper.write_text(self.previous_launcher(home, {}))
         update = self.additional_bundle("plain launcher upgrade")
         release.install_release(update, home)
-        self.assertIn(b"noetic-private-launcher-v2", wrapper.read_bytes())
+        self.assertIn(b"noetic-private-launcher-v3", wrapper.read_bytes())
         result = subprocess.run([str(wrapper), "--version"], cwd=self.root,
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -560,7 +560,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                 line = server.stdout.readline()
                 self.assertIn("http://127.0.0.1:", line, "GUI pairing line missing")
                 base, token = line.strip().split("http://", 1)[1].split("/#token=")
-                request = Request(f"http://{base}/api/runs/{run.name}", headers={"Authorization": f"Bearer {token}"})
+                request = Request(f"http://{base}/api/runs/{run.name}?scope=application", headers={"Authorization": f"Bearer {token}"})
                 with urlopen(request, timeout=10) as response:
                     detail = json.load(response)
                 self.assertEqual(detail["controller"], state)
