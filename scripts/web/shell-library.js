@@ -75,7 +75,7 @@
     UI.heading({eyebrow:["models","configuration"].includes(route) ? "Installation" : ["disciplines","prompts","roles"].includes(route) ? "Application library" : route === "runtime" ? "Live runtime" : "Application records",title:titles[route],description:descriptions[route]});
     if (host.dataset.libraryView !== route || !host.firstElementChild) {
       clear(host); host.dataset.libraryView = route;
-      views[route] = {host, key:null, signature:null};
+      views[route] = {host, key:null, signature:null,tab:views[route]?.tab};
     }
     if (host.contains(get("effort-operation-controls"))) get("effort-operation-controls").hidden=false;
     return views[route];
@@ -135,7 +135,7 @@
     const phases = definitions.flatMap(entry => (entry.definition.phases || []).map(phase => ({...phase,pattern:entry.pattern,definition_ref:entry.definition_ref})));
     if (route === "disciplines") {
       const mode = views[route].tab || "definitions";
-      tabs(host, [["definitions","Definitions",definitions.length],["instances","Instances",instances.length],["observations","Observations",instances.reduce((n, row) => n + (row.executions || []).length, 0)]], mode, id => {views[route].tab = id; renderCatalogue(context, data);});
+      tabs(host, [["definitions","Definitions",definitions.length],["instances","Instances",instances.length],["observations","Observations",typeof allRuns !== "undefined" ? allRuns.length : 0]], mode, id => {views[route].tab = id; renderCatalogue(context, data);});
       if (mode === "instances") {
         const card = panel("Effort-bound instances", "Recorded responsibility"), content = body(card); host.append(card);
         for (const instance of instances) {
