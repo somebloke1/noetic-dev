@@ -296,3 +296,17 @@ This product direction supersedes earlier token-required acceptance criteria. Pr
 
 Source: [direct human directive](/home/dgk/.local/share/noetic-dev-work/01a12d60-2652-7002-b924-501dca4d6a08/v2-20261013T155955Z/startup/token-removal-directive.json).
 <!-- governance-crud:end id=dec-20261013-0002 -->
+
+<!-- governance-crud:start id=dec-20261013-0003 -->
+## dec-20261013-0003: Remove the fixed correction retry limit
+
+- Ledger: decisions
+- Status: accepted
+- Created: 2026-10-13
+- Updated: 2026-10-13
+- Tags: user-authority,development-governance,qa,corrections
+- Source: Direct user reply to the UIENTRY1/SOURCEBRIDGE1 correction-approval request, Codex session 01a12d60-2652-7002-b924-501dca4d6a08
+- Confidence: 1.0 — direct user decision
+
+The user instructed: "Remove that constraint, I'm tired of authorizing". Remove the fixed one-retry/correction limit and repeated human approval for further corrections. Original owners may correct verified defects within existing development authority, scope, ownership and cutoff. Retain failed evidence and the same independent reviewer and acceptance criteria for each material unit. Diagnose recurring failures and change the causal approach when needed; do not repeat fruitless identical work or introduce QA-of-QA. Prior exhausted-attempt dispositions remain historical evidence and do not prohibit further authorized correction. No broader scope or extension of the development window follows from this decision.
+<!-- governance-crud:end id=dec-20261013-0003 -->

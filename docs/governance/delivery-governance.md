@@ -40,9 +40,9 @@ Validation is not a substitute for tests, and model prose is not command evidenc
 
 ## Implementation and QA
 
-For each implementation or remediation agent/pass, the coordinator dispatches exactly one independent adversarial QA pass for its bounded material unit. QA remains reasoned, critical, constructive, and non-perfectionistic; empirically test the bounded product claim and affected failure paths against explicit acceptance criteria. Permit at most one causally changed retry, preserve useful residual artifacts, and deliver when criteria pass. No QA-of-QA loops, speculative completeness, open-ended scope creep, or unrequested security audits.
+For each implementation or remediation agent/pass, the coordinator dispatches exactly one independent adversarial QA pass for its bounded material unit. QA remains reasoned, critical, constructive, and non-perfectionistic; empirically test the bounded product claim and affected failure paths against explicit acceptance criteria. Correct verified defects under the existing development authorization without a fixed retry count or repeated human approval. Diagnose recurring failures, change the causal approach when needed, preserve useful evidence, and deliver when criteria pass. Retain the same independent reviewer for corrections to a material unit. No QA-of-QA loops, speculative completeness, open-ended scope creep, or unrequested security audits.
 
-A failed or unavailable QA pass stops dependent continuation on that candidate. A causally changed remediation generation receives its own paired QA pass within the retry limit; independent work may continue.
+A failed or unavailable QA pass stops dependent continuation on that candidate. A causally changed remediation generation returns to the same independent reviewer against the original acceptance criteria; independent work may continue.
 
 ## Branches and publication
 
