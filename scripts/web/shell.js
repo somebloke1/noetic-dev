@@ -111,6 +111,92 @@ function placeLabel(place){
 }
 const placeScopeTuple=place=>JSON.stringify([place.target,place.history,place.newConversation,place.browse,place.project]);
 const currentScopeTuple=()=>JSON.stringify([snapshotData.selected?JSON.parse(JSON.stringify(snapshotData.selected)):null,Boolean(snapshotData.applicationHistory),Boolean(snapshotData.newConversation),Boolean(snapshotData.projectBrowsing),snapshotData.projectPath||null]);
+// BROWSERHISTORY1: versioned browser chronology complementing the internal NAV1 Return stack.
+let lastCommittedSignature=null,pendingCommit=null,restoreSequence=0,currentCommittedPlace=null;
+try{history.scrollRestoration='manual';}catch(_){}
+const placeSignature=p=>JSON.stringify([p.route,p.subview,p.target,p.history,p.newConversation,p.browse,p.project,p.projectFilter,p.query,p.limit,p.operation]);
+const commitURL=route=>{const u=new URL(location.href);u.searchParams.set('view',route);return u.pathname+u.search+u.hash;};
+function buildPlace(scroll){return{route:view.route,subview:view.subview,target:snapshotData.selected?JSON.parse(JSON.stringify(snapshotData.selected)):null,history:Boolean(snapshotData.applicationHistory),newConversation:Boolean(snapshotData.newConversation),browse:Boolean(snapshotData.projectBrowsing),project:snapshotData.projectPath||null,projectFilter,query:portfolioQuery,limit:portfolioLimit,operation:window.NoeticEffort?.selection?.()?JSON.parse(JSON.stringify(window.NoeticEffort.selection())):null,mainScroll:scroll.main,paneScroll:scroll.pane,sidebarScroll:scroll.side};}
+function scheduleCommit(){
+ if(restoring||!placeReady)return;
+ if(!pendingCommit)pendingCommit={main:window.scrollY,pane:$('run-detail').scrollTop,side:$('shell-sidebar').scrollTop};
+ queueMicrotask(flushCommit);
+}
+function flushCommit(){
+ const scroll=pendingCommit;pendingCommit=null;
+ if(!scroll||restoring||!placeReady)return;
+ const place=buildPlace(scroll),signature=placeSignature(place);
+ if(signature===lastCommittedSignature)return;
+ const sameView=currentCommittedPlace&&currentCommittedPlace.route===place.route&&currentCommittedPlace.subview===place.subview&&placeScopeTuple(currentCommittedPlace)===placeScopeTuple(place)&&JSON.stringify(currentCommittedPlace.operation)===JSON.stringify(place.operation);
+ if(sameView){
+  // Only query/limit changed: update the already committed entry in place; never append typing entries.
+  currentCommittedPlace=place;lastCommittedSignature=signature;
+  try{history.replaceState({noeticShell:{version:1,place}},'',commitURL(place.route));}catch(_){}
+  return;
+ }
+ // Intentional route/scope transition: save changed scroll into the leaving entry (its own target/scope/route stay untouched), then push once.
+ if(currentCommittedPlace){
+  const leaving={...currentCommittedPlace,mainScroll:scroll.main,paneScroll:scroll.pane,sidebarScroll:scroll.side};
+  currentCommittedPlace=leaving;
+  try{history.replaceState({noeticShell:{version:1,place:leaving}},'',commitURL(leaving.route));}catch(_){}
+ }
+ currentCommittedPlace=place;lastCommittedSignature=signature;
+ try{history.pushState({noeticShell:{version:1,place}},'',commitURL(place.route));}catch(_){}
+}
+function positiveSelector(value){return Number.isInteger(value)&&value>0;}
+function validatePlace(place){
+ if(!place||typeof place!=='object'||Array.isArray(place)||!labels[place.route])return null;
+ const target=place.target;
+ if(target!==null&&target!==undefined){
+  if(!target||typeof target!=='object'||Array.isArray(target))return null;
+  const ordinal=typeof target.ordinal==='string'&&/^\d+([.-]\d+)*$/.test(target.ordinal);
+  const id=typeof target.id==='string'&&target.id.length>0;
+  if(!ordinal&&!id)return null;
+  if(target.instantiation!==undefined&&!positiveSelector(target.instantiation))return null;
+  if(target.session!==undefined&&!positiveSelector(target.session))return null;
+  if(target.effort_root!==undefined&&(typeof target.effort_root!=='string'||!target.effort_root))return null;
+ }
+ for(const field of ['project','projectFilter'])if(place[field]!=null&&typeof place[field]!=='string')return null;
+ if(typeof place.query!=='string')return null;
+ if(place.limit!==undefined&&!positiveSelector(place.limit))return null;
+ if(place.operation!=null){const op=place.operation;if(!op||typeof op!=='object'||Array.isArray(op))return null;
+  if(op.scope!==undefined&&op.scope!=='application'&&op.scope!=='effort')return null;
+  if(op.effort_root!==undefined&&(typeof op.effort_root!=='string'||!op.effort_root))return null;}
+ return {route:place.route,subview:typeof place.subview==='string'?place.subview:'',target:target||null,history:Boolean(place.history),newConversation:Boolean(place.newConversation),browse:Boolean(place.browse),project:place.project||null,projectFilter:place.projectFilter||null,query:place.query,limit:positiveSelector(place.limit)?place.limit:12,operation:place.operation||null,mainScroll:Number.isFinite(place.mainScroll)?place.mainScroll:0,paneScroll:Number.isFinite(place.paneScroll)?place.paneScroll:0,sidebarScroll:Number.isFinite(place.sidebarScroll)?place.sidebarScroll:0};
+}
+function restoreBrowserPlace(place){
+ const seq=++restoreSequence;
+ restoring=true;
+ lastCommittedSignature=placeSignature(place);
+ currentCommittedPlace=place;
+ try{
+  if(placeScopeTuple(place)!==currentScopeTuple()){
+   suppressPage=true;
+   try{window.NoeticSessions.open(place.target?{...place.target}:null,{history:place.history,newConversation:place.newConversation,browse:place.browse,project:place.project||undefined}).catch(failure=>{if(seq===restoreSequence&&generation===restoreGeneration&&view.route===place.route&&scopeAtRestore===currentScopeTuple())notice(`Restored context could not be re-observed: ${failure.message}`);});}
+   finally{suppressPage=false;}
+  }
+  projectFilter=place.projectFilter;portfolioQuery=place.query;$('portfolio-query').value=place.query;portfolioLimit=place.limit;
+  const operation=place.operation||{},mode=operation.scope==='application'||!operation.effort_root?'application':'effort';
+  const observed=window.NoeticRuns?.state?.().selection,observedMode=observed&&observed.scope!=='application'&&observed.effort_root?'effort':'application';
+  if(mode!==observedMode)window.NoeticRuns?.scope(mode);
+  navigate(place.route,{subview:place.subview});
+ }finally{restoring=false;}
+ const restoreGeneration=generation,scopeAtRestore=currentScopeTuple();
+ requestAnimationFrame(()=>{if(seq!==restoreSequence||generation!==restoreGeneration||view.route!==place.route)return;
+  try{window.scrollTo(0,place.mainScroll);}catch(_){}
+  const pane=$('run-detail');if(pane)pane.scrollTop=place.paneScroll;
+  const side=$('shell-sidebar');if(side)side.scrollTop=place.sidebarScroll;
+ });
+}
+window.addEventListener('popstate',event=>{
+ const state=event.state&&typeof event.state==='object'?event.state:history.state;
+ const envelope=state&&typeof state==='object'?state.noeticShell:null;
+ if(!envelope||envelope.version!==1)return;
+ const place=validatePlace(envelope.place);
+ if(place)restoreBrowserPlace(place);
+});
+function adoptURLView(){let urlView=null;try{urlView=new URLSearchParams(location.search).get('view');}catch(_){ }if(urlView&&labels[urlView])view={route:urlView,subview:''};}
+function initialCommit(){const place=buildPlace({main:window.scrollY,pane:$('run-detail').scrollTop,side:$('shell-sidebar').scrollTop});lastCommittedSignature=placeSignature(place);currentCommittedPlace=place;try{history.replaceState({noeticShell:{version:1,place}},'',commitURL(view.route));}catch(_){}}
 function returnToPrevious(){
  const place=placeHistory.pop();if(!place)return;
  const originGeneration=generation;
@@ -161,6 +247,7 @@ function navigate(route,options={}){
  const changed=route!==view.route;
  if(changed&&!options.fromChoice&&!restoring&&placeReady)capturePlace();
  view={route,subview:options.subview??(changed?'':view.subview)};generation++;
+ if(!restoring&&placeReady)scheduleCommit();
  if(changed){park();$('shell-content').replaceChildren();$('shell-content').className='';for(const key of Object.keys($('shell-content').dataset))delete $('shell-content').dataset[key];$('run-detail').scrollTop=0;}
  $('shell-content').dataset.route=route;$('noetic-shell').classList.toggle('without-portfolio-sidebar',!sidebarRoutes.has(route));$('shell-sidebar').hidden=!sidebarRoutes.has(route);
  for(const b of $('shell-navigation').querySelectorAll('[data-route]')){b.classList.toggle('active',b.dataset.route===route||route==='executions'&&b.dataset.route==='workspaces');b.setAttribute('aria-current',String(b.classList.contains('active')));}
@@ -177,8 +264,8 @@ $('portfolio-options').append(icon('more'));$('portfolio-options').addEventListe
 $('shell-new-effort').prepend(icon('plus'));$('shell-new-effort').addEventListener('click',()=>navigate('new-effort'));
 $('shell-installation').prepend(icon('cube'));$('shell-installation').addEventListener('click',()=>navigate('configuration'));
 $('shell-search').append(icon('search'));
-$('portfolio-query').addEventListener('input',()=>{portfolioQuery=$('portfolio-query').value.toLowerCase();portfolioLimit=12;renderSidebar();render();});
-$('portfolio-clear').addEventListener('click',()=>{$('portfolio-query').value='';portfolioQuery='';portfolioLimit=12;renderSidebar();render();$('portfolio-query').focus();});
+$('portfolio-query').addEventListener('input',()=>{portfolioQuery=$('portfolio-query').value.toLowerCase();portfolioLimit=12;renderSidebar();render();scheduleCommit();});
+$('portfolio-clear').addEventListener('click',()=>{$('portfolio-query').value='';portfolioQuery='';portfolioLimit=12;renderSidebar();render();$('portfolio-query').focus();scheduleCommit();});
 $('portfolio-more').addEventListener('click',discloseEfforts);
 for(const b of document.querySelectorAll('[data-shell-view]')){b.className='view-item';b.prepend(icon(b.dataset.shellView==='attention'?'activity':b.dataset.shellView==='history'?'clock':'archive'));b.addEventListener('click',()=>navigate(b.dataset.shellView));}
 function resize(id,property,min,max,start){const handle=$(id);handle.classList.add('shell-resizer');handle.setAttribute('aria-valuemin',min);handle.setAttribute('aria-valuemax',max);let width=start;const apply=value=>{width=Math.max(min,Math.min(max,value));$('noetic-shell').style.setProperty(property,width+'px');handle.setAttribute('aria-valuenow',width);};handle.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();apply(width+(e.key==='ArrowRight'?12:-12));}});handle.addEventListener('pointerdown',e=>{e.preventDefault();const x=e.clientX,initial=width;document.body.classList.add('resizing-panes');const move=v=>apply(initial+v.clientX-x),stop=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',stop);document.body.classList.remove('resizing-panes');};document.addEventListener('pointermove',move);document.addEventListener('pointerup',stop,{once:true});});}
@@ -359,11 +446,11 @@ function renderCommand(mode=commandMode){
 function openCommand(){renderCommand('');$('shell-command-dialog').showModal();$('shell-command-query').focus();}
 $('shell-search').addEventListener('click',openCommand);$('shell-command').addEventListener('click',openCommand);$('shell-breadcrumb-choice').addEventListener('click',openCommand);$('shell-command-query').addEventListener('input',()=>renderCommand());
 document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();if($('shell-command-dialog').open)$('shell-command-dialog').close();else openCommand();}});
-document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;else if(snapshotData.selected){const owner=roots().find(row=>row.ordinal===snapshotData.effort);projectFilter=owner?.environment?.cwd||null;}renderFrame();renderSidebar();render();});
+document.addEventListener('noetic:sessions',e=>{snapshotData=e.detail||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;else if(snapshotData.selected){const owner=roots().find(row=>row.ordinal===snapshotData.effort);projectFilter=owner?.environment?.cwd||null;}renderFrame();renderSidebar();render();scheduleCommit();});
 new MutationObserver(renderObservationStatus).observe($('fetch-error'),{attributes:true,attributeFilter:['hidden'],childList:true,subtree:true,characterData:true});
-document.addEventListener('noetic:runs',()=>{renderFrame();if(['workspaces','history','attention','purposes','new-work'].includes(view.route))render();});
+document.addEventListener('noetic:runs',()=>{renderFrame();if(['workspaces','history','attention','purposes','new-work'].includes(view.route))render();scheduleCommit();});
 document.addEventListener('noetic:page',e=>{if(suppressPage)return;const map={developer:'agentics',workspace:'executions',new:'new-work',history:'history',memory:'memory',purposes:'purposes',diagnostics:'configuration'};const next=map[e.detail.page];if(next&&next!==view.route)navigate(next);});
 let paired=false;
-new MutationObserver(()=>{const visible=!$('private-workspace').hidden;if(visible&&!paired){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);placeReady=true;fetchJSON('/api/preview-info').then(data=>{if(data.fixture_mode||data.fixture||data.demo||data.preview||data.mode){$('shell-preview-label').hidden=false;$('shell-preview-label').textContent='Demonstration records · isolated preview';$('shell-notice').hidden=false;$('shell-notice').textContent='Demonstration records · isolated local preview';}}).catch(()=>{});}}).observe($('private-workspace'),{attributes:true,attributeFilter:['hidden']});
-if(!$('private-workspace').hidden){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;navigate(view.route);placeReady=true;}
+new MutationObserver(()=>{const visible=!$('private-workspace').hidden;if(visible&&!paired){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;adoptURLView();navigate(view.route);placeReady=true;initialCommit();fetchJSON('/api/preview-info').then(data=>{if(data.fixture_mode||data.fixture||data.demo||data.preview||data.mode){$('shell-preview-label').hidden=false;$('shell-preview-label').textContent='Demonstration records · isolated preview';$('shell-notice').hidden=false;$('shell-notice').textContent='Demonstration records · isolated local preview';}}).catch(()=>{});}}).observe($('private-workspace'),{attributes:true,attributeFilter:['hidden']});
+if(!$('private-workspace').hidden){paired=true;snapshotData=window.NoeticSessions?.state?.()||{};if(snapshotData.projectBrowsing)projectFilter=snapshotData.projectPath||null;adoptURLView();navigate(view.route);placeReady=true;initialCommit();}
 })();
