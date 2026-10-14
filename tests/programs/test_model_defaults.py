@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ from contextlib import nullcontext
 
 class ModelDefaultsTests(unittest.TestCase):
     def setUp(self):
+        self.node = shutil.which("node")
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -67,7 +69,8 @@ class ModelDefaultsTests(unittest.TestCase):
         self.pi_models.write_text(json.dumps({"providers":{"llama.cpp":{"apiKey":reference}}}))
         extra, environment = models.pi_launch("noetic-local/qwen3.6-a3b", self.root/"registration", {})
         script = """let registration;const m=await import(process.argv[1]);await m.default({registerProvider:(name,config)=>registration=config});const model=registration.models[0];if(model.compat?.maxTokensField!=='max_tokens'||model.compat?.supportsStore!==false||model.compat?.supportsDeveloperRole!==false||model.compat?.supportsReasoningEffort!==false)throw Error('model compatibility missing');if(registration.apiKey!==process.env.NOETIC_MODEL_PROVIDER_API_KEY_REF)throw Error('native credential reference altered');"""
-        result = subprocess.run(["/usr/bin/node", "--input-type=module", "-e", script, Path(extra[1]).as_uri()], env=environment, capture_output=True, text=True)
+        self.assertIsNotNone(self.node, "Node must be available on PATH before fixture isolation")
+        result = subprocess.run([self.node, "--input-type=module", "-e", script, Path(extra[1]).as_uri()], env=environment, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_configured_public_profile_and_capabilities(self):
@@ -130,7 +133,8 @@ class ModelDefaultsTests(unittest.TestCase):
         self.assertEqual(self.pi_models.read_bytes(), before)
         self.assertEqual(env, {"PATH": "/usr/bin:/bin", "NOETIC_LOCAL_CONFIG": str(self.config), "PI_CODING_AGENT_DIR": str(self.pi)})
         script = """const m=await import(process.argv[1]);let value;await m.default({registerProvider:(name,config)=>{value={name,...config};}});if(value.models[0].id!=='qwen3.6-a3b'||value.models[0].contextWindow!==57344||value.models[0].maxTokens!==4096||value.api!=='openai-completions'||value.baseUrl!=='http://127.0.0.1:8742/v1'||!value.apiKey)throw Error('registration mismatch');console.log(JSON.stringify({provider:value.name,model:value.models[0].id,context:value.models[0].contextWindow,max:value.models[0].maxTokens,api:value.api,input:value.models[0].input}));"""
-        result = subprocess.run(["/usr/bin/node", "--input-type=module", "-e", script, extension.as_uri()], env=changed, capture_output=True, text=True)
+        self.assertIsNotNone(self.node, "Node must be available on PATH before fixture isolation")
+        result = subprocess.run([self.node, "--input-type=module", "-e", script, extension.as_uri()], env=changed, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn(self.secret, result.stdout + result.stderr)
         self.assertEqual(json.loads(result.stdout)["model"], "qwen3.6-a3b")
