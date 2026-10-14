@@ -1,6 +1,7 @@
 """Local-only private Linux release assembly, installation and code rollback."""
 
 import argparse
+import ast
 import base64
 from contextlib import ExitStack, contextmanager
 import csv
@@ -58,6 +59,40 @@ REQUIRED_ASSETS = (*BOOTSTRAP, "scripts/noetic.py", "scripts/noetic_harness.py",
                    "scripts/noetic_sessions.py", "scripts/noetic_usage.py", "scripts/noetic_costs.py", "scripts/noetic_projects.py", "scripts/noetic_session_extension.mjs",
                    "scripts/noetic_efforts.py", "scripts/noetic_purposes.py", "scripts/noetic_recall.py")
 
+# Exact legacy bootstrap contract: the current tuple minus the ONE newly added
+# module, in the same order. Nothing else is ever recognized as retained.
+_BOOTSTRAP_LEGACY = tuple(name for name in BOOTSTRAP if name != "scripts/noetic_model_defaults.py")
+_BOOTSTRAP_CONTRACTS = (BOOTSTRAP, _BOOTSTRAP_LEGACY)
+_NEW_MODULE = "scripts/noetic_model_defaults.py"
+
+
+def _retained_bootstrap(files):
+    """Resolve an archived release's own bootstrap contract by safe AST parsing
+    of its retained release module bytes; never executes archived source."""
+    try:
+        source = files["scripts/noetic_release.py"]
+    except KeyError:
+        raise ValueError("Retained archive lacks its release module; bootstrap contract unresolved") from None
+    try:
+        tree = ast.parse(source.decode("utf-8"))
+    except (UnicodeDecodeError, SyntaxError, ValueError) as exc:
+        raise ValueError(f"Retained release module is not parseable source: {exc}") from exc
+    assignments = [statement for statement in tree.body
+                   if isinstance(statement, ast.Assign) and len(statement.targets) == 1
+                   and isinstance(statement.targets[0], ast.Name) and statement.targets[0].id == "BOOTSTRAP"]
+    if len(assignments) != 1:
+        raise ValueError("Retained release must declare exactly one top-level BOOTSTRAP assignment")
+    try:
+        declared = ast.literal_eval(assignments[0].value)
+    except (ValueError, TypeError, SyntaxError, MemoryError) as exc:
+        raise ValueError(f"Retained release BOOTSTRAP is not a literal tuple: {exc}") from exc
+    if not isinstance(declared, tuple) or any(not isinstance(name, str) for name in declared):
+        raise ValueError("Retained release BOOTSTRAP must be a literal tuple of module names")
+    for contract in _BOOTSTRAP_CONTRACTS:
+        if declared == contract:
+            return contract
+    raise ValueError("Retained release BOOTSTRAP contract is unrecognized; refusing inference from module absence")
+
 
 def check_node24():
     """Probe the installed runtime without opening a database or invoking Telos."""
@@ -74,7 +109,11 @@ def check_node24():
         raise ValueError("Requires an available Node 24 runtime with node:sqlite") from exc
 
 
-def wheel_info(data, filename):
+def wheel_info(data, filename, *, bootstrap=BOOTSTRAP):
+    if bootstrap not in _BOOTSTRAP_CONTRACTS:
+        raise ValueError("Unrecognized bootstrap asset contract")
+    required = REQUIRED_ASSETS if bootstrap == BOOTSTRAP else tuple(
+        name for name in REQUIRED_ASSETS if name != _NEW_MODULE)
     if not re.fullmatch(r"noetic_dev-[0-9][A-Za-z0-9.]*-py3-none-any\.whl", filename):
         raise ValueError("Expected a pure-Python noetic_dev wheel")
     with zipfile.ZipFile(io.BytesIO(data)) as wheel:
@@ -120,17 +159,20 @@ def wheel_info(data, filename):
                 raise ValueError("Wheel RECORD checksum mismatch")
         if seen != names:
             raise ValueError("Wheel has unrecorded files")
-        for name in REQUIRED_ASSETS:
+        for name in required:
             if name not in names:
                 raise ValueError(f"Wheel missing runtime asset: {name}")
-        return version, {name: wheel.read(name) for name in BOOTSTRAP}
+        return version, {name: wheel.read(name) for name in bootstrap}
 
 
-def validate_assets(files, manifest):
+def validate_assets(files, manifest, *, retained=False):
     wheel_name = manifest["wheel"]
     if not wheel_name.startswith("wheel/") or len(Path(wheel_name).parts) != 2:
         raise ValueError("Invalid wheel path")
-    version, bootstrap = wheel_info(files[wheel_name], Path(wheel_name).name)
+    # Retained installed/archive roots resolve their own archived contract; every
+    # incoming build/install path keeps the strict current contract.
+    contract = _retained_bootstrap(files) if retained else BOOTSTRAP
+    version, bootstrap = wheel_info(files[wheel_name], Path(wheel_name).name, bootstrap=contract)
     if version != manifest["release_version"] or manifest.get("controller_schema") != 1:
         raise ValueError("Incompatible release/schema")
     if any(files.get(name) != data for name, data in bootstrap.items()):
@@ -145,7 +187,7 @@ def validate_assets(files, manifest):
         raise ValueError("Supply the unchanged Noetic all-rights-reserved LICENSE.md")
     if hashlib.sha256(files["THIRD_PARTY_NOTICES.txt"]).hexdigest() != "e8fb9203c118cf58ff1ff8f1937beaa6c8e923855a5abde4d50fa5cd9f2e755d":
         raise ValueError("Supply the exact Telos MIT notice from docs/THIRD_PARTY_NOTICES.txt")
-    allowed = {wheel_name, *BOOTSTRAP, "components/telos-core.mjs", "components/telos-core.manifest.json",
+    allowed = {wheel_name, *bootstrap, "components/telos-core.mjs", "components/telos-core.manifest.json",
                "LICENSE.md", "THIRD_PARTY_NOTICES.txt"}
     native_prefix = opermem_component.COMPONENT + "/"
     native_names = {native_prefix + n for n in (*opermem_component.EXECUTABLES, "component.json", "NOTICES.txt")}
@@ -346,7 +388,7 @@ def _coexist_release(home, coexist):
     files = {name: read_regular(root / name) for name in manifest["files"]}
     if manifest["files"] != {n: hashlib.sha256(d).hexdigest() for n, d in files.items()}:
         raise ValueError("Named retained broker release checksum mismatch")
-    validate_assets(files, manifest)
+    validate_assets(files, manifest, retained=True)
     python = root / "venv/bin/python"
     if not python.is_file():
         raise ValueError("Named retained broker release interpreter missing")
@@ -760,7 +802,7 @@ def rollback(home, release, *, allow_held=False, code_only=False, coexist=None, 
         files = {name: read_regular(target / name) for name in manifest["files"]}
         if manifest["files"] != {n: hashlib.sha256(d).hexdigest() for n, d in files.items()}:
             raise ValueError("Installed release checksum mismatch")
-        validate_assets(files, manifest)
+        validate_assets(files, manifest, retained=True)
         if not (target / "venv/bin/python").is_file():
             raise ValueError("Installed interpreter missing")
         check_installed_files(target, files[manifest["wheel"]])

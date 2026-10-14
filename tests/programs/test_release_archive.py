@@ -2,6 +2,7 @@
 
 from contextlib import closing, contextmanager
 import base64
+import ast
 import csv
 from email.parser import BytesParser
 import fcntl
@@ -1121,6 +1122,109 @@ while not Path(sys.argv[3]).exists():
         result = subprocess.run([str(home / "bin/noetic"), "--help"], cwd=self.root,
                                 check=True, capture_output=True, text=True)
         self.assertIn("serve", result.stdout)
+
+    def retained_asset_fixture(self, *, legacy, missing=None):
+        home = self.root / "asset-contract-home"
+        release.install_release(self.bundle, home, code_only=True)
+        old_id = release.status(home)["current"]
+        root = home / "releases" / old_id
+        files, manifest = archive.read_bundle(self.bundle, "noetic-private-release")
+        wheel_name = manifest["wheel"]
+        with zipfile.ZipFile(io.BytesIO(files[wheel_name])) as wheel:
+            members = {name: wheel.read(name) for name in wheel.namelist()}
+        if legacy:
+            source = members["scripts/noetic_release.py"].decode()
+            assignment = next(node for node in ast.parse(source).body if isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name) and target.id == "BOOTSTRAP" for target in node.targets))
+            lines = source.splitlines(keepends=True)
+            legacy_names = tuple(name for name in release.BOOTSTRAP if name != "scripts/noetic_model_defaults.py")
+            lines[assignment.lineno-1:assignment.end_lineno] = ["BOOTSTRAP = " + repr(legacy_names) + "\n"]
+            members["scripts/noetic_release.py"] = "".join(lines).encode()
+            files["scripts/noetic_release.py"] = members["scripts/noetic_release.py"]
+        removed = {"scripts/noetic_model_defaults.py"} if legacy else set()
+        if missing:
+            removed.add(missing)
+        for name in removed:
+            members.pop(name, None)
+            files.pop(name, None)
+            (root / name).unlink(missing_ok=True)
+        record = next(name for name in members if name.endswith(".dist-info/RECORD"))
+        rows = [[name, "sha256=" + base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip("="), str(len(data))]
+                for name, data in members.items() if name != record]
+        buffer = io.StringIO(); csv.writer(buffer).writerows([*rows, [record, "", ""]])
+        members[record] = buffer.getvalue().encode()
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as wheel:
+            for name, data in members.items():
+                wheel.writestr(name, data)
+        files[wheel_name] = output.getvalue()
+        site = next((root / "venv/lib").glob("python*/site-packages"))
+        for name in removed:
+            (site / name).unlink(missing_ok=True)
+        for name, data in members.items():
+            (site / name).write_bytes(data)
+        for name, data in files.items():
+            (root / name).write_bytes(data)
+        manifest["files"] = {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}
+        identity = manifest["release_version"] + "-" + hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()[:16]
+        (root / "release.json").write_text(json.dumps(manifest, sort_keys=True))
+        target = root.with_name(identity)
+        root.rename(target)
+        release._switch(home, identity)
+        return home, identity, files, manifest
+
+    def test_retained_bootstrap_recognizes_only_literal_known_contract_without_execution(self):
+        legacy = tuple(name for name in release.BOOTSTRAP if name != "scripts/noetic_model_defaults.py")
+        source = ("raise RuntimeError('archived source must never execute')\nBOOTSTRAP = " + repr(legacy)).encode()
+        self.assertEqual(release._retained_bootstrap({"scripts/noetic_release.py": source}), legacy)
+        for source in (b"BOOTSTRAP = tuple()", b"BOOTSTRAP = ('unknown',)",
+                       ("BOOTSTRAP = " + repr(legacy) + "\nBOOTSTRAP = " + repr(legacy)).encode()):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                release._retained_bootstrap({"scripts/noetic_release.py": source})
+
+    def test_retained_pre_defaults_contract_and_strict_incoming_requirement(self):
+        home, identity, files, manifest = self.retained_asset_fixture(legacy=True)
+        value = release._coexist_release(home, identity)
+        self.assertEqual(value["root"], str(home / "releases" / identity))
+        with self.assertRaisesRegex(ValueError, "missing runtime asset.*noetic_model_defaults"):
+            release.validate_assets(files, manifest)
+        (home / "releases" / identity / "scripts/noetic_release.py").write_bytes(b"changed")
+        with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+            release._coexist_release(home, identity)
+
+    def test_retained_current_contract_cannot_downgrade_missing_new_module(self):
+        home, identity, files, manifest = self.retained_asset_fixture(legacy=False, missing="scripts/noetic_model_defaults.py")
+        before = release.status(home)["current"]
+        with self.assertRaisesRegex(ValueError, "missing runtime asset.*noetic_model_defaults"):
+            release.wheel_info(files[manifest["wheel"]], Path(manifest["wheel"]).name, bootstrap=tuple(list(release.BOOTSTRAP)))
+        with self.assertRaisesRegex(ValueError, "missing runtime asset.*noetic_model_defaults"):
+            release._coexist_release(home, identity)
+        with self.assertRaisesRegex(ValueError, "missing runtime asset.*noetic_model_defaults"):
+            release.rollback(home, identity, code_only=True)
+        self.assertEqual(release.status(home)["current"], before)
+
+    def test_retained_legacy_contract_keeps_other_asset_requirements(self):
+        home, identity, _, _ = self.retained_asset_fixture(legacy=True, missing="scripts/noetic_storage.py")
+        with self.assertRaisesRegex(ValueError, "missing runtime asset.*noetic_storage"):
+            release._coexist_release(home, identity)
+
+    def test_retained_pre_defaults_update_and_live_actor_route_rollback(self):
+        home, first, _, _ = self.retained_asset_fixture(legacy=True)
+        marker = home / "state" / "retained-history.jsonl"
+        marker.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        marker.write_bytes(b'{"retained":"owned fixture"}\n')
+        doc = self.root / "new-contract.md"; doc.write_text("New required module contract")
+        update = self.root / "new-contract.zip"
+        release.build_release(update, wheel=self.wheel, telos_module=self.core,
+            telos_manifest=self.core.with_suffix(".manifest.json"), license_file=ROOT / "LICENSE.md",
+            notices=ROOT / "docs/THIRD_PARTY_NOTICES.txt", docs=[doc])
+        result = release.install_release(update, home, code_only=True, coexist=[first], preserve_live_actors=True)
+        second = result["current"]
+        self.assertNotEqual(first, second)
+        release.rollback(home, first, code_only=True, coexist=[first, second], preserve_live_actors=True)
+        self.assertEqual(release.status(home)["current"], first)
+        self.assertEqual(marker.read_bytes(), b'{"retained":"owned fixture"}\n')
+        self.assertTrue((home / "releases" / second / "scripts/noetic_model_defaults.py").is_file())
 
     def test_wheel_requires_every_runtime_asset_even_with_valid_record(self):
         with zipfile.ZipFile(self.wheel) as wheel:
