@@ -6,6 +6,7 @@
   let treeDisclosure, treeCoverage, treeMore, treeReveal, treeLimit=40, treeScope="";
   let expandedBranches=new Set(["0"]), lastTreeSelection="";
   let snapshot = {}, view = "tree", zoom = 100, paneWidth = 500, filterEffort = "", find = "", drawingSignature = "";
+  let topologyOpen = false, topologyToggle = null;
   const ui = () => window.NoeticUI;
   const el = (tag, cls, value) => ui().element(tag, cls, value);
   const btn = (value, action, cls = "secondary-button") => ui().button(value, action, cls);
@@ -64,7 +65,7 @@
   function build(host) {
     layout = el("div","responsibility-layout agentics-layout");
     layout.style.setProperty("--tree-pane-width",`${paneWidth}px`);
-    canvas = el("section","panel responsibility-canvas agentics-canvas");
+    canvas = el("section","panel responsibility-canvas agentics-canvas"); canvas.id="agentics-topology-pane";
     const toolbar = el("div","canvas-toolbar"); tabs = el("div","view-switcher"); tabs.setAttribute("role","tablist");
     for (const value of ["tree","sessions","returns"]) {
       const item = btn(value[0].toUpperCase()+value.slice(1),() => chooseView(value),value === view ? "active" : "");
@@ -98,6 +99,9 @@
     inspectorHeading=el("div","inspector-heading session-heading"); provenance=el("div","agent-topology agentics-provenance"); occupant=el("div","session-context");
     const positionStatus=el("div","inspector-status"); positionStatus.id="agentics-position-status";
     inspector.append(inspectorHeading,positionStatus,provenance,occupant);
+    topologyToggle=btn("Topology",()=>{topologyOpen=!topologyOpen;layout.classList.toggle("topology-collapsed",!topologyOpen);topologyToggle.setAttribute("aria-expanded",String(topologyOpen));drawingSignature="";},"session-context-button agentics-topology-toggle");
+    topologyToggle.setAttribute("aria-expanded",String(topologyOpen));topologyToggle.setAttribute("aria-controls","agentics-topology-pane");
+    layout.classList.toggle("topology-collapsed",!topologyOpen);
     layout.append(canvas,resizer,inspector);host.append(layout);
     new ResizeObserver(()=>{if(view==="tree"&&layout.isConnected){drawingSignature="";draw();}}).observe(viewport);
     ui().mount("developer-page",inspector);
@@ -112,10 +116,36 @@
     if (!document.getElementById("agentics-responsibility-details")) {
       const responsibility=el("div","agentics-responsibility-details");responsibility.id="agentics-responsibility-details";evidence.append(responsibility);
     }
+    // CONVLAYOUT1: repetitive lineage/occupant-composition and queue detail
+    // stay deliberately available under Context evidence instead of consuming
+    // the primary conversation column; the exact ordinal, incarnation/session
+    // and truthful activity remain visible in the primary column.
+    retained.append(provenance);
+    retained.append(occupant);
+    const queueSummary=document.getElementById("developer-queue-summary");if(queueSummary)retained.append(queueSummary);
+    const modelSettings=document.querySelector(".developer-model-settings");if(modelSettings)modelSettings.removeAttribute("open");
+    restructureAttachments();
     evidence.querySelector(":scope > summary").textContent="Context & session evidence";
     document.getElementById("developer-prompt").placeholder="Direct this exact session…";
     document.getElementById("developer-prompt").rows=3;
     document.getElementById("developer-transcript").classList.add("terminal-transcript");
+  }
+  function restructureAttachments() {
+    // Wrap the file picker and long help in a deliberate disclosure. The
+    // original input and list nodes are preserved (id-bound listeners and
+    // Remove buttons keep working); the readiness/failure notice stays
+    // outside and visible, and the summary carries a readable selected count.
+    const field=document.querySelector(".developer-attachments");
+    if(!field||document.getElementById("developer-attachments-disclosure"))return;
+    const input=document.getElementById("developer-attachment-input"),list=document.getElementById("developer-attachments-list"),notice=document.getElementById("developer-attachments-notice"),help=field.querySelector("p.source"),label=field.querySelector(':scope > label[for="developer-attachment-input"]');
+    if(!input||!list)return;
+    const details=el("details","developer-attachments-disclosure");details.id="developer-attachments-disclosure";
+    const summary=el("summary"),count=el("span","developer-attachments-count");summary.append("Attachments",count);
+    const box=el("div","developer-attachments-box");
+    details.append(summary,box);box.append(input,list);if(help)box.append(help);if(label)box.prepend(label);
+    field.insertBefore(details,notice||null);
+    const update=()=>{count.textContent=`· ${list.children.length} selected`;};
+    new MutationObserver(update).observe(list,{childList:true});input.addEventListener("change",update);update();
   }
 
   function nodeCard(row, x, y) {
@@ -233,6 +263,7 @@
     identity.append(el("span","panel-kicker",browsing ? "Project overview · no conversation selected" : projectDraft ? "Project conversation" : reserved ? "Reserved position · native context unobserved" : original ? "Original namespace · unadopted" : exact ? "Exact session" : root ? "Application responsibility" : "Ordinal position"),el("h2","",browsing ? snapshot.projectPath ? `Project ${snapshot.projectPath}` : "Development portfolio" : projectDraft ? "Open or create a project" : reserved ? `Position ${ordinal}` : exact ? `Session ${selected.instantiation ? `${selected.instantiation}/${selected.session}` : selected.id}` : root ? "Application governance" : row ? positionTitle(row) : `Position ${ordinal}`));
     const context=btn("Context",()=>{const evidence=document.getElementById("developer-evidence");evidence.open=!evidence.open;},"session-context-button"); context.disabled=!session&&!row;
     inspectorHeading.replaceChildren(badge,identity,context);
+    if(topologyToggle)inspectorHeading.append(topologyToggle);
     let viewOwner=inspector.querySelector('.agentics-view-owner');
     if(!viewOwner){viewOwner=el('div','agentics-view-owner');inspectorHeading.after(viewOwner);}
     const outside=Boolean(selected && (filterEffort||find) && (original || !positions().some(position=>position.ordinal===ordinal)));
