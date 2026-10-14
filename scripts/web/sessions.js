@@ -21,6 +21,22 @@
   let cursor = 0;
   let pending = false;
   let readCompletion = null, releaseRead = null;
+  // VIEWFETCH1 automatic observation demand: periodic native reads follow the
+  // actual consuming shell views, document visibility and the real Returns tab;
+  // explicit refreshes and observedRefresh never pause.
+  const NATIVE_CATALOGUE_ROUTES = new Set(["workspaces","agentics","history","attention","closed"]);
+  let demandVersion = 0, demandRetry = false;
+  const shellRoute = () => window.NoeticUI?.route?.();
+  const observationDemandNote = () => {
+    if (document.hidden) return "document hidden";
+    const route = shellRoute();
+    return route !== undefined && !NATIVE_CATALOGUE_ROUTES.has(route) ? `no native observation demand on the ${route} view` : null;
+  };
+  const returnsTabActive = () => {
+    if (document.hidden || shellRoute() !== "agentics") return false;
+    const tab = document.querySelector('#agentics-topology-pane [data-view="returns"]');
+    return Boolean(tab && tab.getAttribute("aria-selected") === "true");
+  };
   let actionPending = false;
   let observationError = false;
   let queueState = null, recalled = null, activityTool = null;
@@ -793,12 +809,15 @@
   }
 
   async function refresh(options = {}) {
+    const automatic = options?.automatic === true;
     if (!active() || pending) return false;
+    if (automatic && observationDemandNote()) { renderObservationStatus(); return false; }
     pending = true;
     readCompletion = new Promise(resolve => { releaseRead = resolve; });
-    const version = selectionVersion, target = selected && {...selected}, access = accessVersion;
-    const valid = () => version === selectionVersion && access === accessVersion && active();
-    const readingHistory = Boolean(applicationHistory || (target && !exact(target)));
+    const version = selectionVersion, target = selected && {...selected}, access = accessVersion, demand = demandVersion;
+    let observationOk = true;
+    const valid = () => version === selectionVersion && access === accessVersion && active() && demand === demandVersion;
+    const readingHistory = (!automatic || shellRoute() === "agentics") && Boolean(applicationHistory || (target && !exact(target)));
     let historyReadPending = readingHistory;
     if (readingHistory && (!historyObservation.observed || options === true || options.explicit || options.type === "click")) { historyObservation = {...historyObservation,status:"loading",error:null}; renderHistory(); }
     const slowHistory = readingHistory ? setTimeout(()=>{if(valid() && historyReadPending){historyObservation={...historyObservation,status:"loading"};renderHistory();}},1500) : null;
@@ -817,9 +836,14 @@
       if (!valid()) return; allSessions = result.sessions;
       if (!$("developer-projects-root").value) $("developer-projects-root").value = result.projects_root;
       if (target && exact(target)) {
-        const value = await pages(endpoint("", target), "events", {...scope(target),after:cursor}, valid);
-        if (!value) return; detail = value.result; events.push(...value.rows); cursor = value.result.next_after || cursor;
-      } else if (target || applicationHistory) {
+        // Hidden selected native detail is not fetched; the cached context,
+        // events and cursor are retained untouched until the agentics view
+        // (or an explicit refresh) genuinely demands it again.
+        if (!automatic || shellRoute() === "agentics") {
+          const value = await pages(endpoint("", target), "events", {...scope(target),after:cursor}, valid);
+          if (!value) return; detail = value.result; events.push(...value.rows); cursor = value.result.next_after || cursor;
+        }
+      } else if (readingHistory) {
         const value = await historyPages(`/api/ordinals/${encodeURIComponent(applicationHistory ? "0" : target.ordinal)}/history`, applicationHistory ? {} : scope(target), historyRecords, historyCache, valid,()=>{
           historyRecords=[]; historyCache=null; historyObservation={status:"loading",observed:false,error:null};
           if(applicationHistory){applicationEvents=[];returnsCache=null;} renderHistory(); notify();
@@ -828,7 +852,10 @@
         historyObservation = {status:"observed",observed:true,error:null}; historyReadPending = false;
         if (applicationHistory) {applicationEvents = value.rows;returnsCache = null;}
       }
-      if (observeReturns && !applicationHistory) {
+      // Actual selected-tab demand is authoritative: the observeReturns() API
+      // only triggers the immediate refresh; the global history read happens
+      // only while the Returns tab is genuinely active in the agentics view.
+      if (!applicationHistory && returnsTabActive()) {
         const value = await historyPages("/api/ordinals/0/history", {}, applicationEvents, returnsCache, valid,()=>{applicationEvents=[];returnsCache=null;notify();});
         if (!value) return; applicationEvents = value.rows; returnsCache = value.cache;
       }
@@ -836,6 +863,7 @@
       renderRail(); renderDetail();
     } catch (failure) {
       if (valid()) {
+        observationOk = false;
         observationError = true; error("developer-error", `Observation unavailable: ${failure.message}`);
         if (historyReadPending) { historyObservation = {...historyObservation,status:"error",error:failure.message}; renderHistory(); }
         renderActivity();
@@ -846,8 +874,10 @@
       clearTimeout(slowHistory);pending = false;
       if (releaseRead) { const release = releaseRead; releaseRead = null; readCompletion = null; release(); }
       if (version !== selectionVersion && active()) queueMicrotask(refresh);
+      else if (demandRetry) { demandRetry = false; if (!observationDemandNote() && active()) queueMicrotask(() => refresh({automatic:true})); }
+      if (valid()) renderObservationStatus();
     }
-    return true;
+    return observationOk && valid();
   }
 
   async function observedRefresh() {
@@ -1082,8 +1112,41 @@
   queueSummary.setAttribute("role", "status");
   const submissionsHost = node("div");
   submissionsHost.id = "developer-submissions";
-  $("developer-transcript").before(developerActivity, queueSummary, submissionsHost);
-  composer(); renderDetail();
-  setInterval(refresh, 1200);
+  const observationStatus = node("p", undefined, "source");
+  observationStatus.id = "developer-observation-status";
+  observationStatus.setAttribute("role", "status");
+  function renderObservationStatus() {
+    const paused = observationDemandNote();
+    observationStatus.hidden = !paused;
+    observationStatus.textContent = paused
+      ? `Automatic observation paused · ${paused} · last observed data retained; explicit refresh remains available.`
+      : historyObservation.observed || detail ? "Automatic observation active · retained observations shown; current context read on cadence."
+      : "Automatic observation active · awaiting first retained observation.";
+  }
+  $("developer-transcript").before(observationStatus, developerActivity, queueSummary, submissionsHost);
+  composer(); renderDetail(); renderObservationStatus();
+  setInterval(() => refresh({automatic:true}), 1200);
+  {
+    // Bounded demand observer: existing shell route attribute plus document
+    // visibility. A demand change invalidates in-flight reads and schedules one
+    // coalesced fresh read after they settle, only if the new demand holds.
+    let lastDemand = null;
+    const demandKey = () => `${document.hidden ? "hidden" : "visible"}|${shellRoute() ?? ""}|${returnsTabActive()}`;
+    const nativeDemanded = () => {
+      if (document.hidden) return false;
+      const route = shellRoute();
+      return route === undefined || NATIVE_CATALOGUE_ROUTES.has(route);
+    };
+    const onDemandChange = () => {
+      const key = demandKey();
+      if (key === lastDemand) return;
+      lastDemand = key;
+      ++demandVersion;
+      renderObservationStatus();
+      if (nativeDemanded()) { if (pending) demandRetry = true; else refresh({automatic:true}); }
+    };
+    new MutationObserver(onDemandChange).observe($("shell-content"), {attributes:true, subtree:true, attributeFilter:["data-route","aria-selected"]});
+    document.addEventListener("visibilitychange", onDemandChange);
+  }
   if (active()) refresh();
 })();

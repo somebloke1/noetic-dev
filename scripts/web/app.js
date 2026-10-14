@@ -58,6 +58,24 @@ const scopedURL = (path, selection = operationSelection()) => {
 };
 const operationValid = (version, key) => version === operationVersion && key === operationKey();
 let runRegister = {selection:operationSelection(),status:"unobserved",observedAt:null,warnings:[],error:""};
+// VIEWFETCH1 automatic observation demand: periodic catalogue/detail reads follow
+// actual renderer usage and document visibility. Explicit refreshes never pause.
+const RUN_CATALOGUE_ROUTES = new Set(["workspaces","history","attention","purposes","new-work","runtime","executions","artifacts"]);
+const RUN_DETAIL_ROUTES = new Set(["executions","artifacts"]);
+let demandVersion = 0, lastObservedStamp = null, runDemandRetry = false;
+const shellRoute = () => window.NoeticUI?.route?.();
+function runDemandNote() {
+  if (document.hidden) return "document hidden";
+  const route = shellRoute();
+  return route !== undefined && !RUN_CATALOGUE_ROUTES.has(route) ? `no execution observation demand on the ${route} view` : null;
+}
+function markRunsPaused() {
+  const note = runDemandNote();
+  if (!note) return false;
+  text("poll-status", `Run register paused · ${note} · last observed ${lastObservedStamp ? new Date(lastObservedStamp).toLocaleTimeString() : "never"}`);
+  if (runRegister.status !== "paused") observeRuns({status:"paused"},false);
+  return true;
+}
 function observeRuns(update, notify = true) {
   runRegister = {...runRegister,...update};
   if (notify) document.dispatchEvent(new CustomEvent("noetic:runs", {detail:{runs:allRuns,observation:runRegister}}));
@@ -987,10 +1005,10 @@ function renderDetail(detail) {
 async function loadDetail() {
   const id = selectedId;
   if (!id) return;
-  const version = ++detailVersion;
+  const version = ++detailVersion, demand = demandVersion;
   try {
     const detail = await fetchJSON(`/api/runs/${encodeURIComponent(id)}`);
-    if (version !== detailVersion || id !== selectedId) return;
+    if (version !== detailVersion || id !== selectedId || demand !== demandVersion) return;
     const first = !selectedDetail;
     selectedDetail = detail;
     renderDetail(detail);
@@ -1008,43 +1026,47 @@ async function loadDetail() {
     if (currentPage === "workspace" || executionView === "activity") loadSession();
     error("detail-error", "");
   } catch (failure) {
-    if (version !== detailVersion || id !== selectedId) return;
+    if (version !== detailVersion || id !== selectedId || demand !== demandVersion) return;
     error("detail-error", `Cannot refresh run ${id}: ${failure.message}${selectedDetail ? " Showing previously fetched evidence." : ""}`);
     $("cancel-pattern").disabled = true;
     for (const name of ["advance-one", "advance-all", "pause-pattern"]) $(name).disabled = true;
   }
 }
 
-async function refresh() {
+async function refresh(options = {}) {
+  const automatic = options?.automatic === true;
   if ($("private-workspace").hidden || refreshPending) return;
+  if (automatic && markRunsPaused()) return;
   refreshPending = true;
   $("refresh").disabled = true;
-  const scopeVersion = operationVersion;
+  const scopeVersion = operationVersion, demand = demandVersion;
   observeRuns({selection:operationSelection(),status:"loading"});
   try {
     const result = await fetchJSON(scopedURL("/api/runs"));
-    if (scopeVersion !== operationVersion) return;
+    if (scopeVersion !== operationVersion || demand !== demandVersion) return;
     text("runs-root", result.runs_dir);
     text("run-warning", result.warnings.join(" "));
     $("run-warning").hidden = result.warnings.length === 0;
     if (!selectedId && result.runs.length) selectedId = result.runs[0].run_id;
     error("fetch-error", "");
-    observeRuns({status:"observed",observedAt:result.observed_at || new Date().toISOString(),warnings:result.warnings,error:""},false);
+    lastObservedStamp = result.observed_at || new Date().toISOString();
+    observeRuns({status:"observed",observedAt:lastObservedStamp,warnings:result.warnings,error:""},false);
     renderRuns(result.runs);
-    text("poll-status", `Updated ${new Date((result.observed_at || Date.now())).toLocaleTimeString()} · 5s refresh`);
+    text("poll-status", `Updated ${new Date(lastObservedStamp).toLocaleTimeString()} · 5s refresh`);
   } catch (failure) {
-    if (scopeVersion === operationVersion) {
+    if (scopeVersion === operationVersion && demand === demandVersion) {
       error("fetch-error", `Cannot refresh the run register: ${failure.message} Previously fetched evidence may be stale.`);
       observeRuns({status:"unavailable",error:failure.message});
     }
   } finally {
-    if (scopeVersion === operationVersion) {
-      await loadDetail();
+    if (scopeVersion === operationVersion && demand === demandVersion) {
+      if (!automatic || RUN_DETAIL_ROUTES.has(shellRoute() ?? "")) await loadDetail();
       if (isReviewed()) await loadReviewedLaunches();
     }
     $("refresh").disabled = false;
     refreshPending = false;
     if (scopeVersion !== operationVersion) queueMicrotask(refresh);
+    else if (runDemandRetry) { runDemandRetry = false; if (!runDemandNote()) queueMicrotask(() => refresh({automatic:true})); }
   }
 }
 
@@ -2249,7 +2271,31 @@ function openWorkspace() {
   window.NoeticSessions?.refresh();
 }
 openWorkspace();
-setInterval(refresh, 5000);
+setInterval(() => refresh({automatic:true}), 5000);
+{
+  // Bounded demand observer: shell route (existing #shell-content[data-route])
+  // plus document visibility decide when automatic run observation resumes;
+  // a demand change invalidates in-flight reads and schedules one coalesced
+  // fresh read after they settle, only if the new demand still holds.
+  let lastDemand = null;
+  const demandKey = () => `${document.hidden ? "hidden" : "visible"}|${shellRoute() ?? ""}`;
+  const runDemanded = () => {
+    if (document.hidden) return false;
+    const route = shellRoute();
+    return route === undefined || RUN_CATALOGUE_ROUTES.has(route) || RUN_DETAIL_ROUTES.has(route);
+  };
+  const onDemandChange = () => {
+    const key = demandKey();
+    if (key === lastDemand) return;
+    lastDemand = key;
+    ++demandVersion;
+    ++detailVersion; ++sessionVersion; ++actorLogVersion; ++handoffVersion;
+    if (runDemanded()) { if (refreshPending) runDemandRetry = true; else refresh({automatic:true}); }
+    else markRunsPaused();
+  };
+  new MutationObserver(onDemandChange).observe($("shell-content"), {attributes:true, attributeFilter:["data-route"]});
+  document.addEventListener("visibilitychange", onDemandChange);
+}
 
 
 function reviewedSelectors(required = false) {
