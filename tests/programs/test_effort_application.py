@@ -22,6 +22,7 @@ from scripts import noetic_local as local
 from scripts import noetic_web as web
 from scripts.noetic_scope import Scope, ScopeStore
 from tests.programs.test_noetic_harness import result_for
+from tests.programs.test_application_gui import legacy_development_fixture
 
 RPC = r'''
 import json,os,sys,uuid,time
@@ -184,6 +185,7 @@ class EffortApplicationTests(unittest.TestCase):
         self.assertEqual(self.namespace.read_bytes(),before)
         self.assertFalse(self.runs.exists());self.assertFalse((self.root/'worktrees').exists())
 
+    @legacy_development_fixture
     def test_owned_worktree_preparation_review_apply_and_same_cwd_exclusion(self):
         holding=self.start(task='holding source ownership')['run_id'];held=self.runs/holding
         self.wait(lambda:(held/'fixture-release.waiting').exists())

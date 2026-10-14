@@ -3,6 +3,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from dataclasses import replace
+from functools import wraps
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import http.client
 import json
@@ -28,6 +30,36 @@ from scripts import noetic_run as runtime
 from scripts import noetic_telos as telos
 from scripts import noetic_web as web
 from tests.programs.test_noetic_harness import result_for
+
+
+def legacy_development_fixture(test):
+    @wraps(test)
+    def run_legacy(self):
+        current = json.loads((controller.PATTERN_DIR / "development.json").read_text())
+        legacy = {key: value for key, value in current.items() if key != "delegation"}
+        legacy["version"] = 1
+        digest = hashlib.sha256(json.dumps(legacy, sort_keys=True, ensure_ascii=True, allow_nan=False).encode()).hexdigest()
+        self.assertEqual(digest, "8cb8f909044d920cadd906529faa536866f707441b83a4f3a869b53cf65a9f63")
+        directory = self.root / "legacy-development-patterns"
+        directory.mkdir()
+        (directory / "development.json").write_text(json.dumps(legacy))
+        shutil.copyfile(controller.PATTERN_DIR / "cognition.json", directory / "cognition.json")
+        with patch.object(controller, "PATTERN_DIR", directory):
+            test(self)
+        self.assertEqual(json.loads((controller.PATTERN_DIR / "development.json").read_text()), current)
+        self.assertEqual(current["version"], 2)
+        for run in self.runs.iterdir():
+            if not (run / "controller.sqlite3").is_file():
+                continue
+            state = harness.inspect(run)
+            if state["pattern"].get("name") != "development":
+                continue
+            options = (run / "options.json").read_bytes()
+            self.assertEqual(state["pattern"], legacy)
+            self.assertNotIn("delegation_version", json.loads(options))
+            self.assertEqual(harness.inspect(run)["pattern"], legacy)
+            self.assertEqual((run / "options.json").read_bytes(), options)
+    return run_legacy
 
 
 def fixture_actor(run, state, options):
@@ -189,6 +221,7 @@ class ApplicationGuiTests(unittest.TestCase):
         return self.wait_for(lambda: (d if d["controller"]["status"] != "active" and not d["application"]["gui_driver_owned"] else None)
                              if (d := self.detail(run_id)) else None)
 
+    @legacy_development_fixture
     def test_start_full_development_and_cognition_with_real_background_drivers(self):
         profiles = self.request("/api/configuration")["profiles"]
         with patch.dict(os.environ, {"USER_PROVIDED_PASSWORD": "must-not-inherit", "FIXTURE_PROVIDER_KEY": "normal-env"}):
@@ -489,6 +522,7 @@ class ApplicationGuiTests(unittest.TestCase):
         self.assertRegex(html, r'<div\b(?=[^>]*\bid="session-transcript")(?=[^>]*\bclass="transcript")(?=[^>]*\btabindex="0")[^>]*>')
         self.assertNotIn("requires a wider viewport", html)
 
+    @legacy_development_fixture
     def test_reuse_setup_exact_mapping_readonly_auth_and_new_run_guards(self):
         task = "  Exact purpose\nwith acceptance criteria and trailing spaces  "
         refs = ["docs/a file.md", "https://example.invalid/a?q=two words", "docs/a file.md"]
