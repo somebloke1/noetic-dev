@@ -36,6 +36,14 @@ const badge = (value, tone='neutral') => el('span',`status-badge ${tone}`,value)
 let view = {route:'workspaces',subview:''}, snapshotData = {}, projectFilter = null, suppressPage = false, generation=0;
 let portfolioQuery='',portfolioLimit=12,commandMode='';
 let effortDraft=null,effortDraftNotice='',effortSync=null,effortInputs=null;
+// Durable same-tab effort draft: authored intent/cwd, explicit owner project metadata, a successful
+// registration receipt and an interrupted-attempt marker under a versioned key. Only durable facts are
+// persisted; a transient in-flight state is never restored as permanent busy.
+const DRAFT_STORE_KEY='noetic-effort-draft-v1';
+function persistDraft(){try{const d=effortDraft,value=d?{intent:d.intent,cwd:d.cwd,ownerProject:d.ownerProject||'',ownerEffort:d.ownerEffort||'',receipt:d.pending&&d.pending.created&&d.pending.ordinal?{ordinal:d.pending.ordinal,effort:d.pending.effort&&d.pending.effort.ordinal?d.pending.effort:null,rawIntent:d.pending.rawIntent,rawCwd:d.pending.rawCwd}:null,attempt:d.pending&&(d.pending.sending||d.pending.uncertain&&!d.pending.created)?{rawIntent:d.pending.rawIntent,rawCwd:d.pending.rawCwd,ownerProject:d.pending.ownerProject||'',ownerEffort:d.pending.ownerEffort||''}:null}:null;sessionStorage.setItem(DRAFT_STORE_KEY,JSON.stringify(value));}catch(_){}}
+function restoreDraft(){try{const value=JSON.parse(sessionStorage.getItem(DRAFT_STORE_KEY)||'null');if(!value||typeof value!=='object')return;effortDraft={intent:String(value.intent??''),cwd:String(value.cwd??''),ownerProject:String(value.ownerProject??''),ownerEffort:String(value.ownerEffort??''),pending:null};const r=value.receipt,a=value.attempt;if(r&&typeof r.ordinal==='string'&&r.ordinal)effortDraft.pending={rawIntent:String(r.rawIntent??''),rawCwd:String(r.rawCwd??''),ownerProject:String(value.ownerProject??''),ownerEffort:String(value.ownerEffort??''),contextEffort:null,generation:0,intent:String(r.rawIntent??'').trim(),cwd:String(r.rawCwd??'').trim(),sending:false,created:true,observed:false,observing:false,initial:false,ordinal:r.ordinal,effort:r.effort&&r.effort.ordinal?r.effort:{ordinal:r.ordinal,environment:{cwd:String(r.rawCwd??'')}},error:'',refreshError:'observation state is unknown after the earlier session ended',uncertain:false,fieldError:''};
+else if(a)effortDraft.pending={rawIntent:String(a.rawIntent??''),rawCwd:String(a.rawCwd??''),ownerProject:String(a.ownerProject??''),ownerEffort:String(a.ownerEffort??''),contextEffort:null,generation:0,intent:String(a.rawIntent??'').trim(),cwd:String(a.rawCwd??'').trim(),sending:false,created:false,observed:false,observing:false,initial:false,ordinal:'',effort:null,error:'the registration request was interrupted before its outcome was known; the effort may or may not exist',refreshError:'',uncertain:true,fieldError:''};}catch(_){}}
+restoreDraft();
 let placeHistory=[],placeReady=false,restoring=false,frameOwner=null;
 try {view={...view,...JSON.parse(sessionStorage.getItem('noetic-shell-view')||'{}')};}catch(_){}
 const nav = [
@@ -232,40 +240,103 @@ function overview({host}){
 routes.set('workspaces',overview);
 function newEffort({host}){
  heading({eyebrow:'NEW RESPONSIBILITY',title:'New effort',description:'Declare the intention and project environment. Its ordinal persists across conversations.',actions:[]});if(host.dataset.ready==='effort')return;host.dataset.ready='effort';host.className='new-effort-content';
+ const contextProject=()=>snapshotData.projectBrowsing?(snapshotData.projectPath||''):(projectFilter||'');
  const p=card('EFFORT SCOPE','What are you working toward?'),form=el('form','effort-create-form');
 const inputs={};for(const [id,label,placeholder,tag]of[['effort-intent','Effort intention','Build a shared reading list','textarea'],['effort-directory','Project folder','/path/to/project','input']]){const l=el('label','',label);l.htmlFor=id;const input=el(tag);inputs[id]=input;input.id=id;input.required=true;input.placeholder=placeholder;if(tag==='textarea')input.rows=3;form.append(l,input);}
- if(!effortDraft)effortDraft={intent:'',cwd:'',pending:null};
- if(!effortDraft.cwd&&!effortDraft.pending&&!inputs['effort-directory'].value){
-  const folder=window.NoeticUI?.snapshot?.().projectFilter||roots().find(row=>row.ordinal===snapshotData.effort)?.environment?.cwd||'';
-  if(folder)effortDraft.cwd=folder;
+ const dirError=el('p','inline-attention');dirError.id='effort-directory-error';dirError.hidden=true;inputs['effort-directory'].after(dirError);
+ if(!effortDraft)effortDraft={intent:'',cwd:'',ownerProject:'',ownerEffort:'',pending:null};
+ // Project context defaults only a blank, unowned draft; an owned draft is never silently re-pointed.
+ if(!effortDraft.cwd&&!effortDraft.pending&&!effortDraft.ownerProject&&!inputs['effort-directory'].value){
+  const folder=contextProject()||roots().find(row=>row.ordinal===snapshotData.effort)?.environment?.cwd||'';
+  if(folder){effortDraft.cwd=folder;effortDraft.ownerProject=folder;effortDraft.ownerEffort=snapshotData.effort||'';}
  }
  inputs['effort-intent'].value=effortDraft.intent;inputs['effort-directory'].value=effortDraft.cwd;
  form.append(el('p','field-note','Register an existing folder without starting a model. Several efforts may share a folder and retain separate intentions.'));
- const submit=button('Create effort',null,'primary-button');submit.type='submit';const status=el('p','form-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');form.append(submit,status);
+ const submit=button('Create effort',null,'primary-button');submit.type='submit';const status=el('p','form-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');const receipt=el('div','effort-receipt');receipt.hidden=true;form.append(submit,status,receipt);
+ // Cross-project conflict: expose the draft's owning project and require an explicit reuse/discard action.
+ const ownerProject=effortDraft.ownerProject||'';
+ if(ownerProject&&ownerProject!==contextProject()){
+  const ownerNote=el('div','draft-owner-note');ownerNote.dataset.effortDraftOwner='true';
+  const currentLabel=contextProject()||'the Application portfolio (no specific project selected)';
+  ownerNote.append(el('p','field-note',`This draft belongs to project ${ownerProject}${effortDraft.ownerEffort?` (effort ${effortDraft.ownerEffort})`:''} and holds the authored folder ${effortDraft.cwd||'(empty)'}. The currently selected context is ${currentLabel}. The authored intention is kept untouched; adopt or release it explicitly.`));
+  const rebuild=()=>{delete host.dataset.ready;render();};
+  const replaceGuard=()=>Boolean(effortDraft&&effortDraft.pending&&effortDraft.pending.sending);
+  const reuse=button('Reuse selected project for this draft',null,'secondary-button');reuse.dataset.effortDraftReuse='true';reuse.disabled=replaceGuard();
+  reuse.addEventListener('click',()=>{if(!effortDraft||replaceGuard())return;const selected=contextProject();effortDraft.cwd=selected;effortDraft.ownerProject=selected;effortDraft.ownerEffort=snapshotData.effort||'';persistDraft();rebuild();});
+  const discard=button(contextProject()?'Discard draft and use the selected project':'Discard draft and clear the selected project',null,'secondary-button');discard.dataset.effortDraftDiscard='true';discard.disabled=replaceGuard();
+  discard.addEventListener('click',()=>{if(replaceGuard())return;const selected=contextProject();effortDraft={intent:'',cwd:selected,ownerProject:selected,ownerEffort:snapshotData.effort||'',pending:null};persistDraft();rebuild();});
+  ownerNote.append(reuse,discard);p.append(ownerNote);
+ }
+ const folderMessage=text=>/director|folder|workspace|environment|path/i.test(String(text||''));
+ const observationConfirms=p=>{const state=window.NoeticSessions?.state?.();return Boolean(state&&!state.observationError&&p.ordinal&&(state.positions||[]).some(row=>row.ordinal===p.ordinal&&row.effort===row.ordinal));};
+ const setFieldError=message=>{if(message){inputs['effort-directory'].setAttribute('aria-invalid','true');inputs['effort-directory'].setAttribute('aria-describedby','effort-directory-error');dirError.textContent=message;dirError.hidden=false;}else{inputs['effort-directory'].removeAttribute('aria-invalid');inputs['effort-directory'].removeAttribute('aria-describedby');dirError.textContent='';dirError.hidden=true;}};
  const showStatus=message=>{status.textContent=message||'';};
  const syncPending=()=>{const pending=effortDraft&&effortDraft.pending;const unchanged=Boolean(pending&&effortDraft.intent===pending.rawIntent&&effortDraft.cwd===pending.rawCwd);
-  const busy=Boolean(pending&&pending.sending),created=Boolean(pending&&pending.created&&!pending.sending);submit.disabled=busy||(created&&unchanged);submit.setAttribute('aria-busy',String(busy));submit.setAttribute('aria-disabled',String(submit.disabled));if(busy)showStatus('Creating effort…');else if(created)showStatus(pending.refreshError?`Effort ${pending.ordinal||'created'} was created, but refreshing the workspace failed: ${pending.refreshError}. The draft is kept; submitting the same effort again is disabled to avoid a duplicate.`:`Effort created${pending.ordinal?` as ${pending.ordinal}`:''}.`);else if(pending&&pending.error)showStatus(`Creating the effort failed: ${pending.error}. The draft is retained; submit again to retry.`);else if(effortDraftNotice)showStatus(effortDraftNotice);else showStatus('');};
+  const busy=Boolean(pending&&pending.sending),created=Boolean(pending&&pending.created&&!pending.sending);submit.disabled=busy||(created&&unchanged);submit.setAttribute('aria-busy',String(busy));submit.setAttribute('aria-disabled',String(submit.disabled));
+  receipt.replaceChildren();receipt.hidden=true;
+  if(busy)showStatus('Creating effort…');
+  else if(created){
+   const ordinal=pending.ordinal||'created';
+   if(pending.refreshError)showStatus(`Effort ${ordinal} was registered, but the follow-up observation did not succeed (${pending.refreshError}). The registration receipt and your draft are kept; unchanged resubmission stays disabled to avoid a duplicate.`);
+   else if(!pending.observed)showStatus(`Effort ${ordinal} was registered. The workspace observation is still pending; the receipt is kept and unchanged resubmission stays disabled.`);
+   else showStatus(`Effort ${ordinal} registered and observed.`);
+   const open=button('Open effort',null,'primary-button');open.dataset.effortOpen='true';
+   open.addEventListener('click',()=>{const target=pending.effort&&pending.effort.ordinal?pending.effort:{ordinal:pending.ordinal,environment:{cwd:pending.rawCwd}};if(!target||!target.ordinal)return;
+    // The receipt is consumed only when both authored fields still equal the submitted values; newer edits are preserved.
+    const consumed=effortDraft&&effortDraft.pending===pending&&effortDraft.intent===pending.rawIntent&&effortDraft.cwd===pending.rawCwd;
+    chooseEffort(target);if(consumed){effortDraft=null;persistDraft();}});
+   receipt.append(open);
+   if(!pending.observed){const retry=button('Retry observation',null,'secondary-button');retry.dataset.effortRetryObservation='true';retry.disabled=Boolean(pending.observing);
+    retry.addEventListener('click',async()=>{const current=pending;if(current.observing)return;current.observing=true;current.initial=false;syncPending();
+     let result=null;
+     try{result=await window.NoeticSessions.observedRefresh();}catch(f){if(effortDraft&&effortDraft.pending===current&&!current.refreshError)current.refreshError=f.message;}
+     const success=Boolean(result&&result.observed===true)&&observationConfirms(current);
+     if(effortDraft&&effortDraft.pending===current){
+      if(success){current.refreshError='';current.observed=true;}
+      else if(!current.refreshError)current.refreshError='the workspace observation did not confirm the registered effort';
+      current.observing=false;syncPending();}
+    });
+    receipt.append(retry);}
+   receipt.hidden=false;
+  }
+  else if(pending&&pending.error)showStatus(pending.uncertain?`The registration outcome is unknown (${pending.error}). The effort may or may not have been registered; nothing was resent or replayed automatically. Inspect the workspace observations, or submit again deliberately after checking.`:`Creating the effort failed: ${pending.error}. The draft is retained; correct it and submit again.`);
+  else if(effortDraftNotice)showStatus(effortDraftNotice);
+  else showStatus('');};
  syncPending();effortSync=syncPending;effortInputs=inputs;
- const capture=()=>{effortDraft.intent=inputs['effort-intent'].value;effortDraft.cwd=inputs['effort-directory'].value;effortDraftNotice='';syncPending();};
+ const capture=()=>{effortDraft.intent=inputs['effort-intent'].value;effortDraft.cwd=inputs['effort-directory'].value;
+  if(!effortDraft.ownerProject){const owner=contextProject()||roots().find(row=>row.ordinal===snapshotData.effort)?.environment?.cwd||'';effortDraft.ownerProject=owner;effortDraft.ownerEffort=snapshotData.effort||'';}
+  effortDraftNotice='';setFieldError('');persistDraft();syncPending();};
  for(const id of ['effort-intent','effort-directory'])inputs[id].addEventListener('input',capture);
- form.addEventListener('submit',e=>{e.preventDefault();const d=effortDraft||(effortDraft={intent:'',cwd:'',pending:null});  if(d.pending&&(d.pending.sending||(d.pending.created&&d.intent===d.pending.rawIntent&&d.cwd===d.pending.rawCwd)))return;effortDraftNotice='';capture();
-  const pending={rawIntent:d.intent,rawCwd:d.cwd,contextEffort:snapshotData.effort??null,generation,intent:d.intent.trim(),cwd:d.cwd.trim(),sending:true,created:false,error:'',refreshError:''};d.pending=pending;syncPending();
+ // A stored field refusal is reshown only against the exact same unchanged authored folder; newer edits never inherit it.
+ if(effortDraft.pending&&effortDraft.pending.fieldError&&effortDraft.intent===effortDraft.pending.rawIntent&&effortDraft.cwd===effortDraft.pending.rawCwd)setFieldError(effortDraft.pending.fieldError);
+ form.addEventListener('submit',e=>{e.preventDefault();const d=effortDraft||(effortDraft={intent:'',cwd:'',ownerProject:contextProject(),ownerEffort:snapshotData.effort||'',pending:null});  if(d.pending&&(d.pending.sending||(d.pending.created&&d.intent===d.pending.rawIntent&&d.cwd===d.pending.rawCwd)))return;effortDraftNotice='';capture();
+  const pending={rawIntent:d.intent,rawCwd:d.cwd,ownerProject:d.ownerProject||contextProject(),ownerEffort:d.ownerEffort||snapshotData.effort||'',contextEffort:snapshotData.effort??null,generation,intent:d.intent.trim(),cwd:d.cwd.trim(),sending:true,created:false,observed:false,observing:false,initial:true,ordinal:'',effort:null,error:'',refreshError:'',uncertain:false,fieldError:''};d.pending=pending;persistDraft();syncPending();
   (async()=>{const syncIfAttached=()=>{if(view.route==='new-effort'){render();if(effortInputs){effortInputs['effort-intent'].value=effortDraft?effortDraft.intent:'';effortInputs['effort-directory'].value=effortDraft?effortDraft.cwd:'';}if(effortSync)effortSync();}};
    try{const response=await fetchJSON('/api/efforts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({intent:pending.intent,environment:{cwd:pending.cwd},human_ref:{origin:'local-operator'},source_ref:{kind:'desktop-effort-form'}})});
-    pending.sending=false;pending.created=true;pending.ordinal=response?.effort?.ordinal||'';syncIfAttached();
-    let observation=null;
-    try{observation=await window.NoeticSessions.observedRefresh();}catch(f){if(!pending.ordinal)pending.refreshError=f.message;}
-    const sameContext=generation===pending.generation&&view.route==='new-effort'&&(snapshotData.effort??null)===pending.contextEffort;
-    const unchanged=effortDraft===d&&d.intent===pending.rawIntent&&d.cwd===pending.rawCwd;
-    if(sameContext&&unchanged){
-     const state=window.NoeticSessions.state();
-     const observationFailed=Boolean(observation&&!observation.observed||state.observationError);
-     const observed=!observationFailed&&(state.positions||[]).some(row=>row.ordinal===pending.ordinal&&row.effort===row.ordinal);
-     if(observed){await chooseEffort(response.effort);if(effortDraft===d&&d.intent===pending.rawIntent&&d.cwd===pending.rawCwd)effortDraft=null;}
-     else pending.refreshError=observationFailed?`Effort ${pending.ordinal||'created'} keeps its registration receipt and unsent draft; the post-mutation observation was unavailable and duplicate submission stays prevented.`:'the created effort was not observed after refresh';
-    }else if(unchanged){d.intent='';d.cwd='';effortDraftNotice=`Effort created${pending.ordinal?` as ${pending.ordinal}`:''}.`;}
+    if(effortDraft&&effortDraft.pending===pending){pending.sending=false;pending.created=true;pending.ordinal=response?.effort?.ordinal||'';pending.effort=response?.effort&&response.effort.ordinal?response.effort:{ordinal:pending.ordinal,environment:{cwd:pending.cwd}};persistDraft();}
     syncIfAttached();
-   }catch(f){pending.sending=false;pending.error=f.message;syncIfAttached();}
+    // Observation is separate from registration; a failed or superseded read never reads as registration failure or success.
+    let observation=null;
+    try{observation=await window.NoeticSessions.observedRefresh();}catch(f){if(effortDraft&&effortDraft.pending===pending&&!pending.refreshError)pending.refreshError=f.message;}
+    const observed=Boolean(observation&&observation.observed===true)&&observationConfirms(pending);
+    if(effortDraft&&effortDraft.pending===pending){if(observed){pending.refreshError='';pending.observed=true;}else if(!pending.refreshError)pending.refreshError='the workspace observation did not confirm the registered effort';}
+    const sameContext=generation===pending.generation&&view.route==='new-effort'&&(snapshotData.effort??null)===pending.contextEffort;
+    const unchanged=effortDraft&&effortDraft.pending===pending&&effortDraft.intent===pending.rawIntent&&effortDraft.cwd===pending.rawCwd;
+    // Only the genuinely fresh successful initial observation keeps the accepted auto-open; retries never navigate.
+    if(pending.initial&&observed&&sameContext&&unchanged&&pending.effort){const target=pending.effort;effortDraft=null;persistDraft();await chooseEffort(target);return;}
+    syncIfAttached();
+   }catch(f){
+    if(effortDraft&&effortDraft.pending===pending){pending.sending=false;pending.error=f.message;pending.uncertain=!(f.status===400&&folderMessage(f.message));
+     if(f.status===400&&folderMessage(f.message)){
+      pending.fieldError=f.message;
+      const currentOrigin=generation===pending.generation&&view.route==='new-effort'&&(snapshotData.effort??null)===pending.contextEffort
+       &&effortDraft===d&&effortInputs===inputs&&d.ownerProject===pending.ownerProject&&d.ownerEffort===pending.ownerEffort
+       &&inputs['effort-directory'].isConnected&&inputs['effort-directory'].value===pending.rawCwd&&inputs['effort-intent'].value===pending.rawIntent;
+      if(currentOrigin)setFieldError(f.message);
+     }
+     persistDraft();}
+    syncIfAttached();
+   }
   })();
  });p.append(form);host.replaceChildren(p);
  const create=card('NEW PROJECT','Create a folder and start work');create.append(el('p','empty-note','Use the project conversation flow to create a new project and begin with a first instruction.'),button('Create project and conversation',()=>{window.NoeticSessions.open(null);$('developer-project-mode').value='create';$('developer-project-mode').dispatchEvent(new Event('change',{bubbles:true}));navigate('agentics');},'secondary-button'));host.append(create);
