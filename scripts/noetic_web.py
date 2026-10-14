@@ -543,6 +543,23 @@ def create_server(runs_dir: Path | str, host: str = "127.0.0.1", port: int = 876
                     else:
                         selection = app.selection({key: params[key][0] for key in ("scope", "effort_root") if key in params})
                     result = app.lexical(params.get("q", [""])[0], selection, limit)
+                elif path == "/api/source-preparation":
+                    names = ("ordinal", "instantiation", "session", "effort_root", "registry_id", "native_session_id", "sequence", "source_text_sha256")
+                    if set(params) != set(names) or any(len(values) != 1 or not values[0].strip() for values in params.values()):
+                        raise RequestError(400, "Source preparation accepts exactly one nonempty ordinal, instantiation, session, effort_root, registry_id, native_session_id, sequence and source_text_sha256 parameter.")
+                    def selector(name, value, minimum=1):
+                        try:
+                            number = int(value)
+                        except ValueError:
+                            raise RequestError(400, f"{name} must be an integer.") from None
+                        if number < minimum:
+                            raise RequestError(400, f"{name} must be a positive integer.")
+                        return number
+                    result = app.source_preparation(selection={"kind": "session", "ordinal": params["ordinal"][0],
+                        "instantiation": selector("instantiation", params["instantiation"][0]), "session": selector("session", params["session"][0]),
+                        "effort_root": params["effort_root"][0]}, registry_id=params["registry_id"][0],
+                        native_session_id=params["native_session_id"][0], sequence=selector("sequence", params["sequence"][0]),
+                        source_text_sha256=params["source_text_sha256"][0])
                 else:
                     raise RequestError(404, "Not found.")
                 result = {**result}

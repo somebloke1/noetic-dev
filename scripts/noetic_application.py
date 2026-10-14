@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import uuid
 from pathlib import Path
@@ -468,6 +469,77 @@ class Application:
                                   runs_dir=self.root, selection=selection)
         except ScopeError as exc:
             raise ApplicationError(422, f"Cannot collect selected recall sources: {exc}") from exc
+
+    def source_preparation(self, *, selection, registry_id, native_session_id, sequence, source_text_sha256):
+        """Read one exact retained assistant answer as its one qualified collector source."""
+        def refuse(status, message):
+            raise ApplicationError(status, message)
+        if not isinstance(selection, dict) or selection.get("kind") != "session":
+            refuse(400, "Source preparation requires an exact session selection; broader scopes are not supported.")
+        ordinal = selection.get("ordinal")
+        if not isinstance(ordinal, str) or not re.fullmatch(r"0(?:\.[0-9]+)*", ordinal):
+            refuse(400, "Source preparation requires a valid exact ordinal selector.")
+        for name, value in (("instantiation", selection.get("instantiation")), ("session", selection.get("session")), ("sequence", sequence)):
+            if type(value) is not int or value < 1:
+                refuse(400, f"Source preparation requires a complete positive integer {name}.")
+        effort_root = selection.get("effort_root")
+        if not isinstance(effort_root, str) or not effort_root.strip():
+            refuse(400, "Source preparation requires an explicit effort_root.")
+        for name, value in (("registry_id", registry_id), ("native_session_id", native_session_id)):
+            if not isinstance(value, str) or not value.strip():
+                refuse(400, f"Source preparation requires a nonempty {name}.")
+        if not isinstance(source_text_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", source_text_sha256):
+            refuse(400, "Source preparation requires an exact lowercase 64-character expected source digest.")
+        from scripts import noetic_sessions as native_sessions
+        service = native_sessions.SessionService(self.sessions_home, namespace_path=self.namespace_path)
+        target = {"ordinal": ordinal, "instantiation": selection["instantiation"], "session": selection["session"]}
+        item = service.select(target, effort_root=effort_root, current=False)
+        if (item["id"] != registry_id or item["native_session_id"] != native_session_id
+                or item["target"] != target or item["effort_root"] != effort_root):
+            refuse(409, "Selected context does not match the observed registry, native identity, exact target or owning effort; no source prepared.")
+        rows = service.registry.events(item["id"], after=sequence - 1, limit=1)
+        if len(rows) != 1 or rows[0]["sequence"] != sequence:
+            refuse(404, "Exact retained event was not observed; no source prepared.")
+        record = rows[0]["record"]
+        message = record.get("message") if isinstance(record, dict) else None
+        if (not isinstance(record, dict) or record.get("type") != "message_end" or not isinstance(message, dict) or message.get("role") != "assistant"
+                or message.get("errorMessage") or message.get("stopReason") in ("error", "aborted")):
+            refuse(415, "Retained event is not a supported completed assistant answer; no source prepared.")
+        content = message.get("content")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    if not isinstance(block.get("text"), str):
+                        refuse(415, "Retained assistant answer carries an unsupported text block; no source prepared.")
+                    parts.append(block["text"])
+            text = "\n".join(parts)
+        else:
+            text = ""
+        if not text:
+            refuse(415, "Retained assistant answer carries no supported complete text; no source prepared.")
+        try:
+            collection = self.collect(dict(selection))
+        except ApplicationError as exc:
+            raise ApplicationError(exc.status, f"Cannot collect the selected exact source: {exc}") from exc
+        matches = [source for source in collection.get("sources", [])
+                   if source.get("field") == "developer-conversation" and source.get("disposition") == "retained-message"
+                   and source.get("source") == "message_end" and source.get("registry_id") == item["id"]
+                   and source.get("source_ref", {}).get("session_id") == item["id"]
+                   and source.get("source_ref", {}).get("native_session_id") == native_session_id
+                   and source.get("source_ref", {}).get("sequence") == sequence
+                   and source.get("target") == item["target"] and source.get("effort_root") == effort_root
+                   and source.get("ownership") == "assigned"]
+        if len(matches) != 1:
+            refuse(409, "Exact collector source is missing or ambiguous; no source prepared.")
+        source = matches[0]
+        if source.get("source_text_sha256") != source_text_sha256:
+            refuse(409, "Expected source digest does not match the retained collector source; no source prepared.")
+        if source.get("text") != text:
+            refuse(409, "Retained event text does not equal the collected source text; no source prepared.")
+        return {"source": source}
 
     def lexical(self, query, selection, limit=20):
         if not isinstance(query, str) or not query.strip():

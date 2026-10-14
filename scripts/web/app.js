@@ -1438,6 +1438,7 @@ async function loadPurposes() {
 function sourcePreviewOf(match) {
   if (!match || typeof match !== "object") return null;
   const string = value => typeof value === "string" && value.trim() ? value : null;
+  const reference = match.source_ref && typeof match.source_ref === "object" ? match.source_ref : null;
   return {
     source_id: string(match.source_id), source_text_sha256: string(match.source_text_sha256),
     recorded_type: string(match.source), disposition: string(match.disposition),
@@ -1447,9 +1448,50 @@ function sourcePreviewOf(match) {
     occurred_at: string(match.occurred_at),
     authoritative: match.authoritative === true,
     semantic_authority: string(match.semantic_authority),
-    snippet: string(match.snippet)
+    snippet: string(match.snippet),
+    source_ref: reference ? {journal: string(reference.journal), session_id: string(reference.session_id),
+      sequence: Number.isFinite(reference.sequence) ? reference.sequence : null,
+      native_context: string(reference.native_context), native_session_id: string(reference.native_session_id)} : null
   };
 }
+function bindPreparedSource(match, preview, effortRoot) {
+  // Shared exact-source binding mutation for memory selection and answer preparation.
+  const owner = savedUI.structuredDraftOwner;
+  if (!window.NoeticDrafts?.ready?.() || !owner || !owner.effort || owner.effort !== effortRoot)
+    return {ok: false, error: "No current owned editable preparation for this effort; open it in the existing editor before binding a source."};
+  if (!match || typeof match.source_id !== "string" || !match.source_id || !/^[0-9a-f]{64}$/.test(match.source_text_sha256 || ""))
+    return {ok: false, error: "Exact source identity or digest is malformed; nothing was bound."};
+  // Canonical collector namespace is {id,path}; lexical metadata may carry the namespace string ID. journal/root_id are not namespaces.
+  const namespace = typeof match.namespace === "string" ? match.namespace : match.namespace && typeof match.namespace === "object" && typeof match.namespace.id === "string" ? match.namespace.id : null;
+  if (namespace && owner.namespace && namespace !== owner.namespace)
+    return {ok: false, error: `Exact source belongs to a different namespace; the owned preparation for Effort ${effortRoot} was not changed.`};
+  if (match.ownership && match.ownership !== "assigned")
+    return {ok: false, error: "Exact source is not assigned to this owning effort; nothing was bound."};
+  if (match.effort_root && match.effort_root !== effortRoot)
+    return {ok: false, error: `Exact source belongs to Effort ${match.effort_root}; the owned preparation for Effort ${effortRoot} was not changed.`};
+  const existing = reviewedSources.find(x=>x.source_id === match.source_id);
+  if (existing) {
+    // Launch revalidation stays authoritative: an already-bound exact source never changes fingerprint here.
+    if (existing.source_text_sha256 === match.source_text_sha256) {
+      if (!existing.preview && preview && preview.source_text_sha256 === match.source_text_sha256) existing.preview = preview;
+      return {ok: true};
+    }
+    return {ok: false, error: `Exact source ${match.source_id} is already bound with a different saved digest; the existing binding stays and nothing was replaced.`};
+  }
+  reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:effortRoot},...(preview && preview.source_id === match.source_id && preview.source_text_sha256 === match.source_text_sha256 ? {preview} : {})});
+  return {ok: true};
+}
+window.NoeticSourcePreparation = {
+  bind: bindPreparedSource,
+  capture: () => ({draft: draftVersion, scopeKey: operationKey(), operation: operationVersion, access: accessVersion,
+    namespace: savedUI.structuredDraftOwner?.namespace || null, effort: savedUI.structuredDraftOwner?.effort || null,
+    ready: Boolean(window.NoeticDrafts?.ready?.())}),
+  valid: token => Boolean(token) && draftVersion === token.draft && operationKey() === token.scopeKey
+    && operationVersion === token.operation && accessVersion === token.access
+    && (savedUI.structuredDraftOwner?.namespace || null) === token.namespace
+    && (savedUI.structuredDraftOwner?.effort || null) === token.effort
+    && Boolean(window.NoeticDrafts?.ready?.()) === token.ready
+};
 function renderMemoryMatches(matches, semanticMode) {
   const selection = operationSelection(), scopeVersion = operationVersion, scopeKey = operationKey(), access = accessVersion;
   $("memory-results").replaceChildren(...(matches.length ? matches.map(match=>{
@@ -1466,14 +1508,8 @@ function renderMemoryMatches(matches, semanticMode) {
       const use = node("button", "Select source for inquiry draft"); use.type = "button";
       use.addEventListener("click", ()=>{
         if (!operationValid(scopeVersion,scopeKey) || access !== accessVersion) return;
-        const preview = sourcePreviewOf(match);
-        const existing = reviewedSources.find(x=>x.source_id === match.source_id);
-        if (existing) {
-          // Launch revalidation stays authoritative: an already-bound exact source never changes fingerprint here.
-          if (existing.source_text_sha256 === match.source_text_sha256 && !existing.preview && preview && preview.source_text_sha256 === match.source_text_sha256) existing.preview = preview;
-        } else {
-          reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:selection.effort_root},...(preview && preview.source_id === match.source_id && preview.source_text_sha256 === match.source_text_sha256 ? {preview} : {})});
-        }
+        const outcome = bindPreparedSource(match, sourcePreviewOf(match), selection.effort_root);
+        if (!outcome.ok) { text("memory-status", outcome.error); return; }
         ++draftVersion; $("start-pattern").value = "opermem-reviewed"; renderReviewedSources(); updateComposer();persistUI();
         text("memory-status", "Qualified source selected for the editable draft. Launch will revalidate its original identity and digest.");
       }); article.append(use);
@@ -1980,7 +2016,7 @@ function renderReviewedSources() {
       if (previewData.occurred_at) contextParts.push(previewData.occurred_at);
     }
     const context = node("div",contextParts.length ? contextParts.join(" · ") : "Recorded provenance appears in exact details","source");
-    const identity = node("pre",JSON.stringify({source_id:source.source_id,source_text_sha256:source.source_text_sha256,selection:source.selection ?? null,authoritative:previewData ? previewData.authoritative : null,semantic_authority:previewData ? previewData.semantic_authority || "none" : "unobserved"},null,2));
+    const identity = node("pre",JSON.stringify({source_id:source.source_id,source_text_sha256:source.source_text_sha256,selection:source.selection ?? null,source_ref:previewData?.source_ref || null,authoritative:previewData ? previewData.authoritative : null,semantic_authority:previewData ? previewData.semantic_authority || "none" : "unobserved"},null,2));
     const details = node("details");
     details.append(node("summary","Exact source identity, selection and standing"));
     if (previewData && previewData.snippet) {
