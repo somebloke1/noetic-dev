@@ -317,51 +317,26 @@
     if (!state.mounted) {
       scopeToolbar(context.host);
       const card = panel("Retained artifacts","Exact selected execution"), content = body(card); context.host.append(card); state.list = content;
-      const detail = el("div","lib-preserved lib-execution-detail"); context.host.append(detail); UI.mount("workspace-page",detail); state.mounted = true;
+      const detail = el("div","lib-preserved lib-artifact-detail"); context.host.append(detail); UI.mount("workspace-page",detail); state.mounted = true;
     }
     get("workspace-page").hidden = false;
     get("effort-operation-controls").hidden = false;
     const detail = typeof selectedDetail !== "undefined" ? selectedDetail : null;
     const signature = JSON.stringify([detail?.status?.run_id,detail?.controller?.artifacts,detail?.artifacts]);
-    if (state.signature === signature) return;
-    // The selected run's execution view owns navigation; asynchronously
-    // arriving artifact content must not choose a view after the reader did.
-    state.signature = signature;
-    const existing = new Map([...state.list.children].map(row => [row.dataset.libKey, row]));
-    const used = new Set(), ordered = [];
-    const place = (key, rowSignature, build) => {
-      let row;
-      const prior = !used.has(key) ? existing.get(key) : null;
-      if (prior && prior.dataset.libSignature === rowSignature) { used.add(key); row = prior; }
-      else { row = build(); row.dataset.libKey = key; row.dataset.libSignature = rowSignature; }
-      ordered.push(row);
-    };
-    if (!detail) {
-      place("empty", "empty", () => { placeholder(state.list,"Select a recorded execution","Artifacts retain their original run, version, actor, and acceptance context."); const empty = state.list.lastElementChild; empty.append(action("Browse executions",()=>UI.navigate("executions"))); return empty; });
-    } else {
-      const typed = Object.values(detail.controller?.artifacts || {});
-      for (const artifact of typed) {
-        const rowSignature = JSON.stringify([artifact.type, artifact.phase, artifact.generation, artifact.produced_by, Boolean(artifact.partial)]);
-        place(`artifact/${artifact.id}`, rowSignature, () => {
-          const row = action("",()=>{ const select=get("artifact-select"); select.value = artifact.id; select.dispatchEvent(new Event("change",{bubbles:true})); if (typeof setExecutionView === "function") setExecutionView("evidence",{subview:"compare"}); else if (typeof switchView === "function") switchView("controller"); revealArtifact(artifact.id); });
-          row.className = "lib-run-row";
-          const text = el("span"); text.append(el("strong","",artifact.type),el("small","lib-mono",`${artifact.id} · ${artifact.phase} · generation ${artifact.generation} · ${artifact.produced_by || "actor unknown"}`));row.append(text,UI.badge(artifact.partial ? "Partial" : "Retained",""),el("span","","›"));
-          return row;
-        });
-      }
-      for (const name of Object.keys(detail.artifacts || {})) {
-        const report = [...get("report-select").options].some(option=>option.value === name);
-        const log = [...get("log-select").options].some(option=>option.value === name);
-        place(`file/${name}`, JSON.stringify([report, log]), () => {
-          const row = action(name,()=>{const field = get(report ? "report-select" : "log-select");field.value=name;field.dispatchEvent(new Event("change",{bubbles:true}));if (typeof switchView === "function") switchView(report ? "reports" : "logs");});
-          row.disabled=!report&&!log;row.className="lib-run-row";
-          return row;
-        });
-      }
-      if (!typed.length && !Object.keys(detail.artifacts || {}).length) place("empty", "empty", () => { placeholder(state.list,"No retained outputs","This execution has not produced readable artifacts."); return state.list.lastElementChild; });
+    if (state.signature === signature) return; state.signature = signature; state.list.replaceChildren();
+    if (!detail) {placeholder(state.list,"Select a recorded execution","Artifacts retain their original run, version, actor, and acceptance context.");state.list.append(action("Browse executions",()=>UI.navigate("executions")));return;}
+    const typed = Object.values(detail.controller?.artifacts || {});
+    for (const artifact of typed) {
+      const row = action("",()=>{ const select=get("artifact-select"); select.value = artifact.id; select.dispatchEvent(new Event("change",{bubbles:true})); if (typeof switchView === "function") switchView("controller"); revealArtifact(artifact.id); });row.className = "lib-run-row";
+      const text = el("span"); text.append(el("strong","",artifact.type),el("small","lib-mono",`${artifact.id} · ${artifact.phase} · generation ${artifact.generation} · ${artifact.produced_by || "actor unknown"}`));row.append(text,UI.badge(artifact.partial ? "Partial" : "Retained",""),el("span","","›"));state.list.append(row);
     }
-    ordered.forEach((row, index) => { if (state.list.children[index] !== row) state.list.insertBefore(row, state.list.children[index] || null); });
-    for (const [key, row] of existing) if (!used.has(key)) row.remove();
+    for (const name of Object.keys(detail.artifacts || {})) {
+      const report = [...get("report-select").options].some(option=>option.value === name);
+      const log = [...get("log-select").options].some(option=>option.value === name);
+      const row = action(name,()=>{const field = get(report ? "report-select" : "log-select");field.value=name;field.dispatchEvent(new Event("change",{bubbles:true}));if (typeof switchView === "function") switchView(report ? "reports" : "logs");});row.disabled=!report&&!log;row.className="lib-run-row";state.list.append(row);
+    }
+    if (!typed.length && !Object.keys(detail.artifacts || {}).length) placeholder(state.list,"No retained outputs","This execution has not produced readable artifacts.");
+    if (typeof switchView === "function") switchView(typed.length ? "controller" : "reports");
   }
   function revealArtifact(id) {
     const select = get("artifact-select"), content = get("artifact-content");

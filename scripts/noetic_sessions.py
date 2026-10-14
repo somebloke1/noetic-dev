@@ -41,28 +41,6 @@ class SessionError(ValueError):
         self.status = status
 
 
-def _actor_ordinal(value):
-    if not isinstance(value, str) or not re.fullmatch(r"0(?:\.[0-9]+)*", value):
-        raise SessionError(400, "Actor parent ordinal must be an absolute ordinal string.")
-    return value
-
-
-def _actor_target(value):
-    if not isinstance(value, dict) or set(value) != {"ordinal", "instantiation", "session"}:
-        raise SessionError(400, "Actor parent target requires exactly ordinal, instantiation and session.")
-    _actor_ordinal(value["ordinal"])
-    for key in ("instantiation", "session"):
-        if type(value[key]) is not int or value[key] < 1:
-            raise SessionError(400, f"Actor parent target {key} must be a positive integer.")
-    return dict(value)
-
-
-def _actor_owner(value):
-    if not isinstance(value, dict) or set(value) != {"run_id", "activation_id", "namespace"}:
-        raise SessionError(400, "Actor owner requires exactly run_id, activation_id and namespace.")
-    return {key: text(value[key], f"Actor owner {key}", maximum=256) for key in value}
-
-
 def project_location(body):
     if "projects_root" not in body:
         return None
@@ -158,7 +136,7 @@ class Registry:
             """)
 
             columns = {row[1] for row in db.execute("PRAGMA table_info(sessions)")}
-            for name, kind in (("effort_root", "TEXT"), ("instantiation", "INTEGER"), ("session_selector", "INTEGER"), ("succession", "TEXT"), ("global_ordinal", "TEXT"), ("actor_binding", "TEXT")):
+            for name, kind in (("effort_root", "TEXT"), ("instantiation", "INTEGER"), ("session_selector", "INTEGER"), ("succession", "TEXT"), ("global_ordinal", "TEXT")):
                 if name not in columns:
                     db.execute(f"ALTER TABLE sessions ADD COLUMN {name} {kind}")
             if "correlated" not in {row[1] for row in db.execute("PRAGMA table_info(events)")}:
@@ -182,7 +160,6 @@ class Registry:
         result = dict(row)
         for key in ("command", "runtime"):
             result[key] = json.loads(result[key])
-        result["actor_binding"] = json.loads(result["actor_binding"]) if result.get("actor_binding") else None
         result["original_ordinal"] = result["ordinal"]
         result["ordinal"] = result.get("global_ordinal") or result["ordinal"]
         result["target"] = ({"ordinal": result["ordinal"], "instantiation": result["instantiation"], "session": result["session_selector"]}
@@ -200,16 +177,15 @@ class Registry:
             rows = db.execute("SELECT id FROM sessions ORDER BY created_at, id").fetchall()
         return [self.get(row[0]) for row in rows if root_id is None or self.get(row[0])["root_id"] == root_id or self.get(row[0]).get("effort_root") == root_id]
 
-    def create(self, workspace, title, model, thinking, command, parent_id=None, *, ordinal, effort_root, succession=None, actor_binding=None):
+    def create(self, workspace, title, model, thinking, command, parent_id=None, *, ordinal, effort_root, succession=None):
         sid = str(uuid.uuid4())
         self.initialize()
         with closing(self.connect()) as db, db:
             db.execute("""INSERT INTO sessions
-                (id,root_id,parent_id,ordinal,workspace,title,model,thinking,command,status,created_at,updated_at,effort_root,succession,actor_binding)
-                VALUES (?,?,?,?,?,?,?,?,?,'created',?,?,?,?,?)""",
+                (id,root_id,parent_id,ordinal,workspace,title,model,thinking,command,status,created_at,updated_at,effort_root,succession)
+                VALUES (?,?,?,?,?,?,?,?,?,'created',?,?,?,?)""",
                 (sid, sid, parent_id, ordinal, str(workspace), title, model, thinking, json.dumps(command), now(), now(), effort_root,
-                 json.dumps(succession) if succession else None,
-                 json.dumps(actor_binding, ensure_ascii=True) if actor_binding else None))
+                 json.dumps(succession) if succession else None))
         self.directory(sid)
         self.event(sid, "host", {"type": "session_created", "parent_id": parent_id, "ordinal": ordinal})
         return self.get(sid)
@@ -262,11 +238,11 @@ class Registry:
                     db.execute("UPDATE events SET correlated=1 WHERE sequence=?", (row["sequence"],))
 
     def update(self, sid, **values):
-        allowed = {"status", "native_session_file", "native_session_id", "runtime", "error", "model", "thinking", "instantiation", "session_selector", "effort_root", "global_ordinal", "actor_binding"}
+        allowed = {"status", "native_session_file", "native_session_id", "runtime", "error", "model", "thinking", "instantiation", "session_selector", "effort_root", "global_ordinal"}
         if not values or set(values) - allowed:
             raise ValueError("Invalid session update")
         values = {**values, "updated_at": now()}
-        values = {key: json.dumps(value) if key in ("runtime", "actor_binding") else value for key, value in values.items()}
+        values = {key: json.dumps(value) if key == "runtime" else value for key, value in values.items()}
         with closing(self.connect()) as db, db:
             db.execute("UPDATE sessions SET " + ",".join(f"{key}=?" for key in values) + " WHERE id=?",
                        [*values.values(), sid])
@@ -403,8 +379,6 @@ class SessionService:
             raise SessionError(400, "Succession requires an exact positive predecessor and nonempty handoff object.")
         projects_root = project_location(body)
         parent = self.select(parent_id, current=True) if parent_id else None
-        if parent and self.registry.get(parent["id"]).get("actor_binding"):
-            raise SessionError(409, "Planned actor children cannot subdelegate; further work belongs to the owning plan.")
         if parent and prepared:
             raise SessionError(400, "Delegate sessions do not support attachments; prompt the prepared child explicitly instead of forwarding bytes it cannot carry.")
         effort = parent["effort_root"] if parent else text(body.get("effort_root"), "Effort root")
@@ -412,9 +386,6 @@ class SessionService:
             position = self.registry.domain.store().position(body.get("ordinal", effort), scope=Scope.effort(effort))
         except ScopeError as exc:
             raise SessionError(400, str(exc)) from exc
-        if not parent and position.get("discipline_id") is not None:
-            raise SessionError(409, "This ordinal is a controller-reserved discipline participant position; "
-                "manual Start cannot claim or observe over the controlled actor assigned to it.")
         workspace = Path(parent["workspace"] if parent else position["environment"]["cwd"]).expanduser()
         if not parent and body.get("workspace") not in (None, str(workspace)):
             raise SessionError(400, "Session workspace must match its effort environment.")
@@ -459,57 +430,6 @@ class SessionService:
                 self.prompt(item["id"], prompt)
         except BaseException as exc:
             self.registry.update(item["id"], error=str(exc)[:2000])
-            raise
-        return self.inspect(item["id"])
-
-    def create_actor_child(self, parent_target, *, effort_root, owner, task, workspace, model, thinking):
-        """Planned managed child: canonical delegation plus immutable actor binding, then genuine managed launch."""
-        target = _actor_target(parent_target)
-        owner = _actor_owner(owner)
-        if not isinstance(task, dict) or set(task) != {"id", "prompt", "title", "mandate", "source_ref"}:
-            raise SessionError(400, "Actor task requires exactly id, prompt, title, mandate and source_ref.")
-        task_id = text(task["id"], "Task id", maximum=256)
-        prompt = text(task["prompt"], "Task prompt")
-        title = text(task["title"], "Task title", maximum=256)
-        mandate = task["mandate"]
-        if not isinstance(mandate, dict) or not mandate or not mandate.get("ownership"):
-            raise SessionError(400, "Actor task mandate must carry nonempty domain ownership.")
-        source_ref = task["source_ref"]
-        if (not isinstance(source_ref, dict) or not isinstance(source_ref.get("plan_sha256"), str)
-                or not re.fullmatch(r"[0-9a-f]{64}", source_ref["plan_sha256"]) or source_ref.get("task_id") != task_id):
-            raise SessionError(400, "Actor task source_ref requires a lowercase plan_sha256 digest and its exact task_id.")
-        model = text(model, "Model", maximum=256)
-        if thinking not in ("off", "minimal", "low", "medium", "high", "xhigh"):
-            raise SessionError(400, "Unknown thinking level.")
-        workspace_path = Path(text(workspace, "Workspace", maximum=4096))
-        if not workspace_path.is_absolute():
-            raise SessionError(400, "Actor workspace must be an absolute folder path.")
-        try:
-            workspace_path = projects.validate_workspace(workspace_path)
-        except projects.ProjectError as exc:
-            raise SessionError(exc.status, str(exc)) from exc
-        self.resolve_actor_parent(target, effort_root=effort_root, owner=owner, workspace=str(workspace_path))
-        store = self.registry.domain.store()
-        scope = Scope.effort(effort_root)
-        binding = {"owner": owner, "parent_target": target, "task": task}
-        try:
-            position = store.delegate(target["ordinal"], scope=scope, mandate=mandate, origin="agent",
-                delegator=Target(**target),
-                source_ref={**source_ref, "owner": owner, "task": task_id, "act": "actor-child-delegate"})
-        except ScopeError as exc:
-            raise SessionError(400, str(exc)) from exc
-        item = self.registry.create(workspace_path, title, model, thinking,
-            self.pi_command or [shutil.which("pi") or "pi"], ordinal=position["ordinal"],
-            effort_root=effort_root, actor_binding=binding)
-        try:
-            self._launch(item["id"])
-            self.prompt(item["id"], prompt)
-        except BaseException as exc:
-            self.registry.update(item["id"], error=str(exc)[:2000])
-            try:
-                exc.child_session = self.registry.get(item["id"])
-            except SessionError:
-                pass
             raise
         return self.inspect(item["id"])
 
@@ -655,38 +575,6 @@ class SessionService:
 
     def select(self, address, *, effort_root=None, current=False):
         return self._select(address, effort_root=effort_root, current=current)[0]
-
-    def resolve_actor_parent(self, parent_target, *, effort_root, owner, workspace=None, native=None):
-        """Canonical current parent-context validation; the external actor has no registry_id."""
-        store = self.registry.domain.store()
-        try:
-            context = store.resolve_context(parent_target["ordinal"], scope=Scope.effort(effort_root),
-                instantiation=parent_target["instantiation"], session=parent_target["session"],
-                current=True, include_effort=True)
-        except ScopeError as exc:
-            raise SessionError(409, str(exc)) from exc
-        if context["target"] != parent_target:
-            raise SessionError(409, "Resolved actor parent context does not match the exact requested target.")
-        if context.get("namespace") != owner["namespace"]:
-            raise SessionError(409, "Actor owner namespace does not match the registered parent context namespace.")
-        instance_native = context["instantiation"].get("native_ref") if isinstance(context["instantiation"].get("native_ref"), dict) else {}
-        session_native = context["session"].get("native_ref") if isinstance(context["session"].get("native_ref"), dict) else {}
-        if instance_native.get("run_id") != owner["run_id"] or instance_native.get("activation_id") != owner["activation_id"]:
-            raise SessionError(409, "Instantiation native owner does not match the external actor owner.")
-        if session_native.get("session_id") != instance_native.get("session_id") or not isinstance(session_native.get("client"), str) \
-                or not session_native["client"].strip() or session_native.get("client") != instance_native.get("client"):
-            raise SessionError(409, "Native session identity does not match the instantiation identity.")
-        context_file = session_native.get("context_file")
-        if not isinstance(context_file, str) or not context_file.strip() or not Path(context_file).is_absolute():
-            raise SessionError(409, "Native session context_file must be an absolute observed path.")
-        if workspace is not None and session_native.get("execution_workspace") != str(workspace):
-            raise SessionError(409, "Observed native execution workspace does not match the actor workspace.")
-        if native is not None and (native.get("client") != session_native.get("client")
-                or native.get("session_id") != session_native.get("session_id")
-                or native.get("context_file") != session_native.get("context_file")
-                or native.get("execution_workspace") != session_native.get("execution_workspace")):
-            raise SessionError(409, "Bound native mapping does not match the exact current parent session.")
-        return context
 
     def _select(self, address, *, effort_root=None, current=False, include_effort=False):
         try:
@@ -922,240 +810,6 @@ class SessionService:
         return {"session": self.inspect(item["id"]), "events": events,
                 "next_after": events[-1]["sequence"] if events else after,
                 "tree": self.list(item["effort_root"] or item["root_id"])}
-
-
-class ExternalActorBridge:
-    """Passive Unix-socket host for one planned external actor parent.
-
-    Entering starts ONLY the local listener; no parent actor, process, native
-    instance or registry row exists. Identity/context actions stay refused
-    until the harness observes the genuine native state and calls bind_parent.
-    """
-
-    def __init__(self, service, *, effort_root, owner, workspace, model, thinking, policy, parent_ordinal):
-        if not callable(policy):
-            raise SessionError(400, "Actor bridge requires a delegation policy callable.")
-        self.service = service
-        self.effort_root = text(effort_root, "Actor effort root", maximum=256)
-        self.owner = _actor_owner(owner)
-        workspace = text(workspace, "Actor workspace", maximum=4096)
-        if not Path(workspace).is_absolute():
-            raise SessionError(400, "Actor workspace must be an absolute folder path.")
-        self.workspace = workspace
-        self.model = None if model is None else text(model, "Actor parent model", maximum=256)
-        if thinking not in ("off", "minimal", "low", "medium", "high", "xhigh"):
-            raise SessionError(400, "Unknown thinking level.")
-        self.thinking = thinking
-        self.policy = policy
-        self.parent_ordinal = _actor_ordinal(parent_ordinal)
-        self.socket_path = socket_path(service.runs_root, f"actor-{uuid.uuid4().hex}")
-        self._lock = threading.Lock()
-        self._bound_target = None
-        self._bound_native = None
-        self._inspected = set()
-        self._server = None
-        self._thread = None
-
-    @property
-    def environment(self):
-        return {"NOETIC_SESSION_SOCKET": str(self.socket_path), "NOETIC_SESSION_ORDINAL": self.parent_ordinal,
-                "NOETIC_EFFORT_ROOT": self.effort_root, "NOETIC_ACTOR_BRIDGE": "1"}
-
-    @property
-    def parent_target(self):
-        return dict(self._bound_target) if self._bound_target else None
-
-    @property
-    def native_ref(self):
-        return dict(self._bound_native) if self._bound_native else None
-
-    def __enter__(self):
-        path = self.socket_path
-        path.unlink(missing_ok=True)
-        bridge = self
-
-        class Handler(socketserver.StreamRequestHandler):
-            def handle(inner):
-                inspected, bound = None, None
-                try:
-                    line = inner.rfile.readline(MAX_RECORD + 1)
-                    if not line or len(line) > MAX_RECORD or not line.endswith(b"\n"):
-                        raise SessionError(400, "Invalid actor bridge frame.")
-                    request = json.loads(line)
-                    if not isinstance(request, dict):
-                        raise SessionError(400, "Actor bridge request must be an object.")
-                    data, inspected = bridge._dispatch(request)
-                    bound = bridge._bound_target
-                    result = {"success": True, "data": data}
-                except (SessionError, OSError, ValueError, TypeError, KeyError) as exc:
-                    result = {"success": False, "status": getattr(exc, "status", 400), "error": str(exc)}
-                delivered = False
-                try:
-                    inner.wfile.write(json.dumps(result, ensure_ascii=True).encode() + b"\n")
-                    delivered = True
-                except OSError:
-                    pass
-                if delivered and bridge._bound_target is not None and bridge._bound_target == bound:
-                    bridge._record_inspection(inspected)
-
-        class Server(socketserver.ThreadingUnixStreamServer):
-            daemon_threads = True
-
-        self._server = Server(str(path), Handler)
-        os.chmod(path, 0o600)
-        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
-        self._thread.start()
-        return self
-
-    def __exit__(self, *_):
-        if self._server is not None:
-            self._server.shutdown()
-            self._server.server_close()
-            self._server = None
-        if self._thread is not None:
-            self._thread.join(timeout=2)
-            self._thread = None
-        self.socket_path.unlink(missing_ok=True)
-        return None
-
-    def _actor_native(self, value):
-        if not isinstance(value, dict):
-            raise SessionError(400, "Actor native reference must be an object.")
-        for key in ("client", "session_id", "context_file", "execution_workspace"):
-            if not isinstance(value.get(key), str) or not value[key].strip():
-                raise SessionError(400, f"Actor native reference requires nonempty {key}.")
-        session_id(value["session_id"])
-        if not Path(value["context_file"]).is_absolute():
-            raise SessionError(400, "Actor native context_file must be an absolute path.")
-        return dict(value)
-
-    def bind_parent(self, target, native_ref):
-        target = _actor_target(target)
-        native = self._actor_native(native_ref)
-        with self._lock:
-            if self._bound_target is not None and (self._bound_target != target or self._bound_native != native):
-                raise SessionError(409, "Actor bridge is already bound to a different exact parent context.")
-            if target["ordinal"] != self.parent_ordinal:
-                raise SessionError(409, "Actor bridge parent ordinal does not match the reserved parent_ordinal.")
-            context = self.service.resolve_actor_parent(target, effort_root=self.effort_root, owner=self.owner,
-                workspace=self.workspace, native=native)
-            if self.model is None:
-                observed = (context["session"].get("native_ref") or {}).get("startup_state") or {}
-                route = observed.get("model") if isinstance(observed.get("model"), dict) else {}
-                provider, identity = route.get("provider"), route.get("id")
-                if (not isinstance(provider, str) or not provider.strip() or "/" in provider
-                        or not isinstance(identity, str) or not identity.strip() or "/" in identity):
-                    raise SessionError(409, "Observed parent model route is unavailable; an explicit model choice is required before binding.")
-                self.model = f"{provider}/{identity}"
-            self._bound_target, self._bound_native = target, native
-
-    def _validate_bound(self, request):
-        if self._bound_target is None:
-            raise SessionError(409, "Actor bridge parent context is not bound; the harness must observe the genuine native state first.")
-        if request.get("effort_root") not in (None, self.effort_root):
-            raise SessionError(400, "Actor bridge effort scope does not own the requested caller.")
-        if request.get("parentTarget") is not None and _actor_target(request["parentTarget"]) != self._bound_target:
-            raise SessionError(409, "Actor bridge parentTarget does not match the bound exact parent.")
-        return self.service.resolve_actor_parent(self._bound_target, effort_root=self.effort_root,
-            owner=self.owner, workspace=self.workspace, native=self._bound_native)
-
-    def _context_view(self, context):
-        return {"target": dict(self._bound_target), "effort_root": self.effort_root,
-                "namespace": context.get("namespace"), "owner": self.owner,
-                "position": {"ordinal": context["position"]["ordinal"], "mandate": context["position"]["mandate"]},
-                "environment": (context.get("owning_effort") or {}).get("environment"), "workspace": self.workspace}
-
-    def _children(self, *, complete_events=False):
-        rows = []
-        for entry in self.service.registry.list():
-            binding = entry.get("actor_binding")
-            if (isinstance(binding, dict) and binding.get("owner") == self.owner
-                    and binding.get("parent_target") == self._bound_target
-                    and entry.get("effort_root") == self.effort_root):
-                try:
-                    events = self.service.registry.events(entry["id"])
-                    if complete_events:
-                        after = events[-1]["sequence"] if events else 0
-                        while True:
-                            page = self.service.registry.events(entry["id"], after=after)
-                            if not page:
-                                break
-                            events.extend(page)
-                            after = page[-1]["sequence"]
-                    rows.append({"session": self.service.inspect(entry["id"]),
-                                 "events": events,
-                                 "actor_binding": binding})
-                except SessionError:
-                    continue
-        return rows
-
-    def _owned_child_item(self, target):
-        item = self.service.select(target, effort_root=self.effort_root)
-        binding = self.service.registry.get(item["id"]).get("actor_binding")
-        if (not isinstance(binding, dict) or binding.get("owner") != self.owner
-                or binding.get("parent_target") != self._bound_target
-                or item.get("effort_root") != self.effort_root):
-            raise SessionError(403, "Target is not an owned planned child of this actor bridge.")
-        return item, binding
-
-    def _verified_child(self, child, task_id):
-        if not isinstance(child, dict) or not child.get("id"):
-            raise SessionError(409, "Delegation policy returned no usable child session identity.")
-        binding = self.service.registry.get(child["id"]).get("actor_binding")
-        if (not isinstance(binding, dict) or binding.get("owner") != self.owner
-                or binding.get("parent_target") != self._bound_target
-                or not isinstance(binding.get("task"), dict) or binding["task"].get("id") != task_id):
-            raise SessionError(409, "Delegation result does not carry the planned actor binding for this exact task.")
-        return child
-
-    def _record_inspection(self, task_id):
-        if task_id is not None:
-            with self._lock:
-                self._inspected.add(task_id)
-
-    def handle(self, request):
-        result, inspected = self._dispatch(request)
-        self._record_inspection(inspected)
-        return result
-
-    def _dispatch(self, request):
-        if not isinstance(request, dict):
-            raise SessionError(400, "Actor bridge request must be an object.")
-        action = request.get("action")
-        context = self._validate_bound(request)
-        if action == "identity":
-            return {"target": dict(self._bound_target), "effort_root": self.effort_root}, None
-        if action == "context":
-            return self._context_view(context), None
-        if action in ("overview", "tree"):
-            children = self._children()
-            return ({"context": self._context_view(context), "children": children} if action == "overview" else children), None
-        if action == "delegate":
-            task_id = text(request.get("task_id"), "Task id", maximum=256)
-            return self._verified_child(self.policy(request, self), task_id), None
-        if action in ("read", "wait"):
-            if request.get("target") is None:
-                raise SessionError(400, "Actor read/wait requires an exact owned child target.")
-            item, binding = self._owned_child_item(request["target"])
-            if action == "wait":
-                timeout = request.get("timeout", 30)
-                if type(timeout) not in (int, float) or type(timeout) is bool or not 0 <= timeout <= 60:
-                    raise SessionError(400, "Wait timeout must be a finite number between 0 and 60 seconds.")
-                deadline = time.monotonic() + timeout
-                while self.service.inspect(item["id"])["status"] in ("running", "submitted", "starting", "stopping") and time.monotonic() < deadline:
-                    time.sleep(0.1)
-            result = self.service.detail(item["id"], request.get("after", 0), effort_root=self.effort_root)
-            result.pop("tree", None)
-            return result, binding["task"]["id"]
-        raise SessionError(400, f"Passive actor bridge refuses {action!r}; ordinary prompt/stop/message controls are unavailable.")
-
-    def snapshot(self):
-        bound = self._bound_target is not None
-        if bound:
-            self._validate_bound({})
-        return {"owner": self.owner, "parent_target": dict(self._bound_target) if bound else None,
-                "children": self._children(complete_events=True) if bound else [],
-                "inspected_task_ids": sorted(self._inspected)}
 
 
 class Broker:

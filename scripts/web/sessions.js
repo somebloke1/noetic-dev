@@ -513,78 +513,6 @@
     if (transcriptContainer.clientHeight && transcriptFollowing) transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
     transcriptBox.width = transcriptContainer.clientWidth; transcriptBox.height = transcriptContainer.clientHeight;
   }).observe(transcriptContainer);
-  let answerPreparationSequence = 0;
-  function prepareFromAnswerControl(message) {
-    const prepare = node("button", "Prepare inquiry from answer"); prepare.type = "button";
-    prepare.addEventListener("click", async () => {
-      const session = detail.session;
-      const shared = window.NoeticSourcePreparation?.capture?.() || {};
-      const generation = ++answerPreparationSequence;
-      const token = {version: selectionVersion, selected: selected && {...selected}, sessionId: session.id,
-        native: session.native_session_id, contextFile: session.native_session_file, rootId: session.root_id,
-        target: session.target && {ordinal: session.target.ordinal, instantiation: session.target.instantiation, session: session.target.session},
-        effort: session.effort_root, key: message.key, text: message.text, generation, ...shared};
-      const sameTarget = target => target && token.target && target.ordinal === token.target.ordinal
-        && target.instantiation === token.target.instantiation && target.session === token.target.session;
-      const current = () => answerPreparationSequence === token.generation && selectionVersion === token.version
-        && same(selected, token.selected) && detail?.session?.id === token.sessionId
-        && detail?.session?.native_session_id === token.native && detail?.session?.native_session_file === token.contextFile
-        && detail?.session?.root_id === token.rootId && sameTarget(detail?.session?.target)
-        && detail?.session?.effort_root === token.effort && (window.NoeticSourcePreparation?.valid?.(shared) ?? false);
-      const stale = message => error("developer-error", message);
-      if (!session.target || !session.effort_root || !session.native_session_id || !session.id) {
-        stale("This conversation has no exact assigned native context; no source can be prepared.");
-        return;
-      }
-      if (($("start-pattern")?.value) !== "opermem-reviewed") {
-        stale("The current workflow is not the owned Question inquiry preparation. Choose it in the existing Entrust work editor, then prepare the source again; nothing was changed.");
-        return;
-      }
-      prepare.disabled = true;
-      try {
-        const digestBytes = new TextEncoder().encode(token.text);
-        const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", digestBytes))].map(byte => byte.toString(16).padStart(2, "0")).join("");
-        if (!current()) { stale("Preparation context changed while reading; the newest draft is unchanged and no source was bound."); return; }
-        const parameters = new URLSearchParams({ordinal: token.target.ordinal, instantiation: String(token.target.instantiation),
-          session: String(token.target.session), effort_root: token.effort, registry_id: token.sessionId,
-          native_session_id: token.native, sequence: String(token.key), source_text_sha256: digest});
-        const reply = await fetchJSON(`/api/source-preparation?${parameters}`);
-        if (!current()) { stale("Preparation context changed during the exact source read; the newest draft is unchanged and no source was bound."); return; }
-        const source = reply && typeof reply.source === "object" ? reply.source : null;
-        const reference = source && typeof source.source_ref === "object" ? source.source_ref : {};
-        const identityMatches = Boolean(source && typeof source.source_id === "string" && source.source_id
-          && source.source_text_sha256 === digest && source.text === token.text
-          && reference.session_id === token.sessionId && reference.native_session_id === token.native
-          && reference.sequence === token.key && reference.native_context === token.contextFile
-          && source.registry_id === token.sessionId && source.source_namespace?.root_id === token.rootId
-          && source.target?.ordinal === token.target.ordinal && source.target?.instantiation === token.target.instantiation
-          && source.target?.session === token.target.session && source.effort_root === token.effort
-          && source.namespace && (source.namespace.id === shared.namespace)
-          && source.ownership === "assigned" && source.source === "message_end"
-          && source.disposition === "retained-message" && source.field === "developer-conversation"
-          && source.authoritative === false && source.semantic_authority === "none");
-        if (!identityMatches) {
-          if (current()) stale("Read source does not match the observed exact answer and native event; nothing was prepared.");
-          else stale("Preparation context changed during the exact source read; the newest draft is unchanged and no source was bound.");
-          return;
-        }
-        const projection = {...source, snippet: typeof source.text === "string" ? source.text : ""};
-        const outcome = window.NoeticSourcePreparation?.bind?.(projection, sourcePreviewOf(projection), token.effort);
-        if (!outcome || !outcome.ok) {
-          if (current()) stale(outcome && outcome.error || "Exact source preparation refused; nothing was changed.");
-          return;
-        }
-        if (!current()) { stale("Preparation context changed before navigation; the binding stayed with its owning draft."); return; }
-        ++draftVersion; renderReviewedSources(); updateComposer(); persistUI();
-        error("developer-error", ""); window.NoeticUI.navigate("new-work");
-      } catch (failure) {
-        stale(failure && failure.message ? `Exact source preparation unavailable: ${failure.message}` : "Exact source preparation unavailable.");
-      } finally {
-        prepare.disabled = false;
-      }
-    });
-    return prepare;
-  }
   function conversation() {
     const transcriptSignature = JSON.stringify([selected,events,detail.session.status,detail.session.workspace,detail.session.title,detail.session.identity_origin,detail.session.original_ordinal,detail.session.effort_root,detail.session.target]);
     if ($("developer-transcript").dataset.signature === transcriptSignature) return;
@@ -615,8 +543,7 @@
         const omitted=Array.isArray(message.content)?message.content.filter(block=>!["text","toolCall"].includes(block.type)).map(block=>`[non-text ${block.type || "content"} omitted]`):[];
         if (rendered || message.errorMessage || omitted.length) {
           const item = {key:event.sequence, role:message.role, text:agentEnvelope?.message || rendered || message.errorMessage || "", outcome:message.stopReason,
-            copyText:[agentEnvelope?.message || rendered || message.errorMessage || "",...omitted].filter(Boolean).join("\n"), sender:agentEnvelope?.provenance.sender, binding_id:agentEnvelope?.binding_id, recipient:agentEnvelope?.provenance.recipient,
-            sourceSupported: message.role === "assistant" && !agentEnvelope && !message.errorMessage && !["error", "aborted"].includes(message.stopReason) && Boolean(rendered)};
+            copyText:[agentEnvelope?.message || rendered || message.errorMessage || "",...omitted].filter(Boolean).join("\n"), sender:agentEnvelope?.provenance.sender, binding_id:agentEnvelope?.binding_id, recipient:agentEnvelope?.provenance.recipient};
           messages.push(item); entries.push({message:item});
         }
         if (message.role === "assistant" && Array.isArray(message.content)) for (const block of message.content) {
@@ -672,10 +599,6 @@
         article.dataset.messageSequence = message.key;
         const heading = message.sender ? `Agent ${message.sender.ordinal} · instantiation ${message.sender.instantiation} · session ${message.sender.session}` : message.role === "user" ? "You" : `Agent ${detail.session.original_ordinal && originalSource(detail.session) ? detail.session.original_ordinal : detail.session.ordinal}${sourceQualifier(detail.session)}`;
         article.append(node("h3", heading), message.role === "assistant" ? markdown(message.text) : node("pre", message.text),copyControl("Copy message",()=>message.copyText));
-        // Only an ordinary supported completed assistant answer with an exact assigned native context offers the bridge action.
-        if (message.sourceSupported && message.text && detail.session.target && detail.session.effort_root
-            && detail.session.native_session_id && detail.session.id)
-          article.append(prepareFromAnswerControl(message));
         if(!message.text)article.append(node("p",message.copyText,"source"));
         copyBlocks(article);
         if (message.sender) article.append(node("small", `Message ${message.binding_id} · to ${message.recipient.ordinal} · instantiation ${message.recipient.instantiation} · session ${message.recipient.session}`));

@@ -87,7 +87,6 @@ function changeOperationScope(mode, previous = operationKey()) {
     delete $("reviewed-store").dataset.options; text("reviewed-store-status", "Scope changed. Select a backing explicitly.");
     $("reviewed-result").hidden = true; $("reviewed-evidence").hidden = true; $("reviewed-evidence-content").replaceChildren();
     selectedId = null; selectedDetail = null; listSignature = "";
-    resetTranscriptSubject("Operation scope changed; previous run output cleared.");
     observeRuns({selection:operationSelection(),status:"unobserved",observedAt:null,warnings:[],error:""},false); renderRuns([]);
     $("selected-run").hidden = true; $("workspace-result").hidden = true; $("workspace-file-view").hidden = true;
     $("memory-results").replaceChildren(); text("memory-status", "Scope changed. Search explicitly."); text("memory-coverage", ""); error("memory-error", "");
@@ -380,40 +379,21 @@ function renderRuns(runs) {
   document.dispatchEvent(new CustomEvent("noetic:runs", {detail:{runs,observation:runRegister}}));
 }
 
-const executionViewRegions = {results:"execution-results", actors:"controller-view", activity:"session-view", evidence:"execution-technical"};
-let executionView = "results";
-function setExecutionView(name, opts = {}) {
-  if (!executionViewRegions[name]) name = "results";
-  executionView = name;
-  for (const [key, id] of Object.entries(executionViewRegions)) { const region = $(id); if (region) region.hidden = key !== name; }
-  for (const button of document.querySelectorAll("#execution-views [data-execution-view]"))
-    button.setAttribute("aria-pressed", String(button.dataset.executionView === name));
-  const drawer = $("evidence-drawer");
-  if (drawer) { drawer.hidden = name !== "evidence"; drawer.open = name === "evidence"; }
-  if (name === "evidence" && opts.subview) switchView(opts.subview);
+function switchView(view, reveal = false) {
+  const inspecting = view !== "session";
+  $("session-view").hidden = false;
+  for (const button of document.querySelectorAll("[data-view]")) {
+    const active = button.dataset.view === view;
+    button.setAttribute("aria-pressed", String(active));
+    if (button.dataset.view !== "session") $(`${button.dataset.view}-view`).hidden = !active;
+  }
+  $("evidence-drawer").open = inspecting;
+  if (reveal) (inspecting ? $("evidence-drawer") : $("session-view")).scrollIntoView({ block: "start", behavior: "instant" });
   if (selectedId) {
     savedUI.runs ||= {};
-    savedUI.runs[selectedId] = { ...savedUI.runs[selectedId], executionView: name };
+    savedUI.runs[selectedId] = { ...savedUI.runs[selectedId], view };
   }
   persistUI();
-  if (name === "activity") loadSession();
-}
-function switchView(view, reveal = false) {
-  // Legacy compatibility: existing evidence actions keep their meaning inside
-  // the explicit execution views instead of forcing a different primary view.
-  if (view === "session") setExecutionView("activity");
-  else if (view === "controller") setExecutionView("actors");
-  else if (["phases","compare","timeline","reports","logs"].includes(view)) {
-    setExecutionView("evidence");
-    for (const button of document.querySelectorAll("[data-view]")) {
-      if (button.dataset.view === "session" || button.dataset.view === "controller") continue;
-      const active = button.dataset.view === view;
-      button.setAttribute("aria-pressed", String(active));
-      const region = $(`${button.dataset.view}-view`);
-      if (region) region.hidden = !active;
-    }
-  }
-  if (reveal) $(executionViewRegions[executionView])?.scrollIntoView({ block: "start", behavior: "instant" });
 }
 
 async function selectRun(id, evidence = null) {
@@ -430,7 +410,6 @@ async function selectRun(id, evidence = null) {
   ++actorLogVersion;
   if (changed) {
     $("reviewed-evidence-content").replaceChildren(); $("reviewed-evidence").open=false; $("reviewed-review").open=false; text("reviewed-recovery-status", "");
-    resetTranscriptSubject("Reading retained transcript for the selected run…");
     $("follow-current").checked = savedUI.runs?.[id]?.follow !== false;
     $("session-agent-list").replaceChildren();
     $("session-select").replaceChildren();
@@ -640,187 +619,13 @@ async function loadActorLog() {
   }
 }
 
-function updateTreeText(current, fresh) {
-  // Returns the node that now occupies `current`'s slot: the retained node
-  // when reconciled in place, the fresh node when replaced. A child-level
-  // replacement is spliced in by replaceWith, so the retained root stays
-  // attached; syncKeyedChildren must therefore keep the returned root.
-  if (current.nodeType !== fresh.nodeType) { current.replaceWith(fresh); return fresh; }
-  if (current.nodeType !== 3) {
-    if (current.tagName !== fresh.tagName || current.className !== fresh.className) { current.replaceWith(fresh); return fresh; }
-    for (const name of ["aria-current", "aria-expanded"]) {
-      const value = fresh.getAttribute ? fresh.getAttribute(name) : null;
-      if (value === null || value === undefined) { if (current.hasAttribute && current.hasAttribute(name)) current.removeAttribute(name); }
-      else if (current.getAttribute(name) !== value) current.setAttribute(name, value);
-    }
-    // The user-owned `open` disclosure state is intentionally not copied from
-    // the fresh template: retained details keep their own expansion.
-    const currentKids = [...current.childNodes], freshKids = [...fresh.childNodes];
-    if (currentKids.length !== freshKids.length) { current.replaceWith(fresh); return fresh; }
-    for (let index = 0; index < currentKids.length; index++) updateTreeText(currentKids[index], freshKids[index]);
-    return current;
-  }
-  if (current.textContent !== fresh.textContent) current.textContent = fresh.textContent;
-  return current;
-}
-function syncKeyedChildren(host, rows, keyOf) {
-  const existing = new Map([...host.children].map(child => [keyOf(child), child]));
-  const used = new Set(), ordered = [];
-  for (const row of rows) {
-    const key = keyOf(row);
-    let current = !used.has(key) ? existing.get(key) || null : null;
-    if (current) { used.add(key); current = updateTreeText(current, row); } else current = row;
-    ordered.push(current);
-  }
-  ordered.forEach((row, index) => { if (host.children[index] !== row) host.insertBefore(row, host.children[index] || null); });
-  for (const [key, child] of existing) if (!used.has(key)) child.remove();
-}
-function readableTypeName(artifact) {
-  return String(artifact.type || "artifact").split(/[._\s-]+/).filter(Boolean)
-    .map(word => word[0].toUpperCase() + word.slice(1)).join(" ") || "Artifact";
-}
-function readableArtifactTitle(artifact) {
-  const content = artifact.content && typeof artifact.content === "object" && !Array.isArray(artifact.content) ? artifact.content : {};
-  for (const field of ["objective", "title", "summary", "report", "intent"]) {
-    const value = content[field];
-    if (typeof value === "string" && value.trim()) return value.trim().split(/\r?\n/)[0];
-  }
-  if (Array.isArray(artifact.content) && artifact.content.length) {
-    const step = artifact.content.find(item => item && typeof item === "object" && typeof item.action === "string" && item.action.trim());
-    if (step) return String(step.action).trim().split(/\r?\n/)[0];
-    return `${readableTypeName(artifact)} · ${artifact.content.length} recorded steps`;
-  }
-  return `${readableTypeName(artifact)} · phase ${artifact.phase || "unassigned"}`;
-}
-function appendReadableFields(parent, content) {
-  for (const [field, value] of Object.entries(content)) {
-    if (value == null || (typeof value === "string" && !value.trim())) continue;
-    const heading = field.replace(/[_-]+/g, " ").trim().replace(/^\w/, c => c.toUpperCase());
-    parent.append(node("h5", heading || field));
-    if (typeof value === "string") parent.append(value.includes("\n") || value.length > 160 ? node("pre", value) : node("p", value));
-    else if (Array.isArray(value)) {
-      if (value.every(item => typeof item === "string")) {
-        const list = node("ul", undefined, "evidence-note");
-        for (const item of value) list.append(node("li", item));
-        parent.append(list);
-      } else appendReadableContent(parent, value);
-    } else if (typeof value === "object") {
-      const sub = node("div"); appendReadableFields(sub, value); parent.append(sub);
-    } else parent.append(node("p", String(value)));
-  }
-}
-function appendReadableContent(parent, content) {
-  if (typeof content === "string") { parent.append(window.NoeticRichText && !content.trimStart().startsWith("{") ? window.NoeticRichText(content, {id:selectedId, kind:"run", selection:operationSelection(), viewVersion:operationVersion}) : node("pre", content)); return; }
-  if (Array.isArray(content)) {
-    if (content.length && content.every(item => item && typeof item === "object")) {
-      const list = node("ol");
-      for (const step of content) { const li = node("li"); appendReadableFields(li, step); list.append(li); }
-      parent.append(list);
-    } else {
-      const list = node("ul", undefined, "evidence-note");
-      for (const item of content) list.append(node("li", typeof item === "string" ? item : JSON.stringify(item)));
-      parent.append(list);
-    }
-    return;
-  }
-  if (content && typeof content === "object") { appendReadableFields(parent, content); return; }
-  parent.append(node("p", content == null ? "" : String(content)));
-}
-let resultsOwner = null;
-function renderResults(detail) {
-  const host = $("execution-results-body");
-  if (!host) return;
-  const runId = detail.status?.run_id || null;
-  if (resultsOwner !== runId) {
-    // A new output subject starts from a clean results body; keyed retention
-    // is only sound within the same run.
-    resultsOwner = runId;
-    host.replaceChildren();
-  }
-  if (detail.backend === "opermem-reviewed") {
-    host.replaceChildren(node("p", "The reviewed inquiry keeps its own report, external independent review and separate dispositions above. No generic kernel acceptance is inferred from this view.", "evidence-note"));
-    return;
-  }
-  const state = detail.controller;
-  const block = (artifact, standing, label) => {
-    const article = node("article", undefined, "evidence-block");
-    article.dataset.resultKey = `${label}/${artifact.id}`;
-    article.append(node("h4", `${readableArtifactTitle(artifact)} — ${label}`),
-      node("p", `${standing} · ${artifact.id} · ${readableTypeName(artifact)} · phase ${artifact.phase || "none"} · generation ${artifact.generation ?? "external"}`, "source"));
-    appendReadableContent(article, artifact.content);
-    const raw = node("details");
-    raw.append(node("summary", "Exact payload and provenance"), node("pre", JSON.stringify(artifact.content, null, 2)),
-      node("p", `producer ${artifact.produced_by || "external"} · activation ${artifact.activation_id || "none"} · visit ${artifact.visit ?? "n/a"}`, "source"));
-    article.append(raw);
-    return article;
-  };
-  if (!state) {
-    const blocks = [node("p", "Recorded legacy execution. The retained reports below are the outputs; raw command logs stay in Technical evidence.", "evidence-note")];
-    let shown = 0;
-    for (const [name, label] of [["work.md", "Worker report"], ["review.md", "Reviewer report"]]) {
-      const artifact = detail.artifacts[name];
-      if (!artifact || typeof artifact.text !== "string" || !artifact.text.trim()) continue;
-      const article = node("article", undefined, "evidence-block");
-      article.dataset.resultKey = name;
-      article.append(node("h4", label), node("p", `${name} · exact retained text; not an independent validation by this interface.`, "source"), node("pre", artifact.text));
-      blocks.push(article); shown++;
-    }
-    if (!shown) { const empty = node("p", "No structured output retained yet for this run. Raw files stay in Technical evidence.", "empty-note"); empty.dataset.resultKey = "empty"; blocks.push(empty); }
-    syncKeyedChildren(host, blocks, row => row.dataset.resultKey || row.textContent);
-    return;
-  }
-  const current = [], subject = [], historical = [];
-  for (const artifact of Object.values(state.artifacts).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }))) {
-    if (["qa.review", "cognition.feedback"].includes(artifact.type)) continue;
-    const standing = artifactStanding(state, artifact);
-    if (standing.startsWith("Current accepted") || standing.startsWith("Current effective")) current.push([artifact, standing]);
-    else if (standing.startsWith("Current subject")) subject.push([artifact, standing]);
-    else historical.push([artifact, standing]);
-  }
-  const group = (label, entries, emptyNote) => {
-    const wrap = node("section");
-    wrap.dataset.resultKey = label;
-    wrap.append(node("h4", label));
-    if (!entries.length) wrap.append(node("p", emptyNote, "empty-note"));
-    for (const [artifact, standing] of entries)
-      wrap.append(block(artifact, standing, standing.startsWith("Current subject") ? "current unaccepted subject" : "retained output"));
-    return wrap;
-  };
-  const note = node("p", "Current accepted or effective outputs first; the unaccepted subject and earlier attempts follow with their exact standing. Provenance stays inspectable.", "evidence-note");
-  note.dataset.resultKey = "note";
-  syncKeyedChildren(host, [note,
-    group("Current accepted / effective outputs", current, "No output is currently accepted or effective."),
-    group("Current unaccepted subject", subject, "No unaccepted subject artifact is bound."),
-    group("Historical and partial attempts", historical, "No historical attempts are retained.")], row => row.dataset.resultKey || row.textContent);
-}
-
 function renderController(detail) {
   const state = detail.controller;
   $("controller-summary").hidden = false;
-  if ($("controller-tab")) $("controller-tab").hidden = !state;
+  $("controller-tab").hidden = !state;
   $("legacy-execution").hidden = Boolean(state);
   if (!state) {
-    // A missing or null controller must clear every shared kernel projection
-    // so no predecessor's evidence stays visible or inspectable.
-    for (const [id, value] of Object.entries({
-      "controller-pattern": "No controller snapshot retained for this run.",
-      "controller-machine": "No controller snapshot retained for this run.",
-      "controller-phase": "No controller snapshot retained for this run.",
-      "controller-generation": "No controller snapshot retained for this run.",
-      "controller-budgets": "No controller snapshot retained for this run.",
-      "controller-actor": "No controller snapshot retained for this run.",
-      "controller-version": "No kernel version observed for this run.",
-      "controller-source": "No controller snapshot source observed for this run.",
-      "cancel-note": "No controller snapshot retained for this run."})) text(id, value);
-    text("actor-count", "No controller actors observed.");
-    text("artifact-count", "No typed artifacts observed.");
-    text("transition-count", "No controller events observed.");
-    $("controller-phases").replaceChildren();
-    $("actor-list").replaceChildren();
-    $("controller-events").replaceChildren();
-    const absentInfo = detail.application || {};
-    text("driver-data", JSON.stringify({observation:"No controller snapshot retained for this run.",driver:absentInfo.activity || "not observed",reason:absentInfo.reason || "No runtime observation",run:detail.status.run_id}, null, 2));
-    renderResults(detail);
+    if ($("controller-tab").getAttribute("aria-pressed") === "true") switchView("session");
     return;
   }
   const phase = state.pattern.phases[state.phase_index];
@@ -840,60 +645,61 @@ function renderController(detail) {
     : detail.cancel_requested ? "Cancellation requested; awaiting the driver. The kernel is still active."
     : "Cancellation requests the harness to stop this pattern; it does not accept work.");
 
-  const prefix = state.pattern.kind === "verified_sequence" ? "accepted" : "effective";
-  // Per-section semantic updates: unrelated kernel events must not detach
-  // retained actor/phase rows or the focused activation control.
-  syncKeyedChildren($("controller-phases"), state.pattern.phases.map((item, index) => {
-    const li = node("li");
-    li.dataset.phaseId = item.id;
-    if (index === state.phase_index && state.status === "active") li.setAttribute("aria-current", "step");
-    li.append(node("h4", `${item.id} / ${item.role}`), node("p", `Visits: ${state.visits[item.id]}${index === state.phase_index ? " / kernel position" : ""}`),
-      node("p", `${prefix}.${item.id}: ${state.slots[`${prefix}.${item.id}`] || "not bound"}`));
-    return li;
-  }), row => row.dataset.phaseId);
-  const activations = Object.values(state.activations).sort((a, b) => a.ordinal.localeCompare(b.ordinal, "en", { numeric: true }));
-  text("actor-count", `${Object.keys(state.actors).length} ACTORS / ${activations.length} ACTIVATIONS`);
-  setOptions("actor-select", activations.map((a) => [a.id, `${actorIdentity(a)} / ${a.phase} / ${a.role} / ${a.status}`]), state.current_activation || activations.at(-1)?.id);
-  syncKeyedChildren($("actor-list"), activations.map((a) => {
-    const li = node("li");
-    li.dataset.activation = a.id;
-    const button = node("button", `${actorIdentity(a)} / ${a.actor_id} / ${a.phase} / ${a.role}`);
-    button.type = "button";
-    button.addEventListener("click", () => {
-      $("actor-select").value = a.id;
-      renderActor();
-      loadActorLog();
-      button.focus();
+  const signature = JSON.stringify(state);
+  if (signature !== kernelSignature) {
+    kernelSignature = signature;
+    const prefix = state.pattern.kind === "verified_sequence" ? "accepted" : "effective";
+    $("controller-phases").replaceChildren(...state.pattern.phases.map((item, index) => {
+      const li = node("li");
+      if (index === state.phase_index && state.status === "active") li.setAttribute("aria-current", "step");
+      li.append(node("h4", `${item.id} / ${item.role}`), node("p", `Visits: ${state.visits[item.id]}${index === state.phase_index ? " / kernel position" : ""}`),
+        node("p", `${prefix}.${item.id}: ${state.slots[`${prefix}.${item.id}`] || "not bound"}`));
+      return li;
+    }));
+    const activations = Object.values(state.activations).sort((a, b) => a.ordinal.localeCompare(b.ordinal, "en", { numeric: true }));
+    text("actor-count", `${Object.keys(state.actors).length} ACTORS / ${activations.length} ACTIVATIONS`);
+    setOptions("actor-select", activations.map((a) => [a.id, `${actorIdentity(a)} / ${a.phase} / ${a.role} / ${a.status}`]), state.current_activation || activations.at(-1)?.id);
+    $("actor-list").replaceChildren(...activations.map((a) => {
+      const li = node("li");
+      li.dataset.activation = a.id;
+      const button = node("button", `${actorIdentity(a)} / ${a.actor_id} / ${a.phase} / ${a.role}`);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        $("actor-select").value = a.id;
+        renderActor();
+        loadActorLog();
+        button.focus();
+      });
+      const actor = state.actors[a.actor_id];
+      const lifecycle = state.events.filter((e) => e.data.activation_id === a.id &&
+        (e.kind.startsWith("activation.") || ["runtime.failed", "run.cancelled"].includes(e.kind)))
+        .map((e) => `${e.kind} (v${e.version})`).join(" -> ");
+      li.append(button, node("p", `${a.id} / ${a.mode} / generation ${a.generation} / visit ${a.visit} / activation ${a.status} / actor ${actor.status}${a.id === state.current_activation ? " / CURRENT" : ""}`),
+        node("p", `Session: ${actor.session_ref || "not committed"}`, "source"), node("p", lifecycle));
+      if (a.failure_reason) li.append(node("p", a.failure_reason, "bad"));
+      return li;
+    }));
+    const artifacts = Object.values(state.artifacts).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
+    text("artifact-count", `${artifacts.length} ARTIFACTS`);
+    setOptions("artifact-select", artifacts.map((a) => [a.id, `${a.id} / ${a.type} / ${artifactStanding(state, a)}`]),
+      state.subject_artifact_id || state.slots[`${prefix}.${phase.id}`] || artifacts.at(-1)?.id);
+    const open = new Set([...$("controller-events").querySelectorAll("details[open]")].map((item) => item.dataset.eventId));
+    text("transition-count", `${state.events.filter((e) => e.kind === "transition").length} TRANSITIONS / ${state.events.length} EVENTS`);
+    renderEventWindow("controller-events", state.events, (event) => {
+      const li = node("li");
+      const meta = node("div", undefined, "event-meta");
+      meta.append(node("span", event.id, "event-number"), node("span", `Version ${event.version}`));
+      const body = node("div", undefined, "event-body");
+      const meaning = eventMeaning(event);
+      const raw = node("details");
+      raw.dataset.eventId = event.id;
+      raw.open = open.has(event.id);
+      raw.append(node("summary", "Kernel event data"), node("pre", JSON.stringify(event, null, 2)));
+      body.append(node("h4", meaning.heading), node("p", meaning.label), raw);
+      li.append(meta, body);
+      return li;
     });
-    const actor = state.actors[a.actor_id];
-    const lifecycle = state.events.filter((e) => e.data.activation_id === a.id &&
-      (e.kind.startsWith("activation.") || ["runtime.failed", "run.cancelled"].includes(e.kind)))
-      .map((e) => `${e.kind} (v${e.version})`).join(" -> ");
-    li.append(button, node("p", `${a.id} / ${a.mode} / generation ${a.generation} / visit ${a.visit} / activation ${a.status} / actor ${actor.status}${a.id === state.current_activation ? " / CURRENT" : ""}`),
-      node("p", `Session: ${actor.session_ref || "not committed"}`, "source"), node("p", lifecycle));
-    if (a.failure_reason) li.append(node("p", a.failure_reason, "bad"));
-    return li;
-  }), row => row.dataset.activation);
-  const artifacts = Object.values(state.artifacts).sort((a, b) => a.id.localeCompare(b.id, "en", { numeric: true }));
-  text("artifact-count", `${artifacts.length} ARTIFACTS`);
-  setOptions("artifact-select", artifacts.map((a) => [a.id, `${a.id} / ${a.type} / ${artifactStanding(state, a)}`]),
-    state.subject_artifact_id || state.slots[`${prefix}.${phase.id}`] || artifacts.at(-1)?.id);
-  text("transition-count", `${state.events.filter((e) => e.kind === "transition").length} TRANSITIONS / ${state.events.length} EVENTS`);
-  const open = new Set([...$("controller-events").querySelectorAll("details[open]")].map((item) => item.dataset.eventId));
-  renderEventWindow("controller-events", state.events, (event) => {
-    const li = node("li");
-    const meta = node("div", undefined, "event-meta");
-    meta.append(node("span", event.id, "event-number"), node("span", `Version ${event.version}`));
-    const body = node("div", undefined, "event-body");
-    const meaning = eventMeaning(event);
-    const raw = node("details");
-    raw.dataset.eventId = event.id;
-    raw.open = open.has(event.id);
-    raw.append(node("summary", "Kernel event data"), node("pre", JSON.stringify(event, null, 2)));
-    body.append(node("h4", meaning.heading), node("p", meaning.label), raw);
-    li.append(meta, body);
-    return li;
-  });
+  }
   renderActor();
   renderArtifact();
   if (!$("controller-view").hidden) loadActorLog();
@@ -946,7 +752,6 @@ function renderDetail(detail) {
   $("outcomes").replaceChildren(...outcomes);
   renderController(detail);
   renderWorkbench(detail);
-  renderResults(detail);
   text("event-count", `${detail.events.length} EVENTS`);
   text("journal-source", detail.journal_path);
   const signature = JSON.stringify(detail.events);
@@ -1002,10 +807,10 @@ async function loadDetail() {
         if (selections[key] && [...$(key).children].some((option) => option.value === selections[key])) $(key).value = selections[key];
       }
       workbenchSignature = ""; renderWorkbench(detail);
-      setExecutionView(savedUI.runs?.[id]?.executionView || "results");
+      switchView("session");
       renderActor(); renderArtifact(); renderPhase(); renderComparison();
     }
-    if (currentPage === "workspace" || executionView === "activity") loadSession();
+    if (currentPage === "workspace") loadSession();
     error("detail-error", "");
   } catch (failure) {
     if (version !== detailVersion || id !== selectedId) return;
@@ -1125,46 +930,32 @@ function renderPopulation(runs) {
 }
 
 function renderSessionAgents(entries) {
-  const host = $("session-agent-list");
-  const existing = new Map([...host.children].map(child => [child.dataset.focusKey, child]));
-  const rows = entries.map(([id, label, status]) => {
-    const key = `${selectedId}/${id}`;
-    let button = existing.get(id);
-    if (!button || button.dataset.renderKey !== key) {
-      button = node("button", undefined, "agent-option");
-      button.type = "button";
-      button.dataset.focusKey = id;
-      button.dataset.renderKey = key;
-      button.append(node("span"), node("small"));
-      button.addEventListener("click", () => {
-        $("session-select").value = id; $("follow-current").checked = false;
-        renderSessionAgents(entries); persistUI(); loadSession();
-      });
-    }
-    if (button.firstChild.textContent !== label) button.firstChild.textContent = label;
-    if (button.lastChild.textContent !== status) button.lastChild.textContent = status;
+  replaceContents("session-agent-list", entries.map(([id, label, status]) => {
+    const button = node("button", undefined, "agent-option");
+    button.type = "button";
+    button.dataset.focusKey = id;
+    button.dataset.renderKey = `${selectedId}/${id}`;
+    button.setAttribute("aria-current", String($("session-select").value === id));
+    button.append(node("span", label), node("small", status));
+    button.addEventListener("click", () => {
+      $("session-select").value = id; $("follow-current").checked = false;
+      renderSessionAgents(entries); persistUI(); loadSession();
+    });
     return button;
-  });
-  rows.forEach((row, index) => { if (host.children[index] !== row) host.insertBefore(row, host.children[index] || null); });
-  for (const child of [...host.children]) if (!rows.includes(child)) child.remove();
-  for (const button of host.querySelectorAll("button")) button.setAttribute("aria-current", String(button.dataset.focusKey === $("session-select").value));
+  }));
+  for (const button of $("session-agent-list").querySelectorAll("button")) button.setAttribute("aria-current", String(button.dataset.focusKey === $("session-select").value));
 }
 
-let handoffVersion = 0, handoffTarget = null;
+let handoffVersion = 0;
 async function loadProjectHandoff() {
   const id = selectedId, version = ++handoffVersion, scopeVersion = operationVersion;
-  $("workspace-apply").hidden = true;
-  if (!id || !selectedDetail?.controller) { handoffTarget = null; $("workspace-result").hidden = true; return; }
-  if (handoffTarget !== id) { handoffTarget = id; $("workspace-result").hidden = true; }
+  $("workspace-result").hidden = true; $("workspace-apply").hidden = true;
+  if (!id || !selectedDetail?.controller) return;
   try {
     const value = await fetchJSON(`/api/runs/${id}/project-changes`);
     if (id !== selectedId || version !== handoffVersion || scopeVersion !== operationVersion) return;
     $("workspace-result").hidden = false;
-    const host = $("workspace-result-summary"), signature = `${id}|${JSON.stringify(value.summary || "")}`;
-    if (host.dataset.summary !== signature) {
-      host.dataset.summary = signature;
-      host.replaceChildren(...(value.summary ? [window.NoeticRichText ? window.NoeticRichText(value.summary, {id, kind:"run", selection:operationSelection(), viewVersion:operationVersion}) : node("pre", value.summary)] : []));
-    }
+    $("workspace-result-summary").replaceChildren(...(value.summary ? [window.NoeticRichText ? window.NoeticRichText(value.summary, {id, kind:"run", selection:operationSelection(), viewVersion:operationVersion}) : node("pre", value.summary)] : []));
     $("workspace-result-review").hidden = !value.review;
     text("workspace-review-report", value.review?.report || "");
     $("workspace-review-open").dataset.activation = value.review?.activation_id || "";
@@ -1174,11 +965,7 @@ async function loadProjectHandoff() {
     text("workspace-result-files", JSON.stringify(value.changes, null, 2));
     $("workspace-apply").hidden = !value.eligible || value.applied;
   } catch (failure) {
-    if (id === selectedId && version === handoffVersion && scopeVersion === operationVersion) {
-      // Keep the same-target successful result mounted and qualify the failed read.
-      $("workspace-result").hidden = handoffTarget !== id;
-      text("workspace-apply-result", `Project changes unavailable: ${failure.message} Previously fetched result may be stale; nothing was applied.`);
-    }
+    if (id === selectedId && version === handoffVersion && scopeVersion === operationVersion) text("workspace-apply-result", `Project changes unavailable: ${failure.message}`);
   }
 }
 
@@ -1239,7 +1026,6 @@ function renderWorkbench(detail) {
     text("primary-progress", ["work", "verify", "review"].map(role => `${role}: ${steps[role]?.state || "pending"}`).join(" · "));
     text("primary-agent", $("session-select").value === "review" ? "Reviewer" : "Worker");
     text("driver-activity", "Legacy journal; no controller lifecycle controls.");
-    text("driver-data", JSON.stringify({observation:"Legacy journal; no controller snapshot.",activity:info.activity || "not observed",reason:info.reason || "No runtime observation",configuration:config,workspace:detail.status.workspace,run:detail.status.run_id}, null, 2));
     text("primary-attention", detail.status.state === "rejected" ? "Review rejected this task. Inspect the reviewer output." : "");
     $("primary-attention").hidden = detail.status.state !== "rejected";
     return;
@@ -1390,62 +1176,31 @@ function finalText(entry) {
   return entry.content.final?.content?.filter(part => part.type === "text").map(part => part.text).join("\n") || "";
 }
 
-const transcriptState = {key: "", entries: [], nodes: [], skip: new Set(), truncated: false};
-function resetTranscriptSubject(message) {
-  // Clear the visible output at a real subject transition (run, activation or
-  // scope) before any new header or selector is published, so a predecessor's
-  // transcript can never masquerade as the current subject's output.
-  transcriptState.key = ""; transcriptState.entries = []; transcriptState.nodes = []; transcriptState.skip = new Set();
-  const host = $("session-transcript");
-  if (host) { host.dataset.selection = ""; host.replaceChildren(node("p", message, "output-empty")); }
-  text("session-note", message);
-}
-const entryFingerprint = entry => JSON.stringify({...entry, index: undefined});
-function transcriptOverlap(oldEntries, newEntries) {
-  // Completed entries are immutable; only a trailing partial stream may be
-  // completed/replaced. Match the demonstrable overlap positionally, ignoring
-  // the window-relative index, so duplicate same-text turns are never
-  // conflated and a dropped window head does not break retention.
-  const limit = Math.min(oldEntries.length, newEntries.length, 400);
-  for (let drop = 0; drop <= Math.min(oldEntries.length, 40); drop++) {
-    const remain = oldEntries.length - drop;
-    if (remain > newEntries.length) continue;
-    const replacedTail = remain > 0 && oldEntries[drop + remain - 1]?.kind === "assistant_delta";
-    const count = replacedTail ? remain - 1 : remain;
-    let same = true;
-    for (let offset = 0; offset < count; offset++) {
-      if (entryFingerprint(oldEntries[drop + offset]) !== entryFingerprint(newEntries[offset])) { same = false; break; }
-    }
-    if (same) return {oldStart: drop, count, replacedTail};
-  }
-  return null;
-}
-function primaryTranscriptTagged(entries) {
-  const built = [], skip = new Set();
+function primaryTranscript(entries) {
+  const articles = [];
   let response = null;
-  entries.forEach((entry, index) => {
+  for (const entry of entries) {
     if (entry.kind === "assistant" && response?.preview) {
-      const at = built.findIndex(item => item.node === response.article);
-      if (at >= 0) built.splice(at, 1);
+      const index = articles.indexOf(response.article);
+      if (index >= 0) articles.splice(index, 1);
       response = null;
     }
     const duplicateFinal = entry.kind === "final" && response && finalText(entry) === response.text;
     const article = transcriptEntry(entry, Boolean(duplicateFinal));
-    if (article) {
-      if (duplicateFinal && response) response.article.append(...article.childNodes);
-      else built.push({node: article, index});
-    } else skip.add(index);
-    if (entry.kind === "assistant") response = {text: entry.content, article};
-    else if (entry.kind === "assistant_delta") response = {preview: true, article};
+    if (!article) continue;
+    if (duplicateFinal) response.article.append(...article.childNodes);
+    else articles.push(article);
+    if (entry.kind === "assistant") response = { text: entry.content, article };
+    else if (entry.kind === "assistant_delta") response = { preview: true, article };
     else if (entry.kind === "final") response = null;
-  });
-  return {built, skip};
-}
-function foldCompletedTools(built) {
-  const tools = built.filter(item => item.node.dataset.entryKind === "tool");
-  const outputs = built.filter(item => item.node.dataset.entryKind !== "tool");
-  if (tools.length) { const history = node("details"); history.append(node("summary", "Observed tool history"), ...tools.map(item => item.node)); outputs.push({node: history, index: Number.MAX_SAFE_INTEGER}); }
-  return outputs.map(item => item.node);
+  }
+  if (["completed", "accepted"].includes(selectedDetail?.status.state)) {
+    const tools = articles.filter(article => article.dataset.entryKind === "tool");
+    const outputs = articles.filter(article => article.dataset.entryKind !== "tool");
+    if (tools.length) { const history = node("details"); history.append(node("summary", "Observed tool history"), ...tools); outputs.push(history); }
+    return outputs;
+  }
+  return articles;
 }
 
 function transcriptEntry(entry, omitResponse = false) {
@@ -1480,10 +1235,6 @@ function transcriptEntry(entry, omitResponse = false) {
   } else if (entry.kind === "step_finished") {
     article.append(node("h4", `Step finished / ${data.reason || "reason not recorded"}${at}`));
     if (data.tokens) article.append(node("p", `Recorded tokens: ${JSON.stringify(data.tokens)}`, "source"));
-  } else if (!"assistant assistant_delta user".split(" ").includes(entry.kind)) {
-    // Unparsed or protocol-only records stay inspectable in Technical
-    // evidence; they are never promoted into the primary activity view.
-    return null;
   } else {
     const body = readableOutput(data);
     if (typeof body !== "string" || !body.trim()) return null;
@@ -1494,10 +1245,10 @@ function transcriptEntry(entry, omitResponse = false) {
 
 async function loadSession(reveal = false) {
   const id = selectedId, activation = $("session-select").value;
-  const version = ++sessionVersion, scopeVersion = operationVersion, access = accessVersion;
+  const version = ++sessionVersion;
   if (!selectedDetail || !activation) {
     $("session-transcript").replaceChildren(node("p", "No agent output retained for this session yet.", "output-empty"));
-    text("session-note", "Waiting for retained output; none pending for this subject.");
+    text("session-note", "Waiting for agent output");
     return;
   }
   const key = `${id}/${activation}`;
@@ -1505,7 +1256,6 @@ async function loadSession(reveal = false) {
     $("session-transcript").dataset.selection = key;
     $("session-transcript").replaceChildren();
     $("session-transcript").scrollTop = 0;
-    transcriptState.key = key; transcriptState.entries = []; transcriptState.nodes = []; transcriptState.skip = new Set();
     text("session-raw", ""); text("session-normalized", ""); text("session-model", "Reading observed model identity...");
     text("session-note", "Reading retained transcript...");
     sessionSignature = "";
@@ -1513,10 +1263,7 @@ async function loadSession(reveal = false) {
   try {
     const route = selectedDetail.controller ? `activations/${encodeURIComponent(activation)}` : `sessions/${encodeURIComponent(activation)}`;
     const result = await fetchJSON(`/api/runs/${encodeURIComponent(id)}/${route}/transcript`);
-    // Late responses for a superseded run, activation, scope or access epoch
-    // are rejected: only the exact current subject may paint output.
-    if (version !== sessionVersion || id !== selectedId || activation !== $("session-select").value
-        || scopeVersion !== operationVersion || access !== accessVersion) return;
+    if (version !== sessionVersion || id !== selectedId) return;
     const actor = selectedDetail.controller?.activations[activation] || { mode: activation === "review" ? "review" : "work", session_ref: result.observed_sessions.join(", ") };
     const config = result.configuration || selectedDetail.application?.configuration || {};
     const model = actor.mode === "review" ? config.qa_model || config.model : config.model;
@@ -1526,56 +1273,16 @@ async function loadSession(reveal = false) {
     const signature = JSON.stringify(result.entries);
     if (signature !== sessionSignature) {
       sessionSignature = signature;
-      const host = $("session-transcript");
-      const {built, skip} = primaryTranscriptTagged(result.entries);
-      const atBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 4;
-      let overlap = transcriptState.key === key && transcriptState.nodes.length ? transcriptOverlap(transcriptState.entries, result.entries) : null;
-      let chunkNodes = null;
-      if (overlap) {
-        // A replaceable stream tail may still follow the immutable overlap.
-        // Validate connected cached rows before removing only unmatched rows.
-        const retained = [], removed = [];
-        for (const item of transcriptState.nodes) {
-          const position = item.index - overlap.oldStart;
-          const projected = built.find(candidate => candidate.index === position);
-          if (position >= 0 && position < overlap.count && projected
-              && projected.node.textContent === item.node.textContent) retained.push({...item, index: position});
-          else removed.push(item);
-        }
-        if (transcriptState.nodes.some((item, slot) => host.children[slot] !== item.node)) overlap = null;
-        else {
-          const anchor = retained.find(item => item.node.getBoundingClientRect().bottom > host.getBoundingClientRect().top)?.node || retained[0]?.node || null;
-          const anchorTop = anchor ? anchor.getBoundingClientRect().top : 0;
-          for (const item of removed) item.node.remove();
-          const reused = new Map(retained.map(item => [item.index, item.node]));
-          const ordered = built.map(item => ({node: reused.get(item.index) || item.node, index: item.index}));
-          ordered.forEach((item, index) => {
-            const current = host.children[index] || null;
-            if (current !== item.node) host.insertBefore(item.node, current);
-          });
-          if (atBottom) host.scrollTop = host.scrollHeight;
-          else if (anchor) host.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
-          chunkNodes = ordered;
-        }
-      }
-      if (!overlap) {
-        const displayNodes = built.map(item => item.node);
-        host.replaceChildren(...(displayNodes.length ? displayNodes : [node("p", result.entries.length ? "No substantive structured agent output in this window. Use Technical evidence for the raw transcript and logs." : "No structured agent output retained yet. Use Technical evidence for the raw files and logs.", "output-empty")]));
-        if (atBottom) host.scrollTop = host.scrollHeight;
-      }
-      if (!host.children.length) host.append(node("p", "No substantive structured agent output in this window. Use Technical evidence for the raw transcript and logs.", "output-empty"));
-      transcriptState.key = key;
-      transcriptState.entries = result.entries;
-      transcriptState.nodes = chunkNodes || built.map(item => ({node: item.node, index: item.index}));
-      transcriptState.skip = skip;
-      transcriptState.truncated = Boolean(result.truncated);
+      const position = $("session-transcript").scrollTop;
+      const articles = primaryTranscript(result.entries);
+      $("session-transcript").replaceChildren(...(articles.length ? articles : [node("p", result.entries.length ? "No substantive agent output yet." : result.text.trim() || "Waiting for agent output…", "output-empty")]));
+      $("session-transcript").scrollTop = position;
     }
     text("session-raw", result.text);
     text("session-normalized", JSON.stringify(result.entries, null, 2));
     if (reveal && !$("session-view").hidden) $("session-view").scrollIntoView({ block: "start", behavior: "instant" });
   } catch (failure) {
-    if (version !== sessionVersion || id !== selectedId || activation !== $("session-select").value
-        || scopeVersion !== operationVersion || access !== accessVersion) return;
+    if (version !== sessionVersion || id !== selectedId) return;
     text("session-note", `Output unavailable: ${failure.message}`);
     if (!$("session-transcript").children.length) $("session-transcript").replaceChildren(node("p", "No retained output available yet. Details includes reports and logs.", "output-empty"));
   }
@@ -1731,7 +1438,6 @@ async function loadPurposes() {
 function sourcePreviewOf(match) {
   if (!match || typeof match !== "object") return null;
   const string = value => typeof value === "string" && value.trim() ? value : null;
-  const reference = match.source_ref && typeof match.source_ref === "object" ? match.source_ref : null;
   return {
     source_id: string(match.source_id), source_text_sha256: string(match.source_text_sha256),
     recorded_type: string(match.source), disposition: string(match.disposition),
@@ -1741,50 +1447,9 @@ function sourcePreviewOf(match) {
     occurred_at: string(match.occurred_at),
     authoritative: match.authoritative === true,
     semantic_authority: string(match.semantic_authority),
-    snippet: string(match.snippet),
-    source_ref: reference ? {journal: string(reference.journal), session_id: string(reference.session_id),
-      sequence: Number.isFinite(reference.sequence) ? reference.sequence : null,
-      native_context: string(reference.native_context), native_session_id: string(reference.native_session_id)} : null
+    snippet: string(match.snippet)
   };
 }
-function bindPreparedSource(match, preview, effortRoot) {
-  // Shared exact-source binding mutation for memory selection and answer preparation.
-  const owner = savedUI.structuredDraftOwner;
-  if (!window.NoeticDrafts?.ready?.() || !owner || !owner.effort || owner.effort !== effortRoot)
-    return {ok: false, error: "No current owned editable preparation for this effort; open it in the existing editor before binding a source."};
-  if (!match || typeof match.source_id !== "string" || !match.source_id || !/^[0-9a-f]{64}$/.test(match.source_text_sha256 || ""))
-    return {ok: false, error: "Exact source identity or digest is malformed; nothing was bound."};
-  // Canonical collector namespace is {id,path}; lexical metadata may carry the namespace string ID. journal/root_id are not namespaces.
-  const namespace = typeof match.namespace === "string" ? match.namespace : match.namespace && typeof match.namespace === "object" && typeof match.namespace.id === "string" ? match.namespace.id : null;
-  if (namespace && owner.namespace && namespace !== owner.namespace)
-    return {ok: false, error: `Exact source belongs to a different namespace; the owned preparation for Effort ${effortRoot} was not changed.`};
-  if (match.ownership && match.ownership !== "assigned")
-    return {ok: false, error: "Exact source is not assigned to this owning effort; nothing was bound."};
-  if (match.effort_root && match.effort_root !== effortRoot)
-    return {ok: false, error: `Exact source belongs to Effort ${match.effort_root}; the owned preparation for Effort ${effortRoot} was not changed.`};
-  const existing = reviewedSources.find(x=>x.source_id === match.source_id);
-  if (existing) {
-    // Launch revalidation stays authoritative: an already-bound exact source never changes fingerprint here.
-    if (existing.source_text_sha256 === match.source_text_sha256) {
-      if (!existing.preview && preview && preview.source_text_sha256 === match.source_text_sha256) existing.preview = preview;
-      return {ok: true};
-    }
-    return {ok: false, error: `Exact source ${match.source_id} is already bound with a different saved digest; the existing binding stays and nothing was replaced.`};
-  }
-  reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:effortRoot},...(preview && preview.source_id === match.source_id && preview.source_text_sha256 === match.source_text_sha256 ? {preview} : {})});
-  return {ok: true};
-}
-window.NoeticSourcePreparation = {
-  bind: bindPreparedSource,
-  capture: () => ({draft: draftVersion, scopeKey: operationKey(), operation: operationVersion, access: accessVersion,
-    namespace: savedUI.structuredDraftOwner?.namespace || null, effort: savedUI.structuredDraftOwner?.effort || null,
-    ready: Boolean(window.NoeticDrafts?.ready?.())}),
-  valid: token => Boolean(token) && draftVersion === token.draft && operationKey() === token.scopeKey
-    && operationVersion === token.operation && accessVersion === token.access
-    && (savedUI.structuredDraftOwner?.namespace || null) === token.namespace
-    && (savedUI.structuredDraftOwner?.effort || null) === token.effort
-    && Boolean(window.NoeticDrafts?.ready?.()) === token.ready
-};
 function renderMemoryMatches(matches, semanticMode) {
   const selection = operationSelection(), scopeVersion = operationVersion, scopeKey = operationKey(), access = accessVersion;
   $("memory-results").replaceChildren(...(matches.length ? matches.map(match=>{
@@ -1801,8 +1466,14 @@ function renderMemoryMatches(matches, semanticMode) {
       const use = node("button", "Select source for inquiry draft"); use.type = "button";
       use.addEventListener("click", ()=>{
         if (!operationValid(scopeVersion,scopeKey) || access !== accessVersion) return;
-        const outcome = bindPreparedSource(match, sourcePreviewOf(match), selection.effort_root);
-        if (!outcome.ok) { text("memory-status", outcome.error); return; }
+        const preview = sourcePreviewOf(match);
+        const existing = reviewedSources.find(x=>x.source_id === match.source_id);
+        if (existing) {
+          // Launch revalidation stays authoritative: an already-bound exact source never changes fingerprint here.
+          if (existing.source_text_sha256 === match.source_text_sha256 && !existing.preview && preview && preview.source_text_sha256 === match.source_text_sha256) existing.preview = preview;
+        } else {
+          reviewedSources.push({source_id:match.source_id,source_text_sha256:match.source_text_sha256,selection:{kind:"effort",effort_root:selection.effort_root},...(preview && preview.source_id === match.source_id && preview.source_text_sha256 === match.source_text_sha256 ? {preview} : {})});
+        }
         ++draftVersion; $("start-pattern").value = "opermem-reviewed"; renderReviewedSources(); updateComposer();persistUI();
         text("memory-status", "Qualified source selected for the editable draft. Launch will revalidate its original identity and digest.");
       }); article.append(use);
@@ -1897,13 +1568,11 @@ function initWorkbench() {
   $("advance-all").addEventListener("click", () => performAction("advance", { mode: "all" }));
   $("pause-pattern").addEventListener("click", () => performAction("pause", {}));
   $("phase-select").addEventListener("change", renderPhase);
-  $("session-select").addEventListener("change", () => { $("follow-current").checked = false; workbenchSignature = ""; renderWorkbench(selectedDetail); resetTranscriptSubject("Reading retained transcript for the selected activation…"); persistUI(); loadSession(); });
+  $("session-select").addEventListener("change", () => { $("follow-current").checked = false; workbenchSignature = ""; renderWorkbench(selectedDetail); persistUI(); loadSession(); });
   $("follow-current").addEventListener("change", () => { workbenchSignature = ""; renderWorkbench(selectedDetail); persistUI(); loadSession(); });
   $("evidence-drawer").addEventListener("toggle", () => {
-    if ($("evidence-drawer").open && executionView !== "evidence") setExecutionView("evidence");
+    if ($("evidence-drawer").open && !document.querySelector('.view-controls [aria-pressed="true"]:not(#session-tab)')) switchView(selectedDetail?.controller ? "controller" : "reports");
   });
-  for (const button of document.querySelectorAll("#execution-views [data-execution-view]"))
-    button.addEventListener("click", () => setExecutionView(button.dataset.executionView));
   for (const side of ["left", "right"]) $(`compare-${side}`).addEventListener("change", renderComparison);
   $("session-logs").addEventListener("click", () => {
     if (selectedDetail?.controller) { $("actor-select").value = $("session-select").value; switchView("controller", true); renderActor(); loadActorLog(); }
@@ -2311,7 +1980,7 @@ function renderReviewedSources() {
       if (previewData.occurred_at) contextParts.push(previewData.occurred_at);
     }
     const context = node("div",contextParts.length ? contextParts.join(" · ") : "Recorded provenance appears in exact details","source");
-    const identity = node("pre",JSON.stringify({source_id:source.source_id,source_text_sha256:source.source_text_sha256,selection:source.selection ?? null,source_ref:previewData?.source_ref || null,authoritative:previewData ? previewData.authoritative : null,semantic_authority:previewData ? previewData.semantic_authority || "none" : "unobserved"},null,2));
+    const identity = node("pre",JSON.stringify({source_id:source.source_id,source_text_sha256:source.source_text_sha256,selection:source.selection ?? null,authoritative:previewData ? previewData.authoritative : null,semantic_authority:previewData ? previewData.semantic_authority || "none" : "unobserved"},null,2));
     const details = node("details");
     details.append(node("summary","Exact source identity, selection and standing"));
     if (previewData && previewData.snippet) {
@@ -2513,8 +2182,6 @@ function renderReviewedDetail(detail) {
   const rows=[["Preparation summary (browser projection)",preparation],["Actual participants and correspondence summary",link],["Launch and separate dispositions",driverSummary],["Ordered events (browser projection; original journal locally retained)",detail.events]];
   for(const [label,value] of rows){let item=[...host.children].find(x=>x.dataset.key===label);if(!item){item=node("details");item.dataset.key=label;item.append(node("summary",label),node("pre"));host.append(item);}const data=JSON.stringify(value,null,2);if(item.lastChild.textContent!==data)item.lastChild.textContent=data;}
   text("summary-selection",status.run_id);$("summary-generate").disabled=true;
-  const resultsHost=$("execution-results-body");
-  if (resultsHost) resultsHost.replaceChildren(node("p","The reviewed inquiry keeps its own report, external independent review and separate dispositions above. No generic kernel acceptance is inferred from this view.","evidence-note"));
   $("empty-state").hidden=true;$("selected-run").hidden=false;$("session-tab").hidden=false;
 }
 async function recoverReviewed(kind) {
