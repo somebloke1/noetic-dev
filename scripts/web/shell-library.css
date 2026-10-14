@@ -5,7 +5,7 @@
 .lib-panel .panel-header h2{font-size:14px;font-weight:600;margin:7px 0 0}
 .lib-panel-body{padding:18px}
 .lib-panel-body>h3{font-size:12px;margin:22px 0 12px}
-.lib-note{font-size:11px;color:var(--ink-600,#66616e);line-height:1.65;margin:12px 0}
+.lib-note{font-size:11px;color:#77767e;line-height:1.65;margin:12px 0}
 .lib-execution-controls{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
 .lib-execution-controls label{display:grid;gap:7px;font-size:11px;flex:1;min-width:180px}
 .lib-execution-query{padding:10px;border:1px solid #e0dde6;border-radius:6px;font:inherit}
@@ -17,7 +17,7 @@
 .lib-values>div{display:flex;justify-content:space-between;gap:20px;padding:12px 0;border-bottom:1px solid #efeff1;font-size:10px}
 .lib-values dt{color:#83828a}
 .lib-values dd{margin:0;max-width:70%;text-align:right;overflow-wrap:anywhere}
-.lib-source{margin-top:16px;font-size:11px;color:var(--ink-600,#66616e)}
+.lib-source{margin-top:16px;font-size:10px;color:#77767e}
 .lib-source summary{cursor:pointer;padding:8px 0}
 .lib-source pre{font-family:'DM Mono',monospace;white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;line-height:1.65;max-height:350px;overflow:auto}
 .lib-empty{padding:30px 18px;text-align:center;color:#92919a}
@@ -33,9 +33,9 @@
 .lib-card-top svg{width:18px;height:18px;color:#7053b4}
 .lib-card-top>.lib-mono{margin-left:auto;color:#a19da9}
 .lib-definition-card h3{font-size:12px;margin:0 0 10px}
-.lib-definition-card p{font-size:11px;line-height:1.6;color:var(--ink-600,#66616e)}
+.lib-definition-card p{font-size:11px;line-height:1.6;color:#77767e}
 .lib-chips{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
-.lib-chips span{padding:3px 6px;background:#f5f4f6;border-radius:3px;font-size:10px;color:var(--ink-600,#66616e)}
+.lib-chips span{padding:3px 6px;background:#f5f4f6;border-radius:3px;font-size:9px;color:#77767e}
 .lib-definition-card footer{border-top:1px solid #efeff1;font-size:10px;color:#9997a0;margin-top:auto;padding-top:12px}
 .lib-phase-sequence{padding-left:18px;color:#746191;font-size:11px;line-height:2.3}
 .lib-detail .primary-button{width:100%;margin-top:10px}
@@ -44,7 +44,7 @@
 .lib-template>span:nth-child(2){flex:1}
 .lib-template strong,.lib-template small{display:block}
 .lib-template strong{font-size:12px;margin:7px 0}
-.lib-template p{font-size:11px;color:var(--ink-600,#66616e);line-height:1.6;margin:6px 0}
+.lib-template p{font-size:10px;color:#77767e;line-height:1.6;margin:6px 0}
 .lib-template-icon{display:grid;place-items:center;min-width:42px;height:42px;border-radius:7px;background:#eeebfb;color:#7456b5;font-size:10px;font-family:'DM Mono',monospace}
 .lib-contract{background:#f8f7fa;border-radius:5px;font-size:11px;line-height:1.7;padding:12px}
 .lib-record{padding:18px 0;border-bottom:1px solid #efeff1}
@@ -70,7 +70,7 @@
 .lib-preserved>.application-page,.lib-preserved>#workspace-page{padding:22px!important;border:1px solid #e7e6eb;border-radius:10px;background:white;max-width:none!important;margin:0!important}
 .lib-preserved h2{font-size:15px}
 .lib-preserved h3{font-size:13px}
-.lib-preserved .evidence-note{font-size:11px;line-height:1.7;color:var(--ink-600,#66616e)}
+.lib-preserved .evidence-note{font-size:11px;line-height:1.7;color:#85818e}
 .lib-preserved label{font-size:11px;font-weight:500}
 .lib-preserved input,.lib-preserved select,.lib-preserved textarea{font-family:inherit;font-size:12px;border:1px solid #e0dde6;border-radius:6px;background:white;padding:10px}
 .lib-preserved textarea{line-height:1.65}
@@ -110,9 +110,9 @@
 
 .lib-scope-toolbar{background:white;border:1px solid #e7e6eb;border-radius:9px;margin-bottom:16px;padding:14px 18px}
 .lib-scope-toolbar #effort-operation-controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0!important;border:0!important;background:none!important}
-.lib-scope-toolbar label{font-size:11px;color:var(--ink-600,#66616e)}
+.lib-scope-toolbar label{font-size:10px;color:#817d89}
 .lib-scope-toolbar select{font-size:11px;border:1px solid #e4e0ea;border-radius:6px;background:#faf9fc;padding:7px 10px;max-width:100%}
-.lib-scope-toolbar #legacy-scope-banner{font-size:11px;color:var(--ink-600,#66616e);margin:0;flex:1;min-width:240px}
+.lib-scope-toolbar #legacy-scope-banner{font-size:10px;color:#92909a;margin:0;flex:1;min-width:240px}
 
 
 .lib-card-top .status-badge.green{background:#e6f3ec;color:#4e806a}.lib-panel-body .status-badge.purple,.lib-model-card .status-badge.purple{background:#efeafa;color:#7251b6}.lib-model-card>.status-badge{float:right}.lib-runtime-row .secondary-button{padding:7px 10px;font-size:10px}.lib-panel-body>.secondary-button{font-size:11px}
