@@ -1,7 +1,14 @@
 {
   "name": "development",
-  "version": 1,
+  "version": 2,
   "kind": "verified_sequence",
+  "delegation": {
+    "version": 1,
+    "plan_phase": "implementation_procedure_design",
+    "implementation_phase": "implementation",
+    "bridge": "pi-rpc-parent-extension",
+    "policy": "scripts.noetic_harness.DelegationPolicy"
+  },
   "phases": [
     {
       "id": "design_intent",

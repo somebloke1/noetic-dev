@@ -42,8 +42,49 @@ const target = {anyOf: [string, {type: "object", properties: {ordinal: string,
   required: ["ordinal", "instantiation", "session"], additionalProperties: false}]};
 const schema = (properties, required) => ({type: "object", properties, required, additionalProperties: false});
 
+const readTool = {
+  name: "agent_read", label: "Read agent",
+  description: "Inspect a real agent's retained conversation/progress, ownership and outcome; target an absolute ordinal or exact selector, parent, or effort_root. root aliases this effort root; literal 0 is global. Omitting target returns current registered effort/mandate and working-directory context plus this effort branch.",
+  parameters: schema({target: target, after: {type: "integer", minimum: 0}}, []),
+  execute: (_id, params, signal) => invoke({action: params.target ? "read" : "overview", ...params}, signal),
+};
+const waitTool = {
+  name: "agent_wait", label: "Wait for agent",
+  description: "Wait up to 60 seconds for another agent to settle or need attention, then return observed state and retained events. A timeout is not task completion.",
+  parameters: schema({target: target, timeout: {type: "number", minimum: 0, maximum: 60}, after: {type: "integer", minimum: 0}}, ["target"]),
+  execute: (_id, params, signal) => invoke({action: "wait", ...params}, signal),
+};
+
 export default function noeticDelegation(pi) {
   if (!process.env.NOETIC_SESSION_SOCKET) throw new Error("Noetic session broker is required");
+  if (process.env.NOETIC_ACTOR_BRIDGE === "1") {
+    pi.registerTool({
+      name: "agent_delegate", label: "Run planned task",
+      description: "Run exactly one pre-planned bounded task by its exact task_id from the delegation plan. The domain policy owns the frozen task, plan digest, dependencies, budget and idempotency; optional prompt/title/model/thinking must match the frozen task and any discrepancy is refused. Returns the real child session; acceptance is not completion. Use agent_read/agent_wait to observe actual outcomes before claiming anything.",
+      parameters: schema({task_id: string, prompt: string, title: string, model: string,
+        thinking: {type: "string", enum: ["off", "minimal", "low", "medium", "high", "xhigh"]}}, ["task_id"]),
+      execute: (_id, params, signal) => invoke({action: "delegate", ...params}, signal),
+    });
+    pi.registerTool({
+      name: "agent_read", label: "Read planned child",
+      description: "Inspect one owned planned child agent by its exact returned target or registry id; this bridge reads only actual owned planned children, with no parent, root, global or effort alias selectors. Omitting target returns the bridge's registered context and owned children overview. A timeout or idle state is not task completion.",
+      parameters: schema({target: target, after: {type: "integer", minimum: 0}}, []),
+      execute: (_id, params, signal) => invoke({action: params.target ? "read" : "overview", ...params}, signal),
+    });
+    pi.registerTool(waitTool);
+    pi.on("before_agent_start", async event => {
+      let context;
+      try { context = (await exchange({action: "context"})).details; }
+      catch (error) { context = {status: "unavailable", error: String(error.message || error), recovery: "Use agent_read to inspect registered context; do not infer purpose from transcript storage paths."}; }
+      return {systemPrompt: event.systemPrompt +
+      `\nYou are the planned passive external actor at position ${process.env.NOETIC_SESSION_ORDINAL} in effort ${process.env.NOETIC_EFFORT_ROOT}. ` +
+      "Your capability is bounded: run exactly the pre-planned tasks with agent_delegate (task_id required), and observe real outcomes with agent_read/agent_wait. " +
+      "You have no message, send, multicast, broadcast or delivery controls; a local chat response reaches no one. " +
+      "Delegate acceptance is not processing or completion, and an idle worker is not a completed task; always inspect via agent_read/agent_wait and report honestly. " +
+      "The following is registered context, not a claim of task completion or verified runtime inventory. Native transcript paths are storage, not the working project.\n" + JSON.stringify(context)};
+    });
+    return;
+  }
   pi.registerTool({
     name: "agent_delegate", label: "Delegate task",
     description: "Delegate a real child at a new absolute ordinal in this effort, with the actual current parentTarget and task mandate. Returns exact target, native UUID and environment; acceptance is not completion. Preserve the selected model; choose low thinking for mechanical/exploratory tasks or high for substantial work.",
@@ -72,18 +113,8 @@ export default function noeticDelegation(pi) {
       mode: {type: "string", enum: ["steer", "follow_up"]}, include_self: {type: "boolean", default: false}}, ["population", "message", "mode"]),
     execute: (_id, params, signal) => invoke({action: "broadcast", ...params}, signal),
   });
-  pi.registerTool({
-    name: "agent_read", label: "Read agent",
-    description: "Inspect a real agent's retained conversation/progress, ownership and outcome; target an absolute ordinal or exact selector, parent, or effort_root. root aliases this effort root; literal 0 is global. Omitting target returns current registered effort/mandate and working-directory context plus this effort branch.",
-    parameters: schema({target: target, after: {type: "integer", minimum: 0}}, []),
-    execute: (_id, params, signal) => invoke({action: params.target ? "read" : "overview", ...params}, signal),
-  });
-  pi.registerTool({
-    name: "agent_wait", label: "Wait for agent",
-    description: "Wait up to 60 seconds for another agent to settle or need attention, then return observed state and retained events. A timeout is not task completion.",
-    parameters: schema({target: target, timeout: {type: "number", minimum: 0, maximum: 60}, after: {type: "integer", minimum: 0}}, ["target"]),
-    execute: (_id, params, signal) => invoke({action: "wait", ...params}, signal),
-  });
+  pi.registerTool(readTool);
+  pi.registerTool(waitTool);
   pi.registerCommand("noetic-agents", {
     description: "Inspect the rooted developer-session tree",
     handler: async (_args, ctx) => {
