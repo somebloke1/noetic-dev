@@ -15,10 +15,12 @@ if __package__:
     from scripts import noetic_changes as changes
     from scripts import noetic_run as runtime
     from scripts import noetic_telos as telos
+    from scripts import noetic_model_defaults as model_defaults
 else:
     import noetic_changes as changes
     import noetic_run as runtime
     import noetic_telos as telos
+    import noetic_model_defaults as model_defaults
 
 
 QA_FRAMING = (
@@ -59,6 +61,11 @@ def client_command(client: str, prompt: str, role: str, model: str | None, run_d
         raise ValueError(f"unsupported client: {client}")
     if model:
         command += ["--model", model]
+    if client == "pi" and model:
+        # Only the explicitly selected configured product route gains the native
+        # provider registration; unrelated explicit models stay side-effect free.
+        extra, environment = model_defaults.pi_launch(model, run_dir, environment)
+        command += extra
     return command, environment
 
 
@@ -119,7 +126,7 @@ def retain_result(run_dir: Path, step: str, client: str) -> dict:
     return result
 
 
-def develop(task: str, workspace: Path, runs_dir: Path, verify: list[str] | None, client: str = "opencode",
+def develop(task: str, workspace: Path, runs_dir: Path, verify: list[str] | None, client: str | None = None,
             model: str | None = None, review_model: str | None = None, timeout: float = 900,
             goal_ref: str | None = None, telos_chain: str | None = None,
             telos_db: Path | None = None, telos_source: Path | None = None,
@@ -130,10 +137,25 @@ def develop(task: str, workspace: Path, runs_dir: Path, verify: list[str] | None
             read_context_dirs: tuple[Path, ...] = (), lifecycle=None) -> tuple[Path, dict]:
     owned = None
     if lifecycle is not None:
+        # Lifecycle-owned frozen reviewed execution keeps prior options exactly;
+        # omitted client retains its historical opencode default, never re-resolved.
+        if client is None:
+            client = "opencode"
         owned = lifecycle.validate_develop(task=task, workspace=workspace, runs_dir=runs_dir,
             run_id=run_id, inquiry=inquiry, client=client, model=model, review_model=review_model,
             worker_controls=worker_controls, telos_chain=telos_chain, telos_db=telos_db, telos_source=telos_source)
         telos_chain, telos_db, telos_source = (owned[key] for key in ("telos_chain", "telos_db", "telos_source"))
+    else:
+        # NEW standalone preparation may resolve only omitted client/model/review
+        # fields before preparing; explicit selections are preserved unchanged.
+        resolved = model_defaults.new_options(client=client, model=model, qa_model=review_model,
+                                              legacy_client="opencode", legacy_model=None, legacy_thinking="high")
+        client, model, review_model = resolved["client"], resolved["model"], resolved["qa_model"]
+        if (client == "pi" and model_defaults.product_configuration()["configured"]
+                and not worker_controls):
+            # Resolved product thinking applies only to a NEW standalone Pi run
+            # without explicit controls; explicit or lifecycle-owned controls stay exact.
+            worker_controls = {"reasoning_effort": resolved["thinking"]}
     workspace = workspace.resolve(strict=True)
     worker_controls = worker_controls or {}
     if worker_controls and (client != "pi" or set(worker_controls) != {"reasoning_effort"}
@@ -312,7 +334,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("task", type=Path, help="task and acceptance criteria in a UTF-8 text file")
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
     parser.add_argument("--runs-dir", type=Path)
-    parser.add_argument("--client", choices=("opencode", "pi"), default="opencode")
+    parser.add_argument("--client", choices=("opencode", "pi"), default=None,
+                        help="assistant client; default resolves the configured product default, else opencode")
     parser.add_argument("--model", help="configured client model; otherwise use the client's default")
     parser.add_argument("--review-model", help="optional separate configured reviewer model")
     parser.add_argument("--timeout", type=float, default=900, help="seconds per process")

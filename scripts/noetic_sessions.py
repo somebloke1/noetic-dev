@@ -26,6 +26,7 @@ import uuid
 from scripts import noetic_processes as processes
 from scripts import noetic_projects as projects
 from scripts import noetic_attachments as attachments_module
+from scripts import noetic_model_defaults as model_defaults
 from scripts.noetic_efforts import Efforts, Scope, ScopeError, Target
 from scripts.noetic_storage import create_private_sqlite, ensure_private_directory, open_private
 
@@ -342,9 +343,15 @@ class SessionService:
         prompt = text(body.get("prompt"), "Prompt")
         if prepared and prompt_frame_over_limit(planned_prompt_fields(prompt, prepared, self.registry.root / str(uuid.uuid4()))[0]):
             raise SessionError(400, "Attachment prompt exceeds the native JSONL record limit; no project folder or effort was created.")
-        model = text(body.get("model", DEFAULT_MODEL), "Model", maximum=256)
+        try:
+            defaults = model_defaults.new_options(model=body.get("model"), thinking=body.get("thinking"), legacy_model=DEFAULT_MODEL)
+        except ValueError as exc:
+            raise SessionError(400, str(exc)) from exc
+        if any(key in body and body[key] is None for key in ("model", "thinking")):
+            raise SessionError(400, "Model and thinking must be text when present; omit them to use defaults.")
+        model = text(defaults["model"], "Model", maximum=256)
         title = text(body.get("title", directory.name), "Project name", maximum=256)
-        thinking = body.get("thinking", "high")
+        thinking = defaults["thinking"]
         if thinking not in ("off", "minimal", "low", "medium", "high", "xhigh"):
             raise SessionError(400, "Unknown thinking level.")
         try:
@@ -384,8 +391,15 @@ class SessionService:
             raise SessionError(400, "Session workspace must match its effort environment.")
         if parent and body.get("workspace") not in (None, parent["workspace"]):
             raise SessionError(400, "Delegates use their parent's workspace.")
-        model = text(body.get("model", parent["model"] if parent else DEFAULT_MODEL), "Model", maximum=256)
-        thinking = body.get("thinking", parent["thinking"] if parent else "high")
+        try:
+            defaults = model_defaults.new_options(model=body.get("model"), thinking=body.get("thinking"),
+                parent={key: parent[key] for key in ("model", "thinking")} if parent else None, legacy_model=DEFAULT_MODEL)
+        except ValueError as exc:
+            raise SessionError(400, str(exc)) from exc
+        if any(key in body and body[key] is None for key in ("model", "thinking")):
+            raise SessionError(400, "Model and thinking must be text when present; omit them to use defaults.")
+        model = text(defaults["model"], "Model", maximum=256)
+        thinking = defaults["thinking"]
         if thinking not in ("off", "minimal", "low", "medium", "high", "xhigh"):
             raise SessionError(400, "Unknown thinking level.")
         prompt = text(body.get("prompt"), "Prompt")
@@ -1073,6 +1087,8 @@ class Broker:
         native = ensure_private_directory(self.directory / "native")
         argv = [*item["command"], "--mode", "rpc", "--session-dir", str(native), "--session-id", self.sid,
                 "--model", item["model"], "--thinking", item["thinking"], "--no-extensions", "-e", str(EXTENSION)]
+        provider_flags, environment = model_defaults.pi_launch(item["model"], native, environment)
+        argv += provider_flags
         self.process = subprocess.Popen(argv, cwd=item["workspace"], env=environment, stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.registry.event(self.sid, "host", {"type": "pi_started", "pid": self.process.pid})
@@ -1170,8 +1186,8 @@ def main(argv=None):
     parser.add_argument("--handoff", help="Explicit succession handoff JSON object")
     parser.add_argument("--after", type=int, default=0)
     parser.add_argument("--limit", type=int, default=100)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--thinking", default="high")
+    parser.add_argument("--model")
+    parser.add_argument("--thinking")
     parser.add_argument("arguments", nargs="*")
     args = parser.parse_intermixed_args(argv)
     if args.command == "broker":
@@ -1202,7 +1218,8 @@ def main(argv=None):
         elif args.command == "list":
             result = service.list(args.effort_root)
         elif args.command == "start":
-            body = {"effort_root": args.effort_root, "prompt": " ".join(args.arguments), "model": args.model, "thinking": args.thinking}
+            body = {"effort_root": args.effort_root, "prompt": " ".join(args.arguments)}
+            body.update({key: value for key, value in (("model", args.model), ("thinking", args.thinking)) if value is not None})
             if args.workspace:
                 body["workspace"] = args.workspace
             if args.ordinal:

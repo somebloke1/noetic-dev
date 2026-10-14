@@ -18,6 +18,7 @@ import threading
 import tempfile
 
 from scripts import noetic_opermem as native, noetic_opermem_scope as owned
+from scripts import noetic_model_defaults as model_defaults
 from scripts import noetic_processes as processes, noetic_purpose_binding as purposes
 from scripts import noetic_run as runtime
 from scripts.noetic_scope import Scope, ScopeError
@@ -422,7 +423,23 @@ class ReviewedApplication:
         if directory.exists():
             with self.app.mutation():
                 return self.retained_command(directory, body)
-        frozen = self.preflight(body)
+        # Only a genuinely NEW launch resolves product defaults; preflight itself
+        # keeps revalidating exactly what it receives, and the caller's body is
+        # never mutated. Idempotent retries compare against the ORIGINAL request.
+        effective = deepcopy(body)
+        requested_body = None
+        try:
+            if model_defaults.product_configuration()['configured']:
+                options = model_defaults.new_options(client=body.get('client'), model=body.get('model'),
+                                                     qa_model=body.get('qa_model'), thinking=body.get('thinking'))
+                for key in ('client', 'model', 'qa_model', 'thinking'):
+                    if options[key] is not None:
+                        effective[key] = options[key]
+        except ValueError as exc:
+            raise ScopeError(str(exc)) from exc
+        if effective != body:
+            requested_body = deepcopy(body)
+        frozen = self.preflight(effective)
         with self.app.mutation():
             if directory.exists():
                 return self.retained_command(directory, body)
@@ -431,11 +448,14 @@ class ReviewedApplication:
                 immutable(directory / 'assignment.json', {'namespace_path': str(self.app.namespace_path),
                     'namespace': self.adapter.store.namespace, 'effort_root': body['effort_root'],
                     'command_id': body['command_id'], 'request_digest': digest(frozen)})
-                immutable(directory / 'request.json', {'request_digest': digest(frozen), 'frozen': frozen,
+                request_record = {'request_digest': digest(frozen), 'frozen': frozen,
                     'application': {'runs_dir': str(self.app.root), 'namespace_path': str(self.app.namespace_path),
                                     'telos_db': str(self.app.telos_db), 'telos_source': str(self.app.telos_source) if self.app.telos_source else None,
                                     'purposes_root': str(self.app.purposes_root) if self.app.purposes_root else None,
-                                    'opermem_host': str(self.app.opermem_host) if self.app.opermem_host else None}})
+                                    'opermem_host': str(self.app.opermem_host) if self.app.opermem_host else None}}
+                if requested_body is not None:
+                    request_record['requested_body'] = requested_body
+                immutable(directory / 'request.json', request_record)
                 save(directory / 'receipt.json', {'launch_id': directory.name, 'command_id': body['command_id'],
                      'request_digest': digest(frozen), 'backend': BACKEND, 'effort_root': body['effort_root'],
                      'status': 'queued', 'execution_id': None, 'run_id': None, 'queued_at': stamp()})
@@ -463,7 +483,9 @@ class ReviewedApplication:
     def retained_command(self, directory, body):
         self.launch_owner(directory, {'kind': 'effort', 'effort_root': body.get('effort_root')})
         original = json.loads((directory / 'request.json').read_text())
-        if original['frozen']['body'] != body:
+        # Retained launches replay against the ORIGINALLY requested body, so later
+        # configuration edits cannot make omitted defaults change old records.
+        if original.get('requested_body', original['frozen']['body']) != body:
             from scripts.noetic_application import ApplicationError
             raise ApplicationError(409, 'command_id already retains a different reviewed request')
         return self.launch_receipt(directory, {'kind': 'effort', 'effort_root': body['effort_root']})

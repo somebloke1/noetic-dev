@@ -24,6 +24,7 @@ if __package__:
     from scripts import noetic_changes as changes
     from scripts import noetic_controller as controller
     from scripts import noetic_develop as clients
+    from scripts import noetic_model_defaults as model_defaults
     from scripts import noetic_run as runtime
     from scripts import noetic_telos as telos
     from scripts import noetic_purpose_binding as purpose_binding
@@ -34,6 +35,7 @@ else:
     import noetic_changes as changes
     import noetic_controller as controller
     import noetic_develop as clients
+    import noetic_model_defaults as model_defaults
     import noetic_run as runtime
     import noetic_telos as telos
     import noetic_purpose_binding as purpose_binding
@@ -870,14 +872,16 @@ def cancel(run_dir: Path) -> dict:
 
 
 def start(pattern: str, task: str, workspace: Path, runs_dir: Path, verify: list[str] | None = None,
-          client: str = "opencode", model: str | None = None, qa_model: str | None = None,
-          thinking: str = "high", max_remediations: int = 1, max_returns: int = 1,
+          client: str | None = None, model: str | None = None, qa_model: str | None = None,
+          thinking: str | None = None, max_remediations: int = 1, max_returns: int = 1,
           max_activations: int | None = None, timeout: float = 900,
           inputs: dict | None = None, goal_ref: str | None = None,
           telos_chain: str | None = None, telos_db: Path | str | None = None,
           telos_source: Path | str | None = None, scope_request: dict | None = None,
           purpose_ref: dict | None = None, purpose_config: dict | None = None) -> tuple[Path, dict]:
     """Freeze options and purpose, create a normal run, and drive its actual kernel."""
+    defaults = model_defaults.new_options(client, model, qa_model, thinking, legacy_client="opencode")
+    client, model, qa_model, thinking = (defaults[key] for key in ("client", "model", "qa_model", "thinking"))
     if pattern not in ("development", "cognition") or client not in ("opencode", "pi"):
         raise ValueError("Expected development|cognition and opencode|pi")
     _budget(max_activations)
@@ -961,13 +965,13 @@ def main(argv: list[str] | None = None) -> int:
     creation.add_argument("task_file", type=Path)
     creation.add_argument("--workspace", type=Path, default=Path.cwd())
     creation.add_argument("--runs-dir", type=Path)
-    creation.add_argument("--client", choices=("opencode", "pi"), default="opencode")
+    creation.add_argument("--client", choices=("opencode", "pi"))
     creation.add_argument("--scope-request", type=Path, help="explicit registered effort/instance assignment JSON")
     creation.add_argument("--purpose-ref", type=Path, help="complete owned purpose reference JSON")
     creation.add_argument("--purpose-config", type=Path, help="explicit purpose resolver configuration JSON")
     creation.add_argument("--model")
     creation.add_argument("--qa-model")
-    creation.add_argument("--thinking", default="high")
+    creation.add_argument("--thinking")
     creation.add_argument("--max-remediations", type=int, default=1)
     creation.add_argument("--max-returns", type=int, default=1)
     creation.add_argument("--max-activations", type=int)

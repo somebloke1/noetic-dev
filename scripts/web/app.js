@@ -1393,6 +1393,7 @@ async function loadConfiguration() {
       persistUI();
     }
     if (!savedUI.forms?.["start-model"] && $("start-client").value === "pi" && $("start-model").value === "openai-codex/gpt-6.1-sol") $("start-profile").value = "pi-direct";
+    window.NoeticDrafts?.applyProductDefaults(configuration.product_models);
     delete initialForms["start-profile"];
     window.NoeticDrafts?.restoreChoice("start-profile", [...$("start-profile").options].map(x=>x.value));
     updateComposer();
@@ -1692,6 +1693,8 @@ const structuredDrafts = (() => {
   let owner = null, generation = 0, pending = false, conflict = "", desired = {}, invalid = new Set();
   const defaults = {};
   const storage = savedUI.structuredDrafts && typeof savedUI.structuredDrafts === "object" ? savedUI.structuredDrafts : {};
+  const existingDraftKeys = new Set(Object.keys(storage)), modelEdits = new Map();
+  const modelFields = ["start-profile","start-client","start-model","start-thinking"];
   const values = ids => Object.fromEntries(ids.map(id=>[id,$(id).value]));
   const validOwner = () => owner && owner.scope === operationKey();
   const substantive = fields => ["start-task","start-sources","start-verify","reviewed-sources"].some(id=>String(fields?.[id] || "").trim());
@@ -1710,6 +1713,20 @@ const structuredDrafts = (() => {
     storage[owner.key] = {fields:{...values(structuredDraftFields),...Object.fromEntries(structuredDraftFields.filter(id=>id in desired).map(id=>[id,desired[id]]))},bindings:{...values(structuredBindings),...Object.fromEntries(structuredBindings.filter(id=>id in desired).map(id=>[id,desired[id]]))},sources:structuredClone(reviewedSources),modified:previous?.modified || Boolean($("start-task").value.trim()),...(purposeProvenance ? {retired_purpose:purposeProvenance} : {}),namespace:owner.namespace,effort:owner.effort};
     savedUI.structuredDrafts = storage;
     savedUI.structuredDraftOwner = {namespace:owner.namespace,effort:owner.effort};
+  }
+  function applyProductDefaults(product) {
+    const selected = product?.configured && product.default;
+    if (!selected || !["client","model","thinking"].every(key=>typeof selected[key] === "string" && selected[key])) return;
+    const profile = product.profiles?.find(item=>item.client === selected.client && item.model === selected.model);
+    const next = {"start-client":selected.client,"start-model":selected.model,"start-thinking":selected.thinking,"start-profile":profile?.id || ""};
+    const previous = Object.fromEntries(modelFields.map(id=>[id,defaults[id]]));
+    Object.assign(defaults,next);
+    if (!validOwner() || pending || existingDraftKeys.has(owner.key)) return;
+    const edited = modelEdits.get(owner.key) || new Set();
+    if (["start-client","start-model","start-profile"].some(id=>edited.has(id))) return;
+    if (["start-client","start-model"].some(id=>$(id).value !== previous[id])) return;
+    for (const [id,value] of Object.entries(next)) if (!edited.has(id) && ($(id).value === previous[id] || id === "start-profile" && $(id).value === "pi-direct")) $(id).value=value;
+    ++draftVersion;capture();render();updateComposer();persistUI();
   }
   function leave() {
     capture(); ++generation; owner = null; desired = {}; invalid.clear(); conflict = ""; pending = true;
@@ -1850,11 +1867,15 @@ const structuredDrafts = (() => {
   }
   function edit(event) {
     if (!validOwner() || pending) return;
+    if (modelFields.includes(event.target.id)) {
+      if (!modelEdits.has(owner.key)) modelEdits.set(owner.key,new Set());
+      modelEdits.get(owner.key).add(event.target.id);
+    }
     delete desired[event.target.id];invalid.delete(event.target.id);conflict="";
     storage[owner.key] ||= {};storage[owner.key].modified=true;
     capture();render();scopeControls();persistUI();
   }
-  return {init,capture,leave,enter,ready:()=>Boolean(validOwner() && !pending && !invalid.size),restoreChoice};
+  return {init,capture,leave,enter,ready:()=>Boolean(validOwner() && !pending && !invalid.size),restoreChoice,applyProductDefaults};
 })();
 window.NoeticDrafts = structuredDrafts;
 let purposeCreatePending=false;

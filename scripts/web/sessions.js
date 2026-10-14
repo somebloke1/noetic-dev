@@ -27,6 +27,9 @@
   const submissionLedger = new Map(), unsentDrafts = new Map();
   let submissionSequence = 0;
   const fields = ["developer-projects-root", "developer-workspace", "developer-project-name", "developer-project-mode", "developer-model", "developer-thinking", "developer-prompt", "developer-mode"];
+  const defaultFields = ["developer-model","developer-thinking"], editedDefaults = new Set();
+  const savedDefaults = new Set(defaultFields.filter(id=>Object.prototype.hasOwnProperty.call(saved.fields || {},id)));
+  const initialDefaults = Object.fromEntries(defaultFields.map(id=>[id,$(id).value]));
   const persist = () => {
     drafts[key(selected)] = $("developer-prompt").value;
     const value = {selected, effort, newConversation, applicationHistory, projectBrowsing, projectPath, drafts, fields: Object.fromEntries(fields.map(id => [id, $(id).value]))};
@@ -34,9 +37,18 @@
   };
   for (const id of fields) {
     if (typeof saved.fields?.[id] === "string") $(id).value = saved.fields[id];
-    $(id).addEventListener("input", () => { if (id === "developer-prompt") ++promptRevision; persist(); });
-    $(id).addEventListener("change", persist);
+    $(id).addEventListener("input", () => { if (defaultFields.includes(id)) editedDefaults.add(id); if (id === "developer-prompt") ++promptRevision; persist(); });
+    $(id).addEventListener("change", () => { if (defaultFields.includes(id)) editedDefaults.add(id); persist(); });
   }
+  function applyProductDefaults(value) {
+    const chosen = value?.product_models?.configured && value.product_models.default;
+    if (!chosen || typeof chosen.model !== "string" || !chosen.model || savedDefaults.has("developer-model") || editedDefaults.has("developer-model") || $("developer-model").value !== initialDefaults["developer-model"]) return;
+    $("developer-model").value = chosen.model;
+    if (!savedDefaults.has("developer-thinking") && !editedDefaults.has("developer-thinking") && $("developer-thinking").value === initialDefaults["developer-thinking"] && typeof chosen.thinking === "string") $("developer-thinking").value=chosen.thinking;
+    persist();
+  }
+  document.addEventListener("noetic:configuration", event=>applyProductDefaults(event.detail));
+  queueMicrotask(()=>{ if (configuration) applyProductDefaults(configuration); });
   const state = () => JSON.parse(JSON.stringify({positions, sessions:allSessions, selected, effort, detail,
     history:historyRecords, historyObservation, events, newConversation, applicationHistory, projectBrowsing, projectPath, returnContext, applicationEvents, observationError}));
   const notify = () => document.dispatchEvent(new CustomEvent("noetic:sessions", {detail:state()}));

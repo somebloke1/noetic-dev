@@ -35,7 +35,7 @@ BOOTSTRAP = ("scripts/__init__.py", "scripts/noetic_storage.py", "scripts/noetic
              "scripts/noetic_opermem_acting.py", "scripts/noetic_act_observation.py",
              "scripts/noetic_run.py", "scripts/noetic_controller.py",
              "scripts/noetic_harness.py", "scripts/noetic_changes.py",
-             "scripts/noetic_develop.py", "scripts/noetic_telos.py",
+             "scripts/noetic_develop.py", "scripts/noetic_model_defaults.py", "scripts/noetic_telos.py",
              "scripts/noetic_disciplines.py", "scripts/noetic_scope.py", "scripts/noetic_projects.py",
              "scripts/noetic_purpose_binding.py", "scripts/noetic_purposes.py", "scripts/noetic_efforts.py")
 REQUIRED_ASSETS = (*BOOTSTRAP, "scripts/noetic.py", "scripts/noetic_harness.py",

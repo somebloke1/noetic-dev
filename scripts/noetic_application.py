@@ -22,6 +22,7 @@ from urllib import request, error
 from scripts import noetic_controller as controller
 from scripts import noetic_disciplines as disciplines
 from scripts import noetic_memory as memory
+from scripts import noetic_model_defaults as model_defaults
 from scripts import noetic_recall as recall
 from scripts import noetic_opermem_application as reviewed
 from scripts.noetic_efforts import Efforts
@@ -536,6 +537,10 @@ class Application:
         for key in ("model", "qa_model", "thinking", "telos_chain"):
             if body.get(key) is not None and (not isinstance(body[key], str) or "\0" in body[key]):
                 raise ApplicationError(400, f"{key} must be text.")
+        try:
+            model_options = model_defaults.new_options(**{key: body.get(key) for key in ("client", "model", "qa_model", "thinking")})
+        except ValueError as exc:
+            raise ApplicationError(400, f"Cannot select new-run model defaults: {exc}") from exc
         sources = body.get("sources", [])
         if not isinstance(sources, list) or any(not isinstance(ref, str) or not ref.strip() for ref in sources):
             raise ApplicationError(400, "Source references must be an array of nonempty strings; no implicit file ingestion.")
@@ -558,7 +563,8 @@ class Application:
         resolver = self.purposes() if body.get("purpose_ref") is not None else None
         purpose = resolver.resolve_run(body["purpose_ref"], scope=scope) if resolver else None
         kwargs = {key: body[key] for key in ("pattern", "verify", "client", "model", "qa_model", "thinking", "max_returns", "max_remediations", "timeout") if key in body}
-        kwargs.update(pattern=pattern, client=body.get("client", "pi"), task=task,
+        kwargs.update(model_options)
+        kwargs.update(pattern=pattern, task=task,
                       runs_dir=self.root, max_activations=0, inputs={"sources": [{"ref": ref} for ref in sources]},
                       telos_db=purpose["db_path"] if purpose else self.telos_db,
                       telos_source=purpose["source"] if purpose else self.telos_source, scope_request=scope_request)
@@ -850,11 +856,16 @@ class Application:
 
     def configuration(self):
         settings = asdict(local.load_settings())
-        return {"profiles": PROFILES, "profile_notice": "Sol 6.1 direct starter selections; configured inventories have no Sol 6.1 LiteLLM alias. Use Custom client/model for an explicitly configured route. Selections are not proof of current authentication or availability.",
+        try:
+            product = model_defaults.product_configuration()
+        except ValueError as exc:
+            raise ApplicationError(400, f"Cannot read installation model defaults: {exc}") from exc
+        notice = "Installation model defaults apply to new untouched preparation; explicit choices and retained work keep their selected models. Registration is not a live availability observation." if product["configured"] else "Sol 6.1 direct starter selections; configured inventories have no Sol 6.1 LiteLLM alias. Use Custom client/model for an explicitly configured route. Selections are not proof of current authentication or availability."
+        return {"profiles": product["profiles"] + PROFILES, "product_models": product, "profile_notice": notice,
                 "limits": {"max_returns": 20, "max_remediations": 20, "timeout_seconds": [1, 7200],
                            "pi_astra_configured_context": 272000, "pi_astra_configured_max_output": 128000},
                 "role_defaults": {"producer": "selected model", "cognitive_operator": "selected model",
-                                  "independent_qa": "QA model, or selected model when empty", "thinking": "high",
+                                  "independent_qa": "QA model, or selected model when empty", "thinking": product["default"]["thinking"] if product["configured"] else "high",
                                   "context": "Fresh frozen role context per activation; no interactive chat input."},
                 "opermem": reviewed.host_configuration(self.opermem_host),
                 "local": settings, "telos_database": str(self.telos_db), "namespace_path": str(self.namespace_path),
