@@ -212,7 +212,11 @@ class Disciplines:
         native = {"run_id": run_dir.name, "run_dir": str(run_dir),
                   "controller_store": str(run_dir / "controller.sqlite3"), "options": options,
                   "execution_workspace": options["workspace"], "preparation": request.get("preparation"),
-                  "assignment": request, "effort_context": effort_context}
+                  "assignment": request, "effort_context": effort_context,
+                  "delegation_version": options.get("delegation_version"),
+                  "delegation_capability": (controller.PATTERN_DIR / f"{options['pattern']}.json").is_file()
+                      and json.loads((controller.PATTERN_DIR / f"{options['pattern']}.json").read_text())
+                          .get("delegation", {}).get("version")}
         record = self.once(f"run:{run_dir.name}:execution", {"assignment": request, "native_ref": native},
             "execution", lambda source: self.store.create_execution(instance["id"],
                 scope=Scope.effort(instance["effort"]), native_ref=native, source_ref=source))

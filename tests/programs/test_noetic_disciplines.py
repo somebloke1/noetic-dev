@@ -1,6 +1,8 @@
 """Disposable canonical scopes and actual model-free client processes."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout, closing
+from functools import wraps
+import hashlib
 import io
 import json
 import os
@@ -19,6 +21,38 @@ from scripts import noetic_harness as harness
 from scripts import noetic_projects as projects
 from scripts.noetic_scope import Scope, ScopeError, ScopeStore, Target
 from tests.programs.test_noetic_harness import result_for, protocol, process_command
+
+
+def frozen_v1_development(test):
+    @wraps(test)
+    def run_legacy(self):
+        current = json.loads((controller.PATTERN_DIR / 'development.json').read_text())
+        legacy = {key: value for key, value in current.items() if key != 'delegation'}
+        legacy['version'] = 1
+        digest = hashlib.sha256(json.dumps(legacy, sort_keys=True, ensure_ascii=True, allow_nan=False).encode()).hexdigest()
+        self.assertEqual(digest, '8cb8f909044d920cadd906529faa536866f707441b83a4f3a869b53cf65a9f63')
+        directory = self.root / 'frozen-v1-patterns'
+        directory.mkdir()
+        (directory / 'development.json').write_text(json.dumps(legacy))
+        with patch.object(controller, 'PATTERN_DIR', directory):
+            test(self)
+        self.assertEqual(current['version'], 2)
+        for run in self.runs.iterdir():
+            if not (run / 'controller.sqlite3').is_file():
+                continue
+            frozen = (run / 'options.json').read_bytes()
+            self.assertNotIn('delegation_version', json.loads(frozen))
+            before = harness.inspect(run)
+            self.assertEqual(before['pattern'], legacy)
+            with redirect_stdout(io.StringIO()):
+                _, state = harness.drive(run, max_activations=1)
+            self.assertEqual(state['status'], before['status'])
+            if before['status'] == 'active':
+                self.assertGreater(state['version'], before['version'])
+            self.assertEqual(state['pattern'], legacy)
+            self.assertEqual((run / 'options.json').read_bytes(), frozen)
+            self.assertEqual(disciplines.correspondence(run)['definition_ref']['version'], digest)
+    return run_legacy
 
 
 RPC_FIXTURE = r'''
@@ -101,6 +135,7 @@ class DisciplineTests(unittest.TestCase):
             return [sys.executable,str(self.rpc),'--mode','json','-p','--model','fixture/model'],env
         return process_command(protocol(json.dumps(result),'opencode',f'{run_dir.name}-{activation["id"]}'))
 
+    @frozen_v1_development
     def test_effort_meaning_reaches_fresh_workers_and_reviewers_without_replacing_task(self):
         task = 'For this task, depart from the standing intention and compare seven alternatives.'
         for index in (0, 1):
@@ -317,6 +352,7 @@ class DisciplineTests(unittest.TestCase):
         (run/'options.json').unlink()
         with self.assertRaises(ScopeError):disciplines.correspondence(run)
 
+    @frozen_v1_development
     def test_development_review_has_exact_subject_and_all_participants_have_same_true_parent(self):
         instance=self.instance(pattern='development')
         run,state=self.start(instance,pattern='development',verify=[sys.executable,'-c','pass'])
@@ -333,6 +369,7 @@ class DisciplineTests(unittest.TestCase):
             self.assertIn('native memory standing unchanged',review['data']['semantic_authority'])
 
 
+    @frozen_v1_development
     def test_maintained_prepared_worktree_keeps_effort_environment_and_rejects_unrelated_preparation(self):
         instance=self.instance(pattern='development')
         readonly=disciplines.Disciplines(self.namespace,readonly=True)

@@ -98,8 +98,27 @@
 <h3 id="continuation-heading">Blocked task continuation</h3>
 <div id="cognitive-continuation-body"></div>
 </section><section hidden="" id="workspace-file-view"><div class="section-heading"><h3 id="workspace-file-path"></h3><button id="workspace-file-close" type="button">Close source view</button></div><pre class="source-preview" id="workspace-file-text" tabindex="0"></pre></section>
+<div aria-label="Execution views" class="view-controls" id="execution-views" role="group">
+<button aria-pressed="true" data-execution-view="results" type="button">Results</button>
+<button aria-pressed="false" data-execution-view="actors" type="button">Actors</button>
+<button aria-pressed="false" data-execution-view="activity" type="button">Agent activity</button>
+<button aria-pressed="false" data-execution-view="evidence" type="button">Technical evidence</button>
+</div>
+<section aria-labelledby="results-heading" hidden="" id="execution-results">
+<div class="section-heading"><h3 id="results-heading">Results</h3><span class="eyebrow">RECORDED OUTPUTS · DISTINCT STANDING</span></div>
+<div id="execution-results-body"></div>
+</section>
+<section aria-labelledby="actors-heading" hidden="" id="controller-view">
+<div class="section-heading"><h3 id="actors-heading">Actors / activation lifecycle</h3><span class="eyebrow" id="actor-count"></span></div>
+<p class="evidence-note">Kernel-assigned actors, in ordinal order. A missing session reference means none is committed in the kernel, not proof that no runtime started.</p>
+<ol class="actor-list" id="actor-list"></ol>
+<select id="actor-select" hidden="" aria-label="Selected activation"></select>
+<p class="evidence-note" id="actor-summary"></p>
+<details><summary>Activation, bindings, criteria and lifecycle events</summary><pre id="actor-data"></pre></details>
+</section>
 <section aria-labelledby="session-heading" hidden="" id="session-view">
 <div class="section-heading"><h3 id="session-heading">Agent output</h3><label class="follow-label"><input checked="" id="follow-current" type="checkbox"/> Follow current agent</label></div>
+<p class="evidence-note">Follow chooses the current activation for reading; unchecked keeps your selected activation. New activity is followed only while already reading at the bottom, and this never changes model or thinking.</p>
 <label for="session-select">Agent</label><select id="session-select"></select>
 <p class="evidence-note" id="session-note" role="status"></p>
 <div aria-label="Structured session transcript" class="transcript" id="session-transcript" tabindex="0"></div>
@@ -107,15 +126,6 @@
 <div class="session-next"><span id="steering-note">Task instructions are fixed for this session.</span><button data-page="new" type="button">New task</button></div>
 <details class="evidence-drawer" id="evidence-drawer"><summary>Details &amp; evidence</summary>
 <details id="reviewed-evidence" hidden=""><summary>Original reviewed preparation &amp; native evidence</summary><p class="evidence-note">Retained packets at their original cut. Current native eligibility is unobserved; inspection and recall do not promote standing.</p><div id="reviewed-evidence-content"></div></details><details id="transcript-details"><summary>Transcript records</summary><p class="source" id="session-model"></p><h4>Normalized activity</h4><pre class="evidence" id="session-normalized" tabindex="0"></pre><h4>Raw transcript</h4><pre class="evidence" id="session-raw" tabindex="0"></pre></details>
-<div aria-label="Evidence view" class="view-controls" role="group">
-<button aria-controls="phases-view" aria-pressed="false" data-view="phases" hidden="" id="phases-tab" type="button">Phases and recurrence</button>
-<button aria-controls="session-view" aria-pressed="false" data-view="session" id="session-tab" type="button">Agent output</button>
-<button aria-controls="compare-view" aria-pressed="false" data-view="compare" hidden="" id="compare-tab" type="button">Compare artifacts</button>
-<button aria-controls="controller-view" aria-pressed="false" data-view="controller" hidden="" id="controller-tab" type="button">Controller evidence</button>
-<button aria-controls="timeline-view" aria-pressed="true" data-view="timeline" type="button">Event timeline</button>
-<button aria-controls="reports-view" aria-pressed="false" data-view="reports" type="button">Reports</button>
-<button aria-controls="logs-view" aria-pressed="false" data-view="logs" type="button">Command logs</button>
-</div>
 <details class="task-details"><summary>Task and acceptance criteria</summary><pre id="task-body"></pre></details>
 <p class="state-note" id="state-note"></p>
 <details class="run-metadata"><summary>Workspace, purpose reference and evidence timestamps</summary><dl class="metadata">
@@ -157,13 +167,17 @@
 <div class="section-heading"><h3 id="compare-heading">Compare retained versions</h3><span class="eyebrow">IMMUTABLE CONTENT / CURRENT STANDING</span></div>
 <div class="comparison"><section><label for="compare-left">Left artifact</label><select id="compare-left"></select><p class="source" id="compare-left-standing"></p><pre aria-label="Left artifact content" class="evidence" id="compare-left-text" tabindex="0"></pre></section><section><label for="compare-right">Right artifact</label><select id="compare-right"></select><p class="source" id="compare-right-standing"></p><pre aria-label="Right artifact content" class="evidence" id="compare-right-text" tabindex="0"></pre></section></div>
 </section>
-<section aria-labelledby="actors-heading" hidden="" id="controller-view">
-<div class="section-heading"><h3 id="actors-heading">Actors / activation lifecycle</h3><span class="eyebrow" id="actor-count"></span></div>
-<p class="evidence-note">Kernel-assigned actors, in ordinal order. A missing session reference means none is committed in the kernel, not proof that no runtime started.</p>
-<ol class="actor-list" id="actor-list"></ol>
-<select id="actor-select" hidden="" aria-label="Selected activation"></select>
-<p class="evidence-note" id="actor-summary"></p>
-<details><summary>Activation, bindings, criteria and lifecycle events</summary><pre id="actor-data"></pre></details>
+<section aria-labelledby="technical-heading" hidden="" id="execution-technical">
+<div class="section-heading"><h3 id="technical-heading">Technical evidence</h3><span class="eyebrow">EXPLICIT RAW INSPECTION</span></div>
+<div aria-label="Evidence sub-views" class="view-controls" role="group">
+<button aria-controls="phases-view" aria-pressed="false" data-view="phases" hidden="" id="phases-tab" type="button">Phases and recurrence</button>
+<button aria-controls="session-view" aria-pressed="false" data-view="session" id="session-tab" type="button">Agent output</button>
+<button aria-controls="compare-view" aria-pressed="false" data-view="compare" hidden="" id="compare-tab" type="button">Compare artifacts</button>
+<button aria-controls="controller-view" aria-pressed="false" data-view="controller" hidden="" id="controller-tab" type="button">Controller evidence</button>
+<button aria-controls="timeline-view" aria-pressed="true" data-view="timeline" type="button">Event timeline</button>
+<button aria-controls="reports-view" aria-pressed="false" data-view="reports" type="button">Reports</button>
+<button aria-controls="logs-view" aria-pressed="false" data-view="logs" type="button">Command logs</button>
+</div>
 <label for="actor-log-select">Selected activation / retained file</label>
 <select id="actor-log-select">
 <option value="actor.stdout.log">Actor / stdout</option><option value="actor.stderr.log">Actor / stderr</option>
@@ -184,7 +198,6 @@
 <div class="section-heading"><h3>Actual kernel transitions and events</h3><span class="eyebrow" id="transition-count"></span></div>
 <p class="evidence-note">Committed sequence, including returns, remediation and slot invalidation. These are observed events, not the possible transitions in the pattern table. Versions are kernel versions; the kernel does not record event timestamps.</p>
 <ol class="timeline" id="controller-events"></ol>
-</section>
 <section aria-labelledby="timeline-heading" id="timeline-view">
 <div class="section-heading"><h3 id="timeline-heading">Journal sequence</h3><span class="eyebrow" id="event-count"></span></div>
 <p class="source" id="journal-source"></p>
@@ -214,6 +227,7 @@
 </select>
 <p class="source" id="log-source"></p><p class="evidence-note" id="log-note"></p>
 <pre aria-label="Log text" class="evidence" id="log-text" tabindex="0"></pre>
+</section>
 </section>
 </details>
 </article>
@@ -253,7 +267,7 @@
 <p class="evidence-note" id="memory-status" role="status"></p><p class="error" hidden="" id="memory-error" role="alert"></p><div id="memory-results"></div><details><summary>Recall source coverage and scope</summary><pre class="evidence" id="memory-coverage"></pre></details>
 <section class="supporting-summary"><h3>Local supporting summary</h3><p class="source" id="summary-selection"></p><p class="evidence-note">Non-authoritative model-generated support, not judgment, QA or advancement. Coverage excludes historical artifacts. Uses only the selected run.</p><label class="checkbox-label"><input id="summary-save" type="checkbox"/> Save summary.json and its observation receipt</label><button id="summary-generate" type="button">Summarize selected run</button><p class="error" hidden="" id="summary-error" role="alert"></p><p class="evidence-note" id="summary-coverage" role="status"></p><pre class="evidence" id="summary-content" tabindex="0"></pre></section>
 </section>
-<section aria-labelledby="purposes-heading" class="application-page" hidden="" id="purposes-page"><h2 id="purposes-heading">Telos purposes</h2><p class="source" id="purpose-database"></p><p class="evidence-note">Native Telos chains retain their explicit owning effort/application and source store. Reading an absent database does not create it. Creating a purpose is intentional; the GUI never forces chain completion.</p><button id="purposes-refresh" type="button">Refresh purposes</button><p id="purpose-draft-owner" class="evidence-note" role="status"></p><button id="purpose-retry-owner" type="button">Retry purpose ownership</button><details id="purpose-unassigned" hidden=""><summary>Inspect unassigned purpose draft</summary><pre id="purpose-unassigned-text" class="evidence"></pre><p class="evidence-note">Its prior owner was not recorded. Copy text explicitly into the verified owner; the original stays available.</p><button id="purpose-copy-unassigned" type="button">Copy purpose text</button></details><form id="purpose-form"><label for="purpose-goal">New governing purpose</label><textarea id="purpose-goal" required="" rows="3"></textarea><button id="purpose-create" type="submit">Create Telos purpose</button></form><p class="error" hidden="" id="purpose-error" role="alert"></p><p class="evidence-note" id="purpose-status" role="status"></p><div id="purpose-list"></div></section>
+<section aria-labelledby="purposes-heading" class="application-page" hidden="" id="purposes-page"><h2 id="purposes-heading">Telos purposes</h2><p class="evidence-note">Native Telos chains retain their explicit owning effort/application and source store. Reading an absent database does not create it. Creating a purpose is intentional; the GUI never forces chain completion.</p><button id="purposes-refresh" type="button">Refresh purposes</button><p id="purpose-draft-owner" class="evidence-note" role="status"></p><button id="purpose-retry-owner" type="button">Retry purpose ownership</button><details id="purpose-unassigned" hidden=""><summary>Inspect unassigned purpose draft</summary><pre id="purpose-unassigned-text" class="evidence"></pre><p class="evidence-note">Its prior owner was not recorded. Copy text explicitly into the verified owner; the original stays available.</p><button id="purpose-copy-unassigned" type="button">Copy purpose text</button></details><form id="purpose-form"><label for="purpose-goal">New governing purpose</label><textarea id="purpose-goal" required="" rows="3"></textarea><button id="purpose-create" type="submit">Create Telos purpose</button></form><p class="error" hidden="" id="purpose-error" role="alert"></p><p class="evidence-note" id="purpose-status" role="status"></p><div id="purpose-list"></div><details><summary>Technical details · purpose stores and databases</summary><p class="source" id="purpose-database"></p></details></section>
 <section aria-labelledby="diagnostics-heading" class="application-page" hidden="" id="diagnostics-page"><h2 id="diagnostics-heading">Models and services</h2><p class="evidence-note" id="configuration-notice"></p><div id="configured-profiles"></div><details><summary>Technical configuration · role defaults and limits</summary><pre id="configuration-details"></pre></details><h3>Observed local service health</h3><button id="diagnostics-refresh" type="button">Refresh known health endpoints</button><p class="evidence-note" id="diagnostics-status" role="status"></p><p class="error" hidden="" id="diagnostics-error" role="alert"></p><div id="diagnostics-results"></div><p class="evidence-note">Only Qwen :8742/health, Ollama :11434/api/ps and LiteLLM :3333/health/liveliness are queried. Health is not authentication or inference proof. No credentials are displayed.</p></section>
 </main>
 </div>

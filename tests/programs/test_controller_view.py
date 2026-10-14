@@ -353,7 +353,16 @@ process.stdin.on('end', async () => {
     get id() { return this.attributes.id || ''; }
     get options() { return this.children; }
     get selectedOptions() { return this.children.filter(child=>child.value===this.value); }
-    get firstChild() { return this.children[0] || null; }
+    get nodeType() { return 1; }
+    get childNodes() {
+      const owner=this;
+      this._textNode ||= {nodeType:3, parentNode:this,
+        get textContent() { return owner._text; }, set textContent(value) { owner._text=String(value); },
+        replaceWith(item) { owner._text=''; owner.insertBefore(item,owner.children[0] || null); }};
+      return this._text ? [this._textNode,...this.children] : [...this.children];
+    }
+    get firstChild() { return this.childNodes[0] || null; }
+    get lastChild() { return this.childNodes.at(-1) || null; }
     append(...items) { for(const item of items) this.insertBefore(item,null); }
     replaceChildren(...items) { for(const child of this.children) child.parentNode=null; this.children=[]; this._text=''; if(this.tagName==='SELECT') delete this._value; this.append(...items); }
     insertBefore(item,reference) {
@@ -364,10 +373,13 @@ process.stdin.on('end', async () => {
       if(item.id) elements.set(item.id,item); return item;
     }
     before(...items) { if(this.parentNode) for(const item of items) this.parentNode.insertBefore(item,this); }
+    replaceWith(item) { if(this.parentNode) { this.parentNode.insertBefore(item,this); this.remove(); } }
     remove() { if(this.parentNode) this.parentNode.children=this.parentNode.children.filter(child=>child!==this); this.parentNode=null; if(this.id && elements.get(this.id)===this) elements.delete(this.id); }
     contains(item) { return this===item || this.children.some(child=>child.contains(item)); }
     setAttribute(key,value) { if(key==='id') this.id=value; else this.attributes[key]=String(value); }
     getAttribute(key) { return this.attributes[key] ?? null; }
+    hasAttribute(key) { return Object.hasOwn(this.attributes,key); }
+    removeAttribute(key) { delete this.attributes[key]; }
     addEventListener(key,handler) { this.handlers[key]=handler; }
     focus() {}
     scrollIntoView() {}
@@ -402,14 +414,14 @@ process.stdin.on('end', async () => {
   }
   const el = id => { assert.ok(elements.has(id), `Missing DOM id ${id}`); return elements.get(id); };
   const requests = [], storage = new Map();
-   const sandbox = { fixture, console, AbortController, structuredClone, URL, URLSearchParams, CustomEvent: class { constructor(type, options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
+   const sandbox = { fixture, console, AbortController, structuredClone, URL, URLSearchParams, MutationObserver: class { observe() {} }, CustomEvent: class { constructor(type, options) { this.type=type; Object.assign(this,options); } }, queueMicrotask, setTimeout: () => 1, clearTimeout() {}, setInterval() {},
     location: {hash: '#run-detail', pathname: '/', search: '', origin: 'http://127.0.0.1:8765', reload() {}},
     history: {replaceState() {}},
     localStorage: {removeItem() {}},
     sessionStorage: {getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key)},
     window: { confirm: () => false, addEventListener() {} },
     fetch: (url, options) => { requests.push({url, options}); return new Promise(() => {}); },
-    document: { dispatchEvent: () => true, getElementById: id=>elements.get(id) || null, createElement: tag => new Element(tag),
+    document: { addEventListener() {}, dispatchEvent: () => true, getElementById: id=>elements.get(id) || null, createElement: tag => new Element(tag),
       querySelector: selector => selector === 'label[for="start-sources"]' ? documentRoot.children.find(child=>child.tagName==='LABEL' && child.getAttribute('for')==='start-sources') || null : null,
       querySelectorAll: selector => selector === '[data-page]' ? pages : views } };
   vm.createContext(sandbox);
